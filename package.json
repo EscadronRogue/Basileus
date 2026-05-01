@@ -1,0 +1,12 @@
+{
+  "name": "basileus-game",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node simulation/training-server.js",
+    "serve:multiplayer": "node multiplayer/server.js",
+    "train:node": "node simulation/train-node.js --parallelWorkers=auto",
+    "smoke:simulation": "node simulation/smoke-test.js",
+    "test:multiplayer": "node multiplayer/verify.js"
+  }
+}

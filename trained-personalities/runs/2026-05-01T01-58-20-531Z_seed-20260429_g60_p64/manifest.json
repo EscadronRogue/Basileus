@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "type": "basileus-trained-personality-export",
+  "exportedAt": "2026-05-01T01:58:20.555Z",
+  "runId": "2026-05-01T01-58-20-531Z_seed-20260429_g60_p64",
+  "championCount": 10,
+  "config": {
+    "seed": 20260429,
+    "playerCount": 5,
+    "deckSize": 9,
+    "fitnessPresetId": "custom",
+    "fitness": {
+      "collapsePenalty": 12,
+      "survivalBonus": 1,
+      "winReward": 14,
+      "placementReward": 4,
+      "wealthReward": 2
+    },
+    "populationSize": 64,
+    "generations": 60,
+    "matchesPerCandidate": 64,
+    "validationMatchesPerCandidate": 32,
+    "holdoutMatchesPerChampion": 128,
+    "champions": 10,
+    "hallOfFameSize": 32,
+    "eliteFraction": 0.2,
+    "freshBloodRate": 0.12,
+    "hallOfFameMixFraction": 0.25,
+    "parallelWorkers": 8
+  },
+  "overview": {
+    "generations": 60,
+    "populationSize": 64,
+    "totalMatches": 372480,
+    "trainingMatchesPerCandidate": 64,
+    "validationMatchesPerCandidate": 32,
+    "holdoutMatchesPerChampion": 128,
+    "parallelWorkers": 8,
+    "selectionMethod": "pareto-crowding",
+    "bestFitness": 12.8853,
+    "bestAverageWealth": 10.8,
+    "bestEmpireFallRate": 0.2031,
+    "bestRobustnessVariance": 0.0087,
+    "bestHoldoutWinShare": 0.2266,
+    "bestGuardRate": 0
+  },
+  "files": [
+    {
+      "rank": 1,
+      "id": "child-60-61-805702284-champion-1",
+      "name": "Aegis Patron Mk 1",
+      "file": "01-aegis-patron-mk-1.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\01-aegis-patron-mk-1.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\01-aegis-patron-mk-1.json"
+    },
+    {
+      "rank": 2,
+      "id": "child-60-59-886155408-champion-2",
+      "name": "Aegis Treasury Mk 2",
+      "file": "02-aegis-treasury-mk-2.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\02-aegis-treasury-mk-2.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\02-aegis-treasury-mk-2.json"
+    },
+    {
+      "rank": 3,
+      "id": "child-59-58-140876608-elite0-champion-3",
+      "name": "Aegis Treasury Mk 3",
+      "file": "03-aegis-treasury-mk-3.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\03-aegis-treasury-mk-3.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\03-aegis-treasury-mk-3.json"
+    },
+    {
+      "rank": 4,
+      "id": "child-60-60-97532626-champion-4",
+      "name": "Aegis Patron Mk 4",
+      "file": "04-aegis-patron-mk-4.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\04-aegis-patron-mk-4.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\04-aegis-patron-mk-4.json"
+    },
+    {
+      "rank": 5,
+      "id": "child-57-54-697338095-elite0-m31-elite12-champion-5",
+      "name": "Aegis Estate Mk 5",
+      "file": "05-aegis-estate-mk-5.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\05-aegis-estate-mk-5.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\05-aegis-estate-mk-5.json"
+    },
+    {
+      "rank": 6,
+      "id": "child-56-58-348736229-elite0-elite1-m46-m45-champion-6",
+      "name": "Aegis Treasury Mk 6",
+      "file": "06-aegis-treasury-mk-6.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\06-aegis-treasury-mk-6.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\06-aegis-treasury-mk-6.json"
+    },
+    {
+      "rank": 7,
+      "id": "child-59-51-632354706-elite9-champion-7",
+      "name": "Synod Patron Mk 7",
+      "file": "07-synod-patron-mk-7.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\07-synod-patron-mk-7.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\07-synod-patron-mk-7.json"
+    },
+    {
+      "rank": 8,
+      "id": "cand-neut-55007-617475640-elite8-elite7-m63-elite10-champion-8",
+      "name": "Synod Palace Mk 8",
+      "file": "08-synod-palace-mk-8.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\08-synod-palace-mk-8.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\08-synod-palace-mk-8.json"
+    },
+    {
+      "rank": 9,
+      "id": "child-55-34-230213835-m34-elite7-elite6-m28-elite8-champion-9",
+      "name": "Vendetta Edict Mk 9",
+      "file": "09-vendetta-edict-mk-9.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\09-vendetta-edict-mk-9.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\09-vendetta-edict-mk-9.json"
+    },
+    {
+      "rank": 10,
+      "id": "child-55-34-230213835-m34-elite7-elite6-elite8-m53-champion-10",
+      "name": "Vendetta Edict Mk 10",
+      "file": "10-vendetta-edict-mk-10.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\10-vendetta-edict-mk-10.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\2026-05-01T01-58-20-531Z_seed-20260429_g60_p64\\10-vendetta-edict-mk-10.json"
+    }
+  ]
+}

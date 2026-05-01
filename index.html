@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BASILEUS — Dynastic Profiteering in Byzantium</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☧</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Bar -->
+    <header id="topBar">
+      <span class="game-title">Basileus</span>
+      <span id="roundDisplay">Round 0</span>
+      <span id="phaseDisplay" class="phase-badge">Setup</span>
+      <span id="invasionDisplay" style="display:none"></span>
+      <span id="connectionDisplay" class="connection-badge" hidden></span>
+    </header>
+
+    <!-- Map Area -->
+    <main id="mapArea">
+      <div id="mapContainer"></div>
+      <div id="playerTabBar"></div>
+    </main>
+
+    <!-- Sidebar: Dashboard + Action Panel -->
+    <aside id="sidebar">
+      <div id="playerDashboard"></div>
+      <div id="historyPanel"></div>
+      <div id="actionPanel"></div>
+    </aside>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div id="gameOverOverlay"></div>
+
+  <!-- Setup Dialog -->
+  <div id="setupDialog">
+    <div class="setup-card">
+      <h1>BASILEUS</h1>
+      <p class="setup-subtitle">A game of dynastic profiteering inside the Byzantine Empire</p>
+
+      <div class="setup-field">
+        <label>Number of Players</label>
+        <select id="setupPlayers">
+          <option value="random">Random Player Count</option>
+          <option value="3">3 Players</option>
+          <option value="4" selected>4 Players</option>
+          <option value="5">5 Players</option>
+        </select>
+      </div>
+
+      <div class="setup-field">
+        <label>Game Length</label>
+        <select id="setupDeck">
+          <option value="random">Random Length</option>
+          <option value="6">Short (6 invasions)</option>
+          <option value="9" selected>Standard (9 invasions)</option>
+          <option value="12">Epic (12 invasions)</option>
+        </select>
+      </div>
+
+      <div class="setup-field">
+        <label>Play Mode</label>
+        <select id="setupMode">
+          <option value="random">Random Mode</option>
+          <option value="single" selected>Single Player vs AI</option>
+          <option value="hotseat">Hotseat (all human)</option>
+          <option value="multiplayer">Multiplayer (private room)</option>
+        </select>
+      </div>
+
+      <div id="singlePlayerFields">
+        <div class="setup-field">
+          <label>Your Seat</label>
+          <select id="setupSeat"></select>
+        </div>
+
+        <div class="setup-field">
+          <label>AI Opponents</label>
+          <div id="setupAiRoster" class="setup-ai-roster"></div>
+          <p id="setupAiRosterHint" class="setup-hint">Each AI seat can use a specific trained profile or a random trained profile.</p>
+        </div>
+
+        <p class="setup-hint">AI dynasties keep their trained profile identity hidden during live play.</p>
+      </div>
+
+      <div id="multiplayerFields" hidden>
+        <div class="setup-field">
+          <label>Your Name</label>
+          <input type="text" id="setupPlayerName" placeholder="Guest" maxlength="24">
+        </div>
+
+        <div class="setup-field">
+          <label>Room Code</label>
+          <input type="text" id="setupRoomCode" placeholder="Enter a 6-character code to join" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false">
+          <p class="setup-hint">Use Create Room to generate a new private room, or enter a 6-character code and use Join Room.</p>
+          <p id="setupMultiplayerError" class="setup-hint"></p>
+        </div>
+
+        <div id="multiplayerActions" class="setup-actions">
+          <button class="btn-start" id="btnCreateRoom" type="button">Create Room</button>
+          <button class="btn-secondary-link" id="btnJoinRoom" type="button">Join Room</button>
+        </div>
+      </div>
+
+      <div class="setup-field">
+        <label>Seed (optional)</label>
+        <input type="text" id="setupSeed" placeholder="Leave blank for random">
+      </div>
+
+      <div class="setup-actions" id="defaultSetupActions">
+        <button class="btn-start" id="btnStart">Begin</button>
+        <a class="btn-secondary-link" href="simulator.html">Open Simulation Lab</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

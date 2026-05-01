@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "type": "basileus-trained-personality-export",
+  "exportedAt": "2026-04-30T16:16:11.524Z",
+  "runId": "2026-04-30T16-16-11-497Z_seed-20260429_g60_p64",
+  "championCount": 10,
+  "config": {
+    "seed": 20260429,
+    "playerCount": 5,
+    "deckSize": 9,
+    "fitnessPresetId": "custom",
+    "fitness": {
+      "collapsePenalty": 12,
+      "survivalBonus": 1,
+      "winReward": 14,
+      "placementReward": 4,
+      "wealthReward": 2
+    },
+    "populationSize": 64,
+    "generations": 60,
+    "matchesPerCandidate": 24,
+    "validationMatchesPerCandidate": 8,
+    "holdoutMatchesPerChampion": 128,
+    "champions": 10,
+    "hallOfFameSize": 32,
+    "eliteFraction": 0.2,
+    "freshBloodRate": 0.12,
+    "hallOfFameMixFraction": 0.25,
+    "parallelWorkers": 8
+  },
+  "overview": {
+    "generations": 60,
+    "populationSize": 64,
+    "totalMatches": 126720,
+    "trainingMatchesPerCandidate": 24,
+    "validationMatchesPerCandidate": 8,
+    "holdoutMatchesPerChampion": 128,
+    "parallelWorkers": 8,
+    "selectionMethod": "pareto-crowding",
+    "bestFitness": 13.8452,
+    "bestAverageWealth": 15.93,
+    "bestEmpireFallRate": 0.2578,
+    "bestRobustnessVariance": 0.012,
+    "bestHoldoutWinShare": 0.2773,
+    "bestGuardRate": 0
+  },
+  "files": [
+    {
+      "rank": 1,
+      "id": "child-60-47-507033451-champion-1",
+      "name": "Aegis Estate Mk 1",
+      "file": "01-aegis-estate-mk-1.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\01-aegis-estate-mk-1.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\01-aegis-estate-mk-1.json"
+    },
+    {
+      "rank": 2,
+      "id": "child-53-48-28316919-elite3-elite3-elite11-elite2-elite1-m46-elite3-champion-2",
+      "name": "Aegis Patron Mk 2",
+      "file": "02-aegis-patron-mk-2.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\02-aegis-patron-mk-2.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\02-aegis-patron-mk-2.json"
+    },
+    {
+      "rank": 3,
+      "id": "child-53-48-28316919-elite3-elite3-elite11-elite2-elite1-elite2-elite9-champion-3",
+      "name": "Aegis Estate Mk 3",
+      "file": "03-aegis-estate-mk-3.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\03-aegis-estate-mk-3.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\03-aegis-estate-mk-3.json"
+    },
+    {
+      "rank": 4,
+      "id": "child-56-40-433863920-elite7-elite8-elite8-elite7-champion-4",
+      "name": "Aegis Synod Mk 4",
+      "file": "04-aegis-synod-mk-4.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\04-aegis-synod-mk-4.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\04-aegis-synod-mk-4.json"
+    },
+    {
+      "rank": 5,
+      "id": "child-54-45-959436947-elite0-elite0-elite0-elite0-elite0-elite0-champion-5",
+      "name": "Aegis Patron Mk 5",
+      "file": "05-aegis-patron-mk-5.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\05-aegis-patron-mk-5.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\05-aegis-patron-mk-5.json"
+    },
+    {
+      "rank": 6,
+      "id": "child-60-50-562392896-champion-6",
+      "name": "Aegis Estate Mk 6",
+      "file": "06-aegis-estate-mk-6.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\06-aegis-estate-mk-6.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\06-aegis-estate-mk-6.json"
+    },
+    {
+      "rank": 7,
+      "id": "child-60-40-861379481-champion-7",
+      "name": "Synod Aegis Mk 7",
+      "file": "07-synod-aegis-mk-7.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\07-synod-aegis-mk-7.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\07-synod-aegis-mk-7.json"
+    },
+    {
+      "rank": 8,
+      "id": "child-57-53-877271815-m34-m41-m54-champion-8",
+      "name": "Aegis Accord Mk 8",
+      "file": "08-aegis-accord-mk-8.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\08-aegis-accord-mk-8.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\08-aegis-accord-mk-8.json"
+    },
+    {
+      "rank": 9,
+      "id": "child-59-49-924227674-m35-champion-9",
+      "name": "Synod Aegis Mk 9",
+      "file": "09-synod-aegis-mk-9.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\09-synod-aegis-mk-9.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\09-synod-aegis-mk-9.json"
+    },
+    {
+      "rank": 10,
+      "id": "child-35-33-243039344-elite11-elite8-elite11-m56-elite6-elite5-m46-m38-m54-elite4-m21-m56-m23-elite5-m47-m22-elite11-m52-m48-elite9-elite9-elite10-m32-elite7-m53-champion-10",
+      "name": "Synod Patron Mk 10",
+      "file": "10-synod-patron-mk-10.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\runs\\2026-04-30T16-16-11-497Z_seed-20260429_g60_p64\\10-synod-patron-mk-10.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\basileus-game\\trained-personalities\\latest\\10-synod-patron-mk-10.json"
+    }
+  ]
+}

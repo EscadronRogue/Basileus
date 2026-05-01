@@ -1,0 +1,189 @@
+import { installNodeWorkerShim } from './node-worker-shim.js';
+import { runEvolutionTraining, DEFAULT_TRAINING_CONFIG, estimateTrainingMatches } from './evolution.js';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { availableParallelism } from 'node:os';
+
+function parseValue(value) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^-?\d+$/.test(value)) return Number.parseInt(value, 10);
+  if (/^-?\d*\.\d+$/.test(value)) return Number.parseFloat(value);
+  return value;
+}
+
+function parseArgs(argv) {
+  const config = { ...DEFAULT_TRAINING_CONFIG };
+  let output = 'training-result.json';
+  let exportDir = 'trained-personalities';
+  let progressEvery = 1;
+  for (const arg of argv) {
+    if (!arg.startsWith('--')) continue;
+    const [rawKey, rawValue = 'true'] = arg.slice(2).split('=');
+    const key = rawKey.trim();
+    const value = parseValue(rawValue.trim());
+    if (key === 'out' || key === 'output') output = String(value);
+    else if (key === 'exportDir' || key === 'personalitiesDir') exportDir = String(value || 'trained-personalities');
+    else if (key === 'progressEvery') progressEvery = Math.max(1, Number(value) || 1);
+    else if (key === 'parallelWorkers' && value === 'auto') config.parallelWorkers = Math.max(1, Math.min(availableParallelism() - 1, 8));
+    else if (key in config) config[key] = value;
+    else if (key.startsWith('fitness.')) {
+      config.fitness = { ...(config.fitness || {}) };
+      config.fitness[key.slice('fitness.'.length)] = value;
+      config.fitnessPresetId = 'custom';
+    }
+  }
+  return { config, output, exportDir, progressEvery };
+}
+
+function formatMs(ms) {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
+}
+
+function slugifyFileName(value, fallback = 'personality') {
+  const slug = String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return slug || fallback;
+}
+
+function buildRunId(result) {
+  const generatedAt = result?.generatedAt ? new Date(result.generatedAt) : new Date();
+  const timestamp = Number.isNaN(generatedAt.getTime())
+    ? new Date().toISOString()
+    : generatedAt.toISOString();
+  const safeTimestamp = timestamp.replace(/[:.]/g, '-');
+  const seed = slugifyFileName(result?.config?.seed || 'seed', 'seed');
+  const generations = Number(result?.config?.generations || 0);
+  const population = Number(result?.config?.populationSize || 0);
+  return `${safeTimestamp}_seed-${seed}_g${generations}_p${population}`;
+}
+
+async function writeJsonFile(path, payload) {
+  await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+async function exportChampionPersonalities(result, exportDir = 'trained-personalities') {
+  const champions = Array.isArray(result?.champions) ? result.champions : [];
+  const exportRoot = resolve(process.cwd(), exportDir || 'trained-personalities');
+  const runsRoot = join(exportRoot, 'runs');
+  const runId = buildRunId(result);
+  const runDir = join(runsRoot, runId);
+  const latestRoot = join(exportRoot, 'latest');
+  const latestDir = join(latestRoot, runId);
+
+  await mkdir(runDir, { recursive: true });
+  await mkdir(latestDir, { recursive: true });
+
+  const files = [];
+  for (const [index, profile] of champions.entries()) {
+    const rank = index + 1;
+    const filename = `${String(rank).padStart(2, '0')}-${slugifyFileName(profile.name, `champion-${rank}`)}.json`;
+    await writeJsonFile(join(runDir, filename), profile);
+    await writeJsonFile(join(latestDir, filename), profile);
+    files.push({
+      rank,
+      id: profile.id || null,
+      name: profile.name || `Champion ${rank}`,
+      file: filename,
+      runFile: join(runDir, filename),
+      latestFile: join(latestDir, filename),
+    });
+  }
+
+  const manifest = {
+    version: 1,
+    type: 'basileus-trained-personality-export',
+    exportedAt: new Date().toISOString(),
+    runId,
+    championCount: champions.length,
+    config: result?.config || {},
+    overview: result?.overview || {},
+    files,
+  };
+
+  await writeJsonFile(join(runDir, 'manifest.json'), manifest);
+  await writeJsonFile(join(latestDir, 'manifest.json'), manifest);
+  await writeJsonFile(join(latestRoot, 'latest-manifest.json'), {
+    ...manifest,
+    latestDir,
+  });
+
+  return {
+    exportRoot,
+    runDir,
+    latestDir,
+    manifestFile: join(runDir, 'manifest.json'),
+    latestManifestFile: join(latestDir, 'manifest.json'),
+    latestPointerFile: join(latestRoot, 'latest-manifest.json'),
+    files,
+  };
+}
+
+async function main() {
+  installNodeWorkerShim();
+  const { config, output, exportDir, progressEvery } = parseArgs(process.argv.slice(2));
+  const totalMatches = estimateTrainingMatches(config);
+  const startedAt = Date.now();
+  let lastPrinted = 0;
+
+  console.log(JSON.stringify({
+    event: 'start',
+    totalMatches,
+    config,
+    availableParallelism: availableParallelism(),
+  }));
+
+  const result = await runEvolutionTraining(config, (progress) => {
+    const now = Date.now();
+    const completed = Number(progress.completed) || 0;
+    const percent = progress.total ? Math.round((completed / progress.total) * 1000) / 10 : 0;
+    if (completed - lastPrinted < progressEvery && completed < progress.total) return;
+    lastPrinted = completed;
+    console.log(JSON.stringify({
+      event: 'progress',
+      generation: progress.generation,
+      stage: progress.stage,
+      completed,
+      total: progress.total,
+      percent,
+      leaderName: progress.leaderName,
+      leaderFitness: progress.leaderFitness,
+      elapsed: formatMs(now - startedAt),
+    }));
+  });
+
+  const personalityExport = await exportChampionPersonalities(result, exportDir);
+  result.personalityExport = personalityExport;
+
+  const outputPath = resolve(process.cwd(), output);
+  await writeJsonFile(outputPath, result);
+  console.log(JSON.stringify({
+    event: 'personalities-exported',
+    exportRoot: personalityExport.exportRoot,
+    runDir: personalityExport.runDir,
+    latestDir: personalityExport.latestDir,
+    files: personalityExport.files.length,
+  }));
+  console.log(JSON.stringify({
+    event: 'done',
+    runtimeMs: result.runtimeMs,
+    runtime: formatMs(result.runtimeMs),
+    output: outputPath,
+    personalityExport,
+    bestChampion: result.champions?.[0]?.name || null,
+    bestHoldoutWinShare: result.overview?.bestHoldoutWinShare ?? null,
+  }));
+}
+
+main().catch((error) => {
+  console.error(error?.stack || error?.message || String(error));
+  process.exit(1);
+});

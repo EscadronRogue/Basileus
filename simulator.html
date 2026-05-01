@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Basileus Simulation Lab</title>
+  <link rel="stylesheet" href="assets/simulator.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>B</text></svg>">
+</head>
+<body class="sim-body">
+  <div class="sim-shell">
+    <header class="sim-hero">
+      <div class="hero-copy">
+        <p class="hero-kicker">Current Ruleset Only</p>
+        <h1>Simulation Lab</h1>
+        <p class="hero-summary">
+          Batch-test the live Basileus rules with AI dynasties, mixed player personalities, and sampled full-game logs.
+        </p>
+      </div>
+      <a class="hero-link" href="index.html">Back To Live Game</a>
+    </header>
+
+    <div class="sim-layout">
+      <aside class="control-column">
+        <section class="control-card">
+          <div class="section-head">
+            <h2>Run Setup</h2>
+            <p>Mixed mode sweeps multiple scenario sizes. Focused mode stress-tests one trained-roster configuration.</p>
+          </div>
+
+          <div class="mode-switch">
+            <label class="mode-pill">
+              <input type="radio" name="mode" id="modeMixed" checked>
+              <span>Mixed Sweep</span>
+            </label>
+            <label class="mode-pill">
+              <input type="radio" name="mode" id="modeFocused">
+              <span>Focused Batch</span>
+            </label>
+          </div>
+
+          <div class="form-grid compact-grid">
+            <label class="field">
+              <span>Simulations</span>
+              <input id="simulationsInput" type="number" min="1" max="20000" step="1">
+            </label>
+            <label class="field">
+              <span>Sampled Logs (%)</span>
+              <input id="samplePercentInput" type="number" min="0" max="100" step="0.1">
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Seed</span>
+            <input id="seedInput" type="text" placeholder="Optional custom seed">
+          </label>
+
+          <div id="mixedControls" class="mode-panel">
+            <div class="field">
+              <span>Player Counts</span>
+              <div id="mixedPlayerCounts" class="chip-grid"></div>
+            </div>
+
+            <div class="field">
+              <span>Deck Lengths</span>
+              <div id="mixedDeckSizes" class="chip-grid"></div>
+            </div>
+
+          </div>
+
+          <div id="focusedControls" class="mode-panel" hidden>
+            <div class="form-grid">
+              <label class="field">
+                <span>Players</span>
+                <select id="focusedPlayerCount"></select>
+              </label>
+              <label class="field">
+                <span>Deck Size</span>
+                <input id="focusedDeckSize" type="number" min="1" max="30" step="1">
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Available Trained AI Pool</span>
+            <div id="personalityPool" class="chip-grid"></div>
+            <small class="field-note">Simulation batches draw opponents only from these trained profiles.</small>
+          </div>
+
+          <div class="button-row">
+            <button class="primary-button" id="runButton">Run Simulation</button>
+            <button class="secondary-button" id="cancelButton" disabled>Cancel</button>
+          </div>
+          <div class="button-row">
+            <button class="secondary-button" id="resetButton">Reset Defaults</button>
+            <button class="secondary-button" id="downloadButton" disabled>Download JSON</button>
+          </div>
+        </section>
+
+        <section class="control-card">
+          <div class="section-head">
+            <h2>Evolution Trainer</h2>
+            <p>Let AI profiles mutate through self-play, then keep the strongest champions for live games.</p>
+          </div>
+
+          <div class="form-grid compact-grid">
+            <label class="field">
+              <span>Population</span>
+              <input id="trainingPopulationSize" type="number" min="3" max="64" step="1">
+            </label>
+            <label class="field">
+              <span>Generations</span>
+              <input id="trainingGenerations" type="number" min="1" max="60" step="1">
+            </label>
+          </div>
+
+          <div class="form-grid compact-grid">
+            <label class="field">
+              <span>Matches / AI</span>
+              <input id="trainingMatchesPerCandidate" type="number" min="1" max="64" step="1">
+            </label>
+            <label class="field">
+              <span>Validation / AI</span>
+              <input id="trainingValidationMatchesPerCandidate" type="number" min="1" max="32" step="1">
+            </label>
+          </div>
+
+          <div class="form-grid compact-grid">
+            <label class="field">
+              <span>Holdout / Finalist</span>
+              <input id="trainingHoldoutMatchesPerChampion" type="number" min="16" max="256" step="1">
+            </label>
+            <label class="field">
+              <span>Champions To Keep</span>
+              <input id="trainingChampions" type="number" min="1" max="10" step="1">
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Parallel Workers</span>
+            <input id="trainingParallelWorkers" type="number" min="0" max="16" step="1">
+            <small class="field-note">0 = auto when launched through the local Node trainer.</small>
+          </label>
+
+          <div class="form-grid">
+            <label class="field">
+              <span>Players</span>
+              <select id="trainingPlayerCount"></select>
+            </label>
+            <label class="field">
+              <span>Deck Size</span>
+              <input id="trainingDeckSize" type="number" min="1" max="30" step="1">
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Training Seed</span>
+            <input id="trainingSeed" type="text" placeholder="Optional custom seed">
+          </label>
+
+          <label class="field">
+            <span>Criteria Preset</span>
+            <select id="trainingFitnessPreset"></select>
+            <small class="field-note">Switching presets overwrites the numbers below. Any manual change marks the setup as custom tuned.</small>
+          </label>
+
+          <div class="field">
+            <span>Training Criteria</span>
+            <div id="trainingCriteriaFields"></div>
+          </div>
+
+          <div class="button-row">
+            <button class="primary-button" id="trainButton">Loading Training UI</button>
+            <button class="secondary-button" id="saveTrainingButton" disabled>Save Champions</button>
+          </div>
+        </section>
+
+        <section class="control-card status-card">
+          <div class="section-head">
+            <h2>Status</h2>
+            <p id="progressMeta">Idle</p>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <p id="statusText" data-variant="idle">Page script has not loaded yet.</p>
+        </section>
+
+        <section class="control-card">
+          <div class="section-head">
+            <h2>Saved AI Library</h2>
+            <p>Any trained profile detected here can be used by both the live game and the simulation runner.</p>
+          </div>
+          <div class="button-row single-button-row">
+            <button class="secondary-button" id="refreshLibraryButton">Refresh Library</button>
+          </div>
+          <div id="savedProfilesRoot" class="saved-profile-stack"></div>
+        </section>
+      </aside>
+
+      <main class="results-column">
+        <section class="results-hero">
+          <h2>What This Tool Measures</h2>
+          <p>
+            Win share, empire fall rate, coup turnover, frontier commitment, recruitment utilization, invasion pressure, and profile-level behavior.
+          </p>
+        </section>
+        <div id="trainingRoot"></div>
+        <div id="resultsRoot"></div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="simulation/app.js"></script>
+</body>
+</html>

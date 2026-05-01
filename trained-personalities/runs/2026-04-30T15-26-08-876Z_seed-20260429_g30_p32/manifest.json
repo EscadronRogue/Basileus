@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "type": "basileus-trained-personality-export",
+  "exportedAt": "2026-04-30T15:26:08.893Z",
+  "runId": "2026-04-30T15-26-08-876Z_seed-20260429_g30_p32",
+  "championCount": 4,
+  "config": {
+    "seed": 20260429,
+    "playerCount": 5,
+    "deckSize": 9,
+    "fitnessPresetId": "custom",
+    "fitness": {
+      "collapsePenalty": 12,
+      "survivalBonus": 1,
+      "winReward": 14,
+      "placementReward": 4,
+      "wealthReward": 2
+    },
+    "populationSize": 32,
+    "generations": 30,
+    "matchesPerCandidate": 24,
+    "validationMatchesPerCandidate": 8,
+    "holdoutMatchesPerChampion": 128,
+    "champions": 4,
+    "hallOfFameSize": 32,
+    "eliteFraction": 0.2,
+    "freshBloodRate": 0.12,
+    "hallOfFameMixFraction": 0.25,
+    "parallelWorkers": 8
+  },
+  "overview": {
+    "generations": 30,
+    "populationSize": 32,
+    "totalMatches": 32256,
+    "trainingMatchesPerCandidate": 24,
+    "validationMatchesPerCandidate": 8,
+    "holdoutMatchesPerChampion": 128,
+    "parallelWorkers": 8,
+    "selectionMethod": "pareto-crowding",
+    "bestFitness": 11.4748,
+    "bestAverageWealth": 11.36,
+    "bestEmpireFallRate": 0.2891,
+    "bestRobustnessVariance": 0.0035,
+    "bestHoldoutWinShare": 0.1823,
+    "bestGuardRate": 0
+  },
+  "files": [
+    {
+      "rank": 1,
+      "id": "child-30-19-88447337-champion-1",
+      "name": "Edict Synod Mk 1",
+      "file": "01-edict-synod-mk-1.json",
+      "runFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\runs\\2026-04-30T15-26-08-876Z_seed-20260429_g30_p32\\01-edict-synod-mk-1.json",
+      "latestFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\latest\\01-edict-synod-mk-1.json"
+    },
+    {
+      "rank": 2,
+      "id": "child-27-15-163974935-elite3-m21-m24-champion-2",
+      "name": "Edict Synod Mk 2",
+      "file": "02-edict-synod-mk-2.json",
+      "runFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\runs\\2026-04-30T15-26-08-876Z_seed-20260429_g30_p32\\02-edict-synod-mk-2.json",
+      "latestFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\latest\\02-edict-synod-mk-2.json"
+    },
+    {
+      "rank": 3,
+      "id": "child-30-11-414776234-champion-3",
+      "name": "Estate Edict Mk 3",
+      "file": "03-estate-edict-mk-3.json",
+      "runFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\runs\\2026-04-30T15-26-08-876Z_seed-20260429_g30_p32\\03-estate-edict-mk-3.json",
+      "latestFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\latest\\03-estate-edict-mk-3.json"
+    },
+    {
+      "rank": 4,
+      "id": "child-28-29-880700723-m20-elite4-champion-4",
+      "name": "Synod Aegis Mk 4",
+      "file": "04-synod-aegis-mk-4.json",
+      "runFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\runs\\2026-04-30T15-26-08-876Z_seed-20260429_g30_p32\\04-synod-aegis-mk-4.json",
+      "latestFile": "C:\\Users\\antoi\\Downloads\\Basileus_terminal_trainer_personality_exports\\basileus-game\\trained-personalities\\latest\\04-synod-aegis-mk-4.json"
+    }
+  ]
+}
