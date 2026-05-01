@@ -10,6 +10,11 @@ permissions:
   pages: write
   id-token: write
 
+# Opt into Node 24 for JS-based actions ahead of the June 2026 cutover so the
+# deprecation warning goes away and we don't need a follow-up bump.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -42,6 +47,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Auto-enable Pages on the repo if it's not already turned on, so the
+          # very first deploy works without a manual visit to repo Settings.
+          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
