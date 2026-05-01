@@ -197,6 +197,7 @@ export class MultiplayerController {
     this.lastError = '';
     this.requestSeq = 0;
     this.reconnectTimer = null;
+    this.heartbeatTimer = null;
     this.intentionalClose = false;
     this.uiState = {
       panels: {
@@ -240,12 +241,14 @@ export class MultiplayerController {
 
     socket.addEventListener('open', () => {
       this.connectionState = 'connected';
+      this.lastError = '';
       this.send('hello', {
         roomCode: this.roomCode,
         sessionToken: this.sessionToken,
         seatToken: this.seatToken,
         playerName: this.playerName,
       }, false);
+      this.startHeartbeat();
       this.render();
     });
 
@@ -259,10 +262,16 @@ export class MultiplayerController {
       }
     });
 
-    socket.addEventListener('close', () => {
+    socket.addEventListener('close', (event) => {
+      this.stopHeartbeat();
       this.socket = null;
       if (this.intentionalClose) return;
       this.connectionState = 'disconnected';
+      if (event?.reason) {
+        this.lastError = event.reason;
+      } else if (!this.lastError) {
+        this.lastError = 'Disconnected from the multiplayer server. Reconnecting...';
+      }
       this.scheduleReconnect();
       this.render();
     });
@@ -281,8 +290,23 @@ export class MultiplayerController {
     }, 1500);
   }
 
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = window.setInterval(() => {
+      if (this.socket?.readyState !== WebSocket.OPEN) return;
+      this.socket.send(JSON.stringify({ type: 'heartbeat' }));
+    }, 60_000);
+  }
+
+  stopHeartbeat() {
+    if (!this.heartbeatTimer) return;
+    window.clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
   disconnect() {
     this.intentionalClose = true;
+    this.stopHeartbeat();
     if (this.reconnectTimer) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

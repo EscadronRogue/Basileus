@@ -206,6 +206,10 @@ export function attachMultiplayerSocketServer(server, manager, options = {}) {
           return;
         }
 
+        if (message?.type === 'heartbeat') {
+          return;
+        }
+
         const aiProfiles = message?.type === 'start_game'
           ? await manager.getAvailableAiProfiles()
           : [];

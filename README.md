@@ -83,6 +83,7 @@ The Pages workflow injects `MULTIPLAYER_BACKEND_URL` into the deployed `index.ht
 Render notes:
 - The multiplayer server exposes `GET /healthz` for Render health checks.
 - `render.yaml` defaults `ALLOWED_ORIGINS` to `https://escadronrogue.github.io`. Add more origins in Render if you later serve the frontend from a custom domain.
+- The browser client sends a periodic WebSocket heartbeat so an open lobby still counts as inbound traffic on Render Free.
 
 ## Project structure
 
