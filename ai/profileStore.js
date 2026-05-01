@@ -9,6 +9,11 @@ import {
 } from './personalities.js';
 
 const STORAGE_KEY = 'basileus.savedAiProfiles.v1';
+const EXPORTED_PROFILE_INDEX_ENDPOINTS = [
+  'api/personalities/exported',
+  '/api/personalities/exported',
+];
+
 const EXPORTED_PROFILE_MANIFEST_PATHS = [
   'trained-personalities/latest/latest-manifest.json',
   'trained-personalities/latest/manifest.json',
@@ -157,11 +162,30 @@ async function loadProfilesFromManifest(manifestPath) {
     .map(profile => ({ ...profile, librarySource: 'exported' }));
 }
 
+async function loadProfilesFromIndexApi(endpointPath) {
+  const payload = await fetchJsonMaybe(endpointPath);
+  const rawProfiles = Array.isArray(payload?.profiles) ? payload.profiles : [];
+  if (!rawProfiles.length) return [];
+  return rawProfiles
+    .map(profile => normalizeAiProfile(profile))
+    .filter(Boolean)
+    .map(profile => ({ ...profile, librarySource: 'exported' }));
+}
 async function readExportedProfiles() {
+  const indexProfiles = await Promise.all(
+    EXPORTED_PROFILE_INDEX_ENDPOINTS.map(path => loadProfilesFromIndexApi(path))
+  );
+  const merged = new Map();
+  for (const profile of indexProfiles.flat()) {
+    if (!merged.has(profile.id)) {
+      merged.set(profile.id, profile);
+    }
+  }
+  if (merged.size > 0) return [...merged.values()];
+
   const manifestProfiles = await Promise.all(
     EXPORTED_PROFILE_MANIFEST_PATHS.map(path => loadProfilesFromManifest(path))
   );
-  const merged = new Map();
   for (const profile of manifestProfiles.flat()) {
     if (!merged.has(profile.id)) {
       merged.set(profile.id, profile);
@@ -169,7 +193,6 @@ async function readExportedProfiles() {
   }
   return [...merged.values()];
 }
-
 function safeNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;

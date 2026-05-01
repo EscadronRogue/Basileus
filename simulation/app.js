@@ -540,12 +540,12 @@ function renderTrainingResult(result) {
     <section class="results-section">
       <div class="section-head">
         <h2>Exported Personality Files</h2>
-        <p>Individual champion JSON files were written automatically by the Node trainer.</p>
+        <p>Individual Greek-named champion JSON files were written automatically by the Node trainer. The local game server scans this folder directly, so moving valid personality JSON files in or out changes the usable roster without editing a manifest.</p>
       </div>
       <ul class="training-list">
         <li>Latest folder: <code>${escapeHtml(result.personalityExport.latestDir || '')}</code></li>
         <li>Archived run folder: <code>${escapeHtml(result.personalityExport.runDir || '')}</code></li>
-        <li>Manifest: <code>${escapeHtml(result.personalityExport.manifestFile || '')}</code></li>
+        <li>Compatibility manifest: <code>${escapeHtml(result.personalityExport.manifestFile || '')}</code></li>
       </ul>
     </section>
   `

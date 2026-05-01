@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { availableParallelism } from 'node:os';
+import { readExportedPersonalitiesFromFolder } from './personality-files.js';
 import {
   attachMultiplayerSocketServer,
   closeMultiplayerConnections,
@@ -256,6 +257,21 @@ function streamJobEvents(req, res, job) {
   });
 }
 
+async function handlePersonalityApi(req, res, url) {
+  if (req.method === 'GET' && url.pathname === '/api/personalities/exported') {
+    const exportRoot = resolve(projectRoot, 'trained-personalities');
+    const profiles = await readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false });
+    jsonResponse(res, 200, {
+      version: 1,
+      loading: 'folder-scan',
+      exportRoot,
+      profileCount: profiles.length,
+      profiles,
+    });
+    return true;
+  }
+  return false;
+}
 async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/trainer/status') {
     jsonResponse(res, 200, {
@@ -350,6 +366,9 @@ export async function startTrainingServer(options = {}) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${host}:${port}`);
     try {
+      if (await handlePersonalityApi(req, res, url)) {
+        return;
+      }
       if (url.pathname.startsWith('/api/trainer/')) {
         await handleApi(req, res, url);
         return;

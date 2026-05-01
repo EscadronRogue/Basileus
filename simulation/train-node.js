@@ -1,6 +1,7 @@
 import { installNodeWorkerShim } from './node-worker-shim.js';
 import { runEvolutionTraining, DEFAULT_TRAINING_CONFIG, estimateTrainingMatches } from './evolution.js';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { assignGreekNamesToChampions, slugifyGreekName } from './greek-name-service.js';
 import { join, resolve } from 'node:path';
 import { availableParallelism } from 'node:os';
 
@@ -44,14 +45,7 @@ function formatMs(ms) {
 }
 
 function slugifyFileName(value, fallback = 'personality') {
-  const slug = String(value || '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-  return slug || fallback;
+  return slugifyGreekName(value, fallback);
 }
 
 function buildRunId(result) {
@@ -76,8 +70,7 @@ async function exportChampionPersonalities(result, exportDir = 'trained-personal
   const runsRoot = join(exportRoot, 'runs');
   const runId = buildRunId(result);
   const runDir = join(runsRoot, runId);
-  const latestRoot = join(exportRoot, 'latest');
-  const latestDir = join(latestRoot, runId);
+  const latestDir = join(exportRoot, 'latest');
 
   await mkdir(runDir, { recursive: true });
   await mkdir(latestDir, { recursive: true });
@@ -85,13 +78,14 @@ async function exportChampionPersonalities(result, exportDir = 'trained-personal
   const files = [];
   for (const [index, profile] of champions.entries()) {
     const rank = index + 1;
-    const filename = `${String(rank).padStart(2, '0')}-${slugifyFileName(profile.name, `champion-${rank}`)}.json`;
+    const name = profile.name || `Champion ${rank}`;
+    const filename = `${slugifyFileName(name, `champion-${rank}`)}.json`;
     await writeJsonFile(join(runDir, filename), profile);
     await writeJsonFile(join(latestDir, filename), profile);
     files.push({
       rank,
       id: profile.id || null,
-      name: profile.name || `Champion ${rank}`,
+      name,
       file: filename,
       runFile: join(runDir, filename),
       latestFile: join(latestDir, filename),
@@ -99,7 +93,7 @@ async function exportChampionPersonalities(result, exportDir = 'trained-personal
   }
 
   const manifest = {
-    version: 1,
+    version: 2,
     type: 'basileus-trained-personality-export',
     exportedAt: new Date().toISOString(),
     runId,
@@ -107,14 +101,12 @@ async function exportChampionPersonalities(result, exportDir = 'trained-personal
     config: result?.config || {},
     overview: result?.overview || {},
     files,
+    loading: 'folder-scan',
   };
 
   await writeJsonFile(join(runDir, 'manifest.json'), manifest);
   await writeJsonFile(join(latestDir, 'manifest.json'), manifest);
-  await writeJsonFile(join(latestRoot, 'latest-manifest.json'), {
-    ...manifest,
-    latestDir,
-  });
+  await writeJsonFile(join(latestDir, 'latest-manifest.json'), manifest);
 
   return {
     exportRoot,
@@ -122,7 +114,7 @@ async function exportChampionPersonalities(result, exportDir = 'trained-personal
     latestDir,
     manifestFile: join(runDir, 'manifest.json'),
     latestManifestFile: join(latestDir, 'manifest.json'),
-    latestPointerFile: join(latestRoot, 'latest-manifest.json'),
+    latestPointerFile: join(latestDir, 'latest-manifest.json'),
     files,
   };
 }
@@ -160,6 +152,11 @@ async function main() {
     }));
   });
 
+  const exportRoot = resolve(process.cwd(), exportDir || 'trained-personalities');
+  result.champions = await assignGreekNamesToChampions(result.champions, {
+    exportRoot,
+    seed: result?.config?.seed,
+  });
   const personalityExport = await exportChampionPersonalities(result, exportDir);
   result.personalityExport = personalityExport;
 

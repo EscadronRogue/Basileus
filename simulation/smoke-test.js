@@ -1,7 +1,7 @@
 import { Worker } from 'node:worker_threads';
-import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readExportedPersonalitiesFromFolder } from './personality-files.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
@@ -73,36 +73,11 @@ function assertHealthy(snapshot) {
 }
 
 async function loadSmokeProfiles() {
-  const manifestPaths = [
-    join(projectRoot, 'trained-personalities', 'latest', 'latest-manifest.json'),
-    join(projectRoot, 'trained-personalities', 'latest', 'manifest.json'),
-    join(projectRoot, 'trained-personalities', 'definitive', 'manifest.json'),
-  ];
-
-  for (const manifestPath of manifestPaths) {
-    try {
-      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-      if (!Array.isArray(manifest.files) || !manifest.files.length) continue;
-      const manifestDir = dirname(manifestPath);
-      const baseDir = manifestPath.endsWith(join('latest', 'latest-manifest.json')) && manifest.runId
-        ? join(manifestDir, manifest.runId)
-        : manifestDir;
-      const fileNames = manifest.files
-        .map((entry) => entry?.file)
-        .filter(Boolean)
-        .slice(0, 4);
-      if (!fileNames.length) continue;
-      return Promise.all(
-        fileNames.map(async (fileName) => JSON.parse(await readFile(join(baseDir, fileName), 'utf8')))
-      );
-    } catch {
-      // Try the next manifest path.
-    }
-  }
-
+  const exportRoot = join(projectRoot, 'trained-personalities');
+  const profiles = await readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false });
+  if (profiles.length) return profiles.slice(0, 4);
   throw new Error('Smoke test could not find any trained AI profile exports.');
 }
-
 async function main() {
   const allowedProfiles = await loadSmokeProfiles();
   const smokeCase = {
@@ -126,6 +101,7 @@ async function main() {
     },
     snapshot: first,
   }, null, 2));
+  process.exit(0);
 }
 
 main().catch((error) => {
