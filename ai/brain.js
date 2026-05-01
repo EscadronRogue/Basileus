@@ -17,6 +17,13 @@ import {
   revokeTheme,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
+import {
+  getMercenaryHireCost,
+  getMercenaryOrderCost,
+  getNormalOwnerIncome,
+  getThemeLandPrice,
+  getThemeOwnerIncome,
+} from '../engine/rules.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import {
   DEFAULT_META_PARAMS,
@@ -87,7 +94,7 @@ function getFastCache(state, meta) {
 
     if (themesByOwner.has(theme.owner)) {
       themesByOwner.get(theme.owner).push(theme);
-      landIncomeByPlayer.set(theme.owner, (landIncomeByPlayer.get(theme.owner) || 0) + (theme.G || 0));
+      landIncomeByPlayer.set(theme.owner, (landIncomeByPlayer.get(theme.owner) || 0) + getThemeOwnerIncome(theme));
       const routeRisk = getThemeRouteRisk(state, theme.id);
       exposureByPlayer.set(theme.owner, (exposureByPlayer.get(theme.owner) || 0) + routeRisk);
       threatenedLandValueByPlayer.set(
@@ -407,7 +414,7 @@ export function getPlayerStrength(state, meta, playerId) {
 function getPlayerIncomePotential(state, playerId, meta = null) {
   const cache = getFastCache(state, meta);
   if (cache?.landIncomeByPlayer.has(playerId)) return cache.landIncomeByPlayer.get(playerId);
-  return getPlayerThemes(state, playerId).reduce((total, theme) => total + theme.G, 0);
+  return getPlayerThemes(state, playerId).reduce((total, theme) => total + getThemeOwnerIncome(theme), 0);
 }
 
 function getThemeStrategicValue(theme) {
@@ -727,13 +734,14 @@ function buildLandPurchaseDecision(state, meta, playerId, action) {
   const leaderThemeCount = getPlayerThemes(state, standing.leaderId).length;
   const routeRisk = getThemeRouteRisk(state, theme.id);
   const empireDanger = getEmpireDanger(state, meta);
-  const cost = 2 * theme.G;
+  const cost = getThemeLandPrice(theme);
+  const ownerIncome = getNormalOwnerIncome(theme);
   const goldAfter = getPlayer(state, playerId).gold - cost;
 
   return {
     title: 'AI reasoning',
     factors: [
-      factor('Income horizon', `${theme.name} offers ${theme.G}g and ${theme.L} levy value with ${remainingRounds} round${remainingRounds === 1 ? '' : 's'} left.`, 'for', action.score),
+      factor('Income horizon', `${theme.name} is G${theme.G} L${theme.L}, yielding ${ownerIncome}g to the owner each round under normal taxation.`, 'for', action.score),
       factor('Catch-up pressure', leaderThemeCount > ownedThemeCount
         ? `${publicActor(state, playerId)} was behind the land leader and needed to close the gap.`
         : `${publicActor(state, playerId)} still valued land growth even without trailing in estates.`, leaderThemeCount > ownedThemeCount ? 'for' : 'neutral'),
@@ -842,6 +850,7 @@ function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePla
     .map(plan => `${plan.office.label} -> ${plan.destination}`)
     .join(', ');
   const mercCount = sum(mercenaries.map(entry => entry.count));
+  const mercCost = getMercenaryOrderCost(mercenaries);
 
   return {
     title: 'AI reasoning',
@@ -855,14 +864,14 @@ function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePla
         : `More threatened land belonged to rivals, so frontier caution was weaker.`, ownStake >= rivalStake ? 'for' : 'neutral'),
       factor('Troop split', `${capitalTroops} capital troop${capitalTroops === 1 ? '' : 's'} and ${frontierTroops} frontier troop${frontierTroops === 1 ? '' : 's'}; key calls: ${keyDeployments || 'no major offices'}.`, 'neutral'),
       factor('Mercenary spend', mercCount > 0
-        ? `Spent ${mercCount * 3}g on mercenaries where marginal troop value was highest.`
+        ? `Spent ${mercCost}g on mercenaries where marginal troop value was highest.`
         : 'Held gold back because mercenary value stayed below the spending threshold.', mercCount > 0 ? 'for' : 'neutral', mercCount),
       factor('Empire danger', `Overall empire danger was ${roundTo(empireDanger, 2)}.`, empireDanger > 1.1 ? 'for' : 'neutral', empireDanger),
     ],
   };
 }
 
-function buildMercenaryDecision(ordersDebug, mercenary) {
+function buildMercenaryDecision(ordersDebug, mercenary, cost) {
   const officePlan = ordersDebug?.officePlans?.find(plan => plan.officeKey === mercenary.officeKey);
   const topScore = officePlan ? Math.max(officePlan.capitalScore, officePlan.frontierScore) : null;
 
@@ -877,7 +886,7 @@ function buildMercenaryDecision(ordersDebug, mercenary) {
         : ordersDebug?.pactKind === 'self'
           ? 'The AI was pressing its own throne bid with extra force.'
           : 'The AI was reinforcing a coalition challenge with extra force.', 'for'),
-      factor('Gold spend', `${mercenary.count * 3}g was committed to this office.`, 'neutral', mercenary.count * 3),
+      factor('Gold spend', `${cost}g was committed to this office.`, 'neutral', cost),
     ],
   };
 }
@@ -1454,7 +1463,9 @@ function handleBasileusAppointment(state, meta) {
     options.push({ type: 'EMPRESS', appointeeId: appointee.id });
     options.push({ type: 'CHIEF_EUNUCHS', appointeeId: appointee.id });
     for (const theme of themes) {
-      options.push({ type: 'STRATEGOS', themeId: theme.id, appointeeId: appointee.id });
+      if (theme.owner !== 'church') {
+        options.push({ type: 'STRATEGOS', themeId: theme.id, appointeeId: appointee.id });
+      }
       if (!theme.bishopIsDonor) {
         options.push({ type: 'BISHOP', themeId: theme.id, appointeeId: appointee.id });
       }
@@ -1513,7 +1524,12 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
   }
 
   const region = MAJOR_TITLES[titleKey].region;
-  const themes = Object.values(state.themes).filter(theme => theme.region === region && !theme.occupied && theme.id !== 'CPL');
+  const themes = Object.values(state.themes).filter(theme =>
+    theme.region === region &&
+    !theme.occupied &&
+    theme.id !== 'CPL' &&
+    theme.owner !== 'church'
+  );
   const options = [];
   for (const theme of themes) {
     for (const appointee of state.players) {
@@ -1620,9 +1636,10 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const standing = getStandingSnapshot(state, meta, playerId);
   const ownedThemeCount = getPlayerThemes(state, playerId).length;
   const leaderThemeCount = getPlayerThemes(state, standing.leaderId).length;
-  const cost = 2 * theme.G;
+  const cost = getThemeLandPrice(theme);
+  const ownerIncome = getNormalOwnerIncome(theme);
   const player = getPlayer(state, playerId);
-  const privateValue = (theme.G * (0.9 + (remainingRounds * 0.28))) + (theme.L * 0.25) + (remainingRounds * profile.weights.wealth * 0.18);
+  const privateValue = (ownerIncome * (1.8 + (remainingRounds * 0.56))) + (theme.L * 0.25) + (remainingRounds * profile.weights.wealth * 0.18);
   const landControl = profile.weights.land * 1.2;
   const cheapness = (4 - theme.G) * 0.35;
   const scarcityBonus = ownedThemeCount === 0 ? 4.5 : Math.max(0, 2 - ownedThemeCount) * 1.6;
@@ -1642,9 +1659,10 @@ function scoreChurchGift(state, meta, playerId, theme) {
   const empireDanger = getEmpireDanger(state, meta);
   const ownedThemeCount = getPlayerThemes(state, playerId).length;
   const threatenedValue = getPlayerThreatenedLandValue(state, playerId, meta);
+  const ownerIncome = getThemeOwnerIncome(theme);
   const keepsValue =
     (remainingRounds * profile.weights.wealth * 0.95) +
-    (theme.G * (1.4 + (profile.weights.land * 0.35))) +
+    (ownerIncome * (2.2 + (profile.weights.land * 0.55))) +
     (ownedThemeCount <= 1 ? 2.4 : ownedThemeCount <= 2 ? 1.15 : 0);
   const churchValue = (theme.G * profile.weights.church * 0.95) + 0.45;
   const patriarchBonus = getPlayer(state, playerId).majorTitles.includes('PATRIARCH') ? 1.2 : 0;
@@ -1706,7 +1724,7 @@ function runRecruitmentStrategy(state, meta, playerId, plannedAction = null) {
 function estimateProjectedIncomeBuffer(state, playerId) {
   const player = getPlayer(state, playerId);
   const baseLandIncome = getPlayerThemes(state, playerId).reduce(
-    (total, theme) => total + (theme.taxExempt ? theme.G : 1),
+    (total, theme) => total + getThemeOwnerIncome(theme),
     0
   );
   const officeIncome = (player.majorTitles.length * 0.9) + (getMinorTitleCount(state, playerId) * 0.45) + (playerId === state.basileusId ? 2.3 : 0);
@@ -1788,7 +1806,7 @@ function findBestLandPurchaseAction(state, meta, playerId) {
   const player = getPlayer(state, playerId);
   return getFreeThemes(state)
     .map(theme => ({ kind: 'buy', theme, score: scoreLandPurchase(state, meta, playerId, theme) }))
-    .filter(entry => (2 * entry.theme.G) <= player.gold)
+    .filter(entry => getThemeLandPrice(entry.theme) <= player.gold)
     .sort((left, right) => right.score - left.score)[0] || null;
 }
 
@@ -1809,7 +1827,7 @@ function runLandStrategy(state, meta, playerId, plannedAction = null) {
   meta.players[playerId].stats.landBuys++;
   meta.totals.landBuys++;
   applyDecisionToResult(state, result, buildLandPurchaseDecision(state, meta, playerId, action));
-  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${action.theme.id} for ${2 * action.theme.G}g (score ${roundTo(action.score, 2)}).`);
+  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${action.theme.id} for ${getThemeLandPrice(action.theme)}g (score ${roundTo(action.score, 2)}).`);
   logPublic(meta, `${publicActor(state, playerId)} buys ${action.theme.id}.`);
   return true;
 }
@@ -2111,6 +2129,7 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
   const goldOpportunity = profile.weights.wealth * (1.05 + ((remainingRounds / Math.max(1, state.maxRounds)) * 0.75));
   const threat = getThreatLevel(state, meta);
   let availableGold = getPlayer(state, playerId).gold;
+  let totalPlannedMercenaries = 0;
   const mercenaries = [];
 
   const rankedOffices = officePlans
@@ -2121,12 +2140,15 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
     const maxMercsForOffice = Math.max(1, Math.min(5, Math.ceil(profile.weights.mercenary + ((pact?.capitalBias || 0) * 0.35))));
     let hiredForOffice = 0;
 
-    while (availableGold >= 3 && hiredForOffice < maxMercsForOffice) {
+    while (hiredForOffice < maxMercsForOffice) {
+      const nextCost = getMercenaryHireCost(totalPlannedMercenaries, 1);
+      if (availableGold < nextCost) break;
       const crisisDemand = (pact?.capitalBias || 0) + (pact?.frontierBias || 0) + threat;
       const marginalValue = (office.baseValue * (0.4 + (profile.weights.mercenary * 0.24) + (crisisDemand * 0.1))) - goldOpportunity - (hiredForOffice * 0.72);
       if (marginalValue <= 0.18) break;
-      availableGold -= 3;
+      availableGold -= nextCost;
       hiredForOffice++;
+      totalPlannedMercenaries++;
     }
 
     if (hiredForOffice > 0) {
@@ -2208,9 +2230,9 @@ export function applyAIOrderCosts(state, meta, playerId, orders) {
     const result = hireMercenaries(state, playerId, mercenary.officeKey, mercenary.count);
     if (!result?.ok) continue;
     meta.players[playerId].stats.mercsHired += mercenary.count;
-    meta.players[playerId].stats.mercSpend += mercenary.count * 3;
-    meta.totals.mercSpend += mercenary.count * 3;
-    applyDecisionToResult(state, result, buildMercenaryDecision(orders.debug, mercenary));
+    meta.players[playerId].stats.mercSpend += result.cost || 0;
+    meta.totals.mercSpend += result.cost || 0;
+    applyDecisionToResult(state, result, buildMercenaryDecision(orders.debug, mercenary, result.cost || 0));
     logDecision(meta, `Round ${state.round} orders: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troops for ${mercenary.officeKey}.`);
     logPublic(meta, `${publicActor(state, playerId)} hires ${mercenary.count} mercenary troops for ${mercenary.officeKey}.`);
   }

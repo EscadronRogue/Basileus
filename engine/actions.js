@@ -2,6 +2,11 @@
 
 import { getPlayer, findTitleHolder } from './state.js';
 import { recordHistoryEvent } from './history.js';
+import {
+  getMercenaryHireCost,
+  getTaxExemptionCost,
+  getThemeLandPrice,
+} from './rules.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 function usedGenericSelfAppointmentLastRound(state, playerId) {
@@ -77,7 +82,7 @@ export function canBuyTheme(state, playerId, themeId) {
   if (theme.occupied) return { ok: false, reason: 'Theme is occupied' };
   if (theme.owner !== null) return { ok: false, reason: 'Theme already owned' };
   if (theme.id === 'CPL') return { ok: false, reason: 'Cannot buy Constantinople' };
-  const cost = 2 * theme.G;
+  const cost = getThemeLandPrice(theme);
   const player = getPlayer(state, playerId);
   if (player.gold < cost) return { ok: false, reason: `Need ${cost}g, have ${player.gold}g` };
   return { ok: true, cost };
@@ -129,29 +134,54 @@ export function giftToChurch(state, playerId, themeId) {
 }
 
 // ─── Tax Exemption ───
-export function grantTaxExemption(state, themeId) {
+export function canGrantTaxExemption(state, playerId, themeId) {
   const theme = state.themes[themeId];
-  if (!theme || theme.occupied || theme.owner === null || theme.owner === 'church') {
-    return { ok: false, reason: 'Invalid theme for exemption' };
+  if (!theme) return { ok: false, reason: 'Theme not found' };
+  if (theme.occupied) return { ok: false, reason: 'Occupied land cannot be exempted' };
+  if (theme.owner === null) return { ok: false, reason: 'Only owned land can be exempted' };
+  if (theme.owner === 'church') return { ok: false, reason: 'Church land cannot be exempted' };
+  if (theme.owner !== playerId) return { ok: false, reason: 'You do not own this theme' };
+  if (theme.taxExempt) return { ok: false, reason: 'Theme is already tax-exempt' };
+  if (playerId === state.basileusId) return { ok: false, reason: 'The Basileus cannot buy tax exemption for his own estates' };
+
+  const cost = getTaxExemptionCost(theme);
+  const owner = getPlayer(state, playerId);
+  if (owner.gold < cost) {
+    return { ok: false, reason: `Need ${cost}g, have ${owner.gold}g` };
   }
+  return { ok: true, cost };
+}
+
+export function grantTaxExemption(state, playerId, themeId) {
+  const check = canGrantTaxExemption(state, playerId, themeId);
+  if (!check.ok) return check;
+
+  const theme = state.themes[themeId];
+  const owner = getPlayer(state, playerId);
+  const basileus = getPlayer(state, state.basileusId);
+  owner.gold -= check.cost;
+  if (basileus) basileus.gold += check.cost;
   theme.taxExempt = true;
-  state.log.push({ type: 'tax_exempt', theme: themeId, round: state.round });
+  state.log.push({ type: 'tax_exempt', player: playerId, theme: themeId, cost: check.cost, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'grant_tax_exemption',
-    summary: `Tax exemption granted to ${themeName(state, themeId)}.`,
+    actorId: playerId,
+    summary: `${playerName(state, playerId)} buys tax exemption for ${themeName(state, themeId)} for ${check.cost}g.`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
+      cost: check.cost,
     },
   });
-  return { ok: true, historyId: historyEvent?.id || null };
+  return { ok: true, cost: check.cost, historyId: historyEvent?.id || null };
 }
 
 // ─── Appointments ───
 export function appointStrategos(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
   if (!theme || theme.occupied || theme.id === 'CPL') return { ok: false, reason: 'Invalid theme' };
+  if (theme.owner === 'church') return { ok: false, reason: 'Church land cannot receive a strategos' };
   if (theme.strategos !== null) return { ok: false, reason: 'This strategos title is already appointed' };
 
   const regionTitleMap = { east: 'DOM_EAST', west: 'DOM_WEST', sea: 'ADMIRAL' };
@@ -529,23 +559,30 @@ export function applyCoupTitleReassignment(state, newBasileusId, titleAssignment
 // ─── Mercenary Hiring ───
 export function hireMercenaries(state, playerId, officeKey, count) {
   const player = getPlayer(state, playerId);
-  const cost = count * 3;
+  const normalizedCount = Number(count);
+  if (!Number.isInteger(normalizedCount) || normalizedCount <= 0) {
+    return { ok: false, reason: 'Choose at least one mercenary troop' };
+  }
+  if (!state.mercenariesHiredThisRound) state.mercenariesHiredThisRound = {};
+  const hiredSoFar = state.mercenariesHiredThisRound[playerId] || 0;
+  const cost = getMercenaryHireCost(hiredSoFar, normalizedCount);
   if (player.gold < cost) return { ok: false, reason: `Need ${cost}g, have ${player.gold}g` };
   player.gold -= cost;
-  state.log.push({ type: 'hire_mercs', player: playerId, office: officeKey, count, round: state.round });
+  state.mercenariesHiredThisRound[playerId] = hiredSoFar + normalizedCount;
+  state.log.push({ type: 'hire_mercs', player: playerId, office: officeKey, count: normalizedCount, cost, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'orders',
     type: 'hire_mercenaries',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} hires ${count} mercenary troop${count === 1 ? '' : 's'} for ${officeName(state, officeKey)}.`,
+    summary: `${playerName(state, playerId)} hires ${normalizedCount} mercenary troop${normalizedCount === 1 ? '' : 's'} for ${officeName(state, officeKey)}.`,
     details: {
       officeKey,
       officeName: officeName(state, officeKey),
-      count,
+      count: normalizedCount,
       cost,
     },
   });
-  return { ok: true, count, historyId: historyEvent?.id || null };
+  return { ok: true, count: normalizedCount, cost, historyId: historyEvent?.id || null };
 }
 
 // ─── Professional Army ───

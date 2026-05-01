@@ -13,6 +13,7 @@ import {
   buyTheme,
   dismissProfessional,
   giftToChurch,
+  grantTaxExemption,
   recruitProfessional,
   appointStrategos,
   appointBishop,
@@ -23,6 +24,7 @@ import {
   revokeTaxExemption,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
+import { getMercenaryOrderCost } from '../engine/rules.js';
 import {
   applyAIOrderCosts,
   applyPlannedAiTitleAssignment,
@@ -113,7 +115,7 @@ function getSeatStatus(seat) {
 }
 
 function getMercenaryCost(mercenaries = []) {
-  return mercenaries.reduce((total, mercenary) => total + ((mercenary?.count || 0) * 3), 0);
+  return getMercenaryOrderCost(mercenaries);
 }
 
 function serializeCourtActions(courtActions = null) {
@@ -260,6 +262,7 @@ function autoResolveUnavailableHumanAppointments(state, playerId) {
   const hasOpenStrategos = (region = null) => Object.values(state.themes).some((theme) =>
     !theme.occupied &&
     theme.id !== 'CPL' &&
+    theme.owner !== 'church' &&
     theme.strategos === null &&
     (region == null || theme.region === region)
   );
@@ -785,6 +788,12 @@ export class MultiplayerRoom {
     if (action === 'gift') {
       const result = giftToChurch(state, playerId, payload.themeId);
       assert(result?.ok, result?.reason || 'Could not gift that theme.');
+      return { observation };
+    }
+
+    if (action === 'exempt') {
+      const result = grantTaxExemption(state, playerId, payload.themeId);
+      assert(result?.ok, result?.reason || 'Could not buy that tax exemption.');
       return { observation };
     }
 

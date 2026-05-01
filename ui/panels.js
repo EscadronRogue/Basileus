@@ -1,7 +1,16 @@
 // ui/panels.js — Interactive UI panels: Court, Orders, player dashboard
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 import { runAdministration } from '../engine/cascade.js';
-import { canRecruitProfessional, suggestMajorTitleAssignments } from '../engine/actions.js';
+import { canGrantTaxExemption, canRecruitProfessional, suggestMajorTitleAssignments } from '../engine/actions.js';
+import {
+  getMercenaryOrderCost,
+  getNormalOwnerIncome,
+  getNormalTaxIncome,
+  getTaxExemptOwnerIncome,
+  getThemeLandPrice,
+  getThemeOwnerIncome,
+  isThemeThreatened,
+} from '../engine/rules.js';
 import { getFreeThemes, getPlayerThemes, getPlayer } from '../engine/state.js';
 
 // ─── Helpers used everywhere ───
@@ -45,7 +54,7 @@ function formatSigned(value) {
 
 function getPrivateIncomeProjection(state, playerId) {
   return getPlayerThemes(state, playerId).reduce(
-    (total, theme) => total + (theme.taxExempt ? theme.G : 1),
+    (total, theme) => total + getThemeOwnerIncome(theme),
     0
   );
 }
@@ -96,7 +105,7 @@ function getPlayerTitleEntries(state, playerId) {
   for (const theme of Object.values(state.themes)) {
     if (theme.occupied) continue;
     if (theme.strategos === playerId) {
-      titles.push({ scope: 'minor', label: `Strategos of ${theme.name}`, detail: `${theme.region} command` });
+      titles.push({ scope: 'minor', label: `Strategos of ${theme.name}`, detail: 'Theme command' });
     }
     if (theme.bishop === playerId) {
       titles.push({ scope: 'minor', label: `Bishop of ${theme.name}`, detail: theme.bishopIsDonor ? 'Donor bishopric' : 'Bishopric' });
@@ -221,6 +230,13 @@ function getProvinceSummary(state, provinceId) {
     occupied: theme.occupied,
     gold: theme.G,
     levies: theme.L,
+    threatened: isThemeThreatened(state, theme.id),
+    landPrice: getThemeLandPrice(theme),
+    normalOwnerIncome: getNormalOwnerIncome(theme),
+    normalTaxIncome: getNormalTaxIncome(theme),
+    taxExemptIncome: getTaxExemptOwnerIncome(theme),
+    strategosTaxIncome: theme.taxExempt || theme.owner === 'church' ? 0 : getNormalTaxIncome(theme),
+    strategosLevyIncome: theme.owner === 'church' ? 0 : theme.L,
   };
 }
 
@@ -232,6 +248,7 @@ function getOpenStrategosThemes(state, region = null) {
   return Object.values(state.themes).filter(theme =>
     !theme.occupied &&
     theme.id !== 'CPL' &&
+    theme.owner !== 'church' &&
     theme.strategos === null &&
     (region == null || theme.region === region)
   );
@@ -254,6 +271,10 @@ function getOpenBasileusMinorTitleTypes(state) {
   if (getOpenStrategosThemes(state).length > 0) types.push({ value: 'STRATEGOS', label: 'Strategos' });
   if (getOpenBishopThemes(state).length > 0) types.push({ value: 'BISHOP', label: 'Bishop' });
   return types;
+}
+
+function getTaxExemptionCandidates(state, playerId) {
+  return getPlayerThemes(state, playerId).filter((theme) => canGrantTaxExemption(state, playerId, theme.id).ok);
 }
 
 function describeMajorTitleDistribution(state) {
@@ -583,7 +604,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       </div>
       <div class="dashboard-list compact">
         <div class="dashboard-list-row">
-          <span>Private land income</span>
+          <span>Estate income</span>
           <span class="dashboard-list-value">+${finance.privateIncome}g</span>
         </div>
         <div class="dashboard-list-row">
@@ -613,9 +634,10 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <div class="dashboard-list-row">
             <div>
               <div class="dashboard-list-title">${theme.name}</div>
-              <div class="dashboard-list-note">${getRegionLabel(theme.region)}${theme.taxExempt ? ' | tax-exempt' : ''}</div>
+              <div class="dashboard-list-note">${getRegionLabel(theme.region)}${theme.taxExempt ? ' | tax-exempt' : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''}</div>
+              <div class="dashboard-list-note">Owner ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g | exempt ${getTaxExemptOwnerIncome(theme)}g</div>
             </div>
-            <span class="dashboard-list-value">${theme.G}g / ${theme.L} levies</span>
+            <span class="dashboard-list-value">G${theme.G} L${theme.L} | ${getThemeLandPrice(theme)}g</span>
           </div>
         `).join('')}
       </div>
@@ -688,10 +710,13 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <span class="dashboard-province-name">${selectedProvince.name} (${selectedProvince.id})</span>
           <span class="dashboard-province-region">${selectedProvince.region}</span>
         </div>
-        <div class="dashboard-province-meta">${selectedProvince.gold}g ${selectedProvince.levies} levies${selectedProvince.taxExempt ? ' | tax-exempt' : ''}</div>
+        <div class="dashboard-province-meta">G${selectedProvince.gold} L${selectedProvince.levies} | price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
         <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
-        <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos}</div>
+        <div class="dashboard-province-detail">Normal split: owner ${selectedProvince.normalOwnerIncome}g, tax ${selectedProvince.normalTaxIncome}g</div>
+        <div class="dashboard-province-detail">Tax-exempt income: ${selectedProvince.taxExemptIncome}g</div>
+        <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos} (${selectedProvince.strategosTaxIncome}g tax + ${selectedProvince.strategosLevyIncome} ${selectedProvince.strategosLevyIncome === 1 ? 'levy' : 'levies'} from this theme only)</div>
         <div class="dashboard-province-detail">Bishop: ${selectedProvince.bishop}</div>
+        <div class="dashboard-province-detail">Church gift: Church receives ${selectedProvince.gold}g, no tax, no levies</div>
       </div>
     `,
     options.uiState,
@@ -857,6 +882,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
 
   const availableThemes = getFreeThemes(state);
   const playerOwnedThemes = getPlayerThemes(state, activePlayerId);
+  const taxExemptionThemes = getTaxExemptionCandidates(state, activePlayerId);
   const courtAlreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
 
   let courtHtml = `<div class="court-panel">
@@ -883,13 +909,13 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
       `
         <div class="theme-market">
           ${availableThemes.map((theme) => {
-            const cost = 2 * theme.G;
+            const cost = getThemeLandPrice(theme);
             const canAfford = player.gold >= cost;
             return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}"
               data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
               <span class="market-name">${theme.name}</span>
               <span class="market-cost">${cost}g</span>
-              <span class="market-values">${theme.G} income / ${theme.L} levies</span>
+              <span class="market-values">G${theme.G} L${theme.L} | owner ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g</span>
             </button>`;
           }).join('')}
         </div>
@@ -902,6 +928,28 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     );
   }
 
+  if (taxExemptionThemes.length > 0) {
+    courtHtml += renderFoldSection(
+      'court:exemptions',
+      'Buy Tax Exemption',
+      `
+        <div class="gift-options">
+          ${taxExemptionThemes.map((theme) => {
+            const check = canGrantTaxExemption(state, activePlayerId, theme.id);
+            return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="exempt" data-theme="${theme.id}">
+              ${theme.name} for ${check.cost}g -> ${getTaxExemptOwnerIncome(theme)}g income
+            </button>`;
+          }).join('')}
+        </div>
+      `,
+      uiSectionState,
+      {
+        defaultOpen: false,
+        summary: 'Pay 2 x G to keep the full gold value',
+      }
+    );
+  }
+
   if (playerOwnedThemes.length > 0) {
     courtHtml += renderFoldSection(
       'court:church',
@@ -910,7 +958,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
         <div class="gift-options">
           ${playerOwnedThemes.map((theme) => `
             <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
-              ${theme.name} to Church
+              ${theme.name} to Church -> ${theme.G}g church income
             </button>
           `).join('')}
         </div>
@@ -983,13 +1031,13 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
       <h4>Buy Land</h4>
       <div class="theme-market">
         ${freeThemes.map(t => {
-          const cost = 2 * t.G;
+          const cost = getThemeLandPrice(t);
           const canAfford = player.gold >= cost;
           return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === t.id ? 'selected' : ''}"
             data-action="buy" data-theme="${t.id}" ${canAfford ? '' : 'disabled'}>
             <span class="market-name">${t.name}</span>
             <span class="market-cost">${cost}⬡</span>
-            <span class="market-values">${t.G}G ${t.L}L</span>
+            <span class="market-values">G${t.G} L${t.L} | owner ${getNormalOwnerIncome(t)}g | tax ${getNormalTaxIncome(t)}g</span>
           </button>`;
         }).join('')}
       </div>
@@ -1046,6 +1094,12 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
   container.querySelectorAll('[data-action="gift"]').forEach(btn => {
     btn.addEventListener('click', () => {
       callbacks.gift?.(btn.dataset.theme);
+    });
+  });
+
+  container.querySelectorAll('[data-action="exempt"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      callbacks.exempt?.(btn.dataset.theme);
     });
   });
 
@@ -1401,7 +1455,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
   // ── Hire Mercenaries ──
   html += `<div class="orders-section">
     <h4>Hire Mercenaries</h4>
-    <p class="section-hint">3⬡ each, assigned to an office</p>
+    <p class="section-hint">Costs reset every round: 1g for the first mercenary, 2g for the second, 3g for the third, and so on.</p>
     <div class="merc-hiring">
       ${offices.map(o => `
         <div class="merc-row">
@@ -1471,6 +1525,8 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
     });
   });
 
+  updateMercTotal(container, player.gold);
+
   // Lock orders
   container.querySelector('[data-action="lock-orders"]')?.addEventListener('click', () => {
     const orders = collectOrders(container, offices, playerId);
@@ -1502,14 +1558,21 @@ function collectOrders(container, offices, playerId) {
 }
 
 function updateMercTotal(container, gold) {
-  let total = 0;
+  const mercenaries = [];
   container.querySelectorAll('.merc-count').forEach(el => {
-    total += (parseInt(el.textContent) || 0) * 3;
+    const count = parseInt(el.textContent) || 0;
+    if (count > 0) mercenaries.push({ count });
   });
+  const total = getMercenaryOrderCost(mercenaries);
   const costEl = container.querySelector('#mercTotalCost');
   if (costEl) {
     costEl.textContent = total;
     costEl.classList.toggle('over-budget', total > gold);
+  }
+
+  const lockButton = container.querySelector('[data-action="lock-orders"]');
+  if (lockButton) {
+    lockButton.disabled = total > gold;
   }
 }
 

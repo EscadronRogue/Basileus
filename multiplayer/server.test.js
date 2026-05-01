@@ -277,7 +277,7 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
   await guest.socket.waitFor((message) => message.type === 'phase_changed' && message.phase === 'orders');
 
   const actorSeatId = room.gameState.players.find((player) => {
-    if (![0, 1].includes(player.id) || player.gold < 3) return false;
+    if (![0, 1].includes(player.id) || player.gold < 1) return false;
     return Boolean(firstPlayableOffice(room, player.id));
   }).id;
   const viewerSeatId = actorSeatId === 0 ? 1 : 0;
@@ -307,7 +307,7 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
 
   const actorGoldVisible = actorGame.state.players.find((player) => player.id === actorSeatId).gold;
   const viewerGoldVisible = viewerGame.state.players.find((player) => player.id === actorSeatId).gold;
-  assert.equal(actorGoldVisible, actorGoldBefore - 3);
+  assert.equal(actorGoldVisible, actorGoldBefore - 1);
   assert.equal(viewerGoldVisible, actorGoldBefore);
 
   const historyEntry = viewerGame.state.history.find((entry) => entry.type === 'orders_submitted' && entry.actorId === actorSeatId);

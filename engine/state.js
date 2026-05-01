@@ -71,7 +71,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
       id: i,
       dynasty: dynastyPool[i],
       color: DYNASTY_COLORS[i % DYNASTY_COLORS.length],
-      gold: 10,
+      gold: 0,
       // Titles held — list of title keys
       majorTitles: [],
       minorTitles: [],   // { type, themeId? }
@@ -84,10 +84,8 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     });
   }
 
-  // Randomly designate Basileus — gets 0 gold
+  // Randomly designate Basileus
   const basileusIdx = Math.floor(rng() * playerCount);
-  players[basileusIdx].gold = 0;
-
   // Build provinces state
   const themes = {};
   for (const p of PROVINCES) {
@@ -179,6 +177,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     // Orders (filled during orders phase)
     // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, mercenaries: [{officeKey, count}], candidate: playerId }
     allOrders: {},
+    mercenariesHiredThisRound: {},
 
     // Resolution results (for animation/display)
     lastCoupResult: null,

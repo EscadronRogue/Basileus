@@ -180,6 +180,7 @@ export function isCourtComplete(state) {
 export function phaseOrders(state) {
   state.phase = 'orders';
   state.allOrders = {};
+  state.mercenariesHiredThisRound = {};
   // Each player must submit: deployments, mercenaries, candidate
   // UI handles this — each player fills in their orders simultaneously
 }
@@ -367,6 +368,7 @@ export function phaseCleanup(state) {
 
   // 5. Clear orders
   state.allOrders = {};
+  state.mercenariesHiredThisRound = {};
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;

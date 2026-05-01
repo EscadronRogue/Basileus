@@ -1,4 +1,5 @@
 import { PROVINCES } from '../data/provinces.js';
+import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
 
 let provinceCentroids = {};
@@ -52,6 +53,9 @@ export async function createMapSVG(containerId, options = {}) {
       <clipPath id="map-frame-clip">
         <rect width="297" height="210" rx="5" ry="5"/>
       </clipPath>
+      <pattern id="threat-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+        <line x1="0" y1="0" x2="0" y2="5" stroke="rgba(132, 78, 34, 0.78)" stroke-width="1.1"/>
+      </pattern>
     </defs>
   `;
 
@@ -100,12 +104,13 @@ export async function createMapSVG(containerId, options = {}) {
   const bgLayer = createGroup(viewportLayer, 'layer-bg-map');
   const invasionLayer = createGroup(viewportLayer, 'layer-invasion');
   const provinceLayer = createGroup(viewportLayer, 'layer-hitzones');
+  const threatLayer = createGroup(viewportLayer, 'layer-threats');
   const hitboxLayer = createGroup(viewportLayer, 'layer-hitboxes');
   const labelLayer = createGroup(viewportLayer, 'layer-labels');
   const badgeLayer = createGroup(viewportLayer, 'layer-badges');
 
   importBackgroundMap(svg, bgLayer, MAP_BACKGROUND_SVG);
-  importProvinceShapes(provinceLayer, hitboxLayer, HITZONES_SVG);
+  importProvinceShapes(provinceLayer, threatLayer, hitboxLayer, HITZONES_SVG);
 
   container.replaceChildren(svg);
 
@@ -152,7 +157,7 @@ function appendDimOverlay(parent) {
   parent.appendChild(dimRect);
 }
 
-function importProvinceShapes(visualLayer, hitboxLayer, svgText) {
+function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
   const sourceSvg = parseSvgRoot(svgText);
   if (!sourceSvg) return;
 
@@ -185,7 +190,21 @@ function importProvinceShapes(visualLayer, hitboxLayer, svgText) {
     path.setAttribute('data-id', provinceId);
   }
 
+  const threatImported = document.importNode(provinceGroup, true);
+  threatImported.id = 'province-threat-container';
+  stripSvgClipping(threatImported);
+
+  for (const path of threatImported.querySelectorAll('path')) {
+    const provinceId = path.getAttribute('id') || '';
+    if (!isProvinceId(provinceId)) continue;
+
+    path.removeAttribute('style');
+    path.setAttribute('class', 'province-threat-overlay');
+    path.setAttribute('data-id', provinceId);
+  }
+
   visualLayer.appendChild(visualImported);
+  threatLayer.appendChild(threatImported);
   hitboxLayer.appendChild(hitboxImported);
 }
 
@@ -285,7 +304,18 @@ export function updateMapState(state) {
     }
   }
 
+  updateThreatOverlay(state);
   updateBadges(state);
+}
+
+function updateThreatOverlay(state) {
+  const threatenedIds = new Set(getThreatenedThemeIds(state));
+  document.querySelectorAll('.province-threat-overlay').forEach((path) => {
+    const provinceId = path.getAttribute('data-id');
+    const theme = provinceId ? state.themes[provinceId] : null;
+    const active = provinceId && threatenedIds.has(provinceId) && theme && !theme.occupied;
+    path.classList.toggle('active', Boolean(active));
+  });
 }
 
 function updateBadges(state) {

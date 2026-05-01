@@ -541,7 +541,7 @@ export class MultiplayerController {
       scoring: 'Final Reckoning',
     };
     const panelSubtitleByPhase = {
-      court: 'Appointments, land, revocations, and army upkeep',
+      court: 'Appointments, land, exemptions, revocations, and army upkeep',
       orders: 'Troop deployments, mercenaries, and the throne vote',
       resolution: 'Reveal orders and settle the round',
       scoring: 'Projected wealth at the end of the game',
@@ -582,6 +582,7 @@ export class MultiplayerController {
       renderCourtPanel(shell, this.state, controlledSeatId, {
         buy: (themeId) => this.send('court_action', { action: 'buy', themeId }),
         gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
+        exempt: (themeId) => this.send('court_action', { action: 'exempt', themeId }),
         recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),
         dismiss: (_, data) => this.send('court_action', { action: 'dismiss', office: data.office, count: data.count }),
         'confirm-court': () => this.send('confirm_court'),

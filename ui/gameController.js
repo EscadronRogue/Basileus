@@ -16,6 +16,7 @@ import {
   computeFullWealth,
   dismissProfessional,
   giftToChurch,
+  grantTaxExemption,
   hireMercenaries,
   recruitProfessional,
   appointStrategos,
@@ -27,6 +28,7 @@ import {
   revokeTaxExemption,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
+import { getMercenaryOrderCost } from '../engine/rules.js';
 import {
   applyAIOrderCosts,
   applyPlannedAiTitleAssignment,
@@ -370,7 +372,7 @@ export class GameController {
       scoring: 'Final Reckoning',
     };
     const panelSubtitleByPhase = {
-      court: 'Appointments, land, revocations, and army upkeep',
+      court: 'Appointments, land, exemptions, revocations, and army upkeep',
       orders: 'Troop deployments, mercenaries, and the throne vote',
       resolution: 'Reveal orders and settle the round',
       scoring: 'Projected wealth at the end of the game',
@@ -411,6 +413,11 @@ export class GameController {
 
         renderOrdersPanel(body, this.state, this.activePlayer, {
           lockOrders: (orders) => {
+            const totalCost = getMercenaryOrderCost(orders.mercenaries);
+            if (getPlayer(this.state, this.activePlayer)?.gold < totalCost) {
+              this.render();
+              return;
+            }
             for (const mercenary of orders.mercenaries) {
               hireMercenaries(this.state, this.activePlayer, mercenary.officeKey, mercenary.count);
             }
@@ -483,6 +490,7 @@ export class GameController {
     const hasOpenStrategos = (region = null) => Object.values(this.state.themes).some(theme =>
       !theme.occupied &&
       theme.id !== 'CPL' &&
+      theme.owner !== 'church' &&
       theme.strategos === null &&
       (region == null || theme.region === region)
     );
@@ -597,6 +605,14 @@ export class GameController {
       },
       gift: (themeId) => {
         giftToChurch(state, playerId, themeId);
+        this.handleCourtActionUpdate();
+      },
+      exempt: (themeId) => {
+        const result = grantTaxExemption(state, playerId, themeId);
+        if (!result?.ok) {
+          this.render();
+          return;
+        }
         this.handleCourtActionUpdate();
       },
       recruit: (_, data) => {

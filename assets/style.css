@@ -1318,6 +1318,18 @@ body {
   opacity: 0.6;
 }
 
+.province-threat-overlay {
+  display: none;
+  fill: url(#threat-hatch);
+  fill-opacity: 0.72;
+  stroke: none;
+  pointer-events: none;
+}
+
+.province-threat-overlay.active {
+  display: inline;
+}
+
 .invasion-label {
   font-family: var(--font-display);
   font-size: 2.5px;
