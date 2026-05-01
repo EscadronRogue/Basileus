@@ -2,6 +2,12 @@ import { PROVINCES } from '../data/provinces.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const THREAT_HATCH_SPACING = 3.6;
+const THREAT_HATCH_PRIMARY_STROKE = 1.4;
+const THREAT_HATCH_SECONDARY_STROKE = 0.7;
+const MIN_THREAT_HATCH_SCALE = 0.001;
+
 let provinceCentroids = {};
 let provinceSelectHandler = null;
 let hoveredProvinceId = null;
@@ -114,8 +120,10 @@ export async function createMapSVG(containerId, options = {}) {
   importProvinceShapes(provinceLayer, threatLayer, hitboxLayer, HITZONES_SVG);
 
   container.replaceChildren(svg);
+  configureThreatHatchPatterns(svg);
 
   requestAnimationFrame(() => {
+    configureThreatHatchPatterns(svg);
     computeCentroids(svg);
     addProvinceLabels(labelLayer);
   });
@@ -173,9 +181,7 @@ function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
     const provinceId = path.getAttribute('id') || '';
     if (!isProvinceId(provinceId)) continue;
 
-    path.removeAttribute('style');
-    path.setAttribute('class', `province-shape province-${provinceId}`);
-    path.setAttribute('data-id', provinceId);
+    configureProvincePath(path, provinceId, `province-shape province-${provinceId}`, 'province');
   }
 
   const hitboxImported = document.importNode(provinceGroup, true);
@@ -186,9 +192,7 @@ function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
     const provinceId = path.getAttribute('id') || '';
     if (!isProvinceId(provinceId)) continue;
 
-    path.removeAttribute('style');
-    path.setAttribute('class', 'province-hitbox');
-    path.setAttribute('data-id', provinceId);
+    configureProvincePath(path, provinceId, 'province-hitbox', 'province-hitbox');
   }
 
   const threatImported = document.importNode(provinceGroup, true);
@@ -199,14 +203,78 @@ function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
     const provinceId = path.getAttribute('id') || '';
     if (!isProvinceId(provinceId)) continue;
 
-    path.removeAttribute('style');
-    path.setAttribute('class', 'province-threat-overlay');
-    path.setAttribute('data-id', provinceId);
+    configureProvincePath(path, provinceId, 'province-threat-overlay', 'province-threat');
+    path.style.fill = 'url(#threat-hatch)';
+    path.style.fillOpacity = '1';
   }
 
   visualLayer.appendChild(visualImported);
   threatLayer.appendChild(threatImported);
   hitboxLayer.appendChild(hitboxImported);
+}
+
+function configureProvincePath(path, provinceId, className, idPrefix) {
+  path.removeAttribute('style');
+  path.setAttribute('id', `${idPrefix}-${provinceId}`);
+  path.setAttribute('class', className);
+  path.setAttribute('data-id', provinceId);
+}
+
+function configureThreatHatchPatterns(svg) {
+  const defs = svg.querySelector('defs');
+  if (!defs) return;
+
+  defs.querySelectorAll('[data-threat-hatch-pattern="province"]').forEach((pattern) => pattern.remove());
+
+  svg.querySelectorAll('.province-threat-overlay').forEach((path) => {
+    const provinceId = path.getAttribute('data-id');
+    if (!provinceId) return;
+
+    const patternId = `threat-hatch-${provinceId}`;
+    const visualPath = svg.querySelector(`.province-shape[data-id="${provinceId}"]`);
+    appendThreatHatchPattern(defs, patternId, getElementLinearScale(visualPath || path));
+    path.setAttribute('fill', `url(#${patternId})`);
+    path.style.fill = `url(#${patternId})`;
+  });
+}
+
+function appendThreatHatchPattern(defs, patternId, linearScale) {
+  const scale = Math.max(MIN_THREAT_HATCH_SCALE, Number(linearScale) || 1);
+  const spacing = THREAT_HATCH_SPACING / scale;
+
+  const pattern = document.createElementNS(SVG_NS, 'pattern');
+  pattern.setAttribute('id', patternId);
+  pattern.setAttribute('data-threat-hatch-pattern', 'province');
+  pattern.setAttribute('width', String(spacing));
+  pattern.setAttribute('height', String(spacing));
+  pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+  pattern.setAttribute('patternTransform', 'rotate(35)');
+
+  pattern.appendChild(createThreatHatchLine(0, spacing, THREAT_HATCH_PRIMARY_STROKE / scale, '#70201c', '0.95'));
+  pattern.appendChild(createThreatHatchLine(spacing / 2, spacing, THREAT_HATCH_SECONDARY_STROKE / scale, '#eec46e', '0.55'));
+  defs.appendChild(pattern);
+}
+
+function createThreatHatchLine(x, height, strokeWidth, stroke, strokeOpacity) {
+  const line = document.createElementNS(SVG_NS, 'line');
+  line.setAttribute('x1', String(x));
+  line.setAttribute('y1', '0');
+  line.setAttribute('x2', String(x));
+  line.setAttribute('y2', String(height));
+  line.setAttribute('stroke', stroke);
+  line.setAttribute('stroke-opacity', strokeOpacity);
+  line.setAttribute('stroke-width', String(strokeWidth));
+  return line;
+}
+
+function getElementLinearScale(element) {
+  const matrix = element.getCTM?.();
+  if (!matrix) return 1;
+
+  const xScale = Math.hypot(matrix.a, matrix.b);
+  const yScale = Math.hypot(matrix.c, matrix.d);
+  const averageScale = (xScale + yScale) / 2;
+  return Number.isFinite(averageScale) && averageScale > 0 ? averageScale : 1;
 }
 
 function computeCentroids(svg) {
