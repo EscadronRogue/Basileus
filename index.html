@@ -3,6 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    Multiplayer backend URL. Leave empty (or omit) to use the same origin as the
+    page (works automatically for `npm run serve:multiplayer` on localhost).
+    For GitHub Pages, the deploy workflow can inject the public URL of the
+    Render-hosted multiplayer server from the `MULTIPLAYER_BACKEND_URL`
+    repository variable, e.g.:
+        <meta name="basileus-multiplayer-url" content="https://basileus-multiplayer.onrender.com">
+  -->
+  <meta name="basileus-multiplayer-url" content="">
   <title>BASILEUS — Dynastic Profiteering in Byzantium</title>
   <link rel="stylesheet" href="assets/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☧</text></svg>">

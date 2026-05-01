@@ -27,6 +27,51 @@ const MIME_TYPES = new Map([
   ['.ico', 'image/x-icon'],
 ]);
 
+// Origins allowed to talk to the API/WebSocket from a browser. Localhost on any
+// port always works (so the local dev server keeps functioning), and the
+// deployed GitHub Pages site is allowed by default. Extra origins can be added
+// via the ALLOWED_ORIGINS env var (comma-separated).
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://escadronrogue.github.io',
+];
+
+function parseAllowedOrigins() {
+  const raw = process.env.ALLOWED_ORIGINS || '';
+  const extra = raw.split(',').map((value) => value.trim()).filter(Boolean);
+  return new Set([...DEFAULT_ALLOWED_ORIGINS, ...extra]);
+}
+
+const ALLOWED_ORIGINS = parseAllowedOrigins();
+
+function isLocalOrigin(origin) {
+  try {
+    const parsed = new URL(origin);
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]' || parsed.hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function resolveAllowedOrigin(requestOrigin) {
+  if (!requestOrigin) return null;
+  if (ALLOWED_ORIGINS.has(requestOrigin)) return requestOrigin;
+  if (isLocalOrigin(requestOrigin)) return requestOrigin;
+  return null;
+}
+
+function applyCorsHeaders(req, res) {
+  const requestOrigin = req.headers.origin || '';
+  const allowedOrigin = resolveAllowedOrigin(requestOrigin);
+  if (allowedOrigin) {
+    res.setHeader('access-control-allow-origin', allowedOrigin);
+    res.setHeader('vary', 'origin');
+    res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+    res.setHeader('access-control-allow-headers', 'content-type');
+    res.setHeader('access-control-max-age', '600');
+  }
+  return Boolean(allowedOrigin);
+}
+
 function jsonResponse(res, statusCode, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
@@ -68,7 +113,22 @@ export async function startMultiplayerServer(options = {}) {
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${host}:${port}`);
+    applyCorsHeaders(req, res);
+
+    // CORS preflight: respond before doing any work.
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { 'content-length': '0' });
+      res.end();
+      return;
+    }
+
     try {
+      // Health check — used by Render and any uptime monitor.
+      if (req.method === 'GET' && url.pathname === '/healthz') {
+        jsonResponse(res, 200, { ok: true, service: 'basileus-multiplayer' });
+        return;
+      }
+
       if (url.pathname.startsWith('/api/')) {
         const result = await handleMultiplayerApiRequest(manager, req, url);
         jsonResponse(res, result.statusCode, result.payload);
@@ -82,7 +142,12 @@ export async function startMultiplayerServer(options = {}) {
     }
   });
 
-  attachMultiplayerSocketServer(server, manager);
+  attachMultiplayerSocketServer(server, manager, {
+    allowRequest: (request) => {
+      const origin = request.headers.origin || '';
+      return !origin || Boolean(resolveAllowedOrigin(origin));
+    },
+  });
 
   await new Promise((resolveReady) => {
     server.listen(port, host, resolveReady);
@@ -111,12 +176,16 @@ export async function startMultiplayerServer(options = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // Bind to 0.0.0.0 by default when launched as the entry point, so the
+  // process is reachable in container/PaaS environments (Render, Fly, etc.).
+  // Local dev can still pin to 127.0.0.1 by setting HOST.
   startMultiplayerServer({
     port: Number(process.env.PORT || 8133),
-    host: process.env.HOST || '127.0.0.1',
+    host: process.env.HOST || '0.0.0.0',
   }).then((instance) => {
-    console.log(`Basileus multiplayer server is running at ${instance.url}`);
-    console.log(`WebSocket endpoint: ws://${instance.host}:${instance.port}/ws`);
+    console.log(`Basileus multiplayer server is running on ${instance.host}:${instance.port}`);
+    console.log(`Health check: http://${instance.host}:${instance.port}/healthz`);
+    console.log(`Allowed browser origins: ${[...ALLOWED_ORIGINS].join(', ')} (+ localhost)`);
   }).catch((error) => {
     console.error(error?.stack || error?.message || 'Failed to start multiplayer server.');
     process.exit(1);

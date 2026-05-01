@@ -45,6 +45,33 @@ jobs:
           # Disable Jekyll so files starting with _ or . are served as-is.
           touch _site/.nojekyll
 
+      - name: Inject multiplayer backend URL
+        env:
+          MULTIPLAYER_BACKEND_URL: ${{ vars.MULTIPLAYER_BACKEND_URL }}
+        run: |
+          if [ -z "${MULTIPLAYER_BACKEND_URL}" ]; then
+            echo "MULTIPLAYER_BACKEND_URL is not set; leaving the site on same-origin multiplayer."
+            exit 0
+          fi
+
+          export MULTIPLAYER_BACKEND_URL
+          node --input-type=module - <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const file = '_site/index.html';
+          const url = process.env.MULTIPLAYER_BACKEND_URL.trim().replace(/\/+$/, '');
+          const source = readFileSync(file, 'utf8');
+          const target = '<meta name="basileus-multiplayer-url" content="">';
+          const replacement = `<meta name="basileus-multiplayer-url" content="${url.replace(/"/g, '&quot;')}">`;
+
+          if (!source.includes(target)) {
+            throw new Error('multiplayer URL marker not found in index.html');
+          }
+
+          writeFileSync(file, source.replace(target, replacement));
+          console.log(`Injected multiplayer backend: ${url}`);
+          EOF
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:

@@ -68,6 +68,22 @@ npm run train:node -- --parallelWorkers=auto
 | `npm run test:multiplayer` | End-to-end test of the multiplayer protocol. |
 | `npm test` | Runs both the smoke test and the multiplayer verifier. |
 
+## Online multiplayer deployment
+
+GitHub Pages can only host the static frontend. To make the hosted game create and join multiplayer rooms, deploy the Node multiplayer server separately.
+
+1. Create a Render web service from [`render.yaml`](render.yaml).
+2. Let Render run `npm install` and start the service with `npm run serve:multiplayer`.
+3. Copy the public Render URL for that service, such as `https://your-service.onrender.com`.
+4. In GitHub, add a repository variable named `MULTIPLAYER_BACKEND_URL` with that URL.
+5. Re-run the `Deploy to GitHub Pages` workflow, or push a new commit to `main`.
+
+The Pages workflow injects `MULTIPLAYER_BACKEND_URL` into the deployed `index.html` at build time. The checked-in source stays blank so local development continues to use same-origin multiplayer automatically.
+
+Render notes:
+- The multiplayer server exposes `GET /healthz` for Render health checks.
+- `render.yaml` defaults `ALLOWED_ORIGINS` to `https://escadronrogue.github.io`. Add more origins in Render if you later serve the frontend from a custom domain.
+
 ## Project structure
 
 ```

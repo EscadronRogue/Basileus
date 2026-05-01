@@ -152,7 +152,7 @@ export async function handleMultiplayerApiRequest(manager, req, url) {
   throw createMultiplayerError(404, 'Unknown API route.');
 }
 
-export function attachMultiplayerSocketServer(server, manager) {
+export function attachMultiplayerSocketServer(server, manager, options = {}) {
   attachWebSocketServer(server, (connection) => {
     let activeRoom = null;
     let activeSessionId = null;
@@ -219,7 +219,7 @@ export function attachMultiplayerSocketServer(server, manager) {
       if (!activeRoom || !activeSessionId) return;
       activeRoom.detachConnection(activeSessionId);
     });
-  });
+  }, options);
 }
 
 export function closeMultiplayerConnections(manager) {

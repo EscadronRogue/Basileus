@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: basileus-multiplayer
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run serve:multiplayer
+    healthCheckPath: /healthz
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://escadronrogue.github.io

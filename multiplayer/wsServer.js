@@ -148,9 +148,23 @@ export class WebSocketConnection {
   }
 }
 
-export function attachWebSocketServer(server, onConnection) {
+export function attachWebSocketServer(server, onConnection, options = {}) {
+  const allowRequest = typeof options.allowRequest === 'function'
+    ? options.allowRequest
+    : null;
+
   server.on('upgrade', (request, socket) => {
     if (!request.url?.startsWith('/ws')) {
+      socket.destroy();
+      return;
+    }
+
+    if (allowRequest && !allowRequest(request)) {
+      socket.write([
+        'HTTP/1.1 403 Forbidden',
+        'Connection: close',
+        '\r\n',
+      ].join('\r\n'));
       socket.destroy();
       return;
     }

@@ -62,7 +62,40 @@ function clearMultiplayerSession(roomCode) {
   writeStorage(store);
 }
 
+function readBackendBase() {
+  // Highest priority: explicit override via `window.BASILEUS_MULTIPLAYER_URL`.
+  // Useful for ad-hoc testing without rebuilding the page.
+  const override = typeof window !== 'undefined' && window.BASILEUS_MULTIPLAYER_URL;
+  if (override && typeof override === 'string') {
+    return override.trim().replace(/\/+$/, '');
+  }
+  // Then: a <meta name="basileus-multiplayer-url" content="..."> tag in the
+  // page. The deployed GitHub Pages build sets this to the Render URL; the
+  // local dev server leaves it blank so we fall back to same-origin.
+  if (typeof document !== 'undefined') {
+    const meta = document.querySelector('meta[name="basileus-multiplayer-url"]');
+    const value = meta?.getAttribute('content');
+    if (value && value.trim()) {
+      return value.trim().replace(/\/+$/, '');
+    }
+  }
+  return '';
+}
+
+function resolveApiUrl(path) {
+  const base = readBackendBase();
+  if (!base) return path;
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 function buildWebSocketUrl() {
+  const base = readBackendBase();
+  if (base) {
+    // Translate http(s):// → ws(s):// while keeping host + path intact.
+    const url = new URL(base);
+    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${url.host}${url.pathname.replace(/\/$/, '')}/ws`;
+  }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws`;
 }
@@ -88,7 +121,8 @@ function hydratePublicState(rawState = {}) {
   };
 }
 
-async function requestJson(url, payload) {
+async function requestJson(path, payload) {
+  const url = resolveApiUrl(path);
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -98,7 +132,7 @@ async function requestJson(url, payload) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 404 && String(url).startsWith('/api/rooms')) {
+    if (response.status === 404 && String(path).startsWith('/api/rooms')) {
       throw new Error('This server does not have the multiplayer backend yet. Stop the current local server and start it again.');
     }
     throw new Error(body?.error || 'Request failed.');
