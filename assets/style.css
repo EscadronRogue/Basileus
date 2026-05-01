@@ -1363,6 +1363,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
 }
 
 .setup-card {
@@ -1372,6 +1374,10 @@ body {
   padding: var(--gap-xl);
   width: 420px;
   max-width: 90vw;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .setup-card h1 {

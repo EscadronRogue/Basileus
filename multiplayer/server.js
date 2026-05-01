@@ -52,16 +52,31 @@ function isLocalOrigin(origin) {
   }
 }
 
-function resolveAllowedOrigin(requestOrigin) {
+function isSelfOrigin(req, requestOrigin) {
+  if (!requestOrigin) return false;
+  try {
+    const origin = new URL(requestOrigin);
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const requestProtocol = forwardedProto || (req.socket?.encrypted ? 'https' : 'http');
+    const requestHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    if (!requestHost) return false;
+    return origin.protocol === `${requestProtocol}:` && origin.host === requestHost;
+  } catch {
+    return false;
+  }
+}
+
+function resolveAllowedOrigin(req, requestOrigin) {
   if (!requestOrigin) return null;
   if (ALLOWED_ORIGINS.has(requestOrigin)) return requestOrigin;
   if (isLocalOrigin(requestOrigin)) return requestOrigin;
+  if (isSelfOrigin(req, requestOrigin)) return requestOrigin;
   return null;
 }
 
 function applyCorsHeaders(req, res) {
   const requestOrigin = req.headers.origin || '';
-  const allowedOrigin = resolveAllowedOrigin(requestOrigin);
+  const allowedOrigin = resolveAllowedOrigin(req, requestOrigin);
   if (allowedOrigin) {
     res.setHeader('access-control-allow-origin', allowedOrigin);
     res.setHeader('vary', 'origin');
@@ -145,7 +160,7 @@ export async function startMultiplayerServer(options = {}) {
   attachMultiplayerSocketServer(server, manager, {
     allowRequest: (request) => {
       const origin = request.headers.origin || '';
-      return !origin || Boolean(resolveAllowedOrigin(origin));
+      return !origin || Boolean(resolveAllowedOrigin(request, origin));
     },
   });
 
