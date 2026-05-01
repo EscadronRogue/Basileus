@@ -53,8 +53,9 @@ export async function createMapSVG(containerId, options = {}) {
       <clipPath id="map-frame-clip">
         <rect width="297" height="210" rx="5" ry="5"/>
       </clipPath>
-      <pattern id="threat-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
-        <line x1="0" y1="0" x2="0" y2="5" stroke="rgba(132, 78, 34, 0.78)" stroke-width="1.1"/>
+      <pattern id="threat-hatch" width="3.6" height="3.6" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+        <line x1="0" y1="0" x2="0" y2="3.6" stroke="rgba(112, 32, 28, 0.95)" stroke-width="1.4"/>
+        <line x1="1.8" y1="0" x2="1.8" y2="3.6" stroke="rgba(238, 196, 110, 0.55)" stroke-width="0.7"/>
       </pattern>
     </defs>
   `;

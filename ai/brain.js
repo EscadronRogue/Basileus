@@ -15,6 +15,9 @@ import {
   revokeMinorTitle,
   revokeTaxExemption,
   revokeTheme,
+  revokeCourtTitle,
+  canPayRevocationCost,
+  getNextRevocationCost,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
 import {
@@ -669,12 +672,27 @@ function getOfficeList(state, playerId) {
 
   const player = getPlayer(state, playerId);
   for (const titleKey of player.majorTitles) {
-    if (titleKey === 'PATRIARCH') continue;
+    if (titleKey === 'PATRIARCH') {
+      offices.push({
+        key: 'PATRIARCH',
+        label: MAJOR_TITLES.PATRIARCH?.name || 'Patriarch',
+        region: 'cpl',
+        capitalLocked: true,
+      });
+      continue;
+    }
     offices.push({
       key: titleKey,
       label: MAJOR_TITLES[titleKey]?.name || titleKey,
       region: MAJOR_TITLES[titleKey]?.region || null,
     });
+  }
+
+  if (state.empress === playerId) {
+    offices.push({ key: 'EMPRESS', label: 'Empress', region: 'cpl', capitalLocked: true });
+  }
+  if (state.chiefEunuchs === playerId) {
+    offices.push({ key: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs', region: 'cpl', capitalLocked: true });
   }
 
   for (const theme of Object.values(state.themes)) {
@@ -690,6 +708,8 @@ function getOfficeList(state, playerId) {
 
   return offices;
 }
+
+const CAPITAL_LOCKED_OFFICE_KEYS = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
 
 function buildMinorAppointmentDecision(state, meta, actorId, option) {
   const context = ensureRoundContext(state, meta, 'court');
@@ -1103,7 +1123,8 @@ function estimateCandidateRewardPotential(state, meta, candidateId, beneficiaryI
   if (candidateId === state.basileusId) {
     value += 0.95;
     if (!state.courtActions?.basileusAppointed) value += 0.55;
-    if (!state.courtActions?.basileusRevoked) value += 0.2;
+    const revocationsUsed = state.courtActions?.basileusRevocationsUsed || 0;
+    if (revocationsUsed === 0) value += 0.2;
   } else {
     value += beneficiaryTitleNeed * 0.75;
     value += Math.max(0, 1.6 - beneficiary.majorTitles.length) * 0.25;
@@ -1389,7 +1410,6 @@ function finalizeCourtAutomation(state, meta, aiOrder) {
   markCourtMandatoryActionPassed(state, meta, 'domesticWestAppointed', 'The Domestic of the West appointment');
   markCourtMandatoryActionPassed(state, meta, 'admiralAppointed', 'The Admiral appointment');
   markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch appointment');
-  if (!state.courtActions.basileusRevoked) state.courtActions.basileusRevoked = true;
 
   for (const playerId of aiOrder) {
     if (!state.courtActions.playerConfirmed.has(playerId)) {
@@ -1995,10 +2015,17 @@ function buildRevocationOptions(state, meta, basileusId) {
 
 function handleBasileusRevocation(state, meta) {
   const basileusId = state.basileusId;
+  // Each revocation costs more troops than the last. Skip the action entirely if
+  // the Basileus does not have enough troops left to pay the next cost.
+  const costCheck = canPayRevocationCost(state);
+  if (!costCheck.ok) return false;
+  const cost = costCheck.cost;
   const ranked = buildRevocationOptions(state, meta, basileusId);
   // Tier 2 + 6: evolvable revocation threshold (was 2.45) and softmax pick
   // over plausible options instead of greedy argmax.
-  const threshold = getMetaForPlayer(meta, basileusId, 'revocationThreshold');
+  // The threshold scales with the troop cost so the AI demands a proportionally
+  // bigger payoff for the second / third / ... revocation in the same round.
+  const threshold = getMetaForPlayer(meta, basileusId, 'revocationThreshold') + (cost - 1) * 0.85;
   const temperature = getMetaForPlayer(meta, basileusId, 'courtTemperature');
   const plausible = ranked.filter(option => option.score > threshold).slice(0, 6);
   const best = softmaxPick(plausible, temperature, state.rng);
@@ -2038,23 +2065,8 @@ function handleBasileusRevocation(state, meta) {
       logPublic(meta, `${publicActor(state, basileusId)} revokes the tax exemption of ${best.themeId}.`);
     }
   } else if (best.kind === 'court') {
-    if (best.titleType === 'EMPRESS') state.empress = null;
-    if (best.titleType === 'CHIEF_EUNUCHS') state.chiefEunuchs = null;
-    const historyEvent = recordHistoryEvent(state, {
-      category: 'court',
-      type: 'revoke_court_title',
-      actorId: basileusId,
-      summary: `${publicActor(state, basileusId)} revokes the ${courtTitleName(best.titleType)} title.`,
-      details: {
-        titleType: best.titleType,
-        titleName: courtTitleName(best.titleType),
-        targetPlayerId: best.targetPlayerId,
-        targetPlayerName: best.targetPlayerId != null ? publicActor(state, best.targetPlayerId) : null,
-      },
-      actorAi: true,
-    });
-    result = { ok: true, historyId: historyEvent?.id || null };
-    if (best.targetPlayerId != null) {
+    result = revokeCourtTitle(state, best.titleType);
+    if (result?.ok && best.targetPlayerId != null) {
       adjustRelation(meta, best.targetPlayerId, basileusId, 0, 0.8);
       reduceObligation(meta, basileusId, best.targetPlayerId, 0.5);
       logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, basileusId)} revokes the ${best.titleType} court title.`);
@@ -2064,7 +2076,6 @@ function handleBasileusRevocation(state, meta) {
 
   if (result?.ok) {
     applyDecisionToResult(state, result, buildRevocationDecision(state, meta, basileusId, best));
-    state.courtActions.basileusRevoked = true;
     meta.players[basileusId].stats.revocations++;
     meta.totals.revocations++;
     invalidateRoundContext(meta);
@@ -2133,6 +2144,7 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
   const mercenaries = [];
 
   const rankedOffices = officePlans
+    .filter(plan => !plan.capitalLocked)
     .map(plan => ({ ...plan, baseValue: Math.max(plan.frontierScore, plan.capitalScore) }))
     .sort((left, right) => right.baseValue - left.baseValue);
 
@@ -2176,9 +2188,19 @@ export function buildAIOrders(state, meta, playerId) {
     const professionalTroops = player.professionalArmies[office.key] || 0;
     const levyTroops = state.currentLevies?.[office.key] || 0;
     const troopCount = professionalTroops + levyTroops;
-    const frontierScore = scoreOfficeDestination(state, meta, playerId, office, troopCount || 1, 'frontier', candidateId, pact);
-    const capitalScore = scoreOfficeDestination(state, meta, playerId, office, troopCount || 1, 'capital', candidateId, pact);
-    const destination = capitalScore > frontierScore ? 'capital' : 'frontier';
+    const capitalLocked = office.capitalLocked || CAPITAL_LOCKED_OFFICE_KEYS.has(office.key);
+    let frontierScore;
+    let capitalScore;
+    let destination;
+    if (capitalLocked) {
+      frontierScore = -Infinity;
+      capitalScore = scoreOfficeDestination(state, meta, playerId, office, troopCount || 1, 'capital', candidateId, pact);
+      destination = 'capital';
+    } else {
+      frontierScore = scoreOfficeDestination(state, meta, playerId, office, troopCount || 1, 'frontier', candidateId, pact);
+      capitalScore = scoreOfficeDestination(state, meta, playerId, office, troopCount || 1, 'capital', candidateId, pact);
+      destination = capitalScore > frontierScore ? 'capital' : 'frontier';
+    }
     deployments[office.key] = destination;
     officePlans.push({
       office,
@@ -2188,6 +2210,7 @@ export function buildAIOrders(state, meta, playerId) {
       frontierScore,
       capitalScore,
       destination,
+      capitalLocked,
     });
   }
 
@@ -2406,7 +2429,7 @@ function takeOneAiCourtAction(state, meta, playerId) {
     return handlePatriarchAppointment(state, meta);
   }
 
-  if (playerId === state.basileusId && !state.courtActions.basileusRevoked && handleBasileusRevocation(state, meta)) {
+  if (playerId === state.basileusId && handleBasileusRevocation(state, meta)) {
     return true;
   }
 

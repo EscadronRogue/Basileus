@@ -910,6 +910,16 @@ body {
   color: var(--text-secondary);
 }
 
+.deploy-row-locked {
+  opacity: 0.92;
+}
+
+.deploy-toggle-locked .toggle-btn[disabled] {
+  cursor: default;
+  opacity: 1;
+  font-style: italic;
+}
+
 /* Mercenaries */
 .merc-hiring {
   display: flex;
@@ -1320,14 +1330,18 @@ body {
 
 .province-threat-overlay {
   display: none;
+  visibility: hidden;
   fill: url(#threat-hatch);
-  fill-opacity: 0.72;
-  stroke: none;
+  fill-opacity: 1;
+  stroke: rgba(112, 32, 28, 0.55);
+  stroke-width: 0.45;
+  vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 
 .province-threat-overlay.active {
-  display: inline;
+  display: inline !important;
+  visibility: visible !important;
 }
 
 .invasion-label {

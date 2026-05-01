@@ -6,6 +6,11 @@ import {
 } from './rules.js';
 import { findTitleHolder } from './state.js';
 
+// Each holder of a capital court title (Empress, Patriarch, Chief of Eunuchs)
+// receives this many capital-locked levies every administration phase.
+export const CAPITAL_LOCKED_TITLE_LEVIES = 2;
+export const CAPITAL_LOCKED_TITLE_OFFICES = ['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS'];
+
 function getRegionalDomesticKey(region) {
   if (region === REGIONS.EAST) return 'DOM_EAST';
   if (region === REGIONS.WEST) return 'DOM_WEST';
@@ -54,15 +59,21 @@ export function computeRegionalLevyCascade(state, region, initialPool = 0) {
     levies[officeKey] = (levies[officeKey] || 0) + amount;
   };
 
+  // Distribution per cycle: first 2 go to the regional domesticus/admiral, 3rd goes to the Basileus.
+  // If the regional office is vacant, those slots fall through to the Basileus.
   while (pool > 0) {
-    addLevy('BASILEUS', 1);
-    pool--;
-    if (pool <= 0) break;
-
-    if (domesticId != null) {
-      addLevy(domesticKey, 1);
+    for (let slot = 0; slot < 2 && pool > 0; slot += 1) {
+      if (domesticId != null) {
+        addLevy(domesticKey, 1);
+      } else {
+        addLevy('BASILEUS', 1);
+      }
       pool--;
     }
+    if (pool <= 0) break;
+
+    addLevy('BASILEUS', 1);
+    pool--;
   }
 
   return levies;
@@ -203,6 +214,20 @@ export function runAdministration(state) {
   const churchIncome = computeChurchCascade(state, churchPool);
   for (const [playerId, amount] of Object.entries(churchIncome)) {
     addIncome(Number(playerId), amount);
+  }
+
+  // Capital-locked levies from court titles. Each title grants 2 levies that may only
+  // be deployed in the capital. The levies are tied to the office (resolved via the
+  // current title holder at resolution), so revoking the title mid-turn instantly moves
+  // the levies to the new holder rather than leaving them with the previous one.
+  if (state.empress != null) {
+    addLevy('EMPRESS', CAPITAL_LOCKED_TITLE_LEVIES);
+  }
+  if (state.chiefEunuchs != null) {
+    addLevy('CHIEF_EUNUCHS', CAPITAL_LOCKED_TITLE_LEVIES);
+  }
+  if (findTitleHolder(state, 'PATRIARCH') != null) {
+    addLevy('PATRIARCH', CAPITAL_LOCKED_TITLE_LEVIES);
   }
 
   return { income, levies };

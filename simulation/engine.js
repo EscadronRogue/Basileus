@@ -232,8 +232,18 @@ function getOfficeList(state, playerId) {
 
   const player = getPlayer(state, playerId);
   for (const titleKey of player.majorTitles) {
-    if (titleKey === 'PATRIARCH') continue;
+    if (titleKey === 'PATRIARCH') {
+      offices.push({ key: 'PATRIARCH', label: MAJOR_TITLES.PATRIARCH?.name || 'Patriarch', capitalLocked: true });
+      continue;
+    }
     offices.push({ key: titleKey, label: MAJOR_TITLES[titleKey]?.name || titleKey });
+  }
+
+  if (state.empress === playerId) {
+    offices.push({ key: 'EMPRESS', label: 'Empress', capitalLocked: true });
+  }
+  if (state.chiefEunuchs === playerId) {
+    offices.push({ key: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs', capitalLocked: true });
   }
 
   for (const theme of Object.values(state.themes)) {

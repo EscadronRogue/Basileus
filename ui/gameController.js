@@ -26,6 +26,9 @@ import {
   revokeMinorTitle,
   revokeTheme,
   revokeTaxExemption,
+  revokeCourtTitle,
+  canPayRevocationCost,
+  getNextRevocationCost,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
 import { getMercenaryOrderCost } from '../engine/rules.js';
@@ -717,9 +720,14 @@ export class GameController {
         });
       },
       revoke: (value) => {
-        if (state.courtActions.basileusRevoked) return;
+        const check = canPayRevocationCost(state);
+        if (!check.ok) {
+          this.render();
+          return;
+        }
         const parts = value.split(':');
         let observation = { type: 'revocation', actorId: state.basileusId };
+        let result = null;
 
         if (parts[0] === 'major') {
           const revokedPlayerId = parseInt(parts[1], 10);
@@ -727,45 +735,27 @@ export class GameController {
           const eligible = state.players.filter(player => player.id !== state.basileusId && player.id !== revokedPlayerId);
           if (eligible.length > 0) {
             const newHolderId = eligible[0].id;
-            revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId);
-            observation = { ...observation, targetPlayerId: revokedPlayerId, newHolderId };
-            state.courtActions.basileusRevoked = true;
+            result = revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId);
+            if (result?.ok) observation = { ...observation, targetPlayerId: revokedPlayerId, newHolderId };
           }
         } else if (parts[0] === 'minor') {
           const theme = state.themes[parts[1]];
           const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
-          revokeMinorTitle(state, parts[1], parts[2]);
-          observation = { ...observation, targetPlayerId };
-          state.courtActions.basileusRevoked = true;
+          result = revokeMinorTitle(state, parts[1], parts[2]);
+          if (result?.ok) observation = { ...observation, targetPlayerId };
         } else if (parts[0] === 'court') {
           const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-          if (parts[1] === 'EMPRESS') state.empress = null;
-          if (parts[1] === 'CHIEF_EUNUCHS') state.chiefEunuchs = null;
-          recordHistoryEvent(state, {
-            category: 'court',
-            type: 'revoke_court_title',
-            actorId: state.basileusId,
-            actorAi: false,
-            summary: `${getPlayer(state, state.basileusId)?.dynasty || 'The Basileus'} revokes the ${parts[1] === 'EMPRESS' ? 'Empress' : 'Chief of Eunuchs'} title.`,
-            details: {
-              titleType: parts[1],
-              targetPlayerId,
-              targetPlayerName: targetPlayerId != null ? (getPlayer(state, targetPlayerId)?.dynasty || `Player ${targetPlayerId + 1}`) : null,
-            },
-          });
-          observation = { ...observation, targetPlayerId };
-          state.courtActions.basileusRevoked = true;
+          result = revokeCourtTitle(state, parts[1]);
+          if (result?.ok) observation = { ...observation, targetPlayerId };
         } else if (parts[0] === 'exempt') {
-          revokeTaxExemption(state, parts[1]);
-          state.courtActions.basileusRevoked = true;
+          result = revokeTaxExemption(state, parts[1]);
         } else if (parts[0] === 'theme') {
           const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
-          revokeTheme(state, parts[1]);
-          observation = { ...observation, targetPlayerId };
-          state.courtActions.basileusRevoked = true;
+          result = revokeTheme(state, parts[1]);
+          if (result?.ok) observation = { ...observation, targetPlayerId };
         }
 
-        if (state.courtActions.basileusRevoked) {
+        if (result?.ok) {
           this.handleCourtActionUpdate(observation);
         } else {
           this.render();

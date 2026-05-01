@@ -22,6 +22,8 @@ import {
   revokeMinorTitle,
   revokeTheme,
   revokeTaxExemption,
+  revokeCourtTitle,
+  canPayRevocationCost,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
 import { getMercenaryOrderCost } from '../engine/rules.js';
@@ -889,7 +891,8 @@ export class MultiplayerRoom {
 
     if (action === 'revoke') {
       assert(playerId === state.basileusId, 'Only the Basileus can revoke titles or land.');
-      assert(!state.courtActions?.basileusRevoked, 'The Basileus already used the revocation this round.');
+      const costCheck = canPayRevocationCost(state);
+      assert(costCheck.ok, `The Basileus needs ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (has ${costCheck.available || 0}).`);
       const value = String(payload.value || '').trim();
       const parts = value.split(':');
       observation = { type: 'revocation', actorId: state.basileusId };
@@ -907,38 +910,25 @@ export class MultiplayerRoom {
         const theme = state.themes[parts[1]];
         const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
         const result = revokeMinorTitle(state, parts[1], parts[2]);
-        assert(result?.ok, 'Could not revoke that minor title.');
+        assert(result?.ok, result?.reason || 'Could not revoke that minor title.');
         observation = { ...observation, targetPlayerId };
       } else if (parts[0] === 'court') {
         const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-        if (parts[1] === 'EMPRESS') state.empress = null;
-        if (parts[1] === 'CHIEF_EUNUCHS') state.chiefEunuchs = null;
-        recordHistoryEvent(state, {
-          category: 'court',
-          type: 'revoke_court_title',
-          actorId: state.basileusId,
-          actorAi: false,
-          summary: `${playerName(state, state.basileusId)} revokes the ${parts[1] === 'EMPRESS' ? 'Empress' : 'Chief of Eunuchs'} title.`,
-          details: {
-            titleType: parts[1],
-            targetPlayerId,
-            targetPlayerName: targetPlayerId != null ? (playerName(state, targetPlayerId)) : null,
-          },
-        });
+        const result = revokeCourtTitle(state, parts[1]);
+        assert(result?.ok, result?.reason || 'Could not revoke that court title.');
         observation = { ...observation, targetPlayerId };
       } else if (parts[0] === 'exempt') {
         const result = revokeTaxExemption(state, parts[1]);
-        assert(result?.ok, 'Could not revoke that tax exemption.');
+        assert(result?.ok, result?.reason || 'Could not revoke that tax exemption.');
       } else if (parts[0] === 'theme') {
         const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
         const result = revokeTheme(state, parts[1]);
-        assert(result?.ok, 'Could not revoke that estate.');
+        assert(result?.ok, result?.reason || 'Could not revoke that estate.');
         observation = { ...observation, targetPlayerId };
       } else {
         throw new Error('Choose a valid revocation target.');
       }
 
-      state.courtActions.basileusRevoked = true;
       return { observation };
     }
 

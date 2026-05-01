@@ -4,7 +4,7 @@
 
 import { runAdministration } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
-import { resolveCoup, payMaintenance } from './actions.js';
+import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './actions.js';
 import { recordHistoryEvent } from './history.js';
 import { rollInvasionStrength, getPlayer } from './state.js';
 import { MAJOR_TITLES } from '../data/titles.js';
@@ -52,7 +52,11 @@ function buildPlayerResolutionContribution(state, player, orders) {
     const totalTroops = professionalTroops + levyTroops + mercenaryTroops;
     if (totalTroops <= 0) continue;
 
-    const destination = orders.deployments?.[officeKey] || 'frontier';
+    // Court titles that grant capital-locked levies cannot send their troops to the
+    // frontier. Their orders are always treated as 'capital' regardless of player input.
+    const destination = CAPITAL_LOCKED_OFFICES.has(officeKey)
+      ? 'capital'
+      : (orders.deployments?.[officeKey] || 'frontier');
     if (destination === 'capital') capitalTroops += totalTroops;
     else frontierTroops += totalTroops;
 
@@ -164,7 +168,9 @@ export function phaseCourt(state) {
     domesticWestAppointed: false,
     admiralAppointed: false,
     patriarchAppointed: false,
-    basileusRevoked: false, // free revocation used?
+    // Number of revocations the Basileus has performed this round. Each costs more
+    // troops than the last (1 troop for the first, 2 for the second, ...).
+    basileusRevocationsUsed: 0,
     playerConfirmed: new Set(),
   };
 }
@@ -334,6 +340,11 @@ export function phaseCleanup(state) {
     payMaintenance(state, player.id);
   }
 
+  // Professional troops the Basileus spent on revocations were "deleted" for this
+  // round only — restore them now (after maintenance) so they're available next round
+  // without paying maintenance for the round they were suspended.
+  restoreSuspendedProfessionals(state);
+
   // 2. Levies expire, mercenaries disband (just clear the references)
   state.currentLevies = {};
 
@@ -383,12 +394,21 @@ function getOfficeHolder(state, officeKey) {
     }
     return null;
   }
+  if (officeKey === 'EMPRESS') return state.empress ?? null;
+  if (officeKey === 'CHIEF_EUNUCHS') return state.chiefEunuchs ?? null;
   // Strategos: STRAT_<themeId>
   if (officeKey.startsWith('STRAT_')) {
     const themeId = officeKey.replace('STRAT_', '');
     return state.themes[themeId]?.strategos ?? null;
   }
   return null;
+}
+
+// Capital-locked offices: troops from these offices may only be deployed in the capital.
+const CAPITAL_LOCKED_OFFICES = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
+
+export function isCapitalLockedOffice(officeKey) {
+  return CAPITAL_LOCKED_OFFICES.has(officeKey);
 }
 
 // ─── Auto-advance through non-interactive phases ───

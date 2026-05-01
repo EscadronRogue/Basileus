@@ -13,6 +13,13 @@ import {
 } from '../engine/rules.js';
 import { getFreeThemes, getPlayerThemes, getPlayer } from '../engine/state.js';
 
+// Court titles whose levies are locked to the capital.
+const CAPITAL_LOCKED_OFFICE_KEYS = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
+
+function isCapitalLockedOfficeKey(officeKey) {
+  return CAPITAL_LOCKED_OFFICE_KEYS.has(officeKey);
+}
+
 // ─── Helpers used everywhere ───
 function getPlayerOffices(state, playerId) {
   const offices = [];
@@ -21,9 +28,17 @@ function getPlayerOffices(state, playerId) {
   }
   const player = getPlayer(state, playerId);
   for (const t of player.majorTitles) {
-    if (t !== 'PATRIARCH') {
-      offices.push({ key: t, label: MAJOR_TITLES[t]?.name || t });
+    if (t === 'PATRIARCH') {
+      offices.push({ key: 'PATRIARCH', label: 'Patriarch', capitalLocked: true });
+      continue;
     }
+    offices.push({ key: t, label: MAJOR_TITLES[t]?.name || t });
+  }
+  if (state.empress === playerId) {
+    offices.push({ key: 'EMPRESS', label: 'Empress', capitalLocked: true });
+  }
+  if (state.chiefEunuchs === playerId) {
+    offices.push({ key: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs', capitalLocked: true });
   }
   for (const theme of Object.values(state.themes)) {
     if (theme.strategos === playerId && !theme.occupied) {
@@ -971,7 +986,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     );
   }
 
-  if (isBasileus && !state.courtActions?.basileusRevoked) {
+  if (isBasileus) {
     courtHtml += renderRevocationOptions(state);
   }
 
@@ -1060,7 +1075,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   }
 
   // ── Basileus Revocation ──
-  if (isBasileus && !state.courtActions?.basileusRevoked) {
+  if (isBasileus) {
     html += renderRevocationOptions(state);
   }
 
@@ -1344,18 +1359,46 @@ function renderRevocationOptions(state) {
     return `<option value="theme:${t.id}">${t.name} (owned by ${owner?.dynasty})</option>`;
   });
 
+  const used = state.courtActions?.basileusRevocationsUsed || 0;
+  const nextCost = used + 1;
+  const available = getBasileusAvailableTroopCount(state);
+  const canAfford = available >= nextCost;
+  const costLine = used === 0
+    ? `Each revocation costs troops: 1 for the first, 2 for the second, 3 for the third, and so on. Levies are spent before professional troops; professional troops return next round.`
+    : `${used} revocation${used === 1 ? '' : 's'} used so far this round.`;
+  const costStatus = canAfford
+    ? `Next revocation costs <strong>${nextCost}</strong> troop${nextCost === 1 ? '' : 's'} (Basileus has ${available}).`
+    : `Next revocation would cost ${nextCost} troop${nextCost === 1 ? '' : 's'}, but the Basileus only has ${available}. <em>Cannot revoke further this round.</em>`;
+
   return `<div class="court-section revocation">
     <h4>Imperial Revocation</h4>
-    <p class="section-hint">The Basileus may revoke ONE of: a major title, a minor title, a tax exemption, or a player's theme</p>
-    <select class="revoke-select appt-select">
+    <p class="section-hint">${costLine}</p>
+    <p class="section-hint revocation-cost">${costStatus}</p>
+    <select class="revoke-select appt-select" ${canAfford ? '' : 'disabled'}>
       <option value="">No revocation</option>
       ${majorTitleOpts.length ? `<optgroup label="Major Titles">${majorTitleOpts.join('')}</optgroup>` : ''}
       ${minorTitleOpts.length ? `<optgroup label="Minor Titles">${minorTitleOpts.join('')}</optgroup>` : ''}
       ${exemptOpts.length ? `<optgroup label="Tax Exemptions">${exemptOpts.join('')}</optgroup>` : ''}
       ${themeOpts.length ? `<optgroup label="Player Themes">${themeOpts.join('')}</optgroup>` : ''}
     </select>
-    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px">Revoke</button>
+    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${canAfford ? '' : 'disabled'}>Revoke (${nextCost} troop${nextCost === 1 ? '' : 's'})</button>
   </div>`;
+}
+
+function getBasileusAvailableTroopCount(state) {
+  const basileusId = state.basileusId;
+  const basileus = state.players?.find(p => p.id === basileusId);
+  if (!basileus) return 0;
+  const officeKeys = new Set(['BASILEUS']);
+  if (state.empress === basileusId) officeKeys.add('EMPRESS');
+  if (state.chiefEunuchs === basileusId) officeKeys.add('CHIEF_EUNUCHS');
+  for (const titleKey of basileus.majorTitles || []) officeKeys.add(titleKey);
+  let total = 0;
+  for (const key of officeKeys) {
+    total += state.currentLevies?.[key] || 0;
+    total += basileus.professionalArmies?.[key] || 0;
+  }
+  return total;
 }
 
 // ─── Army Management with recruitment limit ───
@@ -1438,26 +1481,39 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
     const proCount = player.professionalArmies[office.key] || 0;
     const levyCount = state.currentLevies?.[office.key] || 0;
     const total = proCount + levyCount;
+    const capitalLocked = office.capitalLocked || isCapitalLockedOfficeKey(office.key);
 
-    html += `
-      <div class="deploy-row">
-        <span class="office-name">${office.label}</span>
-        <span class="troop-count">${total} troops</span>
-        <div class="deploy-toggle" data-office="${office.key}">
-          <button class="toggle-btn active" data-dest="frontier">⚔ Frontier</button>
-          <button class="toggle-btn" data-dest="capital">👑 Capital</button>
-        </div>
-      </div>`;
+    if (capitalLocked) {
+      html += `
+        <div class="deploy-row deploy-row-locked">
+          <span class="office-name">${office.label}</span>
+          <span class="troop-count">${total} troops</span>
+          <div class="deploy-toggle deploy-toggle-locked" data-office="${office.key}" data-locked="capital">
+            <button class="toggle-btn active" data-dest="capital" disabled>👑 Capital (locked)</button>
+          </div>
+        </div>`;
+    } else {
+      html += `
+        <div class="deploy-row">
+          <span class="office-name">${office.label}</span>
+          <span class="troop-count">${total} troops</span>
+          <div class="deploy-toggle" data-office="${office.key}">
+            <button class="toggle-btn active" data-dest="frontier">⚔ Frontier</button>
+            <button class="toggle-btn" data-dest="capital">👑 Capital</button>
+          </div>
+        </div>`;
+    }
   }
 
   html += `</div></div>`;
 
   // ── Hire Mercenaries ──
+  const mercOffices = offices.filter(o => !(o.capitalLocked || isCapitalLockedOfficeKey(o.key)));
   html += `<div class="orders-section">
     <h4>Hire Mercenaries</h4>
     <p class="section-hint">Costs reset every round: 1g for the first mercenary, 2g for the second, 3g for the third, and so on.</p>
     <div class="merc-hiring">
-      ${offices.map(o => `
+      ${mercOffices.map(o => `
         <div class="merc-row">
           <span>${o.label}</span>
           <div class="merc-controls">
