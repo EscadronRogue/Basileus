@@ -1,12 +1,39 @@
 {
   "name": "basileus-game",
+  "version": "0.1.0",
+  "description": "A 3-5 player browser strategy game of dynastic profiteering inside the Byzantine Empire, with WebSocket multiplayer and an evolutionary AI training lab.",
   "private": true,
   "type": "module",
+  "license": "UNLICENSED",
+  "author": "EscadronRogue",
+  "homepage": "https://github.com/EscadronRogue/Basileus#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EscadronRogue/Basileus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/EscadronRogue/Basileus/issues"
+  },
+  "keywords": [
+    "game",
+    "strategy",
+    "byzantine",
+    "browser-game",
+    "websocket",
+    "multiplayer",
+    "ai",
+    "self-play",
+    "evolutionary"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "serve": "node simulation/training-server.js",
     "serve:multiplayer": "node multiplayer/server.js",
     "train:node": "node simulation/train-node.js --parallelWorkers=auto",
     "smoke:simulation": "node simulation/smoke-test.js",
-    "test:multiplayer": "node multiplayer/verify.js"
+    "test:multiplayer": "node multiplayer/verify.js",
+    "test": "npm run smoke:simulation && npm run test:multiplayer"
   }
 }

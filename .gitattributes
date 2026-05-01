@@ -1,2 +1,36 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Auto detect text files and perform LF normalization.
+* text=auto eol=lf
+
+# Force CRLF on Windows-only entry points so they keep working when checked
+# out on a Unix host that later round-trips them back.
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# Treat these as text explicitly.
+*.js        text
+*.mjs       text
+*.cjs       text
+*.json      text
+*.html      text
+*.css       text
+*.svg       text
+*.md        text
+*.yml       text
+*.yaml      text
+
+# Binary blobs — never normalize.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+
+# Generated AI-training artifacts: keep tracked, but don't pollute GitHub
+# language stats or diff views.
+.training-runs/**           linguist-generated=true -diff
+trained-personalities/**    linguist-generated=true -diff

@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest a new mechanic, AI improvement, or quality-of-life change.
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: motivation
+    attributes:
+      label: What problem does this solve?
+      description: What is the player or contributor trying to do today that's frustrating or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Rules / engine change
+        - UI / UX
+        - AI behaviour
+        - Multiplayer
+        - Tooling / dev experience
+        - Other
+      default: 0
