@@ -23,7 +23,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: [20, 22]
+        # Node 22+ is required because multiplayer/verify.js relies on the
+        # global WebSocket (stable since Node 22.4). Node 20 is EOL.
+        node: [22, 24]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

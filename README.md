@@ -30,7 +30,7 @@ Basileus is a 3–5 player strategy game where rival noble houses jockey for tit
 ## Getting started
 
 ### Requirements
-- **Node.js ≥ 20** (CI runs on 22). Check with `node --version`.
+- **Node.js ≥ 22.4** (CI runs on 22 and 24). The multiplayer verifier uses the global `WebSocket`, which is stable from Node 22.4 onward. Check with `node --version`.
 
 ### Run locally — Windows
 Double-click `start-local.bat`, or from PowerShell:
