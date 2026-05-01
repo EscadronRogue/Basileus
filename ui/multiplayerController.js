@@ -240,6 +240,7 @@ export class MultiplayerController {
     this.socket = socket;
 
     socket.addEventListener('open', () => {
+      if (this.socket !== socket) return;
       this.connectionState = 'connected';
       this.lastError = '';
       this.send('hello', {
@@ -253,6 +254,7 @@ export class MultiplayerController {
     });
 
     socket.addEventListener('message', (event) => {
+      if (this.socket !== socket) return;
       try {
         const message = JSON.parse(event.data);
         this.handleMessage(message);
@@ -263,6 +265,7 @@ export class MultiplayerController {
     });
 
     socket.addEventListener('close', (event) => {
+      if (this.socket !== socket) return;
       this.stopHeartbeat();
       this.socket = null;
       if (this.intentionalClose) return;
@@ -277,6 +280,7 @@ export class MultiplayerController {
     });
 
     socket.addEventListener('error', () => {
+      if (this.socket !== socket) return;
       this.lastError = 'Connection error while talking to the multiplayer server.';
       this.render();
     });
@@ -295,7 +299,7 @@ export class MultiplayerController {
     this.heartbeatTimer = window.setInterval(() => {
       if (this.socket?.readyState !== WebSocket.OPEN) return;
       this.socket.send(JSON.stringify({ type: 'heartbeat' }));
-    }, 60_000);
+    }, 25_000);
   }
 
   stopHeartbeat() {

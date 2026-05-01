@@ -25,6 +25,7 @@ const setupAiRosterHint = document.getElementById('setupAiRosterHint');
 
 const aiSeatSelections = new Map();
 let availableAiProfiles = [];
+let multiplayerLaunchInFlight = false;
 
 function escapeHtml(value) {
   return String(value)
@@ -222,6 +223,11 @@ async function refreshAvailableAiProfiles() {
 }
 
 async function launchMultiplayerFlow(intent) {
+  if (multiplayerLaunchInFlight) return;
+  multiplayerLaunchInFlight = true;
+  if (btnCreateRoom) btnCreateRoom.disabled = true;
+  if (btnJoinRoom) btnJoinRoom.disabled = true;
+
   const seedInput = document.getElementById('setupSeed').value.trim();
   const seed = resolveConfiguredSeed(seedInput);
   const setupRng = makeChoiceRng(seed);
@@ -236,6 +242,9 @@ async function launchMultiplayerFlow(intent) {
   );
 
   try {
+    if (typeof window.__basileus?.disconnect === 'function') {
+      window.__basileus.disconnect();
+    }
     const multiplayer = await launchMultiplayerClient({
       intent,
       setupDialog,
@@ -253,6 +262,10 @@ async function launchMultiplayerFlow(intent) {
     setupDialog.style.display = 'flex';
     const reason = error?.message || 'Could not reach the multiplayer server.';
     setMultiplayerError(intent === 'join' ? `Join Room failed: ${reason}` : `Create Room failed: ${reason}`);
+  } finally {
+    multiplayerLaunchInFlight = false;
+    if (btnCreateRoom) btnCreateRoom.disabled = false;
+    if (btnJoinRoom) btnJoinRoom.disabled = false;
   }
 }
 

@@ -73,6 +73,9 @@ export class WebSocketConnection {
     this.closeHandler = null;
     this.closed = false;
     this.closeNotified = false;
+    this.awaitingPong = false;
+    this.lastActivityAt = Date.now();
+    this.keepaliveTimer = setInterval(() => this.runKeepalive(), 25_000);
 
     socket.on('data', (chunk) => this.handleData(chunk));
     socket.on('close', () => this.handleClose());
@@ -98,6 +101,11 @@ export class WebSocketConnection {
     this.socket.write(encodeFrame(0xA, payload));
   }
 
+  sendPing(payload = '') {
+    if (this.closed) return;
+    this.socket.write(encodeFrame(0x9, payload));
+  }
+
   close(code = 1000, reason = '') {
     if (this.closed) return;
     const body = Buffer.alloc(2 + Buffer.byteLength(reason));
@@ -117,6 +125,7 @@ export class WebSocketConnection {
       const frame = tryParseFrame(this.buffer);
       if (!frame) return;
       this.buffer = this.buffer.subarray(frame.consumed);
+      this.lastActivityAt = Date.now();
 
       if (frame.opcode === 0x8) {
         this.close();
@@ -124,6 +133,10 @@ export class WebSocketConnection {
       }
       if (frame.opcode === 0x9) {
         this.sendPong(frame.payload);
+        continue;
+      }
+      if (frame.opcode === 0xA) {
+        this.awaitingPong = false;
         continue;
       }
       if (frame.opcode !== 0x1 || !frame.fin) continue;
@@ -140,8 +153,22 @@ export class WebSocketConnection {
     }
   }
 
+  runKeepalive() {
+    if (this.closed) return;
+    if (this.awaitingPong && Date.now() - this.lastActivityAt > 45_000) {
+      this.close(1001, 'Ping timeout');
+      return;
+    }
+    this.awaitingPong = true;
+    this.sendPing(String(Date.now()));
+  }
+
   handleClose() {
     this.closed = true;
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = null;
+    }
     if (this.closeNotified) return;
     this.closeNotified = true;
     this.closeHandler?.();
