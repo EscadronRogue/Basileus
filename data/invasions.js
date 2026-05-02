@@ -99,12 +99,12 @@ export const DYNASTIES = [
   'Kontostephanos', 'Kantakouzenos', 'Palaiologos'
 ];
 
-// Dynasty colors — high-separation ownership colours. Kept away from the
-// red / green / yellow / black region-border palette and from neutral free land.
+// Dynasty colors — muted ownership colours with clear separation from
+// the regional command palette, free-citizen purple, and neutral outlines.
 export const DYNASTY_COLORS = [
-  '#006DFF', // cobalt blue
-  '#D100B8', // magenta
-  '#00AFC8', // cyan
-  '#FF7A00', // orange
-  '#6C00FF', // violet
+  '#b66a2f', // muted orange
+  '#7f9a3d', // muted lime
+  '#4f9aa3', // muted cyan
+  '#c98aa0', // muted light pink
+  '#23645f', // dark teal
 ];

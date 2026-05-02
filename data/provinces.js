@@ -8,13 +8,13 @@ export const REGIONS = {
   CPL: 'cpl'
 };
 
-// Region border colors — fixed, high-contrast territory colours.
+// Region border colors — fixed, muted command colours.
 // Constantinople is intentionally its own command region and uses black.
 export const REGION_BORDER_COLORS = {
-  [REGIONS.EAST]: '#2f8f3a', // green
-  [REGIONS.WEST]: '#c63a3a', // red
-  [REGIONS.SEA]:  '#d4b21f', // yellow
-  [REGIONS.CPL]:  '#0b0b0b'  // Constantinople
+  [REGIONS.EAST]: '#2f5e42', // dark green
+  [REGIONS.WEST]: '#74312f', // dark red
+  [REGIONS.SEA]:  '#24486b', // dark blue
+  [REGIONS.CPL]:  '#111111'  // Constantinople
 };
 
 export const PROVINCES = [

@@ -35,8 +35,8 @@
   /* Status */
   --occupied:      #3a2020;
   --occupied-border: #6b3333;
-  --free-fill:     #5f625d;
-  --free-border:   #3f413d;
+  --free-fill:     #5d4268;
+  --free-border:   #3f2c49;
   --church-fill:   #1a2540;
   --church-border: #3a5580;
 
@@ -1621,8 +1621,8 @@ body {
 
   --occupied: #fbf4e5;
   --occupied-border: #a69476;
-  --free-fill: #7d7a70;
-  --free-border: #56534c;
+  --free-fill: #6d4a78;
+  --free-border: #4f3158;
   --church-fill: #b7b3c8;
   --church-border: #6d3a76;
   --empire-border: rgba(86, 83, 76, 0.92);
@@ -2013,7 +2013,7 @@ body::before {
 }
 
 .province-shape.free {
-  fill: rgba(125, 122, 112, 0.48);
+  fill: color-mix(in srgb, var(--free-fill) 62%, rgba(249, 243, 229, 0.38));
   fill-opacity: 1;
   stroke: var(--region-border, var(--empire-border));
 }
@@ -2052,7 +2052,7 @@ body::before {
 .region-stroke {
   fill: none;
   stroke: var(--region-border);
-  stroke-width: 3.2;
+  stroke-width: 2.6;
   stroke-opacity: 0.9;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -2062,7 +2062,7 @@ body::before {
 }
 
 .region-stroke.hovered {
-  stroke-width: 3.8;
+  stroke-width: 3.1;
   stroke-opacity: 1;
   filter: brightness(1.06) saturate(1.04);
 }
@@ -2070,7 +2070,7 @@ body::before {
 .region-stroke.selected,
 .region-stroke.selected.hovered {
   stroke: var(--region-border);
-  stroke-width: 4.6;
+  stroke-width: 3.5;
   stroke-opacity: 1;
   filter: brightness(1.15) saturate(1.08) drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.35));
 }
@@ -2093,6 +2093,8 @@ body::before {
 .province-label.selected,
 .province-name.selected,
 .province-values.selected {
+  fill: var(--province-label-fill, rgba(104, 78, 44, 0.88));
+  stroke: var(--province-label-outline, rgba(255, 249, 237, 0.62));
   font-weight: 700;
   filter: drop-shadow(0 0 0.45px rgba(255, 255, 255, 0.62));
 }
@@ -2108,17 +2110,8 @@ body::before {
 
 .player-role-name {
   color: var(--player-name-fill, currentColor);
-  -webkit-text-stroke: 0.55px var(--player-name-outline, #ffffff);
-  paint-order: stroke fill;
-  text-shadow:
-    -0.6px -0.6px 0 var(--player-name-outline, #ffffff),
-     0.6px -0.6px 0 var(--player-name-outline, #ffffff),
-    -0.6px  0.6px 0 var(--player-name-outline, #ffffff),
-     0.6px  0.6px 0 var(--player-name-outline, #ffffff);
-}
-
-.player-role-name.patriarch-name {
-  --player-name-outline: #0b0b0b;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 /* Sidebar refresh */
