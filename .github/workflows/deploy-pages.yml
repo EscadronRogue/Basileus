@@ -73,7 +73,7 @@ jobs:
           EOF
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           # Auto-enable Pages on the repo if it's not already turned on, so the
           # very first deploy works without a manual visit to repo Settings.
