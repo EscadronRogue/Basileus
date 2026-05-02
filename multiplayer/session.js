@@ -1,5 +1,5 @@
 import { recordHistoryEvent } from '../engine/history.js';
-import { createGameState, getPlayer } from '../engine/state.js';
+import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
 import {
   advanceToNextInteractivePhase,
   allOrdersSubmitted,
@@ -38,6 +38,7 @@ import {
   observeCourtAction,
   runAICourtAutomation,
 } from '../ai/brain.js';
+import { PERSONALITIES } from '../ai/personalities.js';
 
 export const ROOM_STATUS = {
   LOBBY: 'lobby',
@@ -304,7 +305,8 @@ function autoResolveUnavailableHumanAppointments(state, playerId) {
 }
 
 function playerName(state, playerId) {
-  return getPlayer(state, playerId)?.dynasty || `Player ${Number(playerId) + 1}`;
+  const player = getPlayer(state, playerId);
+  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
 }
 
 function createSeatSummary(room, seat, viewerSessionId) {
@@ -320,7 +322,7 @@ function createSeatSummary(room, seat, viewerSessionId) {
       : seat.playerName,
     isHostSeat: seat.sessionId != null && seat.sessionId === room.hostSessionId,
     isViewerSeat,
-    dynasty: room.gameState ? (getPlayer(room.gameState, seat.seatId)?.dynasty || null) : null,
+    dynasty: room.gameState ? (formatPlayerLabel(getPlayer(room.gameState, seat.seatId)) || null) : null,
   };
 }
 
@@ -512,6 +514,7 @@ export class MultiplayerRoom {
       humanPlayerIds,
       seatProfiles,
     });
+    this.assignPlayerFirstNames();
     this.pendingAiTitleAssignment = null;
     this.status = ROOM_STATUS.IN_PROGRESS;
     this.gameOverSent = false;
@@ -528,6 +531,29 @@ export class MultiplayerRoom {
       this.status = ROOM_STATUS.FINISHED;
     } else {
       this.status = ROOM_STATUS.IN_PROGRESS;
+    }
+  }
+
+  assignPlayerFirstNames() {
+    if (!this.gameState) return;
+    for (const player of this.gameState.players) {
+      const seat = this.seats[player.id];
+      if (seat?.kind === 'human') {
+        const trimmed = String(seat.playerName || '').trim();
+        if (trimmed) {
+          player.firstName = trimmed;
+          continue;
+        }
+      }
+      const aiMetaForPlayer = this.aiMeta?.players?.[player.id];
+      const profile = aiMetaForPlayer?.profile;
+      const personalityId = aiMetaForPlayer?.personalityId;
+      const personalityName = profile?.name
+        || (personalityId ? (PERSONALITIES?.[personalityId]?.name
+          || (personalityId.charAt(0).toUpperCase() + personalityId.slice(1))) : null);
+      if (personalityName) {
+        player.firstName = personalityName;
+      }
     }
   }
 

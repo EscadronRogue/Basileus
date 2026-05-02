@@ -6,13 +6,14 @@ import { runAdministration } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './actions.js';
 import { recordHistoryEvent } from './history.js';
-import { rollInvasionStrength, getPlayer } from './state.js';
+import { rollInvasionStrength, getPlayer, formatPlayerLabel } from './state.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
 export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
 
 function playerName(state, playerId) {
-  return getPlayer(state, playerId)?.dynasty || `Player ${Number(playerId) + 1}`;
+  const player = getPlayer(state, playerId);
+  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
 }
 
 function officeName(state, officeKey) {

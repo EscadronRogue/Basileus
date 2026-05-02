@@ -1,4 +1,4 @@
-import { getFreeThemes, getPlayer, getPlayerThemes, shuffle } from '../engine/state.js';
+import { getFreeThemes, getPlayer, getPlayerThemes, shuffle, formatPlayerLabel } from '../engine/state.js';
 import { recordHistoryEvent, updateHistoryEvent } from '../engine/history.js';
 import {
   appointBishop,
@@ -650,11 +650,12 @@ function applyDecisionToResult(state, result, decision) {
 function describeActor(state, meta, playerId) {
   const player = getPlayer(state, playerId);
   const profile = getPersonalityProfile(meta, playerId);
-  return `${player.dynasty} (${profile.shortName})`;
+  return `${player ? formatPlayerLabel(player) : `Player ${playerId + 1}`} (${profile.shortName})`;
 }
 
 function publicActor(state, playerId) {
-  return getPlayer(state, playerId)?.dynasty || `Player ${playerId + 1}`;
+  const player = getPlayer(state, playerId);
+  return player ? formatPlayerLabel(player) : `Player ${playerId + 1}`;
 }
 
 function courtTitleName(titleType) {

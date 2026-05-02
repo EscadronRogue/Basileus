@@ -2555,3 +2555,96 @@ body::before {
     justify-content: flex-start;
   }
 }
+
+/* ── Empire fallen review state ── */
+.phase-empire-fallen {
+  border-color: rgba(170, 48, 42, 0.72);
+  background: rgba(170, 48, 42, 0.12);
+  color: #9f2d27;
+}
+
+.empire-fallen-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 460px;
+  padding: 4px 10px;
+  border: 1px solid rgba(170, 48, 42, 0.34);
+  border-radius: var(--radius-sm);
+  background: rgba(170, 48, 42, 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empire-fallen-banner strong {
+  color: #9f2d27;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.empire-fallen-banner span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-over-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+
+.game-over-subnote {
+  max-width: 420px;
+}
+
+.btn-review-game {
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(168, 122, 45, 0.36);
+  background: rgba(255, 250, 240, 0.74);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.btn-review-game:hover {
+  background: rgba(255, 247, 233, 0.96);
+  border-color: rgba(140, 87, 111, 0.4);
+}
+
+/* ── Self-appointment cooldown reminder ── */
+.appointment-block.has-self-lockout {
+  padding: 8px;
+  border: 1px solid rgba(170, 48, 42, 0.18);
+  border-radius: var(--radius-sm);
+  background: rgba(170, 48, 42, 0.045);
+}
+
+.self-appoint-lockout {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 4px 0 7px;
+  padding: 6px 8px;
+  border: 1px solid rgba(170, 48, 42, 0.26);
+  border-radius: var(--radius-sm);
+  background: rgba(170, 48, 42, 0.08);
+  color: #9f2d27;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.self-appoint-lockout-icon {
+  flex: 0 0 auto;
+  font-weight: 700;
+}

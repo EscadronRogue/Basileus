@@ -1,6 +1,6 @@
 // engine/actions.js — Player actions: land purchase, gifting, appointments, revocations, coups
 
-import { getPlayer, findTitleHolder } from './state.js';
+import { getPlayer, findTitleHolder, formatPlayerLabel } from './state.js';
 import { recordHistoryEvent } from './history.js';
 import {
   getMercenaryHireCost,
@@ -24,11 +24,14 @@ function validateGenericSelfAppointment(state, appointerId, appointeeId) {
 function markGenericSelfAppointment(state, appointerId, appointeeId) {
   if (appointerId !== appointeeId) return;
   const appointer = getPlayer(state, appointerId);
+  if (!appointer) return;
+  if (!appointer.appointmentCooldown) appointer.appointmentCooldown = {};
   appointer.appointmentCooldown.__SELF_ANY = state.round;
 }
 
 function playerName(state, playerId) {
-  return getPlayer(state, playerId)?.dynasty || `Player ${Number(playerId) + 1}`;
+  const player = getPlayer(state, playerId);
+  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
 }
 
 function themeName(state, themeId) {

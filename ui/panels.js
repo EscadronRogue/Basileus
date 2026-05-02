@@ -11,7 +11,7 @@ import {
   getThemeOwnerIncome,
   isThemeThreatened,
 } from '../engine/rules.js';
-import { getFreeThemes, getPlayerThemes, getPlayer } from '../engine/state.js';
+import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel, getPlayerLabel } from '../engine/state.js';
 
 // Court titles whose levies are locked to the capital.
 const CAPITAL_LOCKED_OFFICE_KEYS = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
@@ -164,7 +164,7 @@ function getPlayerOpinionRows(state, aiMeta, playerId) {
       const theyOwe = aiMeta.players[player.id]?.obligations?.[playerId] || 0;
       return {
         playerId: player.id,
-        name: player.dynasty,
+        name: formatPlayerLabel(player),
         isHuman: player.id === humanId,
         net,
         trust,
@@ -211,10 +211,28 @@ function countMinorTitles(state, playerId) {
   return count;
 }
 
-function playerSelectOptions(state, selectedId) {
-  return state.players.map(p =>
-    `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${p.dynasty}${p.id === state.basileusId ? ' (Basileus)' : ''}</option>`
-  ).join('');
+function selfAppointmentOnCooldown(state, appointerId) {
+  if (appointerId == null) return false;
+  const appointer = getPlayer(state, appointerId);
+  if (!appointer) return false;
+  return appointer.appointmentCooldown?.__SELF_ANY === state.round - 1;
+}
+
+function playerSelectOptions(state, selectedId, options = {}) {
+  const excludeId = options.excludeId;
+  return state.players
+    .filter(p => excludeId == null || p.id !== excludeId)
+    .map(p =>
+      `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${formatPlayerLabel(p)}${p.id === state.basileusId ? ' (Basileus)' : ''}</option>`
+    ).join('');
+}
+
+function selfAppointmentNotice(state, appointerId) {
+  if (!selfAppointmentOnCooldown(state, appointerId)) return '';
+  return `<div class="self-appoint-lockout" title="You appointed yourself last round.">
+    <span class="self-appoint-lockout-icon">⊘</span>
+    <span>You cannot appoint yourself this round (you self-appointed last round).</span>
+  </div>`;
 }
 
 function getRegionLabel(region) {
@@ -229,10 +247,10 @@ function getProvinceSummary(state, provinceId) {
   let ownerLabel = 'Free citizens';
   if (theme.occupied) ownerLabel = 'Occupied by invaders';
   else if (theme.owner === 'church') ownerLabel = 'Church estate';
-  else if (theme.owner !== null) ownerLabel = `${getPlayer(state, theme.owner)?.dynasty || 'Unknown'} estate`;
+  else if (theme.owner !== null) ownerLabel = `${getPlayerLabel(state, theme.owner, 'Unknown')} estate`;
 
-  const strategos = theme.strategos !== null ? getPlayer(state, theme.strategos)?.dynasty || 'Unknown' : 'None';
-  const bishop = theme.bishop !== null ? getPlayer(state, theme.bishop)?.dynasty || 'Unknown' : 'None';
+  const strategos = theme.strategos !== null ? getPlayerLabel(state, theme.strategos, 'Unknown') : 'None';
+  const bishop = theme.bishop !== null ? getPlayerLabel(state, theme.bishop, 'Unknown') : 'None';
 
   return {
     id: theme.id,
@@ -362,7 +380,7 @@ function renderCoupContributionGroups(state, votes = [], contributions = []) {
   const orderedCandidates = candidateIds
     .map(candidateId => ({
       candidateId,
-      candidateName: getPlayer(state, candidateId)?.dynasty || `Player ${candidateId + 1}`,
+      candidateName: getPlayerLabel(state, candidateId, `Player ${candidateId + 1}`),
       troops: votes.find(entry => entry.candidateId === candidateId)?.troops || 0,
     }))
     .sort((left, right) => right.troops - left.troops);
@@ -515,7 +533,7 @@ function renderHistoryDetails(state, event) {
 }
 
 function renderHistoryEntry(state, event, aiMeta) {
-  const actorLabel = event.actorId != null ? (getPlayer(state, event.actorId)?.dynasty || `Player ${event.actorId + 1}`) : 'Empire';
+  const actorLabel = event.actorId != null ? getPlayerLabel(state, event.actorId, `Player ${event.actorId + 1}`) : 'Empire';
   const aiActor = event.actorAi === true || isAiHistoryActor(aiMeta, event.actorId);
   const extra = `${renderHistoryDetails(state, event)}${renderDecisionFactors(event.decision)}`;
   const badge = aiActor ? '<span class="history-entry-tag">AI</span>' : '';
@@ -773,7 +791,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       <button class="sidebar-panel-head player-dashboard-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Dynasty View</span>
-          <span class="sidebar-panel-title">${player.dynasty}</span>
+          <span class="sidebar-panel-title">${formatPlayerLabel(player)}</span>
           <span class="sidebar-panel-subtitle">${isBasileus ? 'Current Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'Untitled dynasty')}</span>
         </span>
         <span class="sidebar-panel-badge">${player.gold}g | +${finance.projectedIncome} / -${finance.maintenance}</span>
@@ -783,7 +801,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <div class="dashboard-header">
             <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
             <div class="dynasty-info">
-              <h2 class="dynasty-name">${player.dynasty}</h2>
+              <h2 class="dynasty-name">${formatPlayerLabel(player)}</h2>
               <div class="dynasty-title">${isBasileus ? 'Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'No major office')}</div>
             </div>
             <div class="gold-display">
@@ -827,7 +845,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       <div class="dashboard-header">
         <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
         <div class="dynasty-info">
-          <h2 class="dynasty-name">${player.dynasty}</h2>
+          <h2 class="dynasty-name">${formatPlayerLabel(player)}</h2>
           <div class="dynasty-title">${isBasileus ? '☧ Basileus' : player.majorTitles.map(t => MAJOR_TITLES[t]?.name || t).join(', ')}</div>
         </div>
         <div class="gold-display">
@@ -889,9 +907,9 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   }
   for (const titleKey of player.majorTitles) {
     if (titleKey === 'PATRIARCH') {
-      appointmentParts.push(renderPatriarchAppointment(state, selectedProvinceId));
+      appointmentParts.push(renderPatriarchAppointment(state, selectedProvinceId, activePlayerId));
     } else {
-      appointmentParts.push(renderStrategosAppointment(state, titleKey, selectedProvinceId));
+      appointmentParts.push(renderStrategosAppointment(state, titleKey, selectedProvinceId, activePlayerId));
     }
   }
 
@@ -1031,9 +1049,9 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   // Domestic/Admiral each appoint 1 Strategos in their region
   for (const titleKey of player.majorTitles) {
     if (titleKey === 'PATRIARCH') {
-      html += renderPatriarchAppointment(state, selectedProvinceId);
+      html += renderPatriarchAppointment(state, selectedProvinceId, activePlayerId);
     } else {
-      html += renderStrategosAppointment(state, titleKey, selectedProvinceId);
+      html += renderStrategosAppointment(state, titleKey, selectedProvinceId, activePlayerId);
     }
   }
 
@@ -1234,16 +1252,19 @@ function renderBasileusAppointments(state, selectedProvinceId) {
 
   const selectableThemes = [...getOpenStrategosThemes(state), ...getOpenBishopThemes(state)];
   const defaultThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId);
+  const appointerId = state.basileusId;
+  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
 
-  return `<div class="appointment-block">
+  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
     <span class="appt-label">Basileus appoints 1 minor title:</span>
+    ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       <select id="basileusApptType" class="appt-select">
         <option value="">Choose title type...</option>
         ${titleTypes.map((type) => `<option value="${type.value}">${type.label}</option>`).join('')}
       </select>
       <select id="basileusApptPlayer" class="appt-select">
-        ${playerSelectOptions(state)}
+        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
       </select>
       <select id="basileusApptTheme" class="appt-select" data-selected-theme="${defaultThemeId}" style="display:none">
         <option value="">Choose theme...</option>
@@ -1254,7 +1275,7 @@ function renderBasileusAppointments(state, selectedProvinceId) {
 }
 
 // ─── Strategos appointment: Domestic/Admiral picks theme + player ───
-function renderStrategosAppointment(state, titleKey, selectedProvinceId) {
+function renderStrategosAppointment(state, titleKey, selectedProvinceId, appointerId) {
   const title = MAJOR_TITLES[titleKey];
   if (!title) return '';
   const region = title.region;
@@ -1274,15 +1295,18 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId) {
     </div>`;
   }
 
-  return `<div class="appointment-block">
+  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
+
+  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
     <span class="appt-label">${title.name} → appoint Strategos:</span>
+    ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       <select class="appt-theme-select appt-select">
         <option value="">Choose theme...</option>
         ${themes.map(t => `<option value="${t.id}" ${t.id === defaultThemeId ? 'selected' : ''}>${t.name}</option>`).join('')}
       </select>
       <select class="appt-player-select appt-select">
-        ${playerSelectOptions(state)}
+        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
       </select>
       <button class="appt-btn strategos-commit" data-titlekey="${titleKey}">Appoint</button>
     </div>
@@ -1290,7 +1314,7 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId) {
 }
 
 // ─── Patriarch appointment: picks theme + player for Bishop ───
-function renderPatriarchAppointment(state, selectedProvinceId) {
+function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
   const themes = getOpenBishopThemes(state);
   const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId);
 
@@ -1307,15 +1331,18 @@ function renderPatriarchAppointment(state, selectedProvinceId) {
     </div>`;
   }
 
-  return `<div class="appointment-block">
+  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
+
+  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
     <span class="appt-label">Patriarch → appoint Bishop:</span>
+    ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       <select class="appt-theme-select appt-select">
         <option value="">Choose theme...</option>
         ${themes.map(t => `<option value="${t.id}" ${t.id === defaultThemeId ? 'selected' : ''}>${t.name}</option>`).join('')}
       </select>
       <select class="appt-player-select appt-select">
-        ${playerSelectOptions(state)}
+        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
       </select>
       <button class="appt-btn bishop-commit">Appoint</button>
     </div>
@@ -1326,7 +1353,7 @@ function renderPatriarchAppointment(state, selectedProvinceId) {
 function renderRevocationOptions(state) {
   // Collect revocable items
   const majorTitleOpts = state.players.filter(p => p.id !== state.basileusId).flatMap(p =>
-    p.majorTitles.map(t => `<option value="major:${p.id}:${t}">${p.dynasty} — ${MAJOR_TITLES[t]?.name}</option>`)
+    p.majorTitles.map(t => `<option value="major:${p.id}:${t}">${formatPlayerLabel(p)} — ${MAJOR_TITLES[t]?.name}</option>`)
   );
 
   const minorTitleOpts = [];
@@ -1334,20 +1361,20 @@ function renderRevocationOptions(state) {
   for (const t of Object.values(state.themes)) {
     if (t.strategos !== null && !t.occupied) {
       const holder = state.players.find(p => p.id === t.strategos);
-      minorTitleOpts.push(`<option value="minor:${t.id}:strategos">Strategos of ${t.name} (${holder?.dynasty})</option>`);
+      minorTitleOpts.push(`<option value="minor:${t.id}:strategos">Strategos of ${t.name} (${formatPlayerLabel(holder)})</option>`);
     }
     if (t.bishop !== null && !t.occupied) {
       const holder = state.players.find(p => p.id === t.bishop);
-      minorTitleOpts.push(`<option value="minor:${t.id}:bishop">Bishop of ${t.name} (${holder?.dynasty})</option>`);
+      minorTitleOpts.push(`<option value="minor:${t.id}:bishop">Bishop of ${t.name} (${formatPlayerLabel(holder)})</option>`);
     }
   }
   if (state.empress !== null) {
     const h = state.players.find(p => p.id === state.empress);
-    minorTitleOpts.push(`<option value="court:EMPRESS">Empress (${h?.dynasty})</option>`);
+    minorTitleOpts.push(`<option value="court:EMPRESS">Empress (${formatPlayerLabel(h)})</option>`);
   }
   if (state.chiefEunuchs !== null) {
     const h = state.players.find(p => p.id === state.chiefEunuchs);
-    minorTitleOpts.push(`<option value="court:CHIEF_EUNUCHS">Chief of Eunuchs (${h?.dynasty})</option>`);
+    minorTitleOpts.push(`<option value="court:CHIEF_EUNUCHS">Chief of Eunuchs (${formatPlayerLabel(h)})</option>`);
   }
 
   const exemptOpts = Object.values(state.themes).filter(t => t.taxExempt).map(t =>
@@ -1356,7 +1383,7 @@ function renderRevocationOptions(state) {
 
   const themeOpts = Object.values(state.themes).filter(t => t.owner !== null && t.owner !== 'church' && !t.occupied).map(t => {
     const owner = state.players.find(p => p.id === t.owner);
-    return `<option value="theme:${t.id}">${t.name} (owned by ${owner?.dynasty})</option>`;
+    return `<option value="theme:${t.id}">${t.name} (owned by ${formatPlayerLabel(owner)})</option>`;
   });
 
   const used = state.courtActions?.basileusRevocationsUsed || 0;
@@ -1535,7 +1562,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
       ${state.players.map(p => `
         <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}">
           <span class="candidate-crest" style="background: ${p.color}">${p.dynasty.charAt(0)}</span>
-          <span>${p.dynasty}</span>
+          <span>${formatPlayerLabel(p)}</span>
           ${p.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
         </button>
       `).join('')}
@@ -1640,14 +1667,14 @@ function renderMajorTitleReassignmentSection(state) {
 
   return `<div class="resolution-section title-reassignment">
     <h4>Redistribute Major Titles</h4>
-    <p class="section-hint">${newBasileus?.dynasty || 'The new Basileus'} must reassign all four major offices before the next round. The non-Basileus title distribution must be ${describeMajorTitleDistribution(state)}.</p>
+    <p class="section-hint">${newBasileus ? formatPlayerLabel(newBasileus) : 'The new Basileus'} must reassign all four major offices before the next round. The non-Basileus title distribution must be ${describeMajorTitleDistribution(state)}.</p>
     <div class="title-reassignment-grid">
       ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => `
         <label class="title-reassignment-row">
           <span>${title.name}</span>
           <select class="appt-select major-title-select" data-title-assignment="${titleKey}">
             ${eligiblePlayers.map(player => `
-              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''}>${player.dynasty}</option>
+              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''}>${formatPlayerLabel(player)}</option>
             `).join('')}
           </select>
         </label>
@@ -1674,20 +1701,20 @@ export function renderResolutionPanel(container, state, options = {}) {
       <h4>Coup</h4>
       <div class="coup-result">
         <span class="coup-winner" style="color: ${winner?.color}">
-          ${winner?.dynasty} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
+          ${formatPlayerLabel(winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
         </span>
         <div class="vote-breakdown">
           ${renderCoupContributionGroups(
             state,
             Object.entries(coup.votes).map(([candidateId, troops]) => ({
               candidateId: Number(candidateId),
-              candidateName: getPlayer(state, Number(candidateId))?.dynasty || `Player ${Number(candidateId) + 1}`,
+              candidateName: getPlayerLabel(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
               troops,
             })),
             (coup.contributions || []).map((entry) => ({
               ...entry,
-              playerName: getPlayer(state, entry.playerId)?.dynasty || `Player ${entry.playerId + 1}`,
-              candidateName: getPlayer(state, entry.candidateId)?.dynasty || `Player ${entry.candidateId + 1}`,
+              playerName: getPlayerLabel(state, entry.playerId, `Player ${entry.playerId + 1}`),
+              candidateName: getPlayerLabel(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
             }))
           )}
         </div>
@@ -1741,20 +1768,20 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
     const winner = getPlayer(state, coup.winner);
     const voteRows = Object.entries(coup.votes).map(([candidateId, troops]) => ({
       candidateId: Number(candidateId),
-      candidateName: getPlayer(state, Number(candidateId))?.dynasty || `Player ${Number(candidateId) + 1}`,
+      candidateName: getPlayerLabel(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
       troops,
     }));
     const contributionRows = (coup.contributions || []).map((entry) => ({
       ...entry,
-      playerName: getPlayer(state, entry.playerId)?.dynasty || `Player ${entry.playerId + 1}`,
-      candidateName: getPlayer(state, entry.candidateId)?.dynasty || `Player ${entry.candidateId + 1}`,
+      playerName: getPlayerLabel(state, entry.playerId, `Player ${entry.playerId + 1}`),
+      candidateName: getPlayerLabel(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
     }));
 
     html += `<div class="resolution-section">
       <h4>Coup</h4>
       <div class="coup-result">
         <span class="coup-winner" style="color: ${winner?.color}">
-          ${winner?.dynasty} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
+          ${formatPlayerLabel(winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
         </span>
         <div class="vote-breakdown">
           ${renderCoupContributionGroups(state, voteRows, contributionRows)}

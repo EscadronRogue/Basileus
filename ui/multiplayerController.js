@@ -1,6 +1,6 @@
 import { computeFullWealth } from '../engine/actions.js';
 import { runAdministration } from '../engine/cascade.js';
-import { getPlayer } from '../engine/state.js';
+import { getPlayer, formatPlayerLabel } from '../engine/state.js';
 import { createMapSVG, drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import {
   renderCourtPanel,
@@ -208,6 +208,7 @@ export class MultiplayerController {
       sections: {},
       dashboardFocus: null,
     };
+    this.gameOverDismissed = false;
   }
 
   persistSession() {
@@ -396,7 +397,7 @@ export class MultiplayerController {
     }
 
     if (message.type === 'game_over') {
-      this.renderGameOverOverlay();
+      this.render();
       return;
     }
 
@@ -472,9 +473,15 @@ export class MultiplayerController {
         cleanup: 'Cleanup',
         scoring: 'Final Scoring',
       };
-      phaseEl.textContent = phaseNames[this.state.phase] || this.state.phase;
-      phaseEl.className = `phase-badge phase-${this.state.phase}`;
+      if (this.state.gameOver?.type === 'fall') {
+        phaseEl.textContent = 'Empire Fallen';
+        phaseEl.className = 'phase-badge phase-empire-fallen';
+      } else {
+        phaseEl.textContent = phaseNames[this.state.phase] || this.state.phase;
+        phaseEl.className = `phase-badge phase-${this.state.phase}`;
+      }
     }
+    this.renderEmpireFallenBanner();
 
     if (!invasionEl) return;
     if (this.state.currentInvasion) {
@@ -487,6 +494,27 @@ export class MultiplayerController {
     } else {
       invasionEl.style.display = 'none';
     }
+  }
+
+  renderEmpireFallenBanner() {
+    const topBar = document.getElementById('topBar');
+    if (!topBar) return;
+    let banner = document.getElementById('empireFallenBanner');
+
+    if (this.state?.gameOver?.type !== 'fall') {
+      banner?.remove();
+      return;
+    }
+
+    if (!banner) {
+      banner = document.createElement('span');
+      banner.id = 'empireFallenBanner';
+      banner.className = 'empire-fallen-banner';
+      const invasionEl = document.getElementById('invasionDisplay');
+      topBar.insertBefore(banner, invasionEl || null);
+    }
+
+    banner.innerHTML = '<strong>Empire Fallen</strong><span>Final state, last turn, and history remain available.</span>';
   }
 
   renderPlayerTabs() {
@@ -506,7 +534,7 @@ export class MultiplayerController {
         <button class="player-tab ${viewing ? 'active' : ''}"
           data-player="${player.id}" style="--tab-color: ${player.color}">
           <span class="tab-crest">${player.dynasty.charAt(0)}</span>
-          <span class="tab-name">${player.dynasty}</span>
+          <span class="tab-name">${formatPlayerLabel(player)}</span>
           ${youBadge}
           ${connectionBadge}
           <span class="tab-gold">${player.gold}g</span>
@@ -556,7 +584,7 @@ export class MultiplayerController {
             <span class="sidebar-panel-title">${panelTitleByPhase[this.state.phase] || 'Action Panel'}</span>
             <span class="sidebar-panel-subtitle">${panelSubtitleByPhase[this.state.phase] || 'Current phase controls and details'}</span>
           </span>
-          <span class="sidebar-panel-badge">${controlledSeatId != null ? (getPlayer(this.state, controlledSeatId)?.dynasty || '') : 'Lobby'}</span>
+          <span class="sidebar-panel-badge">${controlledSeatId != null ? formatPlayerLabel(getPlayer(this.state, controlledSeatId)) : 'Lobby'}</span>
         </button>
         ${isOpen ? '<div class="sidebar-panel-body" data-role="action-panel-body"></div>' : ''}
       </div>
@@ -697,7 +725,7 @@ export class MultiplayerController {
           ${scores.map((score, index) => `
             <div class="score-row ${index === 0 ? 'winner' : ''}" style="--player-color: ${score.player.color}">
               <span class="score-rank">${index + 1}</span>
-              <span class="score-dynasty">${score.player.dynasty}</span>
+              <span class="score-dynasty">${formatPlayerLabel(score.player)}</span>
               <span class="score-breakdown">${score.gold}g + ${score.projected} projected</span>
               <span class="score-total">${score.wealth}</span>
             </div>
@@ -708,16 +736,10 @@ export class MultiplayerController {
   }
 
   renderGameOverOverlay() {
-    if (!this.state?.gameOver || this.state.gameOver.type !== 'fall') return;
     const overlay = document.getElementById('gameOverOverlay');
     if (!overlay) return;
-    overlay.innerHTML = `
-      <div class="game-over-content fall">
-        <h2>The Empire Has Fallen</h2>
-        <p>Constantinople is overrun. All dynasties lose.</p>
-      </div>
-    `;
-    overlay.style.display = 'flex';
+    overlay.innerHTML = '';
+    overlay.style.display = 'none';
   }
 
   renderLobby() {

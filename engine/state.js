@@ -197,6 +197,22 @@ export function getPlayer(state, id) {
   return state.players.find(p => p.id === id);
 }
 
+// Returns "FirstName Dynasty" if the player has a first name attached, else just the dynasty.
+export function formatPlayerLabel(player) {
+  if (!player) return '';
+  const dynasty = player.dynasty || '';
+  if (player.firstName) {
+    return `${player.firstName} ${dynasty}`.trim();
+  }
+  return dynasty;
+}
+
+export function getPlayerLabel(state, playerId, fallback = null) {
+  const player = getPlayer(state, playerId);
+  if (!player) return fallback ?? `Player ${Number(playerId) + 1}`;
+  return formatPlayerLabel(player);
+}
+
 export function getNonBasileusPlayers(state) {
   return state.players.filter(p => p.id !== state.basileusId);
 }
