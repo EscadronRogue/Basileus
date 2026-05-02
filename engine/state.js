@@ -27,10 +27,10 @@ function clamp(value, min, max) {
 }
 
 const PLAYER_ROLE_TEXT_STYLES = {
-  BASILEUS: { color: '#80661f', contrast: '#ffffff' },
-  DOM_WEST: { color: '#5f1f1f', contrast: '#ffffff' },
-  DOM_EAST: { color: '#24543a', contrast: '#ffffff' },
-  ADMIRAL: { color: '#25335f', contrast: '#ffffff' },
+  BASILEUS: { color: '#B89222', contrast: '#ffffff' },
+  DOM_WEST: { color: '#832525', contrast: '#ffffff' },
+  DOM_EAST: { color: '#256A42', contrast: '#ffffff' },
+  ADMIRAL: { color: '#263F83', contrast: '#ffffff' },
   PATRIARCH: { color: '#111111', contrast: '#ffffff' },
 };
 

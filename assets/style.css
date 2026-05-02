@@ -35,8 +35,8 @@
   /* Status */
   --occupied:      #3a2020;
   --occupied-border: #6b3333;
-  --free-fill:     #8f6a96;
-  --free-border:   #6e4d73;
+  --free-fill:     #B56BD0;
+  --free-border:   #8E48A7;
   --church-fill:   #1a2540;
   --church-border: #3a5580;
 
@@ -1621,13 +1621,13 @@ body {
 
   --occupied: #fbf4e5;
   --occupied-border: #a69476;
-  --free-fill: #8f6a96;
-  --free-border: #6e4d73;
+  --free-fill: #B56BD0;
+  --free-border: #8E48A7;
   --church-fill: #b7b3c8;
   --church-border: #6d3a76;
-  --empire-border: rgba(86, 83, 76, 0.92);
-  --empire-border-hover: #69655b;
-  --capital-fill: #80661f;
+  --empire-border: #332B24;
+  --empire-border-hover: #44382E;
+  --capital-fill: #B89222;
 }
 
 body {

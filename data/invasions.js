@@ -99,12 +99,12 @@ export const DYNASTIES = [
   'Kontostephanos', 'Kantakouzenos', 'Palaiologos'
 ];
 
-// Dynasty colors — muted ownership colours with clear separation from
-// the regional command palette, free-citizen purple, and neutral outlines.
+// Dynasty colors — clear, controlled ownership colours with clear separation from
+// the regional command palette, free-citizen violet, and neutral outlines.
 export const DYNASTY_COLORS = [
-  '#b87468', // salmon
-  '#7faa7a', // pale green
-  '#4a9b98', // turquoise
-  '#c38f9b', // pink
-  '#9c3e4e', // crimson
+  '#E0C64A', // player yellow
+  '#D96B5A', // player red
+  '#6294D0', // player blue
+  '#72BF7A', // player green
+  '#E89248', // player orange
 ];
