@@ -170,16 +170,13 @@ function normalizeHumanPlayerIds(playerCount, humanPlayerIds = []) {
 
 export function getPersonalityProfile(meta, playerId) {
   const playerMeta = meta.players[playerId];
-  if (playerMeta?.profile) return playerMeta.profile;
-  const personalityId = playerMeta?.personalityId;
-  return PERSONALITIES[personalityId] || NEUTRAL_PROFILE;
+  return playerMeta?.profile || NEUTRAL_PROFILE;
 }
 
 // ---------------------------------------------------------------------------
 // Tier 2: meta-parameter access. Magic constants from brain.js are now stored
 // on each profile under `meta`. getMeta(profile, key) returns the evolved
-// value or the legacy default — so behaviour with default profiles is
-// identical to before.
+// value or the profile default when absent.
 // ---------------------------------------------------------------------------
 function getMeta(profile, key) {
   if (!profile) return DEFAULT_META_PARAMS[key];
@@ -930,9 +927,9 @@ function buildTitleAssignmentDecision(state, meta, newBasileusId, plan) {
   };
 }
 
-export function samplePersonalityIds(rng, playerCount, allowedPersonalityIds, populationPresetId, humanPlayerIds = []) {
+export function samplePersonalityIds(rng, playerCount, allowedPersonalityIds = [], populationPresetId, humanPlayerIds = []) {
   const humanIds = normalizeHumanPlayerIds(playerCount, humanPlayerIds);
-  const preset = POPULATION_PRESETS[populationPresetId] || POPULATION_PRESETS.balanced;
+  const preset = POPULATION_PRESETS[populationPresetId] || POPULATION_PRESETS.trained || { weights: {} };
   const pool = allowedPersonalityIds
     .filter(personalityId => PERSONALITIES[personalityId])
     .map(personalityId => ({
@@ -942,12 +939,13 @@ export function samplePersonalityIds(rng, playerCount, allowedPersonalityIds, po
 
   const totalWeight = sum(pool.map(entry => entry.weight));
   const pickOne = () => {
+    if (!pool.length || totalWeight <= 0) return null;
     let cursor = rng() * totalWeight;
     for (const entry of pool) {
       cursor -= entry.weight;
       if (cursor <= 0) return entry.id;
     }
-    return pool[pool.length - 1]?.id || 'reciprocator';
+    return pool[pool.length - 1]?.id || null;
   };
 
   const personalities = [];
@@ -981,7 +979,7 @@ export function createAIMeta(state, options = {}) {
   const humanPlayerIds = normalizeHumanPlayerIds(state.players.length, options.humanPlayerIds || []);
   const allowedPersonalities = (options.allowedPersonalityIds || Object.keys(PERSONALITIES))
     .filter(personalityId => PERSONALITIES[personalityId]);
-  const populationPresetId = POPULATION_PRESETS[options.populationPresetId] ? options.populationPresetId : 'balanced';
+  const populationPresetId = POPULATION_PRESETS[options.populationPresetId] ? options.populationPresetId : 'trained';
   const sampledPersonalityIds = samplePersonalityIds(
     state.rng,
     state.players.length,
@@ -998,17 +996,20 @@ export function createAIMeta(state, options = {}) {
     const customProfile = humanPlayerIds.has(player.id) ? null : normalizeAiProfile(options.seatProfiles?.[player.id]);
     const personalityId = humanPlayerIds.has(player.id)
       ? null
-      : (customProfile?.id || personalityIds[player.id] || allowedPersonalities[0] || 'reciprocator');
-    const profile = customProfile || PERSONALITIES[personalityId] || NEUTRAL_PROFILE;
+      : (customProfile?.id || personalityIds[player.id] || null);
+    const profile = customProfile || (personalityId ? PERSONALITIES[personalityId] : null);
+    if (!humanPlayerIds.has(player.id) && !profile) {
+      throw new Error(`AI player ${player.id + 1} requires a trained AI profile. No default personality fallback is available.`);
+    }
     const tactics = customProfile?.tactics
       ? PROFILE_TACTIC_KEYS.reduce((accumulator, key) => {
         accumulator[key] = customProfile.tactics[key];
         return accumulator;
       }, {})
-      : buildProfileTactics(profile, state.rng);
+      : buildProfileTactics(profile || NEUTRAL_PROFILE, state.rng);
     players[player.id] = {
       personalityId,
-      profile: customProfile,
+      profile: profile || null,
       trust: {},
       grievance: {},
       obligations: {},
@@ -1052,7 +1053,7 @@ export function createAIMeta(state, options = {}) {
   const profileBasisMap = new Map([[NEUTRAL_PROFILE.id, NEUTRAL_PROFILE]]);
   for (const player of state.players) {
     const playerMeta = players[player.id];
-    const profile = playerMeta.profile || PERSONALITIES[playerMeta.personalityId] || NEUTRAL_PROFILE;
+    const profile = playerMeta.profile || NEUTRAL_PROFILE;
     const profileId = profile.id || playerMeta.personalityId || `player-${player.id}`;
     if (!profileBasisMap.has(profileId)) {
       profileBasisMap.set(profileId, { ...profile, id: profileId });

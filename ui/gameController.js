@@ -43,7 +43,6 @@ import {
   observeCourtAction,
   runAICourtAutomation,
 } from '../ai/brain.js';
-import { PERSONALITIES } from '../ai/personalities.js';
 import { createMapSVG, updateMapState, drawInvasionRoute, setSelectedProvince } from '../render/mapRenderer.js';
 import {
   renderCourtPanel,
@@ -64,7 +63,7 @@ export class GameController {
       humanPlayerIds: Array.isArray(config.humanPlayerIds)
         ? config.humanPlayerIds.slice()
         : Array.from({ length: config.playerCount || 4 }, (_, index) => index),
-      aiPopulationPreset: config.aiPopulationPreset || 'balanced',
+      aiPopulationPreset: config.aiPopulationPreset || 'trained',
       aiPersonalityIds: Array.isArray(config.aiPersonalityIds)
         ? config.aiPersonalityIds.slice()
         : null,
@@ -133,20 +132,11 @@ export class GameController {
       }
       const aiMetaForPlayer = this.aiMeta?.players?.[player.id];
       const profile = aiMetaForPlayer?.profile;
-      const personalityId = aiMetaForPlayer?.personalityId;
-      const personalityName = profile?.name
-        || (personalityId ? this.getPersonalityNameById(personalityId) : null);
+      const personalityName = profile?.name || null;
       if (personalityName) {
         player.firstName = personalityName;
       }
     }
-  }
-
-  getPersonalityNameById(personalityId) {
-    const built = PERSONALITIES?.[personalityId]?.name;
-    if (built) return built;
-    if (typeof personalityId !== 'string' || !personalityId.length) return null;
-    return personalityId.charAt(0).toUpperCase() + personalityId.slice(1);
   }
 
   isHumanPlayer(playerId) {

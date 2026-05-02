@@ -1,3 +1,4 @@
+import { listAvailableAiProfiles } from '../ai/profileStore.js';
 import { computeFullWealth } from '../engine/actions.js';
 import { runAdministration } from '../engine/cascade.js';
 import { getPlayer, formatPlayerLabel } from '../engine/state.js';
@@ -171,6 +172,7 @@ export async function launchMultiplayerClient(options = {}) {
     sessionToken: payload.sessionToken,
     seatToken: payload.seatToken || stored?.seatToken || '',
     roomSnapshot: payload.roomSnapshot || null,
+    aiProfiles: Array.isArray(options.aiProfiles) ? options.aiProfiles : [],
   });
 
   controller.persistSession();
@@ -187,6 +189,7 @@ export class MultiplayerController {
     this.sessionToken = String(options.sessionToken || '').trim();
     this.seatToken = String(options.seatToken || '').trim();
     this.roomSnapshot = options.roomSnapshot || null;
+    this.aiProfiles = Array.isArray(options.aiProfiles) ? options.aiProfiles.slice() : [];
     this.publicSnapshot = null;
     this.privateSnapshot = null;
     this.state = null;
@@ -405,6 +408,19 @@ export class MultiplayerController {
       this.lastError = '';
       this.render();
     }
+  }
+
+  hasAiSeats() {
+    return (this.roomSnapshot?.seats || []).some((seat) => seat.kind === 'ai');
+  }
+
+  async refreshHostAiProfiles() {
+    try {
+      this.aiProfiles = await listAvailableAiProfiles();
+    } catch {
+      this.aiProfiles = [];
+    }
+    return this.aiProfiles;
   }
 
   bindUiChrome() {
@@ -806,6 +822,11 @@ export class MultiplayerController {
             `).join('')}
           </div>
         </div>
+        ${isHost && this.hasAiSeats() ? `
+          <div class="setup-hint">${this.aiProfiles.length
+            ? `${this.aiProfiles.length} trained AI profile${this.aiProfiles.length === 1 ? '' : 's'} ready for multiplayer AI seats.`
+            : 'AI seats require trained profiles. The host profile library will be loaded before starting.'}</div>
+        ` : ''}
         <div class="setup-actions">
           ${isHost ? `<button class="btn-start" id="btnStartRoom" ${this.roomSnapshot.canStart ? '' : 'disabled'}>Start Match</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
           <button class="btn-secondary-link" type="button" id="btnLeaveRoom">${controlledSeatId != null && !isHost ? 'Leave Seat' : 'Close Connection'}</button>
@@ -828,14 +849,20 @@ export class MultiplayerController {
       });
     });
 
-    this.setupDialog.querySelector('#btnStartRoom')?.addEventListener('click', () => {
+    this.setupDialog.querySelector('#btnStartRoom')?.addEventListener('click', async () => {
       const playerCount = Number(this.setupDialog.querySelector('#roomPlayerCount')?.value || config.playerCount || 4);
       const deckSize = Number(this.setupDialog.querySelector('#roomDeckSize')?.value || config.deckSize || 9);
       const seed = this.setupDialog.querySelector('#roomSeedInput')?.value?.trim() || '';
+      const aiProfiles = await this.refreshHostAiProfiles();
+      if (this.hasAiSeats() && !aiProfiles.length) {
+        this.lastError = 'Cannot start with AI seats: no trained AI profiles are available. Save champions to the library or export trained profiles first.';
+        this.render();
+        return;
+      }
       this.send('set_room_config', {
         config: { playerCount, deckSize, seed },
       });
-      this.send('start_game');
+      this.send('start_game', { aiProfiles });
     });
 
     this.setupDialog.querySelector('#btnLeaveRoom')?.addEventListener('click', () => {

@@ -556,12 +556,17 @@ function trainingStage(generation, totalGenerations) {
   return 'late';
 }
 
+function withoutUnavailableSources(pattern) {
+  if (Object.keys(PERSONALITIES).length) return pattern;
+  return pattern.map(source => (source === 'legacy' ? 'emergent' : source));
+}
+
 function getPatternForSuite(scope, stage) {
-  if (scope === 'validation') return ['scripted', 'legacy', 'emergent', 'hof'];
-  if (scope === 'holdout') return ['scripted', 'legacy', 'hof', 'emergent', 'scripted'];
-  if (stage === 'early') return ['population', 'emergent', 'legacy', 'scripted'];
-  if (stage === 'mid') return ['population', 'scripted', 'emergent', 'legacy', 'hof'];
-  return ['population', 'hof', 'scripted', 'legacy', 'emergent'];
+  if (scope === 'validation') return withoutUnavailableSources(['scripted', 'legacy', 'emergent', 'hof']);
+  if (scope === 'holdout') return withoutUnavailableSources(['scripted', 'legacy', 'hof', 'emergent', 'scripted']);
+  if (stage === 'early') return withoutUnavailableSources(['population', 'emergent', 'legacy', 'scripted']);
+  if (stage === 'mid') return withoutUnavailableSources(['population', 'scripted', 'emergent', 'legacy', 'hof']);
+  return withoutUnavailableSources(['population', 'hof', 'scripted', 'legacy', 'emergent']);
 }
 
 function createFreshEmergentProfile(seedKey) {
@@ -572,11 +577,19 @@ function createFreshEmergentProfile(seedKey) {
 function buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex) {
   if (source === 'legacy') {
     const legacyIds = Object.keys(PERSONALITIES);
-    const legacyId = legacyIds[(matchIndex + slotIndex) % legacyIds.length];
+    if (legacyIds.length) {
+      const legacyId = legacyIds[(matchIndex + slotIndex) % legacyIds.length];
+      return {
+        source,
+        bucket: `legacy:${legacyId}`,
+        profile: PERSONALITIES[legacyId],
+      };
+    }
+    const profile = createFreshEmergentProfile(`${scope}:g${generation}:m${matchIndex}:s${slotIndex}:legacy-replacement`);
     return {
-      source,
-      bucket: `legacy:${legacyId}`,
-      profile: PERSONALITIES[legacyId],
+      source: 'emergent',
+      bucket: getEmergentBucket(profile),
+      profile,
     };
   }
 
@@ -668,8 +681,8 @@ function materializeOpponentDescriptor(descriptor, candidate, population, hallOf
 
   if (descriptor.source === 'hof') {
     return pickHallOfFameOpponent(hallOfFame, descriptor.offset) || {
-      bucket: `legacy:${Object.keys(PERSONALITIES)[descriptor.offset % Object.keys(PERSONALITIES).length]}`,
-      profile: PERSONALITIES[Object.keys(PERSONALITIES)[descriptor.offset % Object.keys(PERSONALITIES).length]],
+      bucket: getEmergentBucket(NEUTRAL_PROFILE),
+      profile: createFreshEmergentProfile(`hof-fallback:${descriptor.offset}`),
     };
   }
 

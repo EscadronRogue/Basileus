@@ -271,6 +271,9 @@ async function verifyLobbyAndStart() {
     const gameSnapshot = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
     assert.equal(gameSnapshot.status, 'in_progress');
     assert.equal(gameSnapshot.state.phase, 'court');
+    const trainedNames = new Set((await instance.manager.getAvailableAiProfiles()).map((profile) => profile.name));
+    assert.ok(trainedNames.size > 0);
+    assert.ok(trainedNames.has(gameSnapshot.state.players[2].firstName));
 
     await guestSocket.close();
     await hostSocket.close();

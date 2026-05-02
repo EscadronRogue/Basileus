@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { listAvailableAiProfiles } from '../ai/profileStore.js';
+import { listAvailableAiProfiles, normalizeAiProfile } from '../ai/profileStore.js';
 import { createRoom } from './session.js';
 import { attachWebSocketServer } from './wsServer.js';
 
@@ -39,6 +39,33 @@ export function parseMultiplayerRequestJson(req) {
 function normalizePlayerName(rawName) {
   const text = String(rawName || '').trim();
   return text || 'Guest';
+}
+
+
+function normalizeClientAiProfiles(rawProfiles) {
+  const normalized = [];
+  const seen = new Set();
+  for (const rawProfile of Array.isArray(rawProfiles) ? rawProfiles.slice(0, 128) : []) {
+    const profile = normalizeAiProfile(rawProfile);
+    if (!profile || seen.has(profile.id)) continue;
+    seen.add(profile.id);
+    normalized.push({ ...profile, librarySource: profile.librarySource || 'host' });
+  }
+  return normalized;
+}
+
+function mergeAiProfileLibraries(serverProfiles = [], hostProfiles = []) {
+  const merged = new Map();
+  for (const profile of normalizeClientAiProfiles(serverProfiles)) {
+    merged.set(profile.id, profile);
+  }
+  for (const profile of normalizeClientAiProfiles(hostProfiles)) {
+    merged.set(profile.id, {
+      ...profile,
+      librarySource: merged.has(profile.id) ? 'host+server' : 'host',
+    });
+  }
+  return [...merged.values()];
 }
 
 export class MultiplayerRoomManager {
@@ -211,7 +238,7 @@ export function attachMultiplayerSocketServer(server, manager, options = {}) {
         }
 
         const aiProfiles = message?.type === 'start_game'
-          ? await manager.getAvailableAiProfiles()
+          ? mergeAiProfileLibraries(await manager.getAvailableAiProfiles(), message.aiProfiles)
           : [];
         await activeRoom.handleClientMessage(activeSessionId, message, aiProfiles);
       } catch (error) {

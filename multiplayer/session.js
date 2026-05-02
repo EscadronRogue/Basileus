@@ -38,7 +38,6 @@ import {
   observeCourtAction,
   runAICourtAutomation,
 } from '../ai/brain.js';
-import { PERSONALITIES } from '../ai/personalities.js';
 
 export const ROOM_STATUS = {
   LOBBY: 'lobby',
@@ -495,6 +494,9 @@ export class MultiplayerRoom {
     assert(this.isHostSession(sessionId), 'Only the host can start the room.');
     assert(this.canStartGame(), 'Every human seat must be claimed before starting.');
 
+    const aiSeatIds = getAiSeatIds(this);
+    assert(!aiSeatIds.length || availableAiProfiles.length > 0, 'AI seats require at least one trained AI profile. Save or export trained profiles before starting multiplayer with AI seats.');
+
     const seed = resolveConfiguredSeed(this.config.seed);
     this.gameState = createGameState({
       playerCount: this.config.playerCount,
@@ -505,7 +507,7 @@ export class MultiplayerRoom {
 
     const humanPlayerIds = getHumanSeatIds(this);
     const seatProfiles = {};
-    for (const seatId of getAiSeatIds(this)) {
+    for (const seatId of aiSeatIds) {
       const profile = randomPick(this.gameState.rng, availableAiProfiles);
       if (profile) seatProfiles[seatId] = profile;
     }
@@ -547,10 +549,7 @@ export class MultiplayerRoom {
       }
       const aiMetaForPlayer = this.aiMeta?.players?.[player.id];
       const profile = aiMetaForPlayer?.profile;
-      const personalityId = aiMetaForPlayer?.personalityId;
-      const personalityName = profile?.name
-        || (personalityId ? (PERSONALITIES?.[personalityId]?.name
-          || (personalityId.charAt(0).toUpperCase() + personalityId.slice(1))) : null);
+      const personalityName = profile?.name || null;
       if (personalityName) {
         player.firstName = personalityName;
       }

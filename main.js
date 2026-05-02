@@ -245,6 +245,9 @@ async function launchMultiplayerFlow(intent) {
     if (typeof window.__basileus?.disconnect === 'function') {
       window.__basileus.disconnect();
     }
+    const multiplayerAiProfiles = intent === 'create'
+      ? await refreshAvailableAiProfiles()
+      : [];
     const multiplayer = await launchMultiplayerClient({
       intent,
       setupDialog,
@@ -255,6 +258,7 @@ async function launchMultiplayerFlow(intent) {
         deckSize,
         seed: seedInput,
       },
+      aiProfiles: multiplayerAiProfiles,
     });
     window.__basileus = multiplayer;
     setMultiplayerError('');

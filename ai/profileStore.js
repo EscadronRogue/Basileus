@@ -3,7 +3,6 @@ import {
   META_PARAM_DEFS,
   META_PARAM_KEYS,
   NEUTRAL_PROFILE,
-  PERSONALITIES,
   PROFILE_TACTIC_KEYS,
   PROFILE_WEIGHT_KEYS,
 } from './personalities.js';
@@ -19,6 +18,34 @@ const EXPORTED_PROFILE_MANIFEST_PATHS = [
   'trained-personalities/latest/manifest.json',
   'trained-personalities/definitive/manifest.json',
 ];
+
+function isNodeRuntime() {
+  return typeof window === 'undefined'
+    && typeof process !== 'undefined'
+    && Boolean(process.versions?.node);
+}
+
+async function readProjectJsonMaybe(relativePath) {
+  if (!isNodeRuntime()) return null;
+  const normalizedPath = String(relativePath || '').replace(/^\/+/, '');
+  if (!normalizedPath || normalizedPath.startsWith('api/')) return null;
+
+  try {
+    const [{ readFile }, { dirname, isAbsolute, relative, resolve }, { fileURLToPath }] = await Promise.all([
+      import('node:fs/promises'),
+      import('node:path'),
+      import('node:url'),
+    ]);
+    const profileStoreDir = dirname(fileURLToPath(import.meta.url));
+    const projectRoot = resolve(profileStoreDir, '..');
+    const filePath = resolve(projectRoot, normalizedPath);
+    const relativePathFromRoot = relative(projectRoot, filePath);
+    if (relativePathFromRoot.startsWith('..') || isAbsolute(relativePathFromRoot)) return null;
+    return JSON.parse(await readFile(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -126,6 +153,9 @@ function sortProfiles(profiles) {
 }
 
 async function fetchJsonMaybe(path) {
+  const fromDisk = await readProjectJsonMaybe(path);
+  if (fromDisk) return fromDisk;
+
   if (typeof fetch !== 'function') return null;
   try {
     const response = await fetch(path, { cache: 'no-store' });
@@ -136,24 +166,33 @@ async function fetchJsonMaybe(path) {
   }
 }
 
-function resolveManifestBaseDir(manifestPath, manifest) {
+function resolveManifestBaseDirs(manifestPath, manifest) {
   const manifestDir = manifestPath.replace(/[^/]+$/, '');
-  if (manifestPath.endsWith('/latest/latest-manifest.json') && manifest?.runId) {
-    return `${manifestDir}${manifest.runId}/`;
+  const dirs = [manifestDir];
+  if (manifestPath.includes('/latest/') && manifest?.runId) {
+    dirs.push(`trained-personalities/runs/${manifest.runId}/`);
   }
-  return manifestDir;
+  return [...new Set(dirs)];
+}
+
+async function fetchFirstJsonMaybe(paths) {
+  for (const path of paths) {
+    const json = await fetchJsonMaybe(path);
+    if (json) return json;
+  }
+  return null;
 }
 
 async function loadProfilesFromManifest(manifestPath) {
   const manifest = await fetchJsonMaybe(manifestPath);
   if (!manifest || !Array.isArray(manifest.files) || !manifest.files.length) return [];
 
-  const baseDir = resolveManifestBaseDir(manifestPath, manifest);
+  const baseDirs = resolveManifestBaseDirs(manifestPath, manifest);
   const loadedProfiles = await Promise.all(
     manifest.files
       .map(entry => entry?.file)
       .filter(Boolean)
-      .map(fileName => fetchJsonMaybe(`${baseDir}${fileName}`))
+      .map(fileName => fetchFirstJsonMaybe(baseDirs.map(baseDir => `${baseDir}${fileName}`)))
   );
 
   return loadedProfiles
@@ -232,10 +271,7 @@ function dominantWeightLabels(weights) {
 function buildAutoSummary(profile) {
   const topLabels = dominantWeightLabels(profile.weights);
   const topText = topLabels.length ? topLabels.join(' and ') : 'balanced play';
-  const sourceText = profile.basePersonalityId && PERSONALITIES[profile.basePersonalityId]
-    ? `Evolved from ${PERSONALITIES[profile.basePersonalityId].name.toLowerCase()} instincts`
-    : 'Self-play evolved';
-  return `${sourceText}, leaning on ${topText}.`;
+  return `Self-play evolved, leaning on ${topText}.`;
 }
 
 function normalizeWeights(rawWeights = {}) {
@@ -263,20 +299,8 @@ function normalizeMetaParams(rawMeta = {}) {
   return normalized;
 }
 
-function inferBasePersonalityId(weights) {
-  let bestId = 'reciprocator';
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const [personalityId, personality] of Object.entries(PERSONALITIES)) {
-    let distance = 0;
-    for (const key of PROFILE_WEIGHT_KEYS) {
-      distance += Math.abs((weights[key] || 0) - (personality.weights[key] || 0));
-    }
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestId = personalityId;
-    }
-  }
-  return bestId;
+function inferBasePersonalityId() {
+  return null;
 }
 
 function normalizeTrainingMetadata(rawTraining = {}) {
@@ -353,16 +377,10 @@ export function normalizeAiProfile(rawProfile = null) {
   const weights = normalizeWeights(rawProfile.weights || {});
   const tactics = normalizeTactics(rawProfile.tactics || {});
   const meta = normalizeMetaParams(rawProfile.meta || {});
-  const hasExplicitBase = Object.prototype.hasOwnProperty.call(rawProfile, 'basePersonalityId');
-  let basePersonalityId = null;
-  if (PERSONALITIES[rawProfile.basePersonalityId]) {
-    basePersonalityId = rawProfile.basePersonalityId;
-  } else if (!hasExplicitBase && !['trained', 'emergent-trained'].includes(String(rawProfile.source || '').trim())) {
-    basePersonalityId = inferBasePersonalityId(weights);
-  }
-  const fallbackName = PERSONALITIES[basePersonalityId]?.name
-    ? `Trained ${PERSONALITIES[basePersonalityId].name}`
-    : (['trained', 'emergent-trained'].includes(String(rawProfile.source || '').trim()) ? 'Emergent AI' : 'Custom AI');
+  const basePersonalityId = inferBasePersonalityId(weights);
+  const fallbackName = ['trained', 'emergent-trained'].includes(String(rawProfile.source || '').trim())
+    ? 'Emergent AI'
+    : 'Custom AI';
   const name = String(rawProfile.name || fallbackName).trim() || fallbackName;
   const id = String(rawProfile.id || createProfileId(name)).trim() || createProfileId(name);
   const profile = {
