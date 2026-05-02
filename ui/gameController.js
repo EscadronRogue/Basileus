@@ -82,11 +82,13 @@ export class GameController {
     this.activePlayer = this.config.humanPlayerIds[0] ?? 0;
     this.uiState = {
       panels: {
-        dashboard: true,
-        history: true,
+        dashboard: false,
+        history: false,
         action: true,
       },
-      sections: {},
+      sections: {
+        'court:land': true,
+      },
       dashboardFocus: null,
     };
     this.gameOverDismissed = false;
