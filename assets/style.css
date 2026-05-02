@@ -1952,7 +1952,7 @@ body::before {
   visibility: hidden;
   fill: url(#threat-hatch);
   fill-opacity: 1;
-  stroke: rgba(112,32,28,0.55);
+  stroke: var(--region-border, #2e1e0f);
   stroke-width: 0.45;
   vector-effect: non-scaling-stroke;
   pointer-events: none;

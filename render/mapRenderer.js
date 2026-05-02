@@ -65,10 +65,6 @@ export async function createMapSVG(containerId, options = {}) {
       <clipPath id="map-frame-clip">
         <rect width="297" height="210" rx="5" ry="5"/>
       </clipPath>
-      <pattern id="threat-hatch" width="3.6" height="3.6" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
-        <line x1="0" y1="0" x2="0" y2="3.6" stroke="rgba(112, 32, 28, 0.95)" stroke-width="1.4"/>
-        <line x1="1.8" y1="0" x2="1.8" y2="3.6" stroke="rgba(238, 196, 110, 0.55)" stroke-width="0.7"/>
-      </pattern>
     </defs>
   `;
 
@@ -225,6 +221,13 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
     configureProvincePath(path, provinceId, 'province-threat-overlay', 'province-threat');
     path.style.fill = 'url(#threat-hatch)';
     path.style.fillOpacity = '1';
+
+    // Apply region border color so the overlay stroke matches the province outline
+    const province = PROVINCES.find((p) => p.id === provinceId);
+    if (province) {
+      const regionColor = REGION_BORDER_COLORS[province.region];
+      if (regionColor) path.style.setProperty('--region-border', regionColor);
+    }
   }
 
   visualLayer.appendChild(visualImported);
@@ -297,15 +300,18 @@ function configureThreatHatchPatterns(svg) {
     const provinceId = path.getAttribute('data-id');
     if (!provinceId) return;
 
+    const province = PROVINCES.find((p) => p.id === provinceId);
+    const regionColor = REGION_BORDER_COLORS[province?.region] || '#2e1e0f';
+
     const patternId = `threat-hatch-${provinceId}`;
     const visualPath = svg.querySelector(`.province-shape[data-id="${provinceId}"]`);
-    appendThreatHatchPattern(defs, patternId, getElementLinearScale(visualPath || path));
+    appendThreatHatchPattern(defs, patternId, getElementLinearScale(visualPath || path), regionColor);
     path.setAttribute('fill', `url(#${patternId})`);
     path.style.fill = `url(#${patternId})`;
   });
 }
 
-function appendThreatHatchPattern(defs, patternId, linearScale) {
+function appendThreatHatchPattern(defs, patternId, linearScale, regionColor) {
   const scale = Math.max(MIN_THREAT_HATCH_SCALE, Number(linearScale) || 1);
   const spacing = THREAT_HATCH_SPACING / scale;
 
@@ -315,10 +321,10 @@ function appendThreatHatchPattern(defs, patternId, linearScale) {
   pattern.setAttribute('width', String(spacing));
   pattern.setAttribute('height', String(spacing));
   pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-  pattern.setAttribute('patternTransform', 'rotate(35)');
+  pattern.setAttribute('patternTransform', 'rotate(45)');
 
-  pattern.appendChild(createThreatHatchLine(0, spacing, THREAT_HATCH_PRIMARY_STROKE / scale, '#70201c', '0.95'));
-  pattern.appendChild(createThreatHatchLine(spacing / 2, spacing, THREAT_HATCH_SECONDARY_STROKE / scale, '#eec46e', '0.55'));
+  // Single-color hatch using the province's region border color
+  pattern.appendChild(createThreatHatchLine(0, spacing, THREAT_HATCH_PRIMARY_STROKE / scale, regionColor, '0.85'));
   defs.appendChild(pattern);
 }
 
