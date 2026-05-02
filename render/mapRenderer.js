@@ -13,15 +13,25 @@ const MIN_THREAT_HATCH_SCALE = 0.001;
 // region color along the border) while adjacent provinces of different
 // regions produce phase-shifted dashes that interlock visually, giving the
 // shared edge the appearance of alternating between the two region colors.
-const REGION_PATTERN_PERIOD = 4;
+//
+// The strokes that consume these patterns are rendered in a dedicated layer
+// above all province fills (`layer-region-stroke`). That separation is what
+// actually makes the alternation visible: if the strokes lived on the same
+// paths as the fills, each province's translucent fill would paint over the
+// half of the neighbouring province's stroke that extends across the
+// shared edge, and the dominant colour would just be whichever path drew
+// last regardless of the pattern phases.
+const REGION_PATTERN_PERIOD = 6;
 const REGION_PATTERN_ROTATION = 45;
-const REGION_PATTERN_STRIPE_WIDTH = 2;
+const REGION_PATTERN_STRIPE_WIDTH = 3;
 const REGION_PATTERN_LAYOUT = {
   // x offsets phase-shift each region inside the shared period.
-  east: 0,                                  // [0, 2]
-  west: REGION_PATTERN_PERIOD / 2,          // [2, 4]
-  sea:  REGION_PATTERN_PERIOD / 4,          // [1, 3]
-  cpl:  0,                                  // CPL piggybacks on east
+  // East/West are exactly 180° out of phase → perfect alternation on
+  // East–West edges (the most common cross-region case).
+  east: 0,                                          // [0, 3]
+  west: REGION_PATTERN_PERIOD / 2,                  // [3, 6]
+  sea:  REGION_PATTERN_PERIOD / 4,                  // [1.5, 4.5]
+  cpl:  0,                                          // CPL piggybacks on east
 };
 
 let provinceCentroids = {};
@@ -127,6 +137,7 @@ export async function createMapSVG(containerId, options = {}) {
   const bgLayer = createGroup(viewportLayer, 'layer-bg-map');
   const invasionLayer = createGroup(viewportLayer, 'layer-invasion');
   const provinceLayer = createGroup(viewportLayer, 'layer-hitzones');
+  const regionStrokeLayer = createGroup(viewportLayer, 'layer-region-stroke');
   const threatLayer = createGroup(viewportLayer, 'layer-threats');
   const hitboxLayer = createGroup(viewportLayer, 'layer-hitboxes');
   const labelLayer = createGroup(viewportLayer, 'layer-labels');
@@ -134,7 +145,7 @@ export async function createMapSVG(containerId, options = {}) {
 
   importBackgroundMap(svg, bgLayer, MAP_BACKGROUND_SVG);
   configureRegionStrokePatterns(svg);
-  importProvinceShapes(provinceLayer, threatLayer, hitboxLayer, HITZONES_SVG);
+  importProvinceShapes(provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, HITZONES_SVG);
 
   container.replaceChildren(svg);
   configureThreatHatchPatterns(svg);
@@ -183,7 +194,7 @@ function appendDimOverlay(parent) {
   parent.appendChild(dimRect);
 }
 
-function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
+function importProvinceShapes(visualLayer, regionStrokeLayer, threatLayer, hitboxLayer, svgText) {
   const sourceSvg = parseSvgRoot(svgText);
   if (!sourceSvg) return;
 
@@ -199,6 +210,17 @@ function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
     if (!isProvinceId(provinceId)) continue;
 
     configureProvincePath(path, provinceId, `province-shape province-${provinceId}`, 'province');
+  }
+
+  const regionStrokeImported = document.importNode(provinceGroup, true);
+  regionStrokeImported.id = 'region-stroke-container';
+  stripSvgClipping(regionStrokeImported);
+
+  for (const path of regionStrokeImported.querySelectorAll('path')) {
+    const provinceId = path.getAttribute('id') || '';
+    if (!isProvinceId(provinceId)) continue;
+
+    configureProvincePath(path, provinceId, 'region-stroke', 'region-stroke');
     applyRegionBorder(path, provinceId);
   }
 
@@ -227,6 +249,7 @@ function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
   }
 
   visualLayer.appendChild(visualImported);
+  regionStrokeLayer.appendChild(regionStrokeImported);
   threatLayer.appendChild(threatImported);
   hitboxLayer.appendChild(hitboxImported);
 }
@@ -542,12 +565,13 @@ export function getCentroids() {
 }
 
 export function setSelectedProvince(provinceId) {
-  document.querySelectorAll('.province-shape.selected, .province-label.selected, .province-name.selected, .province-values.selected')
+  document.querySelectorAll('.province-shape.selected, .region-stroke.selected, .province-label.selected, .province-name.selected, .province-values.selected')
     .forEach((element) => element.classList.remove('selected'));
 
   if (!provinceId) return;
 
   document.querySelector(`.province-shape[data-id="${provinceId}"]`)?.classList.add('selected');
+  document.querySelector(`.region-stroke[data-id="${provinceId}"]`)?.classList.add('selected');
   document.querySelector(`.province-label[data-id="${provinceId}"]`)?.classList.add('selected');
   document.querySelector(`.province-name[data-id="${provinceId}"]`)?.classList.add('selected');
   document.querySelector(`.province-values[data-id="${provinceId}"]`)?.classList.add('selected');
@@ -576,10 +600,12 @@ function findProvinceAtClientPoint(svg, clientX, clientY) {
 function updateHoveredProvince(provinceId) {
   if (hoveredProvinceId && hoveredProvinceId !== provinceId) {
     document.querySelector(`.province-shape[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
+    document.querySelector(`.region-stroke[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
   }
 
   if (provinceId) {
     document.querySelector(`.province-shape[data-id="${provinceId}"]`)?.classList.add('hovered');
+    document.querySelector(`.region-stroke[data-id="${provinceId}"]`)?.classList.add('hovered');
   }
 
   hoveredProvinceId = provinceId;
