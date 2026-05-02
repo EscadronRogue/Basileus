@@ -99,13 +99,14 @@ export const DYNASTIES = [
   'Kontostephanos', 'Kantakouzenos', 'Palaiologos'
 ];
 
-// Dynasty colors — rich, saturated ownership colors that read clearly on the
-// parchment map and in the sidebar. Deliberately separated from region border
-// colors (gold/crimson/green/blue/purple) to avoid confusion.
+// Dynasty colors — chosen to be clearly distinct from ALL reserved colors:
+// region borders (forest green, crimson, cobalt, gold), free-citizen amethyst,
+// church slate-blue, and invasion route colors.
+// Hues used: teal, amber-orange, rose, chartreuse, warm brown — all unoccupied.
 export const DYNASTY_COLORS = [
-  '#6b4070', // deep plum / imperial purple
-  '#2d6e48', // verdigris / Byzantine green
-  '#7a3a1e', // burnt sienna / terracotta
-  '#1e4080', // cobalt / ultramarine
-  '#8a5c14', // saffron ochre / manuscript gold
+  '#c17d20', // warm amber — rich orange-gold; distinct from pale CPL gold
+  '#2a7a70', // deep teal — clearly neither green nor blue
+  '#a03060', // deep rose — clearly neither crimson nor purple
+  '#5a7a20', // olive — yellow-green, clearly neither forest green nor gold
+  '#8a3a20', // burnt copper — warm red-brown, distinct from crimson (darker/browner) and amber
 ];

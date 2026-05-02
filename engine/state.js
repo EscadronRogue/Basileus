@@ -27,11 +27,11 @@ function clamp(value, min, max) {
 }
 
 const PLAYER_ROLE_TEXT_STYLES = {
-  BASILEUS: { color: '#9a7010', contrast: '#ffffff' }, // deep imperial gold
-  DOM_WEST: { color: '#7a2020', contrast: '#ffffff' }, // crimson west
-  DOM_EAST: { color: '#1e5c34', contrast: '#ffffff' }, // forest east
-  ADMIRAL:  { color: '#1e3a7a', contrast: '#ffffff' }, // deep navy
-  PATRIARCH:{ color: '#4a1a5c', contrast: '#ffffff' }, // church purple
+  BASILEUS: { color: '#9a7010', contrast: '#ffffff' }, // deep imperial gold — CPL region
+  DOM_WEST: { color: '#7a2020', contrast: '#ffffff' }, // deep crimson — West region
+  DOM_EAST: { color: '#1e5c34', contrast: '#ffffff' }, // deep forest green — East region
+  ADMIRAL:  { color: '#1e3a7a', contrast: '#ffffff' }, // deep cobalt — Sea region
+  PATRIARCH:{ color: '#4a1a5c', contrast: '#ffffff' }, // deep purple — church/ecclesiastical
 };
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'DOM_WEST', 'DOM_EAST', 'ADMIRAL', 'PATRIARCH'];

@@ -50,9 +50,9 @@
   --draw:      var(--umber-3);
 
   /* Map province fills */
-  --free-fill:    #7a5090;  /* muted amethyst — unowned, distinct from dynasty colors */
+  --free-fill:    #6a4a8a;  /* deep amethyst — unowned, no dynasty uses this hue */
   --free-border:  var(--purple-0);
-  --church-fill:  #3a5888;  /* slate blue — church estate */
+  --church-fill:  #2e5070;  /* dark slate blue — clearly ecclesiastical */
   --church-border: var(--church-0);
   --occupied-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
   --empire-border: #2e1e0f;
