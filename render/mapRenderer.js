@@ -1,4 +1,4 @@
-import { PROVINCES } from '../data/provinces.js';
+import { PROVINCES, REGION_BORDER_COLORS } from '../data/provinces.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
 
@@ -182,6 +182,7 @@ function importProvinceShapes(visualLayer, threatLayer, hitboxLayer, svgText) {
     if (!isProvinceId(provinceId)) continue;
 
     configureProvincePath(path, provinceId, `province-shape province-${provinceId}`, 'province');
+    applyRegionBorder(path, provinceId);
   }
 
   const hitboxImported = document.importNode(provinceGroup, true);
@@ -218,6 +219,17 @@ function configureProvincePath(path, provinceId, className, idPrefix) {
   path.setAttribute('id', `${idPrefix}-${provinceId}`);
   path.setAttribute('class', className);
   path.setAttribute('data-id', provinceId);
+}
+
+function applyRegionBorder(path, provinceId) {
+  const province = PROVINCES.find((entry) => entry.id === provinceId);
+  if (!province) return;
+
+  const color = REGION_BORDER_COLORS[province.region];
+  if (!color) return;
+
+  path.setAttribute('data-region', province.region);
+  path.style.setProperty('--region-border', color);
 }
 
 function configureThreatHatchPatterns(svg) {

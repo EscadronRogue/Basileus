@@ -1946,7 +1946,7 @@ body::before {
 .province-shape {
   fill: rgba(236, 227, 205, 0.22);
   fill-opacity: 1;
-  stroke: rgba(150, 129, 93, 0.72);
+  stroke: var(--region-border, rgba(150, 129, 93, 0.72));
   stroke-width: 0.74;
   stroke-dasharray: none;
   stroke-linejoin: round;
@@ -1959,7 +1959,7 @@ body::before {
 }
 
 .province-shape.imperial {
-  stroke: var(--empire-border);
+  stroke: var(--region-border, var(--empire-border));
 }
 
 .province-shape:hover,
@@ -1970,19 +1970,19 @@ body::before {
 
 .province-shape.imperial:hover,
 .province-shape.imperial.hovered {
-  stroke: var(--empire-border-hover);
+  stroke: var(--region-border, var(--empire-border-hover));
 }
 
 .province-shape.occupied {
   fill: rgba(251, 245, 232, 0.08);
   fill-opacity: 1;
-  stroke: rgba(166, 143, 109, 0.72);
+  stroke: var(--region-border, rgba(166, 143, 109, 0.72));
   stroke-dasharray: none;
 }
 
 .province-shape.occupied:hover,
 .province-shape.occupied.hovered {
-  stroke: rgba(182, 158, 121, 0.88);
+  stroke: var(--region-border, rgba(182, 158, 121, 0.88));
   fill: rgba(251, 245, 232, 0.14);
   filter: brightness(1.01);
 }
@@ -1990,13 +1990,13 @@ body::before {
 .province-shape.church {
   fill: rgba(183, 179, 200, 0.5);
   fill-opacity: 1;
-  stroke: var(--empire-border);
+  stroke: var(--region-border, var(--empire-border));
 }
 
 .province-shape.owned {
   fill: color-mix(in srgb, var(--owner-color, #888) 60%, rgba(249, 243, 229, 0.5));
   fill-opacity: 1;
-  stroke: var(--empire-border);
+  stroke: var(--region-border, var(--empire-border));
 }
 
 .province-shape.tax-exempt {
@@ -2007,13 +2007,13 @@ body::before {
 .province-shape.capital {
   fill: var(--capital-fill);
   fill-opacity: 1;
-  stroke: var(--empire-border);
+  stroke: var(--region-border, var(--empire-border));
 }
 
 .province-shape.free {
   fill: rgba(150, 96, 157, 0.46);
   fill-opacity: 1;
-  stroke: var(--empire-border);
+  stroke: var(--region-border, var(--empire-border));
 }
 
 .province-shape.selected,
