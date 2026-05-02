@@ -8,15 +8,17 @@ export const REGIONS = {
   CPL: 'cpl'
 };
 
-// Region border colors — vivid, mutually distinct, and distinct from any
-// dynasty/player color (see DYNASTY_COLORS in data/invasions.js) so the
-// border always communicates which region a province belongs to, regardless
-// of who controls it or whether it is occupied.
+// Region border colors — mutually distinct and distinct from any dynasty
+// player color (see DYNASTY_COLORS in data/invasions.js) so the border
+// always communicates which region a province belongs to, regardless of
+// who controls it or whether it is occupied. Saturation is intentionally
+// dialled back; the renderer also applies stroke-opacity to soften them
+// further on top of these base values.
 export const REGION_BORDER_COLORS = {
-  [REGIONS.EAST]: '#D946EF', // fuchsia
-  [REGIONS.WEST]: '#FACC15', // bright yellow
-  [REGIONS.SEA]:  '#2DD4BF', // turquoise
-  [REGIONS.CPL]:  '#D946EF'  // CPL sits in East — match east border
+  [REGIONS.EAST]: '#B85ABE', // muted fuchsia
+  [REGIONS.WEST]: '#D9B83F', // muted gold
+  [REGIONS.SEA]:  '#3FA897', // muted teal
+  [REGIONS.CPL]:  '#B85ABE'  // CPL sits in East — match east border
 };
 
 export const PROVINCES = [

@@ -1947,7 +1947,8 @@ body::before {
   fill: rgba(236, 227, 205, 0.22);
   fill-opacity: 1;
   stroke: var(--region-border, rgba(150, 129, 93, 0.72));
-  stroke-width: 0.74;
+  stroke-width: 1.7;
+  stroke-opacity: 0.78;
   stroke-dasharray: none;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -1964,7 +1965,8 @@ body::before {
 
 .province-shape:hover,
 .province-shape.hovered {
-  stroke-width: 0.94;
+  stroke-width: 2.1;
+  stroke-opacity: 0.95;
   filter: brightness(1.05) saturate(1.04);
 }
 
@@ -2000,7 +2002,7 @@ body::before {
 }
 
 .province-shape.tax-exempt {
-  stroke-width: 0.82;
+  stroke-width: 1.9;
   filter: drop-shadow(0 0 1px rgba(198, 154, 62, 0.58));
 }
 
@@ -2020,7 +2022,8 @@ body::before {
 .province-shape.selected:hover,
 .province-shape.selected.hovered {
   stroke: #d5a84a;
-  stroke-width: 1.02;
+  stroke-width: 2.4;
+  stroke-opacity: 1;
   fill-opacity: 1;
   filter: drop-shadow(0 0 1px rgba(198, 154, 62, 0.78));
 }

@@ -8,6 +8,22 @@ const THREAT_HATCH_PRIMARY_STROKE = 1.4;
 const THREAT_HATCH_SECONDARY_STROKE = 0.7;
 const MIN_THREAT_HATCH_SCALE = 0.001;
 
+// Region stroke patterns — diagonal stripes anchored in user space so that
+// adjacent provinces of the same region produce aligned dashes (consistent
+// region color along the border) while adjacent provinces of different
+// regions produce phase-shifted dashes that interlock visually, giving the
+// shared edge the appearance of alternating between the two region colors.
+const REGION_PATTERN_PERIOD = 4;
+const REGION_PATTERN_ROTATION = 45;
+const REGION_PATTERN_STRIPE_WIDTH = 2;
+const REGION_PATTERN_LAYOUT = {
+  // x offsets phase-shift each region inside the shared period.
+  east: 0,                                  // [0, 2]
+  west: REGION_PATTERN_PERIOD / 2,          // [2, 4]
+  sea:  REGION_PATTERN_PERIOD / 4,          // [1, 3]
+  cpl:  0,                                  // CPL piggybacks on east
+};
+
 let provinceCentroids = {};
 let provinceSelectHandler = null;
 let hoveredProvinceId = null;
@@ -117,6 +133,7 @@ export async function createMapSVG(containerId, options = {}) {
   const badgeLayer = createGroup(viewportLayer, 'layer-badges');
 
   importBackgroundMap(svg, bgLayer, MAP_BACKGROUND_SVG);
+  configureRegionStrokePatterns(svg);
   importProvinceShapes(provinceLayer, threatLayer, hitboxLayer, HITZONES_SVG);
 
   container.replaceChildren(svg);
@@ -225,11 +242,40 @@ function applyRegionBorder(path, provinceId) {
   const province = PROVINCES.find((entry) => entry.id === provinceId);
   if (!province) return;
 
-  const color = REGION_BORDER_COLORS[province.region];
-  if (!color) return;
+  if (!REGION_BORDER_COLORS[province.region]) return;
 
   path.setAttribute('data-region', province.region);
-  path.style.setProperty('--region-border', color);
+  path.style.setProperty('--region-border', `url(#region-stroke-${province.region})`);
+}
+
+function configureRegionStrokePatterns(svg) {
+  const defs = svg.querySelector('defs');
+  if (!defs) return;
+
+  defs.querySelectorAll('[data-region-stroke-pattern]').forEach((node) => node.remove());
+
+  for (const [region, offsetX] of Object.entries(REGION_PATTERN_LAYOUT)) {
+    const color = REGION_BORDER_COLORS[region];
+    if (!color) continue;
+
+    const pattern = document.createElementNS(SVG_NS, 'pattern');
+    pattern.setAttribute('id', `region-stroke-${region}`);
+    pattern.setAttribute('data-region-stroke-pattern', 'true');
+    pattern.setAttribute('width', String(REGION_PATTERN_PERIOD));
+    pattern.setAttribute('height', String(REGION_PATTERN_PERIOD));
+    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+    pattern.setAttribute('patternTransform', `rotate(${REGION_PATTERN_ROTATION})`);
+
+    const stripe = document.createElementNS(SVG_NS, 'rect');
+    stripe.setAttribute('x', String(offsetX));
+    stripe.setAttribute('y', '0');
+    stripe.setAttribute('width', String(REGION_PATTERN_STRIPE_WIDTH));
+    stripe.setAttribute('height', String(REGION_PATTERN_PERIOD));
+    stripe.setAttribute('fill', color);
+    pattern.appendChild(stripe);
+
+    defs.appendChild(pattern);
+  }
 }
 
 function configureThreatHatchPatterns(svg) {
