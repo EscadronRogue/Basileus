@@ -2025,10 +2025,10 @@ body::before {
   filter: drop-shadow(0 0 1px rgba(198, 154, 62, 0.78));
 }
 
-/* The .province-shape paths handle FILL only. All stroke rendering is owned
-   by the .region-stroke layer, which sits above every province fill so that
-   no neighbouring fill can paint over a province's outer-half stroke and
-   defeat the alternating-pattern effect. */
+/* The .province-shape paths handle fill only. All outline rendering lives
+   on the .region-stroke layer. Each outline is clipped to its province so the
+   full visible border sits inside the territory while still touching the true
+   border line, allowing both sides of shared borders to remain visible. */
 .province-shape,
 .province-shape.imperial,
 .province-shape.imperial:hover,
@@ -2052,25 +2052,27 @@ body::before {
 .region-stroke {
   fill: none;
   stroke: var(--region-border);
-  stroke-width: 1.6;
-  stroke-opacity: 0.82;
+  stroke-width: 4.4;
+  stroke-opacity: 0.9;
   stroke-linejoin: round;
-  stroke-linecap: butt;
+  stroke-linecap: round;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
-  transition: stroke-width 0.18s ease, stroke-opacity 0.18s ease, stroke 0.18s ease;
+  transition: stroke-width 0.18s ease, stroke-opacity 0.18s ease, stroke 0.18s ease, filter 0.18s ease;
 }
 
 .region-stroke.hovered {
-  stroke-width: 2.1;
-  stroke-opacity: 0.96;
+  stroke-width: 5.2;
+  stroke-opacity: 1;
+  filter: brightness(1.06) saturate(1.04);
 }
 
 .region-stroke.selected,
 .region-stroke.selected.hovered {
-  stroke: #d5a84a;
-  stroke-width: 2.6;
+  stroke: var(--region-border);
+  stroke-width: 6;
   stroke-opacity: 1;
+  filter: brightness(1.15) saturate(1.08) drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.35));
 }
 
 .province-label {

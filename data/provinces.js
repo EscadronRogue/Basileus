@@ -8,17 +8,14 @@ export const REGIONS = {
   CPL: 'cpl'
 };
 
-// Region border colors — mutually distinct and distinct from any dynasty
-// player color (see DYNASTY_COLORS in data/invasions.js) so the border
-// always communicates which region a province belongs to, regardless of
-// who controls it or whether it is occupied. Saturation is intentionally
-// dialled back; the renderer also applies stroke-opacity to soften them
-// further on top of these base values.
+// Region border colors — fixed, high-contrast territory colours.
+// Constantinople follows the East colour so the capital still reads as part
+// of the eastern command sphere.
 export const REGION_BORDER_COLORS = {
-  [REGIONS.EAST]: '#B85ABE', // muted fuchsia
-  [REGIONS.WEST]: '#D9B83F', // muted gold
-  [REGIONS.SEA]:  '#3FA897', // muted teal
-  [REGIONS.CPL]:  '#B85ABE'  // CPL sits in East — match east border
+  [REGIONS.EAST]: '#2f8f3a', // green
+  [REGIONS.WEST]: '#c63a3a', // red
+  [REGIONS.SEA]:  '#d4b21f', // yellow
+  [REGIONS.CPL]:  '#2f8f3a'  // CPL sits in East — match east border
 };
 
 export const PROVINCES = [

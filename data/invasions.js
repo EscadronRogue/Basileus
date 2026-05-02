@@ -99,11 +99,12 @@ export const DYNASTIES = [
   'Kontostephanos', 'Kantakouzenos', 'Palaiologos'
 ];
 
-// Dynasty colors — rich Byzantine palette
+// Dynasty colors — kept deliberately away from the region-border palette
+// (red / green / yellow) so ownership never gets mistaken for region.
 export const DYNASTY_COLORS = [
-  '#C86F44', // Burnished copper
   '#2F6F9F', // Aegean blue
-  '#5D8D4A', // Olive green
-  '#C29A36', // Saffron ochre
-  '#A84F5D', // Mulberry red
+  '#6E5BD8', // Imperial violet
+  '#B35FA0', // Tyrian orchid
+  '#3E8C9A', // Sea-glass cyan
+  '#8B6A3E', // Bronze umber
 ];
