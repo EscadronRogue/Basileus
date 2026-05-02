@@ -102,9 +102,9 @@ export const DYNASTIES = [
 // Dynasty colors — muted ownership colours with clear separation from
 // the regional command palette, free-citizen purple, and neutral outlines.
 export const DYNASTY_COLORS = [
-  '#FA8072', // salmon
-  '#98FB98', // pale green
-  '#48D1CC', // turquoise
-  '#FFC0CB', // pink
-  '#DC143C', // crimson
+  '#b87468', // salmon
+  '#7faa7a', // pale green
+  '#4a9b98', // turquoise
+  '#c38f9b', // pink
+  '#9c3e4e', // crimson
 ];
