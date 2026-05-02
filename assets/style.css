@@ -52,8 +52,8 @@
   /* Map province fills */
   --free-fill:    #6a4a8a;  /* deep amethyst — unowned, no dynasty uses this hue */
   --free-border:  var(--purple-0);
-  --church-fill:  #2e5070;  /* dark slate blue — clearly ecclesiastical */
-  --church-border: var(--church-0);
+  --church-fill:  #1a1a1a;  /* black — church estate */
+  --church-border: #000000;
   --occupied-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
   --empire-border: #2e1e0f;
   --empire-border-hover: #4a3018;
@@ -1795,8 +1795,8 @@ body::before {
   fill-opacity: 1;
 }
 .province-shape.church {
-  /* Slate blue — clearly church, distinct from dynasty colors */
-  fill: color-mix(in srgb, var(--church-fill) 55%, rgba(225,215,190,0.45) 45%);
+  /* Black — church land, unmistakable */
+  fill: rgba(20, 20, 20, 0.82);
   fill-opacity: 1;
 }
 .province-shape.owned {
@@ -1878,6 +1878,15 @@ body::before {
   pointer-events: none;
   font-weight: 600;
   letter-spacing: 0.12px;
+}
+
+/* White labels on church (black) provinces */
+.province-label[data-church="true"],
+.province-name[data-church="true"],
+.province-values[data-church="true"] {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 0.15;
 }
 
 .cpl-label { font-size: 4px; fill: var(--gold-0); }

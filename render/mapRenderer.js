@@ -428,6 +428,7 @@ export function updateMapState(state) {
 
     if (theme.occupied) {
       shape.classList.add('occupied');
+      setChurchLabels(provinceId, false);
       continue;
     }
 
@@ -435,8 +436,11 @@ export function updateMapState(state) {
 
     if (theme.owner === 'church') {
       shape.classList.add('church');
+      setChurchLabels(provinceId, true);
       continue;
     }
+
+    setChurchLabels(provinceId, false);
 
     if (theme.owner !== null) {
       shape.classList.add('owned');
@@ -455,6 +459,16 @@ export function updateMapState(state) {
 
   updateThreatOverlay(state);
   updateBadges(state);
+}
+
+function setChurchLabels(provinceId, isChurch) {
+  const val = isChurch ? 'true' : null;
+  for (const cls of ['province-label', 'province-name', 'province-values']) {
+    const el = document.querySelector(`.${cls}[data-id="${provinceId}"]`);
+    if (!el) continue;
+    if (isChurch) el.setAttribute('data-church', 'true');
+    else el.removeAttribute('data-church');
+  }
 }
 
 function updateThreatOverlay(state) {

@@ -104,9 +104,9 @@ export const DYNASTIES = [
 // church slate-blue, and invasion route colors.
 // Hues used: teal, amber-orange, rose, chartreuse, warm brown — all unoccupied.
 export const DYNASTY_COLORS = [
-  '#c17d20', // warm amber — rich orange-gold; distinct from pale CPL gold
-  '#2a7a70', // deep teal — clearly neither green nor blue
-  '#a03060', // deep rose — clearly neither crimson nor purple
-  '#5a7a20', // olive — yellow-green, clearly neither forest green nor gold
-  '#8a3a20', // burnt copper — warm red-brown, distinct from crimson (darker/browner) and amber
+  '#c02020', // red
+  '#1a50a0', // blue
+  '#c89010', // yellow
+  '#2a8030', // green
+  '#d06010', // orange
 ];
