@@ -238,6 +238,8 @@ function configureProvincePath(path, provinceId, className, idPrefix) {
   path.setAttribute('id', `${idPrefix}-${provinceId}`);
   path.setAttribute('class', className);
   path.setAttribute('data-id', provinceId);
+  path.setAttribute('fill-rule', 'evenodd');
+  path.setAttribute('clip-rule', 'evenodd');
 }
 
 function applyInsetRegionBorder(rootSvg, path, provinceId) {
@@ -272,6 +274,8 @@ function ensureRegionStrokeClipPath(rootSvg, provinceId, sourcePath) {
   clipShape.removeAttribute('data-id');
   clipShape.removeAttribute('clip-path');
   clipShape.removeAttribute('style');
+  clipShape.setAttribute('fill-rule', 'evenodd');
+  clipShape.setAttribute('clip-rule', 'evenodd');
   clipPath.appendChild(clipShape);
   defs.appendChild(clipPath);
   return clipId;
@@ -372,6 +376,7 @@ function addProvinceLabels(layer) {
     label.setAttribute('y', centroid.cy);
     label.setAttribute('class', `province-label${province.id === 'CPL' ? ' cpl-label' : ''}`);
     label.setAttribute('data-id', province.id);
+    applyProvinceLabelTheme(label, province);
     label.textContent = province.id === 'CPL' ? 'CPL' : province.id;
     layer.appendChild(label);
 
@@ -380,6 +385,7 @@ function addProvinceLabels(layer) {
     name.setAttribute('y', centroid.cy + 1.5);
     name.setAttribute('class', `province-name${province.id === 'CPL' ? ' cpl-name' : ''}`);
     name.setAttribute('data-id', province.id);
+    applyProvinceLabelTheme(name, province);
     name.textContent = province.name;
     layer.appendChild(name);
 
@@ -390,9 +396,20 @@ function addProvinceLabels(layer) {
     values.setAttribute('y', centroid.cy + 3);
     values.setAttribute('class', 'province-values');
     values.setAttribute('data-id', province.id);
+    applyProvinceLabelTheme(values, province);
     values.textContent = `${province.G}G ${province.L}L`;
     layer.appendChild(values);
   }
+}
+
+
+function applyProvinceLabelTheme(element, province) {
+  const color = REGION_BORDER_COLORS[province.region];
+  if (!color) return;
+
+  element.setAttribute('data-region', province.region);
+  element.style.setProperty('--province-label-fill', color);
+  element.style.setProperty('--province-label-outline', province.region === 'cpl' ? '#ffffff' : 'rgba(255, 249, 237, 0.76)');
 }
 
 export function updateMapState(state) {

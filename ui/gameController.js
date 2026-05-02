@@ -1,4 +1,4 @@
-import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
+import { createGameState, getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr } from '../engine/state.js';
 import { recordHistoryEvent } from '../engine/history.js';
 import { runAdministration } from '../engine/cascade.js';
 import {
@@ -52,6 +52,12 @@ import {
   renderPlayerDashboard,
   renderResolutionPanelDetailed,
 } from './panels.js';
+
+
+function renderPlayerRoleName(state, player) {
+  if (!player) return '';
+  return `<span class="player-role-name" style="${getPlayerRoleTextStyleAttr(state, player.id)}">${formatPlayerLabel(player)}</span>`;
+}
 
 export class GameController {
   constructor(config = {}) {
@@ -391,7 +397,7 @@ export class GameController {
         <button class="player-tab ${player.id === this.activePlayer ? 'active' : ''}"
           data-player="${player.id}" style="--tab-color: ${player.color}">
           <span class="tab-crest">${player.dynasty.charAt(0)}</span>
-          <span class="tab-name">${formatPlayerLabel(player)}</span>
+          <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
           ${youBadge}
           <span class="tab-gold">${player.gold}g</span>
           ${crown}
@@ -447,7 +453,7 @@ export class GameController {
             <span class="sidebar-panel-title">${panelTitleByPhase[this.state.phase] || 'Action Panel'}</span>
             <span class="sidebar-panel-subtitle">${panelSubtitleByPhase[this.state.phase] || 'Current phase controls and details'}</span>
           </span>
-          <span class="sidebar-panel-badge">${formatPlayerLabel(getPlayer(this.state, this.activePlayer))}</span>
+          <span class="sidebar-panel-badge">${renderPlayerRoleName(this.state, getPlayer(this.state, this.activePlayer))}</span>
         </button>
         ${isOpen ? '<div class="sidebar-panel-body" data-role="action-panel-body"></div>' : ''}
       </div>
@@ -529,7 +535,7 @@ export class GameController {
     const player = getPlayer(this.state, this.activePlayer);
     panel.innerHTML = `
       <div class="panel-empty spectator-panel">
-        <h3>${player ? formatPlayerLabel(player) : 'Dynasty View'}</h3>
+        <h3>${player ? renderPlayerRoleName(this.state, player) : 'Dynasty View'}</h3>
         <p>${message}</p>
       </div>
     `;
@@ -842,7 +848,7 @@ export class GameController {
           ${scores.map((score, index) => `
             <div class="score-row ${index === 0 ? 'winner' : ''}" style="--player-color: ${score.player.color}">
               <span class="score-rank">${index === 0 ? '1' : index + 1}</span>
-              <span class="score-dynasty">${formatPlayerLabel(score.player)}</span>
+              <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
               <span class="score-breakdown">${score.gold}g + ${score.projected} projected</span>
               <span class="score-total">${score.wealth}</span>
             </div>

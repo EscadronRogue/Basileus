@@ -9,13 +9,12 @@ export const REGIONS = {
 };
 
 // Region border colors — fixed, high-contrast territory colours.
-// Constantinople follows the East colour so the capital still reads as part
-// of the eastern command sphere.
+// Constantinople is intentionally its own command region and uses black.
 export const REGION_BORDER_COLORS = {
   [REGIONS.EAST]: '#2f8f3a', // green
   [REGIONS.WEST]: '#c63a3a', // red
   [REGIONS.SEA]:  '#d4b21f', // yellow
-  [REGIONS.CPL]:  '#2f8f3a'  // CPL sits in East — match east border
+  [REGIONS.CPL]:  '#0b0b0b'  // Constantinople
 };
 
 export const PROVINCES = [

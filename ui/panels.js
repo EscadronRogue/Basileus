@@ -11,7 +11,18 @@ import {
   getThemeOwnerIncome,
   isThemeThreatened,
 } from '../engine/rules.js';
-import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel, getPlayerLabel } from '../engine/state.js';
+import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr } from '../engine/state.js';
+
+
+function renderPlayerRoleName(state, player, fallback = '') {
+  if (!player) return fallback;
+  return `<span class="player-role-name" style="${getPlayerRoleTextStyleAttr(state, player.id)}">${formatPlayerLabel(player)}</span>`;
+}
+
+function renderPlayerRoleNameById(state, playerId, fallback = null) {
+  const player = getPlayer(state, playerId);
+  return renderPlayerRoleName(state, player, fallback ?? `Player ${Number(playerId) + 1}`);
+}
 
 // Court titles whose levies are locked to the capital.
 const CAPITAL_LOCKED_OFFICE_KEYS = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
@@ -164,7 +175,7 @@ function getPlayerOpinionRows(state, aiMeta, playerId) {
       const theyOwe = aiMeta.players[player.id]?.obligations?.[playerId] || 0;
       return {
         playerId: player.id,
-        name: formatPlayerLabel(player),
+        name: renderPlayerRoleName(state, player),
         isHuman: player.id === humanId,
         net,
         trust,
@@ -247,10 +258,10 @@ function getProvinceSummary(state, provinceId) {
   let ownerLabel = 'Free citizens';
   if (theme.occupied) ownerLabel = 'Occupied by invaders';
   else if (theme.owner === 'church') ownerLabel = 'Church estate';
-  else if (theme.owner !== null) ownerLabel = `${getPlayerLabel(state, theme.owner, 'Unknown')} estate`;
+  else if (theme.owner !== null) ownerLabel = `${renderPlayerRoleNameById(state, theme.owner, 'Unknown')} estate`;
 
-  const strategos = theme.strategos !== null ? getPlayerLabel(state, theme.strategos, 'Unknown') : 'None';
-  const bishop = theme.bishop !== null ? getPlayerLabel(state, theme.bishop, 'Unknown') : 'None';
+  const strategos = theme.strategos !== null ? renderPlayerRoleNameById(state, theme.strategos, 'Unknown') : 'None';
+  const bishop = theme.bishop !== null ? renderPlayerRoleNameById(state, theme.bishop, 'Unknown') : 'None';
 
   return {
     id: theme.id,
@@ -380,7 +391,7 @@ function renderCoupContributionGroups(state, votes = [], contributions = []) {
   const orderedCandidates = candidateIds
     .map(candidateId => ({
       candidateId,
-      candidateName: getPlayerLabel(state, candidateId, `Player ${candidateId + 1}`),
+      candidateName: renderPlayerRoleNameById(state, candidateId, `Player ${candidateId + 1}`),
       troops: votes.find(entry => entry.candidateId === candidateId)?.troops || 0,
     }))
     .sort((left, right) => right.troops - left.troops);
@@ -533,7 +544,7 @@ function renderHistoryDetails(state, event) {
 }
 
 function renderHistoryEntry(state, event, aiMeta) {
-  const actorLabel = event.actorId != null ? getPlayerLabel(state, event.actorId, `Player ${event.actorId + 1}`) : 'Empire';
+  const actorLabel = event.actorId != null ? renderPlayerRoleNameById(state, event.actorId, `Player ${event.actorId + 1}`) : 'Empire';
   const aiActor = event.actorAi === true || isAiHistoryActor(aiMeta, event.actorId);
   const extra = `${renderHistoryDetails(state, event)}${renderDecisionFactors(event.decision)}`;
   const badge = aiActor ? '<span class="history-entry-tag">AI</span>' : '';
@@ -791,7 +802,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       <button class="sidebar-panel-head player-dashboard-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Dynasty View</span>
-          <span class="sidebar-panel-title">${formatPlayerLabel(player)}</span>
+          <span class="sidebar-panel-title">${renderPlayerRoleName(state, player)}</span>
           <span class="sidebar-panel-subtitle">${isBasileus ? 'Current Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'Untitled dynasty')}</span>
         </span>
         <span class="sidebar-panel-badge">${player.gold}g | +${finance.projectedIncome} / -${finance.maintenance}</span>
@@ -801,7 +812,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <div class="dashboard-header">
             <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
             <div class="dynasty-info">
-              <h2 class="dynasty-name">${formatPlayerLabel(player)}</h2>
+              <h2 class="dynasty-name">${renderPlayerRoleName(state, player)}</h2>
               <div class="dynasty-title">${isBasileus ? 'Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'No major office')}</div>
             </div>
             <div class="gold-display">
@@ -845,7 +856,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       <div class="dashboard-header">
         <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
         <div class="dynasty-info">
-          <h2 class="dynasty-name">${formatPlayerLabel(player)}</h2>
+          <h2 class="dynasty-name">${renderPlayerRoleName(state, player)}</h2>
           <div class="dynasty-title">${isBasileus ? '☧ Basileus' : player.majorTitles.map(t => MAJOR_TITLES[t]?.name || t).join(', ')}</div>
         </div>
         <div class="gold-display">
@@ -1562,7 +1573,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
       ${state.players.map(p => `
         <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}">
           <span class="candidate-crest" style="background: ${p.color}">${p.dynasty.charAt(0)}</span>
-          <span>${formatPlayerLabel(p)}</span>
+          <span>${renderPlayerRoleName(state, p)}</span>
           ${p.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
         </button>
       `).join('')}
@@ -1700,21 +1711,21 @@ export function renderResolutionPanel(container, state, options = {}) {
     html += `<div class="resolution-section">
       <h4>Coup</h4>
       <div class="coup-result">
-        <span class="coup-winner" style="color: ${winner?.color}">
-          ${formatPlayerLabel(winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
+        <span class="coup-winner">
+          ${renderPlayerRoleName(state, winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
         </span>
         <div class="vote-breakdown">
           ${renderCoupContributionGroups(
             state,
             Object.entries(coup.votes).map(([candidateId, troops]) => ({
               candidateId: Number(candidateId),
-              candidateName: getPlayerLabel(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
+              candidateName: renderPlayerRoleNameById(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
               troops,
             })),
             (coup.contributions || []).map((entry) => ({
               ...entry,
-              playerName: getPlayerLabel(state, entry.playerId, `Player ${entry.playerId + 1}`),
-              candidateName: getPlayerLabel(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
+              playerName: renderPlayerRoleNameById(state, entry.playerId, `Player ${entry.playerId + 1}`),
+              candidateName: renderPlayerRoleNameById(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
             }))
           )}
         </div>
@@ -1768,20 +1779,20 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
     const winner = getPlayer(state, coup.winner);
     const voteRows = Object.entries(coup.votes).map(([candidateId, troops]) => ({
       candidateId: Number(candidateId),
-      candidateName: getPlayerLabel(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
+      candidateName: renderPlayerRoleNameById(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
       troops,
     }));
     const contributionRows = (coup.contributions || []).map((entry) => ({
       ...entry,
-      playerName: getPlayerLabel(state, entry.playerId, `Player ${entry.playerId + 1}`),
-      candidateName: getPlayerLabel(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
+      playerName: renderPlayerRoleNameById(state, entry.playerId, `Player ${entry.playerId + 1}`),
+      candidateName: renderPlayerRoleNameById(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
     }));
 
     html += `<div class="resolution-section">
       <h4>Coup</h4>
       <div class="coup-result">
-        <span class="coup-winner" style="color: ${winner?.color}">
-          ${formatPlayerLabel(winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
+        <span class="coup-winner">
+          ${renderPlayerRoleName(state, winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
         </span>
         <div class="vote-breakdown">
           ${renderCoupContributionGroups(state, voteRows, contributionRows)}

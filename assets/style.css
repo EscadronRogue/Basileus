@@ -35,8 +35,8 @@
   /* Status */
   --occupied:      #3a2020;
   --occupied-border: #6b3333;
-  --free-fill:     #1e2a1e;
-  --free-border:   #3a5a3a;
+  --free-fill:     #5f625d;
+  --free-border:   #3f413d;
   --church-fill:   #1a2540;
   --church-border: #3a5580;
 
@@ -1621,13 +1621,13 @@ body {
 
   --occupied: #fbf4e5;
   --occupied-border: #a69476;
-  --free-fill: #96609a;
-  --free-border: #6d3a76;
+  --free-fill: #7d7a70;
+  --free-border: #56534c;
   --church-fill: #b7b3c8;
   --church-border: #6d3a76;
-  --empire-border: rgba(109, 58, 118, 0.92);
-  --empire-border-hover: #9461a0;
-  --capital-fill: rgba(206, 177, 110, 0.64);
+  --empire-border: rgba(86, 83, 76, 0.92);
+  --empire-border-hover: #69655b;
+  --capital-fill: rgba(11, 11, 11, 0.72);
 }
 
 body {
@@ -2013,7 +2013,7 @@ body::before {
 }
 
 .province-shape.free {
-  fill: rgba(150, 96, 157, 0.46);
+  fill: rgba(125, 122, 112, 0.48);
   fill-opacity: 1;
   stroke: var(--region-border, var(--empire-border));
 }
@@ -2052,7 +2052,7 @@ body::before {
 .region-stroke {
   fill: none;
   stroke: var(--region-border);
-  stroke-width: 4.4;
+  stroke-width: 3.2;
   stroke-opacity: 0.9;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -2062,7 +2062,7 @@ body::before {
 }
 
 .region-stroke.hovered {
-  stroke-width: 5.2;
+  stroke-width: 3.8;
   stroke-opacity: 1;
   filter: brightness(1.06) saturate(1.04);
 }
@@ -2070,36 +2070,55 @@ body::before {
 .region-stroke.selected,
 .region-stroke.selected.hovered {
   stroke: var(--region-border);
-  stroke-width: 6;
+  stroke-width: 4.6;
   stroke-opacity: 1;
   filter: brightness(1.15) saturate(1.08) drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.35));
 }
 
 .province-label {
-  fill: #7b5521;
-  stroke: rgba(255, 249, 237, 0.72);
+  fill: var(--province-label-fill, #7b5521);
+  stroke: var(--province-label-outline, rgba(255, 249, 237, 0.76));
   stroke-width: 0.18;
   paint-order: stroke fill;
 }
 
 .province-name,
 .province-values {
-  fill: rgba(104, 78, 44, 0.88);
-  stroke: rgba(255, 249, 237, 0.58);
+  fill: var(--province-label-fill, rgba(104, 78, 44, 0.88));
+  stroke: var(--province-label-outline, rgba(255, 249, 237, 0.62));
   stroke-width: 0.12;
   paint-order: stroke fill;
 }
 
-.cpl-label,
 .province-label.selected,
 .province-name.selected,
-.province-values.selected,
+.province-values.selected {
+  font-weight: 700;
+  filter: drop-shadow(0 0 0.45px rgba(255, 255, 255, 0.62));
+}
+
 .invasion-label {
   fill: #f2c86d;
 }
 
 .officer-badge {
   stroke: rgba(63, 40, 16, 0.92);
+}
+
+
+.player-role-name {
+  color: var(--player-name-fill, currentColor);
+  -webkit-text-stroke: 0.55px var(--player-name-outline, #ffffff);
+  paint-order: stroke fill;
+  text-shadow:
+    -0.6px -0.6px 0 var(--player-name-outline, #ffffff),
+     0.6px -0.6px 0 var(--player-name-outline, #ffffff),
+    -0.6px  0.6px 0 var(--player-name-outline, #ffffff),
+     0.6px  0.6px 0 var(--player-name-outline, #ffffff);
+}
+
+.player-role-name.patriarch-name {
+  --player-name-outline: #0b0b0b;
 }
 
 /* Sidebar refresh */

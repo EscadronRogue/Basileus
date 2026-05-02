@@ -1,6 +1,6 @@
 import { computeFullWealth } from '../engine/actions.js';
 import { runAdministration } from '../engine/cascade.js';
-import { getPlayer, formatPlayerLabel } from '../engine/state.js';
+import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr } from '../engine/state.js';
 import { createMapSVG, drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import {
   renderCourtPanel,
@@ -9,6 +9,12 @@ import {
   renderPlayerDashboard,
   renderResolutionPanelDetailed,
 } from './panels.js';
+
+
+function renderPlayerRoleName(state, player) {
+  if (!player) return '';
+  return `<span class="player-role-name" style="${getPlayerRoleTextStyleAttr(state, player.id)}">${formatPlayerLabel(player)}</span>`;
+}
 
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
 const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
@@ -536,7 +542,7 @@ export class MultiplayerController {
         <button class="player-tab ${viewing ? 'active' : ''}"
           data-player="${player.id}" style="--tab-color: ${player.color}">
           <span class="tab-crest">${player.dynasty.charAt(0)}</span>
-          <span class="tab-name">${formatPlayerLabel(player)}</span>
+          <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
           ${youBadge}
           ${connectionBadge}
           <span class="tab-gold">${player.gold}g</span>
@@ -586,7 +592,7 @@ export class MultiplayerController {
             <span class="sidebar-panel-title">${panelTitleByPhase[this.state.phase] || 'Action Panel'}</span>
             <span class="sidebar-panel-subtitle">${panelSubtitleByPhase[this.state.phase] || 'Current phase controls and details'}</span>
           </span>
-          <span class="sidebar-panel-badge">${controlledSeatId != null ? formatPlayerLabel(getPlayer(this.state, controlledSeatId)) : 'Lobby'}</span>
+          <span class="sidebar-panel-badge">${controlledSeatId != null ? renderPlayerRoleName(this.state, getPlayer(this.state, controlledSeatId)) : 'Lobby'}</span>
         </button>
         ${isOpen ? '<div class="sidebar-panel-body" data-role="action-panel-body"></div>' : ''}
       </div>
@@ -727,7 +733,7 @@ export class MultiplayerController {
           ${scores.map((score, index) => `
             <div class="score-row ${index === 0 ? 'winner' : ''}" style="--player-color: ${score.player.color}">
               <span class="score-rank">${index + 1}</span>
-              <span class="score-dynasty">${formatPlayerLabel(score.player)}</span>
+              <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
               <span class="score-breakdown">${score.gold}g + ${score.projected} projected</span>
               <span class="score-total">${score.wealth}</span>
             </div>

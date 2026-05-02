@@ -26,6 +26,16 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+const PLAYER_ROLE_TEXT_STYLES = {
+  BASILEUS: { color: '#0b0b0b', outline: '#ffffff' },
+  DOM_WEST: { color: '#c63a3a', outline: '#ffffff' },
+  DOM_EAST: { color: '#2f8f3a', outline: '#ffffff' },
+  ADMIRAL: { color: '#d4b21f', outline: '#ffffff' },
+  PATRIARCH: { color: '#ffffff', outline: '#0b0b0b' },
+};
+
+const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'DOM_WEST', 'DOM_EAST', 'ADMIRAL', 'PATRIARCH'];
+
 function createInvasionStrengthRange(template, rng) {
   const [baseMin, baseMax] = template?.strength || [1, 1];
   const baseMidpoint = (baseMin + baseMax) / 2;
@@ -251,4 +261,23 @@ export function getStrategosThemes(state, playerId) {
 
 export function getBishopThemes(state, playerId) {
   return Object.values(state.themes).filter(t => t.bishop === playerId && !t.occupied);
+}
+
+
+export function getPlayerPrimaryRoleKey(state, playerId) {
+  const player = getPlayer(state, playerId);
+  if (!player) return null;
+  if (playerId === state.basileusId) return 'BASILEUS';
+
+  return PLAYER_ROLE_COLOR_PRIORITY.find((roleKey) => player.majorTitles.includes(roleKey)) || null;
+}
+
+export function getPlayerRoleTextStyle(state, playerId) {
+  const roleKey = getPlayerPrimaryRoleKey(state, playerId);
+  return roleKey ? PLAYER_ROLE_TEXT_STYLES[roleKey] : { color: '#2f2215', outline: '#ffffff' };
+}
+
+export function getPlayerRoleTextStyleAttr(state, playerId) {
+  const style = getPlayerRoleTextStyle(state, playerId);
+  return `--player-name-fill: ${style.color}; --player-name-outline: ${style.outline};`;
 }
