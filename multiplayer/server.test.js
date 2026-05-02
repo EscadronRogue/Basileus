@@ -262,6 +262,12 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
   assert.equal(gameSnapshot.status, 'in_progress');
   assert.equal(gameSnapshot.state.phase, 'court');
 
+  const room = instance.manager.getRoom(created.roomCode);
+  const aiProfile = room.aiMeta.players[2].profile;
+  assert.ok(aiProfile, 'AI seats should receive explicit trained profiles.');
+  assert.equal(aiProfile.source, 'emergent-trained');
+  assert.equal(aiProfile.basePersonalityId, null);
+
   await guestSocket.close();
   await hostSocket.close();
 });
@@ -302,8 +308,9 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
   });
 
   await actorSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === actorRequestId);
-  const actorGame = await actorSocket.waitFor((message) => message.type === 'game_snapshot');
-  const viewerGame = await viewerSocket.waitFor((message) => message.type === 'game_snapshot');
+  const hasSubmittedActorOrder = (message) => message.type === 'game_snapshot' && Boolean(message.state?.allOrders?.[String(actorSeatId)]);
+  const actorGame = await actorSocket.waitFor(hasSubmittedActorOrder);
+  const viewerGame = await viewerSocket.waitFor(hasSubmittedActorOrder);
 
   const actorGoldVisible = actorGame.state.players.find((player) => player.id === actorSeatId).gold;
   const viewerGoldVisible = viewerGame.state.players.find((player) => player.id === actorSeatId).gold;

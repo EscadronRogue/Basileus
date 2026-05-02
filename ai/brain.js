@@ -176,10 +176,8 @@ export function getPersonalityProfile(meta, playerId) {
 }
 
 // ---------------------------------------------------------------------------
-// Tier 2: meta-parameter access. Magic constants from brain.js are now stored
-// on each profile under `meta`. getMeta(profile, key) returns the evolved
-// value or the legacy default — so behaviour with default profiles is
-// identical to before.
+// Tier 2: meta-parameter access. Trained profiles can store tuned constants
+// under `meta`; missing keys fall back to the neutral engine defaults.
 // ---------------------------------------------------------------------------
 function getMeta(profile, key) {
   if (!profile) return DEFAULT_META_PARAMS[key];
@@ -195,7 +193,7 @@ function getMetaForPlayer(meta, playerId, key) {
 // Tier 5: opponent modeling. Each AI maintains a posterior over what kind of
 // rival it is facing, updated from observed actions. Crucially, the posterior
 // is defined over the active profile library in the current game rather than a
-// fixed set of legacy archetypes, which keeps self-play emergent.
+// hard-coded archetype set, which keeps self-play emergent.
 //
 // Important safety rule: decisions never blend in the rival's hidden, true
 // profile. The AI can only use its prior plus observed evidence. The
@@ -942,12 +940,13 @@ export function samplePersonalityIds(rng, playerCount, allowedPersonalityIds, po
 
   const totalWeight = sum(pool.map(entry => entry.weight));
   const pickOne = () => {
+    if (!pool.length || totalWeight <= 0) return null;
     let cursor = rng() * totalWeight;
     for (const entry of pool) {
       cursor -= entry.weight;
       if (cursor <= 0) return entry.id;
     }
-    return pool[pool.length - 1]?.id || 'reciprocator';
+    return pool[pool.length - 1]?.id || null;
   };
 
   const personalities = [];
@@ -998,8 +997,8 @@ export function createAIMeta(state, options = {}) {
     const customProfile = humanPlayerIds.has(player.id) ? null : normalizeAiProfile(options.seatProfiles?.[player.id]);
     const personalityId = humanPlayerIds.has(player.id)
       ? null
-      : (customProfile?.id || personalityIds[player.id] || allowedPersonalities[0] || 'reciprocator');
-    const profile = customProfile || PERSONALITIES[personalityId] || NEUTRAL_PROFILE;
+      : (customProfile?.id || personalityIds[player.id] || allowedPersonalities[0] || null);
+    const profile = customProfile || (personalityId ? PERSONALITIES[personalityId] : null) || NEUTRAL_PROFILE;
     const tactics = customProfile?.tactics
       ? PROFILE_TACTIC_KEYS.reduce((accumulator, key) => {
         accumulator[key] = customProfile.tactics[key];

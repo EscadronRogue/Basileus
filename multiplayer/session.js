@@ -38,7 +38,7 @@ import {
   observeCourtAction,
   runAICourtAutomation,
 } from '../ai/brain.js';
-import { PERSONALITIES } from '../ai/personalities.js';
+import { normalizeAiProfile } from '../ai/profileStore.js';
 
 export const ROOM_STATUS = {
   LOBBY: 'lobby',
@@ -98,6 +98,19 @@ function normalizeRoomConfig(rawConfig = {}) {
     deckSize: clamp(toInt(rawConfig.deckSize, DEFAULT_DECK_SIZE), 1, 30),
     seed: String(rawConfig.seed ?? DEFAULT_ROOM_CONFIG.seed).trim(),
   };
+}
+
+function normalizeTrainedAiProfiles(rawProfiles = []) {
+  if (!Array.isArray(rawProfiles)) return [];
+  const profiles = [];
+  const seen = new Set();
+  for (const rawProfile of rawProfiles) {
+    const profile = normalizeAiProfile(rawProfile);
+    if (!profile || seen.has(profile.id)) continue;
+    seen.add(profile.id);
+    profiles.push(profile);
+  }
+  return profiles;
 }
 
 function createOpenSeat(seatId) {
@@ -339,6 +352,7 @@ export class MultiplayerRoom {
     this.roomCode = roomCode;
     this.hostSessionId = hostSessionId;
     this.config = normalizeRoomConfig(config);
+    this.trainedAiProfiles = normalizeTrainedAiProfiles(config.aiProfiles);
     this.seats = Array.from({ length: this.config.playerCount }, (_, seatId) => createOpenSeat(seatId));
     this.connections = new Map();
     this.sessions = new Map();
@@ -504,9 +518,15 @@ export class MultiplayerRoom {
     });
 
     const humanPlayerIds = getHumanSeatIds(this);
+    const aiSeatIds = getAiSeatIds(this);
+    const trainedRoster = this.trainedAiProfiles.length
+      ? this.trainedAiProfiles
+      : normalizeTrainedAiProfiles(availableAiProfiles);
+    assert(!aiSeatIds.length || trainedRoster.length > 0, 'No trained AI profiles are available for AI seats. Export trained personalities or create the room from a client with saved trained profiles.');
+
     const seatProfiles = {};
-    for (const seatId of getAiSeatIds(this)) {
-      const profile = randomPick(this.gameState.rng, availableAiProfiles);
+    for (const seatId of aiSeatIds) {
+      const profile = randomPick(this.gameState.rng, trainedRoster);
       if (profile) seatProfiles[seatId] = profile;
     }
 
@@ -549,8 +569,7 @@ export class MultiplayerRoom {
       const profile = aiMetaForPlayer?.profile;
       const personalityId = aiMetaForPlayer?.personalityId;
       const personalityName = profile?.name
-        || (personalityId ? (PERSONALITIES?.[personalityId]?.name
-          || (personalityId.charAt(0).toUpperCase() + personalityId.slice(1))) : null);
+        || (personalityId ? (personalityId.charAt(0).toUpperCase() + personalityId.slice(1)) : null);
       if (personalityName) {
         player.firstName = personalityName;
       }

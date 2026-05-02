@@ -2,7 +2,6 @@ import {
   DEFAULT_META_PARAMS,
   META_PARAM_DEFS,
   NEUTRAL_PROFILE,
-  PERSONALITIES,
   PROFILE_TACTIC_KEYS,
   PROFILE_WEIGHT_KEYS,
   SUPPORTED_PLAYER_COUNTS,
@@ -557,11 +556,11 @@ function trainingStage(generation, totalGenerations) {
 }
 
 function getPatternForSuite(scope, stage) {
-  if (scope === 'validation') return ['scripted', 'legacy', 'emergent', 'hof'];
-  if (scope === 'holdout') return ['scripted', 'legacy', 'hof', 'emergent', 'scripted'];
-  if (stage === 'early') return ['population', 'emergent', 'legacy', 'scripted'];
-  if (stage === 'mid') return ['population', 'scripted', 'emergent', 'legacy', 'hof'];
-  return ['population', 'hof', 'scripted', 'legacy', 'emergent'];
+  if (scope === 'validation') return ['scripted', 'emergent', 'hof'];
+  if (scope === 'holdout') return ['scripted', 'hof', 'emergent', 'scripted'];
+  if (stage === 'early') return ['population', 'emergent', 'scripted'];
+  if (stage === 'mid') return ['population', 'scripted', 'emergent', 'hof'];
+  return ['population', 'hof', 'scripted', 'emergent'];
 }
 
 function createFreshEmergentProfile(seedKey) {
@@ -571,12 +570,11 @@ function createFreshEmergentProfile(seedKey) {
 
 function buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex) {
   if (source === 'legacy') {
-    const legacyIds = Object.keys(PERSONALITIES);
-    const legacyId = legacyIds[(matchIndex + slotIndex) % legacyIds.length];
+    const profile = createFreshEmergentProfile(`${scope}:g${generation}:m${matchIndex}:s${slotIndex}:legacy-removed`);
     return {
-      source,
-      bucket: `legacy:${legacyId}`,
-      profile: PERSONALITIES[legacyId],
+      source: 'emergent',
+      bucket: getEmergentBucket(profile),
+      profile,
     };
   }
 
@@ -668,8 +666,8 @@ function materializeOpponentDescriptor(descriptor, candidate, population, hallOf
 
   if (descriptor.source === 'hof') {
     return pickHallOfFameOpponent(hallOfFame, descriptor.offset) || {
-      bucket: `legacy:${Object.keys(PERSONALITIES)[descriptor.offset % Object.keys(PERSONALITIES).length]}`,
-      profile: PERSONALITIES[Object.keys(PERSONALITIES)[descriptor.offset % Object.keys(PERSONALITIES).length]],
+      bucket: getEmergentBucket(NEUTRAL_PROFILE),
+      profile: createFreshEmergentProfile(`hof-fallback:${descriptor.offset}`),
     };
   }
 

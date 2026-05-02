@@ -232,9 +232,7 @@ function dominantWeightLabels(weights) {
 function buildAutoSummary(profile) {
   const topLabels = dominantWeightLabels(profile.weights);
   const topText = topLabels.length ? topLabels.join(' and ') : 'balanced play';
-  const sourceText = profile.basePersonalityId && PERSONALITIES[profile.basePersonalityId]
-    ? `Evolved from ${PERSONALITIES[profile.basePersonalityId].name.toLowerCase()} instincts`
-    : 'Self-play evolved';
+  const sourceText = 'Self-play evolved';
   return `${sourceText}, leaning on ${topText}.`;
 }
 
@@ -264,7 +262,7 @@ function normalizeMetaParams(rawMeta = {}) {
 }
 
 function inferBasePersonalityId(weights) {
-  let bestId = 'reciprocator';
+  let bestId = null;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const [personalityId, personality] of Object.entries(PERSONALITIES)) {
     let distance = 0;
@@ -360,9 +358,9 @@ export function normalizeAiProfile(rawProfile = null) {
   } else if (!hasExplicitBase && !['trained', 'emergent-trained'].includes(String(rawProfile.source || '').trim())) {
     basePersonalityId = inferBasePersonalityId(weights);
   }
-  const fallbackName = PERSONALITIES[basePersonalityId]?.name
-    ? `Trained ${PERSONALITIES[basePersonalityId].name}`
-    : (['trained', 'emergent-trained'].includes(String(rawProfile.source || '').trim()) ? 'Emergent AI' : 'Custom AI');
+  const fallbackName = ['trained', 'emergent-trained'].includes(String(rawProfile.source || '').trim())
+    ? 'Emergent AI'
+    : 'Custom AI';
   const name = String(rawProfile.name || fallbackName).trim() || fallbackName;
   const id = String(rawProfile.id || createProfileId(name)).trim() || createProfileId(name);
   const profile = {

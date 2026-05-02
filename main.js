@@ -254,6 +254,7 @@ async function launchMultiplayerFlow(intent) {
         playerCount,
         deckSize,
         seed: seedInput,
+        aiProfiles: availableAiProfiles.map(cloneProfile),
       },
     });
     window.__basileus = multiplayer;
