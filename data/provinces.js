@@ -8,13 +8,14 @@ export const REGIONS = {
   CPL: 'cpl'
 };
 
-// Region border colors — fixed, muted command colours.
-// Constantinople is intentionally its own command region and uses Basileus gold.
+// Region border colors — rich command colours for map province outlines.
+// Chosen to be legible against the parchment map background and clearly
+// distinct from one another and from dynasty ownership colors.
 export const REGION_BORDER_COLORS = {
-  [REGIONS.EAST]: '#256A42', // darker controlled green
-  [REGIONS.WEST]: '#832525', // darker controlled red
-  [REGIONS.SEA]:  '#263F83', // darker controlled blue
-  [REGIONS.CPL]:  '#B89222'  // Constantinople / Basileus gold
+  [REGIONS.EAST]: '#1e5c34', // deep forest green — Domestic of the East
+  [REGIONS.WEST]: '#7a2020', // deep crimson — Domestic of the West
+  [REGIONS.SEA]:  '#1e3a7a', // deep cobalt — Admiral of the Fleet
+  [REGIONS.CPL]:  '#9a7010'  // deep imperial gold — Constantinople / Basileus
 };
 
 export const PROVINCES = [

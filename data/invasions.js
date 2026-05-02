@@ -99,12 +99,13 @@ export const DYNASTIES = [
   'Kontostephanos', 'Kantakouzenos', 'Palaiologos'
 ];
 
-// Dynasty colors — clear, controlled ownership colours with clear separation from
-// the regional command palette, free-citizen violet, and neutral outlines.
+// Dynasty colors — rich, saturated ownership colors that read clearly on the
+// parchment map and in the sidebar. Deliberately separated from region border
+// colors (gold/crimson/green/blue/purple) to avoid confusion.
 export const DYNASTY_COLORS = [
-  '#E0C64A', // player yellow
-  '#D96B5A', // player red
-  '#6294D0', // player blue
-  '#72BF7A', // player green
-  '#E89248', // player orange
+  '#6b4070', // deep plum / imperial purple
+  '#2d6e48', // verdigris / Byzantine green
+  '#7a3a1e', // burnt sienna / terracotta
+  '#1e4080', // cobalt / ultramarine
+  '#8a5c14', // saffron ochre / manuscript gold
 ];

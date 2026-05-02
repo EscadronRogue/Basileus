@@ -50,14 +50,14 @@
   --draw:      var(--umber-3);
 
   /* Map province fills */
-  --free-fill:    color-mix(in srgb, var(--purple-1) 55%, var(--parch-1) 45%);
+  --free-fill:    #7a5090;  /* muted amethyst — unowned, distinct from dynasty colors */
   --free-border:  var(--purple-0);
-  --church-fill:  color-mix(in srgb, var(--church-1) 40%, var(--parch-1) 60%);
+  --church-fill:  #3a5888;  /* slate blue — church estate */
   --church-border: var(--church-0);
   --occupied-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
-  --empire-border: #3a2810;
-  --empire-border-hover: #5a4020;
-  --capital-fill:  #b89020;
+  --empire-border: #2e1e0f;
+  --empire-border-hover: #4a3018;
+  --capital-fill:  #9a7010;
 
   /* Typography */
   --font-display: 'Cinzel', 'Trajan Pro', Georgia, serif;
@@ -451,6 +451,7 @@ body::before {
   display: flex;
   flex-direction: column;
   background: transparent;
+  overflow: visible;
 }
 
 .sidebar-panel-head {
@@ -466,6 +467,13 @@ body::before {
   cursor: pointer;
   text-align: left;
   transition: background 0.15s;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+  /* Reset button defaults that can collapse height */
+  box-sizing: border-box;
+  line-height: normal;
+  white-space: normal;
 }
 .sidebar-panel-head:hover {
   background: linear-gradient(180deg, rgba(255,252,240,0.95) 0%, rgba(245,234,210,0.85) 100%);
@@ -474,8 +482,9 @@ body::before {
 .sidebar-panel-head-copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
+  flex: 1;
 }
 
 .sidebar-panel-kicker {
@@ -484,19 +493,21 @@ body::before {
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--umber-3);
+  line-height: 1.2;
 }
 
 .sidebar-panel-title {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--gold-1);
+  line-height: 1.3;
 }
 
 .sidebar-panel-subtitle {
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--umber-2);
   line-height: 1.3;
 }
@@ -536,17 +547,25 @@ body::before {
   background: var(--role-color, var(--parch-0));
 }
 
-.player-dashboard .sidebar-panel-head,
-.player-dashboard .player-dashboard-head,
+/* Use attribute selector to avoid !important specificity battles */
+.player-dashboard .sidebar-panel-head {
+  background: var(--role-color, var(--parch-0));
+  border-color: color-mix(in srgb, var(--role-color, var(--parch-0)) 60%, #000 40%);
+  color: var(--role-contrast, var(--umber-1));
+  min-height: 56px;
+  height: auto;
+  overflow: visible;
+  align-items: flex-start;
+}
+
 .player-dashboard .sidebar-panel-body {
-  background: var(--role-color, var(--parch-0)) !important;
-  border-color: color-mix(in srgb, var(--role-color, var(--parch-0)) 60%, #000 40%) !important;
+  background: var(--role-color, var(--parch-0));
   color: var(--role-contrast, var(--umber-1));
 }
 
 .player-dashboard .stat-button.active {
-  background: rgba(255,255,255,0.18) !important;
-  border-color: rgba(255,255,255,0.35) !important;
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.35);
   color: var(--role-contrast, var(--umber-1));
 }
 
@@ -1776,23 +1795,26 @@ body::before {
   fill-opacity: 1;
 }
 .province-shape.church {
-  fill: color-mix(in srgb, var(--church-1) 38%, rgba(240,230,200,0.62) 62%);
+  /* Slate blue — clearly church, distinct from dynasty colors */
+  fill: color-mix(in srgb, var(--church-fill) 55%, rgba(225,215,190,0.45) 45%);
   fill-opacity: 1;
 }
 .province-shape.owned {
-  fill: color-mix(in srgb, var(--owner-color, #888) 45%, rgba(245,235,210,0.55) 55%);
+  /* Dynasty color mixed with warm parchment — saturated enough to read ownership clearly */
+  fill: color-mix(in srgb, var(--owner-color, #888) 52%, rgba(240,228,195,0.48) 48%);
   fill-opacity: 1;
 }
 .province-shape.tax-exempt {
-  stroke-width: 1.9;
-  filter: drop-shadow(0 0 1px rgba(200,146,30,0.55));
+  filter: drop-shadow(0 0 1px rgba(154,112,16,0.65));
 }
 .province-shape.capital {
-  fill: color-mix(in srgb, var(--capital-fill) 42%, rgba(255,248,220,0.58) 58%);
+  /* Deep gold for Constantinople */
+  fill: color-mix(in srgb, var(--capital-fill) 48%, rgba(255,245,210,0.52) 52%);
   fill-opacity: 1;
 }
 .province-shape.free {
-  fill: color-mix(in srgb, var(--free-fill) 50%, rgba(245,235,210,0.50) 50%);
+  /* Muted amethyst — unowned themes, readable but not dominant */
+  fill: color-mix(in srgb, var(--free-fill) 45%, rgba(235,220,190,0.55) 55%);
   fill-opacity: 1;
 }
 .province-shape.selected,
@@ -1940,10 +1962,17 @@ body::before {
 #layer-bg-map .str0, #layer-bg-map .str1, #layer-bg-map .str2 { stroke: #003399 !important; }
 
 /* ── Player Role Coloring ─────────────────────────────────────────── */
+/* On neutral/parchment backgrounds: render in the role's own color */
 .player-role-name {
-  color: var(--player-name-fill, inherit);
+  color: var(--player-name-fill, var(--umber-1));
   -webkit-text-stroke: 0;
   text-shadow: none;
+}
+
+/* Inside a dynasty-colored panel: inherit the panel's contrast color (white) */
+.player-dashboard .player-role-name,
+.player-tab .player-role-name {
+  color: var(--role-contrast, #ffffff);
 }
 
 /* ── Game Over Overlay ────────────────────────────────────────────── */

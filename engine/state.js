@@ -27,11 +27,11 @@ function clamp(value, min, max) {
 }
 
 const PLAYER_ROLE_TEXT_STYLES = {
-  BASILEUS: { color: '#B89222', contrast: '#ffffff' },
-  DOM_WEST: { color: '#832525', contrast: '#ffffff' },
-  DOM_EAST: { color: '#256A42', contrast: '#ffffff' },
-  ADMIRAL: { color: '#263F83', contrast: '#ffffff' },
-  PATRIARCH: { color: '#111111', contrast: '#ffffff' },
+  BASILEUS: { color: '#9a7010', contrast: '#ffffff' }, // deep imperial gold
+  DOM_WEST: { color: '#7a2020', contrast: '#ffffff' }, // crimson west
+  DOM_EAST: { color: '#1e5c34', contrast: '#ffffff' }, // forest east
+  ADMIRAL:  { color: '#1e3a7a', contrast: '#ffffff' }, // deep navy
+  PATRIARCH:{ color: '#4a1a5c', contrast: '#ffffff' }, // church purple
 };
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'DOM_WEST', 'DOM_EAST', 'ADMIRAL', 'PATRIARCH'];
@@ -279,7 +279,9 @@ export function getPlayerRoleTextStyle(state, playerId) {
 
 export function getPlayerRoleTextStyleAttr(state, playerId) {
   const style = getPlayerRoleTextStyle(state, playerId);
-  return `--player-name-fill: ${style.contrast || '#ffffff'};`;
+  // Use the role color (not contrast) so names render legibly on neutral/parchment backgrounds.
+  // On colored role backgrounds the parent sets color via --role-contrast override.
+  return `--player-name-fill: ${style.color};`;
 }
 
 export function getPlayerRoleThemeStyleAttr(state, playerId) {
