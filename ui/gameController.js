@@ -1,4 +1,4 @@
-import { createGameState, getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr } from '../engine/state.js';
+import { createGameState, getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr, getPlayerRoleThemeStyleAttr } from '../engine/state.js';
 import { recordHistoryEvent } from '../engine/history.js';
 import { runAdministration } from '../engine/cascade.js';
 import {
@@ -395,7 +395,7 @@ export class GameController {
       const crown = player.id === this.state.basileusId ? '<span class="tab-crown">C</span>' : '';
       return `
         <button class="player-tab ${player.id === this.activePlayer ? 'active' : ''}"
-          data-player="${player.id}" style="--tab-color: ${player.color}">
+          data-player="${player.id}" style="--tab-color: ${player.color}; ${getPlayerRoleThemeStyleAttr(this.state, player.id)}">
           <span class="tab-crest">${player.dynasty.charAt(0)}</span>
           <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
           ${youBadge}

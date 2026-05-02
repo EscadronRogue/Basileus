@@ -9,12 +9,12 @@ export const REGIONS = {
 };
 
 // Region border colors — fixed, muted command colours.
-// Constantinople is intentionally its own command region and uses black.
+// Constantinople is intentionally its own command region and uses Basileus gold.
 export const REGION_BORDER_COLORS = {
-  [REGIONS.EAST]: '#2f5e42', // dark green
-  [REGIONS.WEST]: '#74312f', // dark red
-  [REGIONS.SEA]:  '#24486b', // dark blue
-  [REGIONS.CPL]:  '#111111'  // Constantinople
+  [REGIONS.EAST]: '#006400', // dark green
+  [REGIONS.WEST]: '#800000', // maroon
+  [REGIONS.SEA]:  '#000080', // navy
+  [REGIONS.CPL]:  '#FFD700'  // Constantinople / Basileus gold
 };
 
 export const PROVINCES = [

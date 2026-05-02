@@ -35,8 +35,8 @@
   /* Status */
   --occupied:      #3a2020;
   --occupied-border: #6b3333;
-  --free-fill:     #5d4268;
-  --free-border:   #3f2c49;
+  --free-fill:     #EE82EE;
+  --free-border:   #9c5a9c;
   --church-fill:   #1a2540;
   --church-border: #3a5580;
 
@@ -1621,13 +1621,13 @@ body {
 
   --occupied: #fbf4e5;
   --occupied-border: #a69476;
-  --free-fill: #6d4a78;
-  --free-border: #4f3158;
+  --free-fill: #EE82EE;
+  --free-border: #9c5a9c;
   --church-fill: #b7b3c8;
   --church-border: #6d3a76;
   --empire-border: rgba(86, 83, 76, 0.92);
   --empire-border-hover: #69655b;
-  --capital-fill: rgba(11, 11, 11, 0.72);
+  --capital-fill: #FFD700;
 }
 
 body {
@@ -2007,7 +2007,7 @@ body::before {
 }
 
 .province-shape.capital {
-  fill: var(--capital-fill);
+  fill: color-mix(in srgb, var(--capital-fill) 48%, rgba(255, 248, 224, 0.52));
   fill-opacity: 1;
   stroke: var(--region-border, var(--empire-border));
 }
@@ -2709,4 +2709,77 @@ body::before {
 .self-appoint-lockout-icon {
   flex: 0 0 auto;
   font-weight: 700;
+}
+
+
+/* Role-coloured player interface */
+.player-tab {
+  --role-soft: color-mix(in srgb, var(--role-color, var(--tab-color)) 18%, rgba(255, 250, 239, 0.88));
+  --role-border: color-mix(in srgb, var(--role-color, var(--tab-color)) 52%, rgba(126, 94, 48, 0.24));
+  background: var(--role-soft);
+  border-color: var(--role-border);
+  color: var(--text-primary);
+}
+
+.player-tab:hover {
+  background: color-mix(in srgb, var(--role-color, var(--tab-color)) 24%, rgba(255, 248, 234, 0.92));
+  border-color: color-mix(in srgb, var(--role-color, var(--tab-color)) 62%, rgba(126, 94, 48, 0.28));
+}
+
+.player-tab.active {
+  background: color-mix(in srgb, var(--role-color, var(--tab-color)) 30%, rgba(255, 249, 237, 0.86));
+  border-color: color-mix(in srgb, var(--role-color, var(--tab-color)) 70%, rgba(126, 94, 48, 0.22));
+  border-bottom-color: var(--role-color, var(--tab-color));
+  box-shadow:
+    0 10px 18px rgba(96, 68, 24, 0.1),
+    inset 0 -3px 0 var(--role-color, var(--tab-color)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.player-dashboard.sidebar-panel {
+  border: 1px solid color-mix(in srgb, var(--role-color, var(--border-accent)) 50%, rgba(126, 94, 48, 0.18));
+  background: color-mix(in srgb, var(--role-color, var(--bg-card)) 10%, rgba(255, 250, 239, 0.9));
+}
+
+.player-dashboard .player-dashboard-head,
+.player-dashboard .dashboard-header,
+.player-dashboard .stat-button.active {
+  background: color-mix(in srgb, var(--role-color, var(--gold-standard)) 18%, rgba(255, 248, 234, 0.84));
+  border-color: color-mix(in srgb, var(--role-color, var(--gold-standard)) 48%, rgba(126, 94, 48, 0.16));
+}
+
+.player-dashboard .sidebar-panel-title,
+.player-dashboard .dynasty-title,
+.player-dashboard .dashboard-list-value,
+.player-dashboard .dashboard-tag {
+  color: var(--role-color, var(--text-gold));
+}
+
+.player-dashboard .sidebar-panel-badge {
+  background: color-mix(in srgb, var(--role-color, var(--gold-standard)) 20%, rgba(255, 248, 234, 0.7));
+  color: color-mix(in srgb, var(--role-color, var(--gold-dim)) 70%, #2f2215);
+  border: 1px solid color-mix(in srgb, var(--role-color, var(--gold-standard)) 42%, transparent);
+}
+
+.dynasty-crest {
+  background: var(--dynasty-color, var(--player-color));
+  border: 2px solid color-mix(in srgb, var(--role-color, var(--gold-standard)) 62%, rgba(255, 255, 255, 0.3));
+}
+
+.tab-crest {
+  background: var(--tab-color);
+  border: 1px solid color-mix(in srgb, var(--role-color, var(--tab-color)) 62%, rgba(255, 255, 255, 0.35));
+}
+
+.player-role-name {
+  color: var(--player-name-fill, currentColor);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+.province-label.selected,
+.province-name.selected,
+.province-values.selected {
+  fill: var(--province-label-fill, rgba(104, 78, 44, 0.88));
+  stroke: var(--province-label-outline, rgba(255, 249, 237, 0.62));
 }

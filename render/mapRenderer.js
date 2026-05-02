@@ -249,7 +249,13 @@ function applyInsetRegionBorder(rootSvg, path, provinceId) {
   const regionColor = REGION_BORDER_COLORS[province.region];
   if (!regionColor) return;
 
-  const clipId = ensureRegionStrokeClipPath(rootSvg, provinceId, path);
+  // Kypros is the only province path with its own transform inside the imported
+  // hitzone group. Clipping that transformed island against a cloned path in
+  // root <defs> drops the visible outline in browsers, so let its normal stroke
+  // render un-clipped. It has no shared land border, so this does not hide any
+  // neighbouring outline.
+  const shouldUseInsetClip = !path.hasAttribute('transform');
+  const clipId = shouldUseInsetClip ? ensureRegionStrokeClipPath(rootSvg, provinceId, path) : null;
   if (clipId) path.setAttribute('clip-path', `url(#${clipId})`);
 
   path.setAttribute('data-region', province.region);

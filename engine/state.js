@@ -27,11 +27,11 @@ function clamp(value, min, max) {
 }
 
 const PLAYER_ROLE_TEXT_STYLES = {
-  BASILEUS: { color: '#8a6a1f' },
-  DOM_WEST: { color: '#74312f' },
-  DOM_EAST: { color: '#2f5e42' },
-  ADMIRAL: { color: '#24486b' },
-  PATRIARCH: { color: '#111111' },
+  BASILEUS: { color: '#FFD700', contrast: '#2b1d11' },
+  DOM_WEST: { color: '#800000', contrast: '#fff8e8' },
+  DOM_EAST: { color: '#006400', contrast: '#fff8e8' },
+  ADMIRAL: { color: '#000080', contrast: '#fff8e8' },
+  PATRIARCH: { color: '#111111', contrast: '#fff8e8' },
 };
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'DOM_WEST', 'DOM_EAST', 'ADMIRAL', 'PATRIARCH'];
@@ -274,10 +274,15 @@ export function getPlayerPrimaryRoleKey(state, playerId) {
 
 export function getPlayerRoleTextStyle(state, playerId) {
   const roleKey = getPlayerPrimaryRoleKey(state, playerId);
-  return roleKey ? PLAYER_ROLE_TEXT_STYLES[roleKey] : { color: '#2f2215' };
+  return roleKey ? PLAYER_ROLE_TEXT_STYLES[roleKey] : { color: '#2f2215', contrast: '#fff8e8' };
 }
 
 export function getPlayerRoleTextStyleAttr(state, playerId) {
   const style = getPlayerRoleTextStyle(state, playerId);
   return `--player-name-fill: ${style.color};`;
+}
+
+export function getPlayerRoleThemeStyleAttr(state, playerId) {
+  const style = getPlayerRoleTextStyle(state, playerId);
+  return `--role-color: ${style.color}; --role-contrast: ${style.contrast || '#fff8e8'};`;
 }

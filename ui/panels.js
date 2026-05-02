@@ -11,7 +11,7 @@ import {
   getThemeOwnerIncome,
   isThemeThreatened,
 } from '../engine/rules.js';
-import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr } from '../engine/state.js';
+import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr, getPlayerRoleThemeStyleAttr } from '../engine/state.js';
 
 
 function renderPlayerRoleName(state, player, fallback = '') {
@@ -798,7 +798,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
   ) : '';
 
   container.innerHTML = `
-    <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="--player-color: ${player.color}">
+    <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="--player-color: ${player.color}; --dynasty-color: ${player.color}; ${getPlayerRoleThemeStyleAttr(state, player.id)}">
       <button class="sidebar-panel-head player-dashboard-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Dynasty View</span>
@@ -852,7 +852,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
   return;
 
   container.innerHTML = `
-    <div class="player-dashboard" style="--player-color: ${player.color}">
+    <div class="player-dashboard" style="--player-color: ${player.color}; --dynasty-color: ${player.color}; ${getPlayerRoleThemeStyleAttr(state, player.id)}">
       <div class="dashboard-header">
         <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
         <div class="dynasty-info">

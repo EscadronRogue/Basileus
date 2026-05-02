@@ -1,6 +1,6 @@
 import { computeFullWealth } from '../engine/actions.js';
 import { runAdministration } from '../engine/cascade.js';
-import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr } from '../engine/state.js';
+import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr, getPlayerRoleThemeStyleAttr } from '../engine/state.js';
 import { createMapSVG, drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import {
   renderCourtPanel,
@@ -540,7 +540,7 @@ export class MultiplayerController {
       const connectionBadge = seat?.status === 'disconnected' ? '<span class="tab-you">Away</span>' : '';
       return `
         <button class="player-tab ${viewing ? 'active' : ''}"
-          data-player="${player.id}" style="--tab-color: ${player.color}">
+          data-player="${player.id}" style="--tab-color: ${player.color}; ${getPlayerRoleThemeStyleAttr(this.state, player.id)}">
           <span class="tab-crest">${player.dynasty.charAt(0)}</span>
           <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
           ${youBadge}
