@@ -212,6 +212,8 @@ export class MultiplayerController {
       dashboardFocus: null,
     };
     this.gameOverDismissed = false;
+    this.startingMatch = false;
+    this.startRequestId = null;
   }
 
   persistSession() {
@@ -382,12 +384,20 @@ export class MultiplayerController {
     }
 
     if (message.type === 'action_rejected') {
+      if (!this.startRequestId || message.requestId === this.startRequestId) {
+        this.startingMatch = false;
+        if (message.requestId === this.startRequestId) this.startRequestId = null;
+      }
       this.lastError = message.reason || 'The server rejected that action.';
       this.render();
       return;
     }
 
     if (message.type === 'action_accepted') {
+      if (message.requestId === this.startRequestId || message.action === 'start_game') {
+        this.startingMatch = false;
+        this.startRequestId = null;
+      }
       this.lastError = '';
       this.render();
       return;
@@ -412,6 +422,10 @@ export class MultiplayerController {
 
   hasAiSeats() {
     return (this.roomSnapshot?.seats || []).some((seat) => seat.kind === 'ai');
+  }
+
+  getOpenHumanSeats() {
+    return (this.roomSnapshot?.seats || []).filter((seat) => seat.kind === 'human' && !seat.claimed);
   }
 
   async refreshHostAiProfiles() {
@@ -764,6 +778,10 @@ export class MultiplayerController {
     const seats = this.roomSnapshot.seats || [];
     const config = this.roomSnapshot.config || {};
     const controlledSeatId = this.getControlledSeatId();
+    const openHumanSeats = this.getOpenHumanSeats();
+    const needsAiAutofill = openHumanSeats.length > 0;
+    const startDisabled = this.connectionState !== 'connected' || this.startingMatch;
+    const startLabel = this.startingMatch ? 'Preparing Match...' : 'Start Match';
 
     this.setupDialog.style.display = 'flex';
     this.setupDialog.innerHTML = `
@@ -800,16 +818,22 @@ export class MultiplayerController {
         <div class="setup-field">
           <label>Seats</label>
           <div class="multiplayer-seat-list">
-            ${seats.map((seat) => `
+            ${seats.map((seat) => {
+              const seatTitle = seat.dynasty
+                || (seat.kind === 'ai'
+                  ? 'AI-controlled dynasty'
+                  : (seat.claimed ? 'Dynasty assigned at match start' : 'Open human seat'));
+              const seatStatusLabel = seat.playerName || (seat.kind === 'ai' ? 'AI-controlled' : 'Unclaimed');
+              return `
               <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}">
                 <div class="multiplayer-seat-copy">
                   <strong>Seat ${seat.seatId + 1}</strong>
-                  <span>${seat.dynasty || (seat.kind === 'ai' ? 'AI seat' : 'Awaiting dynasty')}</span>
-                  <span class="setup-hint">${seat.playerName || (seat.kind === 'ai' ? 'AI-controlled' : 'Open human seat')} - ${seat.status}</span>
+                  <span>${seatTitle}</span>
+                  <span class="setup-hint">${seatStatusLabel} - ${seat.status}</span>
                 </div>
                 <div class="multiplayer-seat-actions">
                   ${seat.kind === 'human' && !seat.claimed ? `
-                    <button class="btn-start btn-claim-seat" data-seat-id="${seat.seatId}">Claim</button>
+                    <button class="btn-start btn-claim-seat" type="button" data-seat-id="${seat.seatId}">Claim</button>
                   ` : ''}
                   ${isHost && !seat.claimed ? `
                     <button class="btn-secondary-link btn-seat-kind" type="button" data-seat-id="${seat.seatId}" data-kind="${seat.kind === 'ai' ? 'human' : 'ai'}">
@@ -819,7 +843,8 @@ export class MultiplayerController {
                   ${seat.isViewerSeat ? '<span class="setup-hint">You</span>' : ''}
                 </div>
               </div>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
         </div>
         ${isHost && this.hasAiSeats() ? `
@@ -827,8 +852,11 @@ export class MultiplayerController {
             ? `${this.aiProfiles.length} trained AI profile${this.aiProfiles.length === 1 ? '' : 's'} ready for multiplayer AI seats.`
             : 'AI seats require trained profiles. The host profile library will be loaded before starting.'}</div>
         ` : ''}
+        ${isHost && needsAiAutofill ? `
+          <div class="setup-hint">Start Match will fill ${openHumanSeats.length} open human seat${openHumanSeats.length === 1 ? '' : 's'} with trained AI if profiles are available.</div>
+        ` : ''}
         <div class="setup-actions">
-          ${isHost ? `<button class="btn-start" id="btnStartRoom" ${this.roomSnapshot.canStart ? '' : 'disabled'}>Start Match</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
+          ${isHost ? `<button class="btn-start" id="btnStartRoom" type="button" ${startDisabled ? 'disabled' : ''}>${startLabel}</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
           <button class="btn-secondary-link" type="button" id="btnLeaveRoom">${controlledSeatId != null && !isHost ? 'Leave Seat' : 'Close Connection'}</button>
         </div>
       </div>
@@ -849,20 +877,39 @@ export class MultiplayerController {
       });
     });
 
-    this.setupDialog.querySelector('#btnStartRoom')?.addEventListener('click', async () => {
+    this.setupDialog.querySelector('#btnStartRoom')?.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.startingMatch) return;
+      const startButton = event.currentTarget;
       const playerCount = Number(this.setupDialog.querySelector('#roomPlayerCount')?.value || config.playerCount || 4);
       const deckSize = Number(this.setupDialog.querySelector('#roomDeckSize')?.value || config.deckSize || 9);
       const seed = this.setupDialog.querySelector('#roomSeedInput')?.value?.trim() || '';
+      const openSeatsBeforeStart = this.getOpenHumanSeats();
+      const fillOpenSeatsWithAi = openSeatsBeforeStart.length > 0;
+
+      this.startingMatch = true;
+      this.lastError = '';
+      if (startButton) {
+        startButton.disabled = true;
+        startButton.textContent = fillOpenSeatsWithAi ? 'Filling Seats...' : 'Starting Match...';
+      }
+
       const aiProfiles = await this.refreshHostAiProfiles();
-      if (this.hasAiSeats() && !aiProfiles.length) {
-        this.lastError = 'Cannot start with AI seats: no trained AI profiles are available. Save champions to the library or export trained profiles first.';
+      const requestId = this.send('start_game', {
+        config: { playerCount, deckSize, seed },
+        aiProfiles,
+        fillOpenSeatsWithAi,
+      });
+
+      if (!requestId) {
+        this.startingMatch = false;
+        this.startRequestId = null;
         this.render();
         return;
       }
-      this.send('set_room_config', {
-        config: { playerCount, deckSize, seed },
-      });
-      this.send('start_game', { aiProfiles });
+
+      this.startRequestId = requestId;
     });
 
     this.setupDialog.querySelector('#btnLeaveRoom')?.addEventListener('click', () => {

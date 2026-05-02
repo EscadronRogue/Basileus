@@ -266,6 +266,83 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
   await hostSocket.close();
 });
 
+test('host start can auto-fill open seats with AI profiles', async (t) => {
+  const instance = await createServerHarness(t);
+  const created = await createRoom(instance.url, {
+    playerName: 'Host',
+    config: {
+      playerCount: 3,
+      deckSize: 6,
+      seed: 'ai-autofill-seed',
+    },
+  });
+  const hostSocket = await connectSocket(instance.url, {
+    roomCode: created.roomCode,
+    sessionToken: created.sessionToken,
+    playerName: 'Host',
+    seatToken: created.seatToken,
+  });
+
+  hostSocket.send({
+    type: 'start_game',
+    requestId: 'start-with-ai-autofill',
+    fillOpenSeatsWithAi: true,
+  });
+
+  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'start-with-ai-autofill');
+  const roomSnapshot = await hostSocket.waitFor((message) => message.type === 'room_snapshot' && message.status === 'in_progress');
+  const gameSnapshot = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
+
+  assert.equal(gameSnapshot.status, 'in_progress');
+  assert.equal(roomSnapshot.seats[0].kind, 'human');
+  assert.equal(roomSnapshot.seats[1].kind, 'ai');
+  assert.equal(roomSnapshot.seats[2].kind, 'ai');
+
+  await hostSocket.close();
+});
+
+
+test('host start applies room config atomically without a separate lobby update', async (t) => {
+  const instance = await createServerHarness(t);
+  const created = await createRoom(instance.url, {
+    playerName: 'Host',
+    config: {
+      playerCount: 4,
+      deckSize: 12,
+      seed: 'before-start',
+    },
+  });
+  const hostSocket = await connectSocket(instance.url, {
+    roomCode: created.roomCode,
+    sessionToken: created.sessionToken,
+    playerName: 'Host',
+    seatToken: created.seatToken,
+  });
+
+  hostSocket.send({
+    type: 'start_game',
+    requestId: 'start-with-config',
+    config: {
+      playerCount: 3,
+      deckSize: 6,
+      seed: 'atomic-start-seed',
+    },
+    fillOpenSeatsWithAi: true,
+  });
+
+  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'start-with-config');
+  const roomSnapshot = await hostSocket.waitFor((message) => message.type === 'room_snapshot' && message.status === 'in_progress');
+  const gameSnapshot = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
+
+  assert.equal(roomSnapshot.config.playerCount, 3);
+  assert.equal(roomSnapshot.config.deckSize, 6);
+  assert.equal(roomSnapshot.seats.length, 3);
+  assert.equal(gameSnapshot.state.players.length, 3);
+  assert.equal(gameSnapshot.state.maxRounds, 6);
+
+  await hostSocket.close();
+});
+
 test('multiplayer snapshots redact sealed orders and hidden mercenary spend', async (t) => {
   const harness = await createStartedThreePlayerRoom(t);
   const { room, host, guest } = harness;
@@ -302,8 +379,12 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
   });
 
   await actorSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === actorRequestId);
-  const actorGame = await actorSocket.waitFor((message) => message.type === 'game_snapshot');
-  const viewerGame = await viewerSocket.waitFor((message) => message.type === 'game_snapshot');
+  const actorGame = await actorSocket.waitFor((message) =>
+    message.type === 'game_snapshot' && message.state?.allOrders?.[String(actorSeatId)] === true
+  );
+  const viewerGame = await viewerSocket.waitFor((message) =>
+    message.type === 'game_snapshot' && message.state?.allOrders?.[String(actorSeatId)] === true
+  );
 
   const actorGoldVisible = actorGame.state.players.find((player) => player.id === actorSeatId).gold;
   const viewerGoldVisible = viewerGame.state.players.find((player) => player.id === actorSeatId).gold;

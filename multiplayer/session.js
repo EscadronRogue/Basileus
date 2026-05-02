@@ -333,6 +333,10 @@ function getAiSeatIds(room) {
   return room.seats.filter((seat) => seat.kind === 'ai').map((seat) => seat.seatId);
 }
 
+function getOpenHumanSeats(room) {
+  return room.seats.filter((seat) => seat.kind === 'human' && seat.sessionId == null);
+}
+
 export class MultiplayerRoom {
   constructor({ roomCode, hostSessionId, hostPlayerName, config = {} }) {
     this.roomCode = roomCode;
@@ -489,10 +493,23 @@ export class MultiplayerRoom {
     return this.config;
   }
 
-  async startGame(sessionId, availableAiProfiles = []) {
+  async startGame(sessionId, availableAiProfiles = [], options = {}) {
     assert(this.status === ROOM_STATUS.LOBBY, 'The game has already started.');
     assert(this.isHostSession(sessionId), 'Only the host can start the room.');
-    assert(this.canStartGame(), 'Every human seat must be claimed before starting.');
+
+    const openHumanSeats = getOpenHumanSeats(this);
+    if (openHumanSeats.length > 0 && options.fillOpenSeatsWithAi) {
+      assert(availableAiProfiles.length > 0, 'Open seats can only be auto-filled with AI when at least one trained AI profile is available.');
+      for (const seat of openHumanSeats) {
+        seat.kind = 'ai';
+        seat.playerName = `AI Seat ${seat.seatId + 1}`;
+        seat.connected = false;
+        seat.seatToken = null;
+      }
+      this.touch();
+    }
+
+    assert(this.canStartGame(), 'Every human seat must be claimed before starting, or the host must start with open seats auto-filled by AI.');
 
     const aiSeatIds = getAiSeatIds(this);
     assert(!aiSeatIds.length || availableAiProfiles.length > 0, 'AI seats require at least one trained AI profile. Save or export trained profiles before starting multiplayer with AI seats.');
@@ -1125,7 +1142,12 @@ export class MultiplayerRoom {
 
       if (message.type === 'start_game') {
         const previousPhase = this.gameState?.phase || null;
-        await this.startGame(sessionId, availableAiProfiles);
+        if (message.config && typeof message.config === 'object') {
+          this.setRoomConfig(sessionId, message.config);
+        }
+        await this.startGame(sessionId, availableAiProfiles, {
+          fillOpenSeatsWithAi: message.fillOpenSeatsWithAi === true,
+        });
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
