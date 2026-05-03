@@ -1,8 +1,0 @@
-Suggested commit title:
-Compact player selector and improve interface readability
-
-Suggested commit body:
-- Collapse player selector finance details into a compact reserve / income / expense line.
-- Use B for the Basileus selector marker and remove “current” wording.
-- Increase normal sidebar text size for better readability.
-- Reduce invasion cartouche background opacity.

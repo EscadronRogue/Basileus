@@ -1,7 +1,0 @@
-Commit: fix cartouche role colors and invasion visibility
-
-This is intended to be applied as a new isolated commit after 0004-compact-selector-and-readable-interface.patch.
-
-Apply with:
-
-git am 0005-fix-cartouche-role-colors-and-invasion-visibility.patch

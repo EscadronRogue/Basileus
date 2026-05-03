@@ -1,8 +1,0 @@
-36d97e7 Move player switcher and restyle invasion labels
- PLAYER_SWITCHER_INVASION_CARTOUCHE_PASS.md | 28 +++++++++
- assets/style.css                           | 97 +++++++++++++++++++++---------
- index.html                                 |  2 +-
- render/mapRenderer.js                      | 65 ++++++++++++++++----
- ui/gameController.js                       | 13 +---
- ui/multiplayerController.js                | 11 +---
- 6 files changed, 156 insertions(+), 60 deletions(-)

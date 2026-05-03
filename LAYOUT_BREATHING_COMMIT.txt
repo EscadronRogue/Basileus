@@ -1,2 +1,0 @@
-51a2234 Refine map scale and interface spacing
-3558518 Baseline responsive Firefox and mobile pass
