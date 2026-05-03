@@ -401,7 +401,7 @@ function addProvinceLabels(layer) {
     name.textContent = province.name;
     layer.appendChild(name);
 
-    if (province.id === 'CPL' || province.G <= 0) continue;
+    if (province.id === 'CPL' || province.P <= 0 && province.T <= 0 && province.L <= 0) continue;
 
     const values = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     values.setAttribute('x', centroid.cx);
@@ -409,7 +409,7 @@ function addProvinceLabels(layer) {
     values.setAttribute('class', 'province-values');
     values.setAttribute('data-id', province.id);
     applyProvinceLabelTheme(values, province);
-    values.textContent = `${province.G}G ${province.L}L`;
+    values.textContent = `${province.P}P ${province.T}T ${province.L}L`;
     layer.appendChild(values);
   }
 }

@@ -1,8 +1,7 @@
 import { REGIONS } from '../data/provinces.js';
 import {
-  getNormalOwnerIncome,
-  getNormalTaxIncome,
-  getTaxExemptOwnerIncome,
+  getThemeTaxIncome,
+  getThemeOwnerIncome,
 } from './rules.js';
 import { findTitleHolder } from './state.js';
 
@@ -164,30 +163,27 @@ export function runAdministration(state) {
   for (const theme of Object.values(state.themes)) {
     if (theme.id === 'CPL' || theme.occupied) continue;
 
+    const taxGold = getThemeTaxIncome(theme);
+    const levyCount = Math.max(0, Number(theme.L) || 0);
+
     if (theme.owner === 'church') {
-      churchPool += theme.G;
+      churchPool += taxGold;
+      regionalLevyPools[theme.region] += levyCount;
       continue;
     }
 
-    const ownerGold = theme.taxExempt
-      ? getTaxExemptOwnerIncome(theme)
-      : getNormalOwnerIncome(theme);
-    const taxGold = theme.taxExempt
-      ? 0
-      : getNormalTaxIncome(theme);
-
     if (theme.owner !== null) {
-      addIncome(theme.owner, ownerGold);
+      addIncome(theme.owner, getThemeOwnerIncome(theme));
     }
 
     if (theme.strategos !== null) {
       addIncome(theme.strategos, taxGold);
-      addLevy(`STRAT_${theme.id}`, theme.L);
+      addLevy(`STRAT_${theme.id}`, levyCount);
       continue;
     }
 
     regionalTaxPools[theme.region] += taxGold;
-    regionalLevyPools[theme.region] += theme.L;
+    regionalLevyPools[theme.region] += levyCount;
   }
 
   for (const region of regions) {

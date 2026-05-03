@@ -419,7 +419,7 @@ function getPlayerIncomePotential(state, playerId, meta = null) {
 }
 
 function getThemeStrategicValue(theme) {
-  return (theme.G * 1.35) + (theme.L * 0.95);
+  return (theme.P * 1.35) + (theme.L * 0.95);
 }
 
 function getRemainingRounds(state) {
@@ -760,7 +760,7 @@ function buildLandPurchaseDecision(state, meta, playerId, action) {
   return {
     title: 'AI reasoning',
     factors: [
-      factor('Income horizon', `${theme.name} is G${theme.G} L${theme.L}, yielding ${ownerIncome}g to the owner each round under normal taxation.`, 'for', action.score),
+      factor('Income horizon', `${theme.name} is P${theme.P} T${theme.T} L${theme.L}, yielding ${ownerIncome}g to the owner each round under normal taxation.`, 'for', action.score),
       factor('Catch-up pressure', leaderThemeCount > ownedThemeCount
         ? `${publicActor(state, playerId)} was behind the land leader and needed to close the gap.`
         : `${publicActor(state, playerId)} still valued land growth even without trailing in estates.`, leaderThemeCount > ownedThemeCount ? 'for' : 'neutral'),
@@ -1448,11 +1448,11 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
       slotValue += Math.max(0, getPlayerStrength(state, meta, currentHolder) - getPlayerStrength(state, meta, actorId)) * 0.08;
     }
   } else if (type === 'STRATEGOS') {
-    slotValue = 1.9 + theme.L + (theme.G * 0.25) + (actorProfile.weights.frontier * 0.6) + (threat * 1.15) - (routeRisk * 0.35);
+    slotValue = 1.9 + theme.L + (theme.P * 0.25) + (actorProfile.weights.frontier * 0.6) + (threat * 1.15) - (routeRisk * 0.35);
     if (theme.owner === appointeeId) slotValue += 1.15;
     slotValue += getPlayerExposure(state, appointeeId) * 0.3;
   } else if (type === 'BISHOP') {
-    slotValue = 1.8 + (theme.G * 0.95) + (actorProfile.weights.church * 0.9) - (routeRisk * 0.2) + (remainingRounds * 0.08);
+    slotValue = 1.8 + (theme.P * 0.95) + (actorProfile.weights.church * 0.9) - (routeRisk * 0.2) + (remainingRounds * 0.08);
     if (theme.owner === appointeeId || theme.bishop === appointeeId) slotValue += 0.6;
   }
 
@@ -1661,10 +1661,10 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const player = getPlayer(state, playerId);
   const privateValue = (ownerIncome * (1.8 + (remainingRounds * 0.56))) + (theme.L * 0.25) + (remainingRounds * profile.weights.wealth * 0.18);
   const landControl = profile.weights.land * 1.2;
-  const cheapness = (4 - theme.G) * 0.35;
+  const cheapness = (4 - theme.P) * 0.35;
   const scarcityBonus = ownedThemeCount === 0 ? 4.5 : Math.max(0, 2 - ownedThemeCount) * 1.6;
   const catchUpBonus = Math.max(0, leaderThemeCount - ownedThemeCount) * 0.55;
-  const churchOptionality = profile.weights.church * theme.G * 0.08;
+  const churchOptionality = profile.weights.church * theme.P * 0.08;
   const reservePenalty = (player.gold - cost) < 2 ? 0.9 + (empireDanger * 0.25) : 0;
   const riskPenalty = routeRisk * (empireDanger < 1 ? 0.45 : 0.85);
   const selfProtection = exposure > 0 ? theme.L * 0.15 : 0;
@@ -1684,7 +1684,7 @@ function scoreChurchGift(state, meta, playerId, theme) {
     (remainingRounds * profile.weights.wealth * 0.95) +
     (ownerIncome * (2.2 + (profile.weights.land * 0.55))) +
     (ownedThemeCount <= 1 ? 2.4 : ownedThemeCount <= 2 ? 1.15 : 0);
-  const churchValue = (theme.G * profile.weights.church * 0.95) + 0.45;
+  const churchValue = (theme.P * profile.weights.church * 0.95) + 0.45;
   const patriarchBonus = getPlayer(state, playerId).majorTitles.includes('PATRIARCH') ? 1.2 : 0;
   const bishopLockBonus = 0.35 + (profile.weights.church * 0.28);
   const routeRiskRelief = getThemeRouteRisk(state, theme.id) * (empireDanger < 1 ? 1.05 : 0.35);
@@ -1939,7 +1939,7 @@ function buildRevocationOptions(state, meta, basileusId) {
 
     const wealthLead = getPlayer(state, player.id).gold - getPlayer(state, basileusId).gold;
     for (const theme of getPlayerThemes(state, player.id)) {
-      let score = (wealthLead * 0.35) + profile.weights.revocation + (theme.G * 0.25) + (theme.L * 0.25);
+      let score = (wealthLead * 0.35) + profile.weights.revocation + (theme.P * 0.25) + (theme.L * 0.25);
       score -= getObligation(meta, basileusId, player.id) * 1.25;
       if (context.pactByPlayer[player.id]?.candidateId === basileusId) score -= 1.8;
       if (getThemeRouteRisk(state, theme.id) > 0.6 && threat > 0.75) score -= 0.7;
@@ -1967,7 +1967,7 @@ function buildRevocationOptions(state, meta, basileusId) {
       });
     }
     if (theme.bishop != null) {
-      let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.G * 0.8);
+      let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.P * 0.8);
       score -= getObligation(meta, basileusId, theme.bishop) * 1.1;
       if (context.pactByPlayer[theme.bishop]?.candidateId === basileusId) score -= 1.5;
       options.push({
@@ -1982,7 +1982,7 @@ function buildRevocationOptions(state, meta, basileusId) {
       options.push({
         kind: 'exempt',
         themeId: theme.id,
-        score: profile.weights.revocation + (theme.G * 0.8),
+        score: profile.weights.revocation + (theme.P * 0.8),
       });
     }
   }

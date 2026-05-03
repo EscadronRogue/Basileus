@@ -1,4 +1,4 @@
-// data/provinces.js — All Byzantine themes with gold (G), levy (L), region, geography
+// data/provinces.js — All Byzantine themes with profit (P), tax (T), levy (L), region, geography
 // Coordinates are on a 1200×700 canvas, roughly matching Eastern Mediterranean geography
 
 export const REGIONS = {
@@ -20,53 +20,53 @@ export const REGION_BORDER_COLORS = {
 
 export const PROVINCES = [
   // ── EAST (17 themes) ── Domestic of the East
-  { id: 'OPS', name: 'Opsikion',      G: 4, L: 1, region: REGIONS.EAST, cx: 640, cy: 280 },
-  { id: 'OPT', name: 'Optimaton',     G: 4, L: 1, region: REGIONS.EAST, cx: 610, cy: 240 },
-  { id: 'ANA', name: 'Anatolikon',    G: 2, L: 3, region: REGIONS.EAST, cx: 720, cy: 340 },
-  { id: 'PAP', name: 'Paphlagonia',   G: 3, L: 2, region: REGIONS.EAST, cx: 700, cy: 220 },
-  { id: 'BOU', name: 'Boukellarion',  G: 2, L: 3, region: REGIONS.EAST, cx: 680, cy: 260 },
-  { id: 'ARM', name: 'Armeniakon',    G: 1, L: 4, region: REGIONS.EAST, cx: 790, cy: 210 },
-  { id: 'CHD', name: 'Chaldia',       G: 3, L: 2, region: REGIONS.EAST, cx: 870, cy: 195 },
-  { id: 'CHA', name: 'Charsianon',    G: 2, L: 3, region: REGIONS.EAST, cx: 800, cy: 280 },
-  { id: 'KOL', name: 'Koloneia',      G: 1, L: 4, region: REGIONS.EAST, cx: 880, cy: 240, startOccupied: true },
-  { id: 'SEB', name: 'Sebasteia',     G: 2, L: 3, region: REGIONS.EAST, cx: 850, cy: 270, startOccupied: true },
-  { id: 'KAP', name: 'Kappadokia',    G: 1, L: 4, region: REGIONS.EAST, cx: 780, cy: 330 },
-  { id: 'THK', name: 'Thrakesion',    G: 3, L: 2, region: REGIONS.EAST, cx: 620, cy: 350 },
-  { id: 'SEL', name: 'Seleukia',      G: 1, L: 4, region: REGIONS.EAST, cx: 760, cy: 400 },
-  { id: 'CIL', name: 'Kilikia',       G: 4, L: 1, region: REGIONS.EAST, cx: 830, cy: 380, startOccupied: true },
-  { id: 'ANT', name: 'Antiochia',     G: 4, L: 1, region: REGIONS.EAST, cx: 900, cy: 420, startOccupied: true },
-  { id: 'MES', name: 'Mesopotamia',   G: 2, L: 3, region: REGIONS.EAST, cx: 950, cy: 350, startOccupied: true },
-  { id: 'VAS', name: 'Vaspurakan',    G: 1, L: 4, region: REGIONS.EAST, cx: 980, cy: 280, startOccupied: true },
+  { id: 'OPS', name: 'Opsikion',      P: 2, T: 2, L: 1, region: REGIONS.EAST, cx: 640, cy: 280 },
+  { id: 'OPT', name: 'Optimaton',     P: 2, T: 2, L: 1, region: REGIONS.EAST, cx: 610, cy: 240 },
+  { id: 'ANA', name: 'Anatolikon',    P: 1, T: 1, L: 2, region: REGIONS.EAST, cx: 720, cy: 340 },
+  { id: 'PAP', name: 'Paphlagonia',   P: 2, T: 1, L: 1, region: REGIONS.EAST, cx: 700, cy: 220 },
+  { id: 'BOU', name: 'Boukellarion',  P: 1, T: 1, L: 2, region: REGIONS.EAST, cx: 680, cy: 260 },
+  { id: 'ARM', name: 'Armeniakon',    P: 1, T: 0, L: 3, region: REGIONS.EAST, cx: 790, cy: 210 },
+  { id: 'CHD', name: 'Chaldia',       P: 2, T: 1, L: 1, region: REGIONS.EAST, cx: 870, cy: 195 },
+  { id: 'CHA', name: 'Charsianon',    P: 1, T: 1, L: 2, region: REGIONS.EAST, cx: 800, cy: 280 },
+  { id: 'KOL', name: 'Koloneia',      P: 1, T: 0, L: 3, region: REGIONS.EAST, cx: 880, cy: 240, startOccupied: true },
+  { id: 'SEB', name: 'Sebasteia',     P: 1, T: 1, L: 2, region: REGIONS.EAST, cx: 850, cy: 270, startOccupied: true },
+  { id: 'KAP', name: 'Kappadokia',    P: 1, T: 0, L: 3, region: REGIONS.EAST, cx: 780, cy: 330 },
+  { id: 'THK', name: 'Thrakesion',    P: 2, T: 1, L: 1, region: REGIONS.EAST, cx: 620, cy: 350 },
+  { id: 'SEL', name: 'Seleukia',      P: 1, T: 0, L: 3, region: REGIONS.EAST, cx: 760, cy: 400 },
+  { id: 'CIL', name: 'Kilikia',       P: 2, T: 2, L: 1, region: REGIONS.EAST, cx: 830, cy: 380, startOccupied: true },
+  { id: 'ANT', name: 'Antiochia',     P: 2, T: 2, L: 1, region: REGIONS.EAST, cx: 900, cy: 420, startOccupied: true },
+  { id: 'MES', name: 'Mesopotamia',   P: 1, T: 1, L: 2, region: REGIONS.EAST, cx: 950, cy: 350, startOccupied: true },
+  { id: 'VAS', name: 'Vaspurakan',    P: 1, T: 0, L: 3, region: REGIONS.EAST, cx: 980, cy: 280, startOccupied: true },
 
   // ── WEST (12 themes) ── Domestic of the West
-  { id: 'NIK', name: 'Nikopolis',     G: 3, L: 2, region: REGIONS.WEST, cx: 340, cy: 340 },
-  { id: 'HEL', name: 'Hellas',        G: 3, L: 2, region: REGIONS.WEST, cx: 380, cy: 390 },
-  { id: 'THS', name: 'Thessalonike',  G: 4, L: 1, region: REGIONS.WEST, cx: 400, cy: 290 },
-  { id: 'STR', name: 'Strymon',       G: 2, L: 3, region: REGIONS.WEST, cx: 440, cy: 260 },
-  { id: 'MAK', name: 'Makedonia',     G: 2, L: 3, region: REGIONS.WEST, cx: 490, cy: 240 },
-  { id: 'THR', name: 'Thrake',        G: 4, L: 1, region: REGIONS.WEST, cx: 540, cy: 230 },
-  { id: 'CRO', name: 'Kroatia',       G: 2, L: 3, region: REGIONS.WEST, cx: 280, cy: 160, startOccupied: true },
-  { id: 'DAL', name: 'Dalmatia',      G: 4, L: 1, region: REGIONS.WEST, cx: 310, cy: 200, startOccupied: true },
-  { id: 'SRB', name: 'Serbia',        G: 1, L: 4, region: REGIONS.WEST, cx: 350, cy: 190, startOccupied: true },
-  { id: 'SIM', name: 'Sirmion',       G: 3, L: 2, region: REGIONS.WEST, cx: 320, cy: 130, startOccupied: true },
-  { id: 'BUL', name: 'Boulgaria',     G: 2, L: 3, region: REGIONS.WEST, cx: 420, cy: 200, startOccupied: true },
-  { id: 'PAR', name: 'Paradounavon',  G: 2, L: 3, region: REGIONS.WEST, cx: 490, cy: 170, startOccupied: true },
+  { id: 'NIK', name: 'Nikopolis',     P: 2, T: 1, L: 1, region: REGIONS.WEST, cx: 340, cy: 340 },
+  { id: 'HEL', name: 'Hellas',        P: 2, T: 1, L: 1, region: REGIONS.WEST, cx: 380, cy: 390 },
+  { id: 'THS', name: 'Thessalonike',  P: 2, T: 2, L: 1, region: REGIONS.WEST, cx: 400, cy: 290 },
+  { id: 'STR', name: 'Strymon',       P: 1, T: 1, L: 2, region: REGIONS.WEST, cx: 440, cy: 260 },
+  { id: 'MAK', name: 'Makedonia',     P: 1, T: 1, L: 2, region: REGIONS.WEST, cx: 490, cy: 240 },
+  { id: 'THR', name: 'Thrake',        P: 2, T: 2, L: 1, region: REGIONS.WEST, cx: 540, cy: 230 },
+  { id: 'CRO', name: 'Kroatia',       P: 1, T: 1, L: 2, region: REGIONS.WEST, cx: 280, cy: 160, startOccupied: true },
+  { id: 'DAL', name: 'Dalmatia',      P: 2, T: 2, L: 1, region: REGIONS.WEST, cx: 310, cy: 200, startOccupied: true },
+  { id: 'SRB', name: 'Serbia',        P: 1, T: 0, L: 3, region: REGIONS.WEST, cx: 350, cy: 190, startOccupied: true },
+  { id: 'SIM', name: 'Sirmion',       P: 2, T: 1, L: 1, region: REGIONS.WEST, cx: 320, cy: 130, startOccupied: true },
+  { id: 'BUL', name: 'Boulgaria',     P: 1, T: 1, L: 2, region: REGIONS.WEST, cx: 420, cy: 200, startOccupied: true },
+  { id: 'PAR', name: 'Paradounavon',  P: 1, T: 1, L: 2, region: REGIONS.WEST, cx: 490, cy: 170, startOccupied: true },
 
   // ── SEA (11 themes) ── Admiral of the Fleet
-  { id: 'AEG', name: 'Aigaion Pelagos', G: 2, L: 3, region: REGIONS.SEA, cx: 510, cy: 370 },
-  { id: 'SAM', name: 'Samos',           G: 2, L: 3, region: REGIONS.SEA, cx: 570, cy: 390 },
-  { id: 'KIB', name: 'Kibyrrhaiotai',   G: 1, L: 4, region: REGIONS.SEA, cx: 630, cy: 420 },
-  { id: 'KEP', name: 'Kephallenia',     G: 1, L: 4, region: REGIONS.SEA, cx: 290, cy: 380 },
-  { id: 'KRE', name: 'Krete',           G: 4, L: 1, region: REGIONS.SEA, cx: 450, cy: 480 },
-  { id: 'KYP', name: 'Kypros',          G: 4, L: 1, region: REGIONS.SEA, cx: 790, cy: 460 },
-  { id: 'CHE', name: 'Cherson',         G: 3, L: 2, region: REGIONS.SEA, cx: 620, cy: 120 },
-  { id: 'PEL', name: 'Peloponnesos',    G: 2, L: 3, region: REGIONS.SEA, cx: 380, cy: 440 },
-  { id: 'DYR', name: 'Dyrrachium',      G: 2, L: 3, region: REGIONS.SEA, cx: 310, cy: 280 },
-  { id: 'SIC', name: 'Sikelia',         G: 4, L: 1, region: REGIONS.SEA, cx: 170, cy: 360, startOccupied: true },
-  { id: 'ITA', name: 'Italias',         G: 2, L: 3, region: REGIONS.SEA, cx: 190, cy: 280 },
+  { id: 'AEG', name: 'Aigaion Pelagos', P: 1, T: 1, L: 2, region: REGIONS.SEA, cx: 510, cy: 370 },
+  { id: 'SAM', name: 'Samos',           P: 1, T: 1, L: 2, region: REGIONS.SEA, cx: 570, cy: 390 },
+  { id: 'KIB', name: 'Kibyrrhaiotai',   P: 1, T: 0, L: 3, region: REGIONS.SEA, cx: 630, cy: 420 },
+  { id: 'KEP', name: 'Kephallenia',     P: 1, T: 0, L: 3, region: REGIONS.SEA, cx: 290, cy: 380 },
+  { id: 'KRE', name: 'Krete',           P: 2, T: 2, L: 1, region: REGIONS.SEA, cx: 450, cy: 480 },
+  { id: 'KYP', name: 'Kypros',          P: 2, T: 2, L: 1, region: REGIONS.SEA, cx: 790, cy: 460 },
+  { id: 'CHE', name: 'Cherson',         P: 2, T: 1, L: 1, region: REGIONS.SEA, cx: 620, cy: 120 },
+  { id: 'PEL', name: 'Peloponnesos',    P: 1, T: 1, L: 2, region: REGIONS.SEA, cx: 380, cy: 440 },
+  { id: 'DYR', name: 'Dyrrachium',      P: 1, T: 1, L: 2, region: REGIONS.SEA, cx: 310, cy: 280 },
+  { id: 'SIC', name: 'Sikelia',         P: 2, T: 2, L: 1, region: REGIONS.SEA, cx: 170, cy: 360, startOccupied: true },
+  { id: 'ITA', name: 'Italias',         P: 1, T: 1, L: 2, region: REGIONS.SEA, cx: 190, cy: 280 },
 
   // ── CONSTANTINOPLE
-  { id: 'CPL', name: 'Constantinople',  G: 0, L: 0, region: REGIONS.CPL, cx: 565, cy: 265 }
+  { id: 'CPL', name: 'Constantinople',  P: 0, T: 0, L: 0, region: REGIONS.CPL, cx: 565, cy: 265 }
 ];
 
 // Adjacency graph — bidirectional (define each edge once, engine builds both directions)

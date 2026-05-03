@@ -1,10 +1,11 @@
-// data/invasions.js — Invasion cards with updated strength ranges from the new ruleset
+// data/invasions.js — Invasion routes. All invasion instances use one shared strength range.
+
+export const INVASION_STRENGTH_RANGE = [10, 30];
 
 export const INVASIONS = [
   {
     id: 'aghlabids',
     name: 'Aghlabids',
-    strength: [4, 6],
     origin: 'SIC',           // first theme on the route
     originLabel: 'North Africa',
     originPos: { cx: 100, cy: 440 },
@@ -14,7 +15,6 @@ export const INVASIONS = [
   {
     id: 'kievan_rus',
     name: 'Kievan Rus',
-    strength: [4, 6],
     origin: 'CHE',
     originLabel: 'Steppes',
     originPos: { cx: 650, cy: 60 },
@@ -24,7 +24,6 @@ export const INVASIONS = [
   {
     id: 'normans',
     name: 'Normans',
-    strength: [5, 8],
     origin: 'ITA',
     originLabel: 'Southern Italy',
     originPos: { cx: 120, cy: 220 },
@@ -34,7 +33,6 @@ export const INVASIONS = [
   {
     id: 'venetians',
     name: 'Venetians',
-    strength: [7, 10],
     origin: 'KEP',
     originLabel: 'Venice',
     originPos: { cx: 210, cy: 160 },
@@ -44,7 +42,6 @@ export const INVASIONS = [
   {
     id: 'bulgars',
     name: 'Bulgars',
-    strength: [8, 11],
     origin: 'BUL',
     originLabel: 'Bulgaria',
     originPos: { cx: 440, cy: 130 },
@@ -54,7 +51,6 @@ export const INVASIONS = [
   {
     id: 'serbs',
     name: 'Serbs',
-    strength: [8, 11],
     origin: 'SRB',
     originLabel: 'Serbia',
     originPos: { cx: 310, cy: 130 },
@@ -64,7 +60,6 @@ export const INVASIONS = [
   {
     id: 'hungarians',
     name: 'Hungarians',
-    strength: [8, 11],
     origin: 'SIM',
     originLabel: 'Pannonia',
     originPos: { cx: 280, cy: 80 },
@@ -74,7 +69,6 @@ export const INVASIONS = [
   {
     id: 'turks',
     name: 'Turks',
-    strength: [12, 15],
     origin: 'VAS',
     originLabel: 'Persia',
     originPos: { cx: 1060, cy: 250 },
@@ -84,7 +78,6 @@ export const INVASIONS = [
   {
     id: 'caliphate',
     name: 'Caliphate',
-    strength: [14, 17],
     origin: 'ANT',
     originLabel: 'Levant',
     originPos: { cx: 1000, cy: 460 },

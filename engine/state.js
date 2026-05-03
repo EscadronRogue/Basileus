@@ -1,6 +1,6 @@
 // engine/state.js — Game state initialization and core state structure
 import { PROVINCES, buildAdjacency } from '../data/provinces.js';
-import { INVASIONS, DYNASTIES, DYNASTY_COLORS } from '../data/invasions.js';
+import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE } from '../data/invasions.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 // ─── Seeded RNG ───
@@ -22,10 +22,6 @@ export function rollRange(min, max, rng) {
   return min + Math.floor(rng() * (max - min + 1));
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
 const PLAYER_ROLE_TEXT_STYLES = {
   BASILEUS: { color: '#9a7010', contrast: '#ffffff' }, // deep imperial gold — CPL region
   DOM_WEST: { color: '#7a2020', contrast: '#ffffff' }, // deep crimson — West region
@@ -36,17 +32,8 @@ const PLAYER_ROLE_TEXT_STYLES = {
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'DOM_WEST', 'DOM_EAST', 'ADMIRAL', 'PATRIARCH'];
 
-function createInvasionStrengthRange(template, rng) {
-  const [baseMin, baseMax] = template?.strength || [1, 1];
-  const baseMidpoint = (baseMin + baseMax) / 2;
-  const sharedThreatLevel = rollRange(6, 16, rng);
-  const templateBias = Math.round((baseMidpoint - 10) * 0.18);
-  const center = clamp(sharedThreatLevel + templateBias, 3, 19);
-  const lowerReach = rollRange(1, 3, rng);
-  const upperReach = rollRange(1, 3, rng);
-  const minStrength = clamp(center - lowerReach, 1, 19);
-  const maxStrength = clamp(Math.max(minStrength, center + upperReach), minStrength, 20);
-  return [minStrength, maxStrength];
+function createInvasionStrengthRange() {
+  return INVASION_STRENGTH_RANGE.slice();
 }
 
 function createInvasionInstance(template, rng) {
@@ -54,8 +41,7 @@ function createInvasionInstance(template, rng) {
     ...template,
     route: Array.isArray(template.route) ? template.route.slice() : [],
     originPos: template.originPos ? { ...template.originPos } : null,
-    baseStrength: Array.isArray(template.strength) ? template.strength.slice() : [1, 1],
-    strength: createInvasionStrengthRange(template, rng),
+    strength: createInvasionStrengthRange(),
   };
 }
 
@@ -102,7 +88,8 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     themes[p.id] = {
       id: p.id,
       name: p.name,
-      G: p.G,
+      P: p.P,
+      T: p.T,
       L: p.L,
       region: p.region,
       cx: p.cx,
@@ -113,6 +100,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
       strategos: null,       // playerId or null
       bishop: null,          // playerId or null
       bishopIsDonor: false,  // true if set by church donation (protected)
+      privateLevyReduced: false, // true once private acquisition has reduced provincial levy by 1
     };
   }
 
@@ -130,16 +118,11 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     }
   }
 
-  const availableEastThemes = countAvailableThemes(themes, (theme) => theme.region === 'east');
-  const availableWestThemes = countAvailableThemes(themes, (theme) => theme.region === 'west');
-  const availableSeaThemes = countAvailableThemes(themes, (theme) => theme.region === 'sea');
-  const totalAvailableThemes = countAvailableThemes(themes);
-
   const startingOfficeTroops = {
-    BASILEUS: Math.floor(totalAvailableThemes / 4),
-    DOM_EAST: Math.floor(availableEastThemes / 2),
-    DOM_WEST: Math.floor(availableWestThemes / 2),
-    ADMIRAL: Math.floor(availableSeaThemes / 2),
+    BASILEUS: 2,
+    DOM_EAST: 2,
+    DOM_WEST: 2,
+    ADMIRAL: 2,
   };
 
   if (startingOfficeTroops.BASILEUS > 0) {

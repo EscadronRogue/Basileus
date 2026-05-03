@@ -355,12 +355,12 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
       slotValue += Math.max(0, getPlayerStrength(state, meta, currentHolder) - getPlayerStrength(state, meta, actorId)) * 0.08;
     }
   } else if (type === 'STRATEGOS') {
-    slotValue = 2.0 + theme.L + (theme.G * 0.25) + (actorProfile.weights.frontier * 0.6) + (threat * 1.3) - (routeRisk * 0.5);
+    slotValue = 2.0 + theme.L + (theme.P * 0.25) + (actorProfile.weights.frontier * 0.6) + (threat * 1.3) - (routeRisk * 0.5);
     if (theme.strategos != null && theme.strategos !== appointeeId) {
       slotValue += Math.max(0, getPlayerStrength(state, meta, theme.strategos) - getPlayerStrength(state, meta, actorId)) * 0.08;
     }
   } else if (type === 'BISHOP') {
-    slotValue = 1.8 + (theme.G * 0.9) + (actorProfile.weights.church * 0.9) - (routeRisk * 0.3) + (remainingRounds * 0.08);
+    slotValue = 1.8 + (theme.P * 0.9) + (actorProfile.weights.church * 0.9) - (routeRisk * 0.3) + (remainingRounds * 0.08);
     if (theme.bishop != null && theme.bishop !== appointeeId) {
       slotValue += Math.max(0, getPlayerStrength(state, meta, theme.bishop) - getPlayerStrength(state, meta, actorId)) * 0.05;
     }
@@ -506,11 +506,11 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const profile = getProfileById(meta, playerId);
   const remainingRounds = getRemainingRounds(state);
   const routeRisk = getThemeRouteRisk(state, theme.id);
-  const cost = 2 * theme.G;
+  const cost = 2 * theme.P;
   const privateValue = remainingRounds * profile.weights.wealth * 0.95;
   const landControl = profile.weights.land * 1.1;
-  const cheapness = (4 - theme.G) * 0.5;
-  const churchOptionality = profile.weights.church * theme.G * 0.15;
+  const cheapness = (4 - theme.P) * 0.5;
+  const churchOptionality = profile.weights.church * theme.P * 0.15;
   const empireCost = remainingRounds * profile.weights.frontier * 0.65;
   const riskPenalty = routeRisk * (0.8 + (remainingRounds * 0.15));
   return privateValue + landControl + cheapness + churchOptionality - empireCost - riskPenalty - cost;
@@ -540,7 +540,7 @@ function runLandStrategy(state, meta, logger, playerId) {
     const player = getPlayer(state, playerId);
     const candidates = getFreeThemes(state)
       .map(theme => ({ theme, score: scoreLandPurchase(state, meta, playerId, theme) }))
-      .filter(entry => (2 * entry.theme.G) <= player.gold)
+      .filter(entry => (2 * entry.theme.P) <= player.gold)
       .sort((left, right) => right.score - left.score);
 
     const best = candidates[0];
@@ -552,7 +552,7 @@ function runLandStrategy(state, meta, logger, playerId) {
     purchases++;
     meta.players[playerId].stats.landBuys++;
     meta.totals.landBuys++;
-    logger.push(`Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${best.theme.id} for ${2 * best.theme.G}g (score ${roundTo(best.score, 2)}).`);
+    logger.push(`Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${best.theme.id} for ${2 * best.theme.P}g (score ${roundTo(best.score, 2)}).`);
   }
 }
 
@@ -560,7 +560,7 @@ function scoreChurchGift(state, meta, playerId, theme) {
   const profile = getProfileById(meta, playerId);
   const remainingRounds = getRemainingRounds(state);
   const keepsValue = remainingRounds * profile.weights.wealth * 0.8;
-  const churchValue = (theme.G * profile.weights.church * 1.3) + 1.2;
+  const churchValue = (theme.P * profile.weights.church * 1.3) + 1.2;
   const patriarchBonus = getPlayer(state, playerId).majorTitles.includes('PATRIARCH') ? 2.2 : 0;
   const bishopLockBonus = 1.0 + (profile.weights.church * 0.5);
   const routeRisk = getThemeRouteRisk(state, theme.id) * 0.5;
@@ -624,7 +624,7 @@ function buildRevocationOptions(state, meta, basileusId) {
         kind: 'theme',
         themeId: theme.id,
         targetPlayerId: player.id,
-        score: (wealthLead * 0.35) + profile.weights.revocation + (theme.G * 0.25) + (theme.L * 0.25),
+        score: (wealthLead * 0.35) + profile.weights.revocation + (theme.P * 0.25) + (theme.L * 0.25),
       });
     }
   }
@@ -648,14 +648,14 @@ function buildRevocationOptions(state, meta, basileusId) {
         themeId: theme.id,
         titleType: 'bishop',
         targetPlayerId: holderId,
-        score: (getPlayerStrength(state, meta, holderId) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.G * 0.8),
+        score: (getPlayerStrength(state, meta, holderId) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.P * 0.8),
       });
     }
     if (theme.taxExempt) {
       options.push({
         kind: 'exempt',
         themeId: theme.id,
-        score: profile.weights.revocation + (theme.G * 0.8),
+        score: profile.weights.revocation + (theme.P * 0.8),
       });
     }
   }

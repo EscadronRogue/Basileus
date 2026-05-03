@@ -1,26 +1,39 @@
-function readThemeGold(themeOrGold) {
-  if (typeof themeOrGold === 'number') return themeOrGold;
-  return Number(themeOrGold?.G || 0);
+function readThemeProfit(themeOrProfit) {
+  if (typeof themeOrProfit === 'number') return Math.max(0, Number(themeOrProfit) || 0);
+  return Math.max(0, Number(themeOrProfit?.P ?? themeOrProfit?.profit ?? themeOrProfit?.G ?? 0) || 0);
 }
 
-export function getThemeLandPrice(themeOrGold) {
-  return readThemeGold(themeOrGold) * 2;
+function readThemeTax(themeOrTax) {
+  if (typeof themeOrTax === 'number') return Math.max(0, Number(themeOrTax) || 0);
+  return Math.max(0, Number(themeOrTax?.T ?? themeOrTax?.tax ?? 0) || 0);
 }
 
-export function getTaxExemptionCost(themeOrGold) {
-  return getThemeLandPrice(themeOrGold);
+export function getThemeProfitValue(themeOrProfit) {
+  return readThemeProfit(themeOrProfit);
 }
 
-export function getNormalOwnerIncome(themeOrGold) {
-  return Math.ceil(readThemeGold(themeOrGold) / 2);
+export function getThemeTaxValue(themeOrTax) {
+  return readThemeTax(themeOrTax);
 }
 
-export function getNormalTaxIncome(themeOrGold) {
-  return Math.floor(readThemeGold(themeOrGold) / 2);
+export function getThemeLandPrice(themeOrProfit) {
+  return readThemeProfit(themeOrProfit) * 2;
 }
 
-export function getTaxExemptOwnerIncome(themeOrGold) {
-  return readThemeGold(themeOrGold);
+export function getTaxExemptionCost(themeOrTax) {
+  return readThemeTax(themeOrTax) * 2;
+}
+
+export function getNormalOwnerIncome(themeOrProfit) {
+  return readThemeProfit(themeOrProfit);
+}
+
+export function getNormalTaxIncome(themeOrTax) {
+  return readThemeTax(themeOrTax);
+}
+
+export function getTaxExemptOwnerIncome(themeOrTax) {
+  return readThemeProfit(themeOrTax) + readThemeTax(themeOrTax);
 }
 
 export function getThemeOwnerIncome(theme) {

@@ -272,7 +272,8 @@ function getProvinceSummary(state, provinceId) {
     bishop,
     taxExempt: theme.taxExempt,
     occupied: theme.occupied,
-    gold: theme.G,
+    profit: theme.P,
+    tax: theme.T,
     levies: theme.L,
     threatened: isThemeThreatened(state, theme.id),
     landPrice: getThemeLandPrice(theme),
@@ -679,9 +680,9 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
             <div>
               <div class="dashboard-list-title">${theme.name}</div>
               <div class="dashboard-list-note">${getRegionLabel(theme.region)}${theme.taxExempt ? ' | tax-exempt' : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''}</div>
-              <div class="dashboard-list-note">Owner ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g | exempt ${getTaxExemptOwnerIncome(theme)}g</div>
+              <div class="dashboard-list-note">Profit ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g | exempt ${getTaxExemptOwnerIncome(theme)}g</div>
             </div>
-            <span class="dashboard-list-value">G${theme.G} L${theme.L} | ${getThemeLandPrice(theme)}g</span>
+            <span class="dashboard-list-value">P${theme.P} T${theme.T} L${theme.L} | ${getThemeLandPrice(theme)}g</span>
           </div>
         `).join('')}
       </div>
@@ -754,13 +755,13 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <span class="dashboard-province-name">${selectedProvince.name} (${selectedProvince.id})</span>
           <span class="dashboard-province-region">${selectedProvince.region}</span>
         </div>
-        <div class="dashboard-province-meta">G${selectedProvince.gold} L${selectedProvince.levies} | price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
+        <div class="dashboard-province-meta">P${selectedProvince.profit} T${selectedProvince.tax} L${selectedProvince.levies} | price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
         <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
-        <div class="dashboard-province-detail">Normal split: owner ${selectedProvince.normalOwnerIncome}g, tax ${selectedProvince.normalTaxIncome}g</div>
+        <div class="dashboard-province-detail">Normal split: owner profit ${selectedProvince.normalOwnerIncome}g, tax ${selectedProvince.normalTaxIncome}g</div>
         <div class="dashboard-province-detail">Tax-exempt income: ${selectedProvince.taxExemptIncome}g</div>
         <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos} (${selectedProvince.strategosTaxIncome}g tax + ${selectedProvince.strategosLevyIncome} ${selectedProvince.strategosLevyIncome === 1 ? 'levy' : 'levies'} from this theme only)</div>
         <div class="dashboard-province-detail">Bishop: ${selectedProvince.bishop}</div>
-        <div class="dashboard-province-detail">Church gift: Church receives ${selectedProvince.gold}g, no tax, no levies</div>
+        <div class="dashboard-province-detail">Church gift: Church receives ${selectedProvince.tax}g tax; levy continues through the regional pool</div>
       </div>
     `,
     options.uiState,
@@ -884,7 +885,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         ${themes.map(t => `
           <div class="theme-chip ${t.taxExempt ? 'exempt' : ''}">
             <span class="theme-name">${t.name}</span>
-            <span class="theme-values">${t.G}⬡ ${t.L}⚔</span>
+            <span class="theme-values">${t.P}P ${t.T}T ${t.L}⚔</span>
           </div>
         `).join('')}
       </div>
@@ -895,7 +896,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
             <span class="dashboard-province-name">${selectedProvince.name} (${selectedProvince.id})</span>
             <span class="dashboard-province-region">${selectedProvince.region}</span>
           </div>
-          <div class="dashboard-province-meta">${selectedProvince.gold}â¬¡ ${selectedProvince.levies}âš”${selectedProvince.taxExempt ? ' Tax-exempt' : ''}</div>
+          <div class="dashboard-province-meta">${selectedProvince.profit}P ${selectedProvince.tax}T ${selectedProvince.levies}L${selectedProvince.taxExempt ? ' Tax-exempt' : ''}</div>
           <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
           <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos}</div>
           <div class="dashboard-province-detail">Bishop: ${selectedProvince.bishop}</div>
@@ -959,7 +960,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
               data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
               <span class="market-name">${theme.name}</span>
               <span class="market-cost">${cost}g</span>
-              <span class="market-values">G${theme.G} L${theme.L} | owner ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g</span>
+              <span class="market-values">P${theme.P} T${theme.T} L${theme.L} | profit ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g</span>
             </button>`;
           }).join('')}
         </div>
@@ -989,7 +990,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
       uiSectionState,
       {
         defaultOpen: false,
-        summary: 'Pay 2 x G to keep the full gold value',
+        summary: 'Pay 2 x T to keep provincial tax',
       }
     );
   }
@@ -1002,7 +1003,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
         <div class="gift-options">
           ${playerOwnedThemes.map((theme) => `
             <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
-              ${theme.name} to Church -> ${theme.G}g church income
+              ${theme.name} to Church -> ${getNormalTaxIncome(theme)}g church tax
             </button>
           `).join('')}
         </div>
@@ -1081,7 +1082,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
             data-action="buy" data-theme="${t.id}" ${canAfford ? '' : 'disabled'}>
             <span class="market-name">${t.name}</span>
             <span class="market-cost">${cost}⬡</span>
-            <span class="market-values">G${t.G} L${t.L} | owner ${getNormalOwnerIncome(t)}g | tax ${getNormalTaxIncome(t)}g</span>
+            <span class="market-values">P${t.P} T${t.T} L${t.L} | profit ${getNormalOwnerIncome(t)}g | tax ${getNormalTaxIncome(t)}g</span>
           </button>`;
         }).join('')}
       </div>
@@ -1448,7 +1449,9 @@ function renderArmyManagement(state, playerId) {
     <div class="army-grid">
       ${offices.map((office) => {
         const count = player.professionalArmies[office.key] || 0;
-        const canRecruit = canRecruitProfessional(state, playerId, office.key).ok;
+        const recruitCheck = canRecruitProfessional(state, playerId, office.key);
+        const canRecruit = recruitCheck.ok;
+        const recruitLabel = canRecruit ? '+1 recruit' : (recruitCheck.reason?.includes('cannot hold') ? 'No professionals' : 'recruited');
         return `<div class="army-row">
           <div class="army-office">
             <span>${office.label}</span>
@@ -1456,7 +1459,7 @@ function renderArmyManagement(state, playerId) {
           </div>
           <div class="army-controls">
             <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${office.key}" ${canRecruit ? '' : 'disabled'}>
-              ${canRecruit ? '+1 recruit' : 'recruited'}
+              ${recruitLabel}
             </button>
             <div class="army-dismiss">
               <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, count)}" value="${count > 0 ? 1 : 0}" ${count > 0 ? '' : 'disabled'}>
@@ -1476,12 +1479,14 @@ function renderArmyManagement(state, playerId) {
     <div class="army-grid">
       ${offices.map(o => {
         const count = player.professionalArmies[o.key] || 0;
-        const canRecruit = canRecruitProfessional(state, playerId, o.key).ok;
+        const recruitCheck = canRecruitProfessional(state, playerId, o.key);
+        const canRecruit = recruitCheck.ok;
+        const recruitLabel = canRecruit ? '+1' : (recruitCheck.reason?.includes('cannot hold') ? '—' : '✓');
         return `<div class="army-row">
           <span>${o.label}</span>
           <span class="army-count">${count} troops</span>
           <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${o.key}" ${canRecruit ? '' : 'disabled'}>
-            ${canRecruit ? '+1' : '✓'}
+            ${recruitLabel}
           </button>
         </div>`;
       }).join('')}

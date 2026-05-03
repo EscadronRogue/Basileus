@@ -9,6 +9,12 @@ import {
 } from './rules.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
+const PROFESSIONAL_BANNED_OFFICES = new Set(['PATRIARCH', 'EMPRESS', 'CHIEF_EUNUCHS']);
+
+function canOfficeHoldProfessionals(officeKey) {
+  return !PROFESSIONAL_BANNED_OFFICES.has(officeKey);
+}
+
 function usedGenericSelfAppointmentLastRound(state, playerId) {
   return getPlayer(state, playerId)?.appointmentCooldown?.__SELF_ANY === state.round - 1;
 }
@@ -66,6 +72,7 @@ function extractOfficeArmy(state, officeKey) {
 }
 
 function assignOfficeArmy(state, officeKey, playerId, count) {
+  if (!canOfficeHoldProfessionals(officeKey)) return 0;
   if (!Number.isInteger(playerId) || count <= 0) return 0;
   const player = getPlayer(state, playerId);
   if (!player) return 0;
@@ -96,7 +103,12 @@ export function buyTheme(state, playerId, themeId) {
   if (!check.ok) return check;
   const player = getPlayer(state, playerId);
   player.gold -= check.cost;
-  state.themes[themeId].owner = playerId;
+  const theme = state.themes[themeId];
+  theme.owner = playerId;
+  if (!theme.privateLevyReduced) {
+    theme.L = Math.max(0, (Number(theme.L) || 0) - 1);
+    theme.privateLevyReduced = true;
+  }
   state.log.push({ type: 'buy', player: playerId, theme: themeId, cost: check.cost, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -519,6 +531,10 @@ export function revokeTheme(state, themeId) {
 
   extractOfficeArmy(state, `STRAT_${themeId}`);
   theme.owner = null;
+  if (theme.privateLevyReduced) {
+    theme.L = Math.max(0, (Number(theme.L) || 0) + 1);
+    theme.privateLevyReduced = false;
+  }
   theme.taxExempt = false;
   theme.strategos = null;
   theme.bishop = null;
@@ -760,6 +776,9 @@ export function hireMercenaries(state, playerId, officeKey, count) {
 
 // ─── Professional Army ───
 export function canRecruitProfessional(state, playerId, officeKey) {
+  if (!canOfficeHoldProfessionals(officeKey)) {
+    return { ok: false, reason: 'This office cannot hold professional troops' };
+  }
   if (!state.recruitedThisRound) state.recruitedThisRound = {};
   const key = officeKey;
   if (state.recruitedThisRound[key] === state.round) {
