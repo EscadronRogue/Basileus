@@ -342,7 +342,7 @@ export class GameController {
       aiMeta: this.aiMeta,
       uiState: this.uiState,
     });
-    this.updatePlayerTabs();
+    this.renderPlayerTabs();
     this.bindUiChrome();
     if (state.gameOver || state.phase === 'scoring') {
       this.renderGameOver();

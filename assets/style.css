@@ -113,7 +113,7 @@
   --text-gold:     var(--gold-1);
   --occupied:      var(--occupied-fill);
   --occupied-border: #9a8060;
-  --invasion-lost-fill: rgba(210, 200, 178, 0.68);
+  --invasion-lost-fill: rgba(210, 200, 178, 0.88);
   --invasion-lost-border: var(--occupied-border);
   --region-border: var(--empire-border);
 }
@@ -1265,6 +1265,14 @@ body::before {
   color: var(--umber-1);
 }
 
+.army-office .title-token,
+.army-office .title-token:first-child,
+.army-office .province-token,
+.army-office .province-token:first-child {
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+}
+
 .army-count {
   font-size: 11px;
   color: var(--umber-2);
@@ -2090,16 +2098,16 @@ body::before {
 .invasion-route {
   fill: none;
   stroke: var(--invasion-lost-border);
-  stroke-width: 0.7;
+  stroke-width: 0.95;
   stroke-dasharray: 1.8 1.2;
-  opacity: 0.82;
+  opacity: 0.96;
   animation: marchingAnts 1s linear infinite;
 }
 @keyframes marchingAnts { to { stroke-dashoffset: -3; } }
 
 .invasion-marker {
   fill: var(--invasion-lost-border);
-  opacity: 0.78;
+  opacity: 0.96;
 }
 
 .invasion-cartouche {
@@ -2108,16 +2116,16 @@ body::before {
 
 .invasion-cartouche-bg {
   fill: var(--invasion-lost-fill);
-  fill-opacity: 0.72;
+  fill-opacity: 0.92;
   stroke: var(--invasion-lost-border);
-  stroke-width: 0.52;
+  stroke-width: 0.7;
   paint-order: stroke fill;
 }
 
 .invasion-cartouche-inner {
   fill: none;
-  stroke: rgba(255,250,228,0.64);
-  stroke-width: 0.12;
+  stroke: rgba(255,250,228,0.78);
+  stroke-width: 0.14;
 }
 
 .invasion-cartouche-name,
