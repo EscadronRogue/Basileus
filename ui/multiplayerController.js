@@ -13,6 +13,34 @@ import {
 
 
 
+function getPlayerMaintenance(player) {
+  return Object.values(player.professionalArmies || {}).reduce((total, count) => total + count, 0);
+}
+
+function formatSignedGold(value, { expense = false } = {}) {
+  const amount = Math.max(0, Number(value) || 0);
+  if (expense) return amount > 0 ? `−${amount}g` : '0g';
+  return amount > 0 ? `+${amount}g` : '0g';
+}
+
+function getPlayerTabEconomy(player, administration) {
+  return {
+    reserve: `${player.gold}g`,
+    income: formatSignedGold(administration?.income?.[player.id] || 0),
+    expense: formatSignedGold(getPlayerMaintenance(player), { expense: true }),
+  };
+}
+
+function renderPlayerTabFinance(economy) {
+  return `
+    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure">
+      <span class="tab-finance-item" title="Gold in reserve"><span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span><span class="tab-finance-label">reserve</span></span>
+      <span class="tab-finance-item" title="Expected income"><span class="tab-finance-value" data-tab-finance="income">${economy.income}</span><span class="tab-finance-label">income</span></span>
+      <span class="tab-finance-item" title="Expected expenditure"><span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span><span class="tab-finance-label">expense</span></span>
+    </span>
+  `;
+}
+
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
 const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
 
@@ -519,24 +547,26 @@ export class MultiplayerController {
     const tabBar = document.getElementById('playerTabBar');
     if (!tabBar || !this.state) return;
 
+    const administration = runAdministration(this.state);
     const controlledSeatId = this.getControlledSeatId();
     const seatMap = new Map((this.roomSnapshot?.seats || []).map((seat) => [seat.seatId, seat]));
 
     tabBar.innerHTML = this.state.players.map((player) => {
+      const economy = getPlayerTabEconomy(player, administration);
       const seat = seatMap.get(player.id);
       const viewing = player.id === this.viewPlayerId;
       const youBadge = player.id === controlledSeatId ? '<span class="tab-you">You</span>' : '';
-      const crown = player.id === this.state.basileusId ? '<span class="tab-crown">C</span>' : '';
+      const crown = player.id === this.state.basileusId ? '<span class="tab-crown" title="Basileus">C</span>' : '';
       const connectionBadge = seat?.status === 'disconnected' ? '<span class="tab-you">Away</span>' : '';
       return `
         <button class="player-tab ${viewing ? 'active' : ''}"
           data-player="${player.id}" style="${getPlayerStyleAttr(this.state, player.id)}">
-          <span class="tab-crest">${player.dynasty.charAt(0)}</span>
-          <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
-          ${youBadge}
-          ${connectionBadge}
-          <span class="tab-gold">${player.gold}g</span>
-          ${crown}
+          <span class="tab-crest" aria-hidden="true">${player.dynasty.charAt(0)}</span>
+          <span class="tab-body">
+            <span class="tab-name">${player.dynasty}</span>
+            ${renderPlayerTabFinance(economy)}
+          </span>
+          <span class="tab-flags">${youBadge}${connectionBadge}${crown}</span>
         </button>
       `;
     }).join('');

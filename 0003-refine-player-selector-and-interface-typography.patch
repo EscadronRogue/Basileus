@@ -1,0 +1,620 @@
+From 2fd73177fe389b7773d8a944b99bb7467b1508b7 Mon Sep 17 00:00:00 2001
+From: OpenAI Assistant <assistant@example.com>
+Date: Sun, 3 May 2026 20:36:29 +0000
+Subject: [PATCH] Refine player selector and interface typography
+
+---
+ assets/style.css            | 209 +++++++++++++++++++++---------------
+ render/mapRenderer.js       |  35 ------
+ ui/gameController.js        |  53 +++++++--
+ ui/multiplayerController.js |  44 ++++++--
+ 4 files changed, 204 insertions(+), 137 deletions(-)
+
+diff --git a/assets/style.css b/assets/style.css
+index d12e959..d90c859 100644
+--- a/assets/style.css
++++ b/assets/style.css
+@@ -83,7 +83,7 @@
+ 
+   /* Responsive shell */
+   --topbar-height: 52px;
+-  --sidebar-width: clamp(440px, 37vw, 640px);
++  --sidebar-width: clamp(500px, 43vw, 760px);
+   --map-aspect: 297 / 210;
+   --map-reserve-bottom: var(--map-shell-pad);
+   --map-shell-pad: clamp(14px, 1.8vw, 24px);
+@@ -129,8 +129,8 @@ html { min-height: 100%; }
+ 
+ body {
+   font-family: var(--font-body);
+-  font-size: 15px;
+-  line-height: 1.5;
++  font-size: 16px;
++  line-height: 1.55;
+   color: var(--umber-1);
+   background: var(--parch-1);
+   overflow: hidden;
+@@ -166,7 +166,7 @@ body::before {
+   z-index: 1;
+   display: grid;
+   grid-template-rows: var(--topbar-height) minmax(0, 1fr);
+-  grid-template-columns: minmax(420px, 1fr) minmax(430px, var(--sidebar-width));
++  grid-template-columns: minmax(360px, 1fr) minmax(500px, var(--sidebar-width));
+   grid-template-areas:
+     "topbar topbar"
+     "map    sidebar";
+@@ -345,33 +345,28 @@ body::before {
+ 
+ /* ── Player Tabs ─────────────────────────────────────────────────── */
+ #playerTabBar {
+-  position: sticky;
+-  top: 0;
+-  z-index: 6;
+   flex: 0 0 auto;
+-  display: flex;
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr));
+   gap: 10px;
+-  padding: clamp(12px, 1.5vw, 18px) var(--main-panel-pad);
+-  overflow-x: auto;
+-  overflow-y: hidden;
+-  scrollbar-width: none;
++  padding: var(--main-panel-pad);
++  overflow: visible;
+   background:
+-    linear-gradient(180deg, rgba(255,250,235,0.98) 0%, rgba(240,228,198,0.96) 100%);
+-  border-bottom: 1px solid rgba(168,116,32,0.30);
+-  box-shadow: 0 5px 16px rgba(80,50,10,0.08);
+-  backdrop-filter: blur(8px);
+-  -webkit-backdrop-filter: blur(8px);
++    linear-gradient(180deg, rgba(255,250,235,0.72) 0%, rgba(240,228,198,0.52) 100%);
++  border: 1px solid rgba(168,116,32,0.16);
++  border-radius: var(--r-lg);
++  box-shadow: var(--shadow-card);
+ }
+ 
+ /* Player tabs reuse the cartouche grammar at a larger scale: thick role
+    outline, dynasty-color fill, parchment ink, gold-leaf inner hairline. */
+ .player-tab {
+-  flex: 1 0 clamp(158px, 48%, 240px);
+   min-width: 0;
+-  display: flex;
++  display: grid;
++  grid-template-columns: auto minmax(0, 1fr) auto;
+   align-items: center;
+   gap: var(--sp-2);
+-  padding: 9px 14px 10px;
++  padding: 10px 12px;
+   border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+   border-radius: var(--r-md);
+   background-color: var(--player-color, var(--parch-3));
+@@ -386,9 +381,9 @@ body::before {
+   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+   cursor: pointer;
+   font-family: var(--font-display);
+-  font-size: 12.5px;
++  font-size: 13px;
+   font-weight: 600;
+-  letter-spacing: 0.4px;
++  letter-spacing: 0.35px;
+   transition: filter 0.15s, box-shadow 0.15s;
+   box-shadow:
+     inset 0 0 0 1px rgba(240,200,90,0.45),
+@@ -397,8 +392,6 @@ body::before {
+     0 2px 8px rgba(30,16,0,0.12);
+ }
+ 
+-#playerTabBar::-webkit-scrollbar { display: none; }
+-
+ .player-tab:hover { filter: brightness(1.06); }
+ 
+ .player-tab.active {
+@@ -412,10 +405,12 @@ body::before {
+ 
+ .player-tab,
+ .player-tab .tab-name,
+-.player-tab .tab-gold,
++.player-tab .tab-finance,
++.player-tab .tab-finance-item,
++.player-tab .tab-finance-value,
++.player-tab .tab-finance-label,
+ .player-tab .tab-you,
+-.player-tab .tab-crown,
+-.player-tab .player-role-name { color: inherit; text-shadow: inherit; }
++.player-tab .tab-crown { color: #ffffff; text-shadow: inherit; }
+ 
+ .tab-crest {
+   width: 22px;
+@@ -434,7 +429,60 @@ body::before {
+   flex-shrink: 0;
+ }
+ 
+-.tab-gold { margin-left: auto; font-weight: 600; opacity: 0.9; }
++.tab-body {
++  min-width: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 5px;
++}
++
++.tab-name {
++  display: block;
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  font-size: 13px;
++  line-height: 1.12;
++}
++
++.tab-finance {
++  display: grid;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: 4px;
++  min-width: 0;
++}
++
++.tab-finance-item {
++  min-width: 0;
++  padding: 3px 4px;
++  border-radius: 4px;
++  background: rgba(20,8,0,0.18);
++  border: 1px solid rgba(240,200,90,0.24);
++  text-align: center;
++}
++
++.tab-finance-value {
++  display: block;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  font-size: 12px;
++  line-height: 1.05;
++  font-weight: 700;
++}
++
++.tab-finance-label {
++  display: block;
++  margin-top: 1px;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  font-family: var(--font-body);
++  font-size: 10px;
++  line-height: 1;
++  opacity: 0.82;
++}
++
+ .tab-you {
+   padding: 2px 6px;
+   border-radius: 999px;
+@@ -447,6 +495,15 @@ body::before {
+ }
+ .tab-crown { font-size: 14px; }
+ 
++.tab-flags {
++  display: flex;
++  align-items: flex-start;
++  justify-content: flex-end;
++  gap: 4px;
++  min-width: 0;
++}
++
++
+ /* ── Sidebar ──────────────────────────────────────────────────────── */
+ #sidebar {
+   grid-area: sidebar;
+@@ -536,7 +593,7 @@ body::before {
+ 
+ .sidebar-panel-kicker {
+   font-family: var(--font-display);
+-  font-size: 9px;
++  font-size: 10px;
+   letter-spacing: 2px;
+   text-transform: uppercase;
+   color: var(--umber-3);
+@@ -545,7 +602,7 @@ body::before {
+ 
+ .sidebar-panel-title {
+   font-family: var(--font-display);
+-  font-size: 11px;
++  font-size: 12px;
+   letter-spacing: 1.5px;
+   text-transform: uppercase;
+   color: var(--gold-1);
+@@ -554,7 +611,7 @@ body::before {
+ 
+ .sidebar-panel-subtitle {
+   font-family: var(--font-body);
+-  font-size: 11px;
++  font-size: 12px;
+   color: var(--umber-2);
+   line-height: 1.3;
+ }
+@@ -783,14 +840,14 @@ body::before {
+   padding: 1px 6px;
+   border-radius: 999px;
+   background: rgba(0,0,0,0.15);
+-  font-size: 9px;
++  font-size: 10px;
+   letter-spacing: 1px;
+   opacity: 0.8;
+ }
+ 
+ .stat-label {
+   display: block;
+-  font-size: 9px;
++  font-size: 10px;
+   text-transform: uppercase;
+   letter-spacing: 1px;
+   opacity: 0.75;
+@@ -832,7 +889,7 @@ body::before {
+ 
+ .fold-summary-title {
+   font-family: var(--font-display);
+-  font-size: 11px;
++  font-size: 12px;
+   letter-spacing: 1.5px;
+   text-transform: uppercase;
+   color: var(--gold-1);
+@@ -846,7 +903,7 @@ body::before {
+ 
+ .fold-summary-badge,
+ .fold-summary-note {
+-  font-size: 11px;
++  font-size: 12px;
+   color: var(--umber-3);
+ }
+ 
+@@ -965,7 +1022,7 @@ body::before {
+ 
+ .finance-label {
+   font-family: var(--font-display);
+-  font-size: 9px;
++  font-size: 10px;
+   letter-spacing: 1px;
+   text-transform: uppercase;
+   color: var(--umber-3);
+@@ -973,7 +1030,7 @@ body::before {
+ 
+ .finance-card strong {
+   font-family: var(--font-display);
+-  font-size: 15px;
++  font-size: 16px;
+   color: var(--umber-1);
+ }
+ 
+@@ -2777,7 +2834,7 @@ body::before {
+ 
+ @media (max-width: 1180px) and (min-width: 981px) {
+   #app {
+-    grid-template-columns: minmax(390px, 1fr) minmax(420px, var(--sidebar-width));
++    grid-template-columns: minmax(320px, 1fr) minmax(460px, var(--sidebar-width));
+   }
+ 
+   .deploy-row {
+@@ -2798,51 +2855,36 @@ body::before {
+   #gameOverOverlay { background: rgba(30,16,5,0.88); }
+ }
+ 
+-.map-controls {
+-  position: absolute;
+-  top: max(18px, env(safe-area-inset-top));
+-  right: max(18px, env(safe-area-inset-right));
+-  z-index: 4;
+-  display: flex;
+-  flex-direction: column;
+-  gap: 6px;
+-  padding: 6px;
+-  border-radius: 999px;
+-  background: rgba(255,252,240,0.82);
+-  border: 1px solid rgba(168,116,32,0.28);
+-  box-shadow: var(--shadow-card);
+-  backdrop-filter: blur(8px);
+-}
+-.map-control-btn {
+-  width: 34px;
+-  height: 34px;
+-  border: 1px solid rgba(168,116,32,0.35);
+-  border-radius: 50%;
+-  background: var(--parch-0);
+-  color: var(--umber-1);
+-  cursor: pointer;
+-  font-family: var(--font-display);
+-  font-size: 16px;
+-  font-weight: 700;
+-  line-height: 1;
+-  display: grid;
+-  place-items: center;
+-  touch-action: manipulation;
+-}
+-.map-control-btn:hover,
+-.map-control-btn:focus-visible {
+-  border-color: var(--gold-1);
+-  outline: none;
+-}
+-.map-control-btn[data-map-control="reset"] { font-size: 13px; }
+-
+ button,
+ select,
+ input,
+ summary { touch-action: manipulation; }
+ 
++button,
++select,
++input,
++textarea {
++  font-size: 1rem;
++}
++
++.sidebar-panel-body,
++.action-shell,
++.history-panel,
++.player-dashboard,
++.market-item,
++.gift-item,
++.candidate-btn,
++.deploy-row,
++.merc-row,
++.finance-card,
++.dashboard-list-row,
++.dashboard-opinion-row {
++  font-size: 1rem;
++  line-height: 1.5;
++}
++
+ @media (max-width: 1180px) {
+-  :root { --sidebar-width: clamp(400px, 42vw, 520px); --main-panel-pad: 16px; }
++  :root { --sidebar-width: clamp(460px, 46vw, 620px); --main-panel-pad: 17px; }
+   .game-title { letter-spacing: 3px; }
+   .phase-badge { padding-inline: 10px; }
+ }
+@@ -2945,21 +2987,14 @@ summary { touch-action: manipulation; }
+   #mapContainer { padding: 10px; }
+   .game-map { border-radius: 12px; }
+ 
+-  #playerTabBar { gap: 8px; padding-top: 12px; padding-bottom: 12px; }
++  #playerTabBar { grid-template-columns: repeat(auto-fit, minmax(min(100%, 146px), 1fr)); gap: 8px; padding: 12px; }
+   .player-tab {
+-    flex-basis: 156px;
+     padding: 8px 10px;
+-    font-size: 11px;
++    font-size: 12px;
+     border-width: 3px;
+   }
+   .tab-crest { width: 20px; height: 20px; }
+-  .tab-gold { margin-left: 0; }
+-
+-  .map-controls {
+-    top: max(12px, env(safe-area-inset-top));
+-    right: max(12px, env(safe-area-inset-right));
+-  }
+-  .map-control-btn { width: 38px; height: 38px; }
++  .tab-finance-label { font-size: 9px; }
+ 
+   .sidebar-panel-head,
+   .history-panel-head {
+diff --git a/render/mapRenderer.js b/render/mapRenderer.js
+index f26cd21..fa808c6 100644
+--- a/render/mapRenderer.js
++++ b/render/mapRenderer.js
+@@ -126,7 +126,6 @@ export async function createMapSVG(containerId, options = {}) {
+   importProvinceShapes(svg, provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, HITZONES_SVG);
+ 
+   container.replaceChildren(svg);
+-  ensureMapControls(svg);
+   configureThreatHatchPatterns(svg);
+ 
+   requestAnimationFrame(() => {
+@@ -727,35 +726,6 @@ function findProvinceElement(element) {
+   return null;
+ }
+ 
+-function ensureMapControls(svg) {
+-  const mapArea = document.getElementById('mapArea');
+-  if (!mapArea) return;
+-
+-  let controls = mapArea.querySelector('.map-controls');
+-  if (!controls) {
+-    controls = document.createElement('div');
+-    controls.className = 'map-controls';
+-    controls.setAttribute('aria-label', 'Map zoom controls');
+-    controls.innerHTML = `
+-      <button class="map-control-btn" type="button" data-map-control="in" aria-label="Zoom map in">+</button>
+-      <button class="map-control-btn" type="button" data-map-control="out" aria-label="Zoom map out">−</button>
+-      <button class="map-control-btn" type="button" data-map-control="reset" aria-label="Reset map zoom">1×</button>
+-    `;
+-    mapArea.appendChild(controls);
+-  }
+-
+-  controls.onclick = (event) => {
+-    const button = event.target.closest?.('[data-map-control]');
+-    if (!button) return;
+-
+-    event.preventDefault();
+-    const action = button.dataset.mapControl;
+-    if (action === 'in') zoomMapAtViewportCenter(svg, MAP_ZOOM_STEP);
+-    if (action === 'out') zoomMapAtViewportCenter(svg, 1 / MAP_ZOOM_STEP);
+-    if (action === 'reset') resetMapView(svg);
+-  };
+-}
+-
+ function updateHoveredProvince(provinceId) {
+   if (hoveredProvinceId && hoveredProvinceId !== provinceId) {
+     document.querySelector(`.province-shape[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
+@@ -843,11 +813,6 @@ function zoomMapAtClientPoint(svg, clientX, clientY, factor) {
+   updateMapCursor(svg, null);
+ }
+ 
+-function zoomMapAtViewportCenter(svg, factor) {
+-  const rect = svg.getBoundingClientRect();
+-  zoomMapAtClientPoint(svg, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+-}
+-
+ function resetMapView(svg) {
+   mapView.zoom = 1;
+   mapView.panX = 0;
+diff --git a/ui/gameController.js b/ui/gameController.js
+index b27d530..b1c0ac3 100644
+--- a/ui/gameController.js
++++ b/ui/gameController.js
+@@ -56,6 +56,34 @@ import {
+ 
+ 
+ 
++function getPlayerMaintenance(player) {
++  return Object.values(player.professionalArmies || {}).reduce((total, count) => total + count, 0);
++}
++
++function formatSignedGold(value, { expense = false } = {}) {
++  const amount = Math.max(0, Number(value) || 0);
++  if (expense) return amount > 0 ? `−${amount}g` : '0g';
++  return amount > 0 ? `+${amount}g` : '0g';
++}
++
++function getPlayerTabEconomy(player, administration) {
++  return {
++    reserve: `${player.gold}g`,
++    income: formatSignedGold(administration?.income?.[player.id] || 0),
++    expense: formatSignedGold(getPlayerMaintenance(player), { expense: true }),
++  };
++}
++
++function renderPlayerTabFinance(economy) {
++  return `
++    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure">
++      <span class="tab-finance-item" title="Gold in reserve"><span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span><span class="tab-finance-label">reserve</span></span>
++      <span class="tab-finance-item" title="Expected income"><span class="tab-finance-value" data-tab-finance="income">${economy.income}</span><span class="tab-finance-label">income</span></span>
++      <span class="tab-finance-item" title="Expected expenditure"><span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span><span class="tab-finance-label">expense</span></span>
++    </span>
++  `;
++}
++
+ export class GameController {
+   constructor(config = {}) {
+     this.config = {
+@@ -378,19 +406,23 @@ export class GameController {
+     const tabBar = document.getElementById('playerTabBar');
+     if (!tabBar) return;
+ 
++    const administration = runAdministration(this.state);
++
+     tabBar.innerHTML = this.state.players.map((player) => {
++      const economy = getPlayerTabEconomy(player, administration);
+       const youBadge = this.isSinglePlayer() && this.isHumanPlayer(player.id)
+         ? '<span class="tab-you">You</span>'
+         : '';
+-      const crown = player.id === this.state.basileusId ? '<span class="tab-crown">C</span>' : '';
++      const crown = player.id === this.state.basileusId ? '<span class="tab-crown" title="Basileus">C</span>' : '';
+       return `
+         <button class="player-tab ${player.id === this.activePlayer ? 'active' : ''}"
+           data-player="${player.id}" style="${getPlayerStyleAttr(this.state, player.id)}">
+-          <span class="tab-crest">${player.dynasty.charAt(0)}</span>
+-          <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
+-          ${youBadge}
+-          <span class="tab-gold">${player.gold}g</span>
+-          ${crown}
++          <span class="tab-crest" aria-hidden="true">${player.dynasty.charAt(0)}</span>
++          <span class="tab-body">
++            <span class="tab-name">${player.dynasty}</span>
++            ${renderPlayerTabFinance(economy)}
++          </span>
++          <span class="tab-flags">${youBadge}${crown}</span>
+         </button>
+       `;
+     }).join('');
+@@ -407,12 +439,17 @@ export class GameController {
+     const tabBar = document.getElementById('playerTabBar');
+     if (!tabBar) return;
+ 
++    const administration = runAdministration(this.state);
++
+     tabBar.querySelectorAll('.player-tab').forEach((tab) => {
+       const playerId = parseInt(tab.dataset.player, 10);
+       const player = getPlayer(this.state, playerId);
++      const economy = getPlayerTabEconomy(player, administration);
+       tab.classList.toggle('active', playerId === this.activePlayer);
+-      const goldEl = tab.querySelector('.tab-gold');
+-      if (goldEl) goldEl.textContent = `${player.gold}g`;
++      for (const [key, value] of Object.entries(economy)) {
++        const valueEl = tab.querySelector(`[data-tab-finance="${key}"]`);
++        if (valueEl) valueEl.textContent = value;
++      }
+       const crown = tab.querySelector('.tab-crown');
+       if (crown) crown.style.display = playerId === this.state.basileusId ? '' : 'none';
+     });
+diff --git a/ui/multiplayerController.js b/ui/multiplayerController.js
+index a422614..4618dd7 100644
+--- a/ui/multiplayerController.js
++++ b/ui/multiplayerController.js
+@@ -13,6 +13,34 @@ import {
+ 
+ 
+ 
++function getPlayerMaintenance(player) {
++  return Object.values(player.professionalArmies || {}).reduce((total, count) => total + count, 0);
++}
++
++function formatSignedGold(value, { expense = false } = {}) {
++  const amount = Math.max(0, Number(value) || 0);
++  if (expense) return amount > 0 ? `−${amount}g` : '0g';
++  return amount > 0 ? `+${amount}g` : '0g';
++}
++
++function getPlayerTabEconomy(player, administration) {
++  return {
++    reserve: `${player.gold}g`,
++    income: formatSignedGold(administration?.income?.[player.id] || 0),
++    expense: formatSignedGold(getPlayerMaintenance(player), { expense: true }),
++  };
++}
++
++function renderPlayerTabFinance(economy) {
++  return `
++    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure">
++      <span class="tab-finance-item" title="Gold in reserve"><span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span><span class="tab-finance-label">reserve</span></span>
++      <span class="tab-finance-item" title="Expected income"><span class="tab-finance-value" data-tab-finance="income">${economy.income}</span><span class="tab-finance-label">income</span></span>
++      <span class="tab-finance-item" title="Expected expenditure"><span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span><span class="tab-finance-label">expense</span></span>
++    </span>
++  `;
++}
++
+ const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
+ const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
+ 
+@@ -519,24 +547,26 @@ export class MultiplayerController {
+     const tabBar = document.getElementById('playerTabBar');
+     if (!tabBar || !this.state) return;
+ 
++    const administration = runAdministration(this.state);
+     const controlledSeatId = this.getControlledSeatId();
+     const seatMap = new Map((this.roomSnapshot?.seats || []).map((seat) => [seat.seatId, seat]));
+ 
+     tabBar.innerHTML = this.state.players.map((player) => {
++      const economy = getPlayerTabEconomy(player, administration);
+       const seat = seatMap.get(player.id);
+       const viewing = player.id === this.viewPlayerId;
+       const youBadge = player.id === controlledSeatId ? '<span class="tab-you">You</span>' : '';
+-      const crown = player.id === this.state.basileusId ? '<span class="tab-crown">C</span>' : '';
++      const crown = player.id === this.state.basileusId ? '<span class="tab-crown" title="Basileus">C</span>' : '';
+       const connectionBadge = seat?.status === 'disconnected' ? '<span class="tab-you">Away</span>' : '';
+       return `
+         <button class="player-tab ${viewing ? 'active' : ''}"
+           data-player="${player.id}" style="${getPlayerStyleAttr(this.state, player.id)}">
+-          <span class="tab-crest">${player.dynasty.charAt(0)}</span>
+-          <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
+-          ${youBadge}
+-          ${connectionBadge}
+-          <span class="tab-gold">${player.gold}g</span>
+-          ${crown}
++          <span class="tab-crest" aria-hidden="true">${player.dynasty.charAt(0)}</span>
++          <span class="tab-body">
++            <span class="tab-name">${player.dynasty}</span>
++            ${renderPlayerTabFinance(economy)}
++          </span>
++          <span class="tab-flags">${youBadge}${connectionBadge}${crown}</span>
+         </button>
+       `;
+     }).join('');
+-- 
+2.47.3
+

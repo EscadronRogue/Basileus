@@ -56,6 +56,34 @@ import {
 
 
 
+function getPlayerMaintenance(player) {
+  return Object.values(player.professionalArmies || {}).reduce((total, count) => total + count, 0);
+}
+
+function formatSignedGold(value, { expense = false } = {}) {
+  const amount = Math.max(0, Number(value) || 0);
+  if (expense) return amount > 0 ? `−${amount}g` : '0g';
+  return amount > 0 ? `+${amount}g` : '0g';
+}
+
+function getPlayerTabEconomy(player, administration) {
+  return {
+    reserve: `${player.gold}g`,
+    income: formatSignedGold(administration?.income?.[player.id] || 0),
+    expense: formatSignedGold(getPlayerMaintenance(player), { expense: true }),
+  };
+}
+
+function renderPlayerTabFinance(economy) {
+  return `
+    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure">
+      <span class="tab-finance-item" title="Gold in reserve"><span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span><span class="tab-finance-label">reserve</span></span>
+      <span class="tab-finance-item" title="Expected income"><span class="tab-finance-value" data-tab-finance="income">${economy.income}</span><span class="tab-finance-label">income</span></span>
+      <span class="tab-finance-item" title="Expected expenditure"><span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span><span class="tab-finance-label">expense</span></span>
+    </span>
+  `;
+}
+
 export class GameController {
   constructor(config = {}) {
     this.config = {
@@ -378,19 +406,23 @@ export class GameController {
     const tabBar = document.getElementById('playerTabBar');
     if (!tabBar) return;
 
+    const administration = runAdministration(this.state);
+
     tabBar.innerHTML = this.state.players.map((player) => {
+      const economy = getPlayerTabEconomy(player, administration);
       const youBadge = this.isSinglePlayer() && this.isHumanPlayer(player.id)
         ? '<span class="tab-you">You</span>'
         : '';
-      const crown = player.id === this.state.basileusId ? '<span class="tab-crown">C</span>' : '';
+      const crown = player.id === this.state.basileusId ? '<span class="tab-crown" title="Basileus">C</span>' : '';
       return `
         <button class="player-tab ${player.id === this.activePlayer ? 'active' : ''}"
           data-player="${player.id}" style="${getPlayerStyleAttr(this.state, player.id)}">
-          <span class="tab-crest">${player.dynasty.charAt(0)}</span>
-          <span class="tab-name">${renderPlayerRoleName(this.state, player)}</span>
-          ${youBadge}
-          <span class="tab-gold">${player.gold}g</span>
-          ${crown}
+          <span class="tab-crest" aria-hidden="true">${player.dynasty.charAt(0)}</span>
+          <span class="tab-body">
+            <span class="tab-name">${player.dynasty}</span>
+            ${renderPlayerTabFinance(economy)}
+          </span>
+          <span class="tab-flags">${youBadge}${crown}</span>
         </button>
       `;
     }).join('');
@@ -407,12 +439,17 @@ export class GameController {
     const tabBar = document.getElementById('playerTabBar');
     if (!tabBar) return;
 
+    const administration = runAdministration(this.state);
+
     tabBar.querySelectorAll('.player-tab').forEach((tab) => {
       const playerId = parseInt(tab.dataset.player, 10);
       const player = getPlayer(this.state, playerId);
+      const economy = getPlayerTabEconomy(player, administration);
       tab.classList.toggle('active', playerId === this.activePlayer);
-      const goldEl = tab.querySelector('.tab-gold');
-      if (goldEl) goldEl.textContent = `${player.gold}g`;
+      for (const [key, value] of Object.entries(economy)) {
+        const valueEl = tab.querySelector(`[data-tab-finance="${key}"]`);
+        if (valueEl) valueEl.textContent = value;
+      }
       const crown = tab.querySelector('.tab-crown');
       if (crown) crown.style.display = playerId === this.state.basileusId ? '' : 'none';
     });

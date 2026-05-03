@@ -126,7 +126,6 @@ export async function createMapSVG(containerId, options = {}) {
   importProvinceShapes(svg, provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, HITZONES_SVG);
 
   container.replaceChildren(svg);
-  ensureMapControls(svg);
   configureThreatHatchPatterns(svg);
 
   requestAnimationFrame(() => {
@@ -727,35 +726,6 @@ function findProvinceElement(element) {
   return null;
 }
 
-function ensureMapControls(svg) {
-  const mapArea = document.getElementById('mapArea');
-  if (!mapArea) return;
-
-  let controls = mapArea.querySelector('.map-controls');
-  if (!controls) {
-    controls = document.createElement('div');
-    controls.className = 'map-controls';
-    controls.setAttribute('aria-label', 'Map zoom controls');
-    controls.innerHTML = `
-      <button class="map-control-btn" type="button" data-map-control="in" aria-label="Zoom map in">+</button>
-      <button class="map-control-btn" type="button" data-map-control="out" aria-label="Zoom map out">−</button>
-      <button class="map-control-btn" type="button" data-map-control="reset" aria-label="Reset map zoom">1×</button>
-    `;
-    mapArea.appendChild(controls);
-  }
-
-  controls.onclick = (event) => {
-    const button = event.target.closest?.('[data-map-control]');
-    if (!button) return;
-
-    event.preventDefault();
-    const action = button.dataset.mapControl;
-    if (action === 'in') zoomMapAtViewportCenter(svg, MAP_ZOOM_STEP);
-    if (action === 'out') zoomMapAtViewportCenter(svg, 1 / MAP_ZOOM_STEP);
-    if (action === 'reset') resetMapView(svg);
-  };
-}
-
 function updateHoveredProvince(provinceId) {
   if (hoveredProvinceId && hoveredProvinceId !== provinceId) {
     document.querySelector(`.province-shape[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
@@ -841,11 +811,6 @@ function zoomMapAtClientPoint(svg, clientX, clientY, factor) {
   applyMapTransform();
   updateHoveredProvince(null);
   updateMapCursor(svg, null);
-}
-
-function zoomMapAtViewportCenter(svg, factor) {
-  const rect = svg.getBoundingClientRect();
-  zoomMapAtClientPoint(svg, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
 }
 
 function resetMapView(svg) {
