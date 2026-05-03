@@ -81,6 +81,13 @@
   --shadow-panel: 0 4px 20px rgba(46,30,15,0.12);
   --shadow-inset: inset 0 1px 0 rgba(255,250,230,0.55);
 
+  /* Responsive shell */
+  --topbar-height: 52px;
+  --sidebar-width: clamp(340px, 28vw, 420px);
+  --main-panel-pad: clamp(12px, 1.4vw, 20px);
+  --touch-target: 44px;
+  --game-vh: 100vh;
+
   /* Legacy aliases for JS-generated markup */
   --bg-deep:       var(--parch-1);
   --bg-surface:    var(--parch-0);
@@ -108,7 +115,11 @@
 /* ── Reset & Base ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { height: 100%; }
+html { min-height: 100%; }
+
+@supports (height: 100dvh) {
+  :root { --game-vh: 100dvh; }
+}
 
 body {
   font-family: var(--font-body);
@@ -117,8 +128,9 @@ body {
   color: var(--umber-1);
   background: var(--parch-1);
   overflow: hidden;
-  height: 100vh;
-  width: 100vw;
+  min-height: var(--game-vh);
+  height: var(--game-vh);
+  width: 100%;
   /* Subtle parchment texture via repeating gradient */
   background-image:
     radial-gradient(ellipse 120% 80% at 8% 0%, rgba(200,146,30,0.13) 0%, transparent 55%),
@@ -147,13 +159,15 @@ body::before {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: 52px 1fr;
-  grid-template-columns: 1fr 360px;
+  grid-template-rows: var(--topbar-height) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, var(--sidebar-width));
   grid-template-areas:
     "topbar topbar"
     "map    sidebar";
-  height: 100vh;
-  width: 100vw;
+  min-height: var(--game-vh);
+  height: var(--game-vh);
+  width: 100%;
+  min-width: 0;
 }
 
 /* ── Top Bar ──────────────────────────────────────────────────────── */
@@ -161,8 +175,11 @@ body::before {
   grid-area: topbar;
   display: flex;
   align-items: center;
-  gap: var(--sp-5);
-  padding: 0 var(--sp-5);
+  gap: clamp(10px, 2vw, var(--sp-5));
+  padding: 0 max(var(--sp-4), env(safe-area-inset-left)) 0 max(var(--sp-4), env(safe-area-inset-right));
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: center;
   /* Deep imperial header — burgundy-umber with gold light */
   background:
     linear-gradient(180deg, #2a1608 0%, #1e1005 100%);
@@ -175,7 +192,7 @@ body::before {
 #topBar::after {
   content: '';
   position: absolute;
-  top: 52px;
+  top: var(--topbar-height);
   left: 0;
   right: 0;
   height: 1px;
@@ -263,6 +280,7 @@ body::before {
   color: rgba(240,190,190,0.85);
   font-size: 12px;
   white-space: nowrap;
+  overflow-wrap: anywhere;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -279,6 +297,8 @@ body::before {
   grid-area: map;
   position: relative;
   overflow: hidden;
+  min-width: 0;
+  min-height: 0;
   background:
     radial-gradient(ellipse 110% 80% at 50% 50%, rgba(240,225,190,0.9) 0%, rgba(215,195,155,0.95) 100%);
 }
@@ -300,7 +320,8 @@ body::before {
 #mapContainer {
   width: 100%;
   height: 100%;
-  padding: 14px 14px 60px;
+  min-width: 0;
+  padding: clamp(10px, 1.4vw, 18px) clamp(10px, 1.4vw, 18px) calc(58px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -311,6 +332,7 @@ body::before {
   display: block;
   width: 100%;
   height: 100%;
+  min-width: 0;
   max-width: 100%;
   max-height: 100%;
   border-radius: 16px;
@@ -330,8 +352,11 @@ body::before {
   left: 0;
   right: 0;
   display: flex;
-  gap: 3px;
-  padding: 5px 8px 7px;
+  gap: 4px;
+  padding: 6px max(8px, env(safe-area-inset-left)) calc(7px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   background: linear-gradient(180deg, rgba(240,228,198,0.92) 0%, rgba(220,205,168,0.97) 100%);
   border-top: 1px solid rgba(168,116,32,0.35);
   backdrop-filter: blur(8px);
@@ -341,7 +366,8 @@ body::before {
 /* Player tabs reuse the cartouche grammar at a larger scale: thick role
    outline, dynasty-color fill, parchment ink, gold-leaf inner hairline. */
 .player-tab {
-  flex: 1;
+  flex: 1 0 clamp(132px, 19vw, 190px);
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -372,6 +398,8 @@ body::before {
     0 -2px 6px rgba(30,16,0,0.10);
 }
 
+#playerTabBar::-webkit-scrollbar { display: none; }
+
 .player-tab:hover { filter: brightness(1.06); }
 
 .player-tab.active {
@@ -394,6 +422,7 @@ body::before {
   width: 22px;
   height: 22px;
   border-radius: 50%;
+  background: var(--player-color, var(--tab-color, var(--parch-3)));
   background: color-mix(in srgb, var(--player-color, var(--tab-color, var(--parch-3))) 72%, #1f1a14 28%);
   border: 1.5px solid rgba(255,255,255,0.45);
   display: flex;
@@ -429,6 +458,8 @@ body::before {
   background:
     linear-gradient(180deg, var(--parch-0) 0%, var(--parch-1) 100%);
   border-left: 1px solid var(--parch-3);
+  min-width: 0;
+  min-height: 0;
   box-shadow: -8px 0 24px rgba(80,50,10,0.10);
   scrollbar-width: thin;
   scrollbar-color: var(--parch-3) var(--parch-1);
@@ -471,7 +502,7 @@ body::before {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--sp-2);
-  padding: 10px var(--sp-4);
+  padding: clamp(10px, 1.6vw, 14px) var(--main-panel-pad);
   border: 0;
   border-bottom: 1px solid var(--parch-2);
   background: linear-gradient(180deg, rgba(255,250,235,0.8) 0%, rgba(240,228,198,0.6) 100%);
@@ -533,15 +564,16 @@ body::before {
   font-size: 10px;
   color: var(--gold-2);
   white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .sidebar-panel-body {
-  padding: var(--sp-3);
+  padding: var(--main-panel-pad);
 }
 
 .player-dashboard .sidebar-panel-body,
 .action-shell .sidebar-panel-body {
-  padding: var(--sp-3);
+  padding: var(--main-panel-pad);
 }
 
 .history-panel .sidebar-panel-body {
@@ -648,6 +680,7 @@ body::before {
   width: 42px;
   height: 42px;
   border-radius: 50%;
+  background: var(--dynasty-color, var(--player-color, var(--parch-3)));
   background: color-mix(in srgb, var(--dynasty-color, var(--player-color)) 72%, #1a1008 28%);
   border: 2px solid rgba(255,255,255,0.45);
   display: flex;
@@ -706,7 +739,8 @@ body::before {
 .gold-icon { font-size: 14px; }
 
 .dashboard-stats {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   gap: var(--sp-2);
   margin-bottom: var(--sp-3);
 }
@@ -782,7 +816,8 @@ body::before {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  padding: 8px 12px;
+  min-height: var(--touch-target);
+  padding: 9px 12px;
   cursor: pointer;
   background: rgba(240,228,195,0.4);
   transition: background 0.12s;
@@ -856,6 +891,7 @@ body::before {
   color: var(--umber-1);
   text-align: right;
   white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-empty {
@@ -899,13 +935,14 @@ body::before {
 .dashboard-opinion-debt { font-size: 11px; color: var(--umber-2); }
 
 .dashboard-opinion-row.human-target {
+  border-color: var(--player-color, var(--parch-3));
   border-color: color-mix(in srgb, var(--player-color, var(--parch-3)) 55%, var(--parch-2) 45%);
 }
 
 /* Finance cards */
 .finance-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 136px), 1fr));
   gap: var(--sp-2);
   margin-bottom: var(--sp-2);
 }
@@ -937,7 +974,7 @@ body::before {
 
 /* ── Phase Headers ─────────────────────────────────────────────────── */
 .phase-header {
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--main-panel-pad);
   border-bottom: 1px solid var(--parch-2);
   background: linear-gradient(180deg, rgba(240,230,195,0.5) 0%, transparent 100%);
 }
@@ -963,7 +1000,7 @@ body::before {
 .court-section,
 .orders-section,
 .resolution-section {
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--main-panel-pad);
   border-bottom: 1px solid var(--parch-2);
 }
 
@@ -997,17 +1034,19 @@ body::before {
 /* ── Market / Gift items ─────────────────────────────────────────── */
 .theme-market,
 .gift-options {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr));
+  gap: var(--sp-2);
 }
 
 .market-item,
 .gift-item {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--sp-2);
-  padding: 8px 12px;
+  min-height: var(--touch-target);
+  padding: 9px 12px;
   background: var(--parch-0);
   border: 1px solid var(--parch-2);
   border-radius: var(--r-sm);
@@ -1018,7 +1057,10 @@ body::before {
   text-align: left;
   transition: all 0.12s;
   box-shadow: var(--shadow-card);
+  min-width: 0;
+  touch-action: manipulation;
 }
+.market-name { min-width: 0; flex: 1 1 auto; }
 
 .market-item:hover:not(.disabled),
 .gift-item:hover {
@@ -1047,6 +1089,7 @@ body::before {
   color: var(--gold-1);
   font-weight: 600;
   white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 
@@ -1114,7 +1157,8 @@ body::before {
 
 .appt-btn {
   align-self: flex-start;
-  padding: 5px 14px;
+  min-height: 38px;
+  padding: 7px 14px;
   background: rgba(168,116,32,0.10);
   border: 1px solid rgba(168,116,32,0.35);
   border-radius: var(--r-sm);
@@ -1211,7 +1255,8 @@ body::before {
 }
 
 .btn-recruit {
-  padding: 4px 10px;
+  min-height: 34px;
+  padding: 5px 10px;
   background: rgba(168,116,32,0.08);
   border: 1px solid rgba(168,116,32,0.30);
   border-radius: var(--r-sm);
@@ -1226,6 +1271,7 @@ body::before {
 .btn-recruit.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
 .btn-dismiss {
+  min-height: 34px;
   padding: 5px 10px;
   border: 1px solid rgba(160,48,48,0.25);
   border-radius: var(--r-sm);
@@ -1428,7 +1474,7 @@ body::before {
 .court-actions,
 .orders-actions,
 .resolution-actions {
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--main-panel-pad);
 }
 
 .btn-confirm,
@@ -1436,6 +1482,7 @@ body::before {
 .btn-continue,
 .btn-new-game {
   width: 100%;
+  min-height: var(--touch-target);
   padding: 11px;
   font-family: var(--font-display);
   font-size: 12px;
@@ -1878,6 +1925,7 @@ body::before {
 }
 .province-shape.owned {
   /* Dynasty color mixed with warm parchment — saturated enough to read ownership clearly */
+  fill: var(--owner-color, #888);
   fill: color-mix(in srgb, var(--owner-color, #888) 52%, rgba(240,228,195,0.48) 48%);
   fill-opacity: 1;
 }
@@ -1886,11 +1934,13 @@ body::before {
 }
 .province-shape.capital {
   /* Deep gold for Constantinople */
+  fill: var(--capital-fill);
   fill: color-mix(in srgb, var(--capital-fill) 48%, rgba(255,245,210,0.52) 52%);
   fill-opacity: 1;
 }
 .province-shape.free {
   /* Muted amethyst — unowned themes, readable but not dominant */
+  fill: var(--free-fill);
   fill: color-mix(in srgb, var(--free-fill) 45%, rgba(235,220,190,0.55) 55%);
   fill-opacity: 1;
 }
@@ -2053,6 +2103,7 @@ body::before {
 
   display: inline-flex;
   align-items: baseline;
+  min-width: 0;
   gap: 6px;
   width: fit-content;
   max-width: 100%;
@@ -2067,6 +2118,7 @@ body::before {
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   white-space: nowrap;
+  overflow-wrap: anywhere;
   vertical-align: baseline;
 
   background-color: var(--cart-bg);
@@ -2351,7 +2403,7 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   overflow-y: auto;
 }
 
@@ -2363,7 +2415,7 @@ body::before {
   padding: var(--sp-6) var(--sp-5);
   width: 440px;
   max-width: 90vw;
-  max-height: calc(100vh - 40px);
+  max-height: calc(var(--game-vh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -2422,6 +2474,7 @@ body::before {
 
 .setup-field select,
 .setup-field input {
+  min-height: var(--touch-target);
   width: 100%;
   padding: 9px 12px;
   background: rgba(255,252,240,0.85);
@@ -2465,6 +2518,7 @@ body::before {
 /* Primary CTA — the "Begin" button */
 .btn-start {
   width: 100%;
+  min-height: var(--touch-target);
   padding: 13px;
   font-family: var(--font-display);
   font-size: 14px;
@@ -2495,6 +2549,7 @@ body::before {
   align-items: center;
   justify-content: center;
   width: 100%;
+  min-height: var(--touch-target);
   padding: 10px 12px;
   border-radius: var(--r-md);
   border: 1px solid var(--parch-2);
@@ -2596,6 +2651,305 @@ body::before {
 @media (max-width: 820px) {
   .multiplayer-seat { flex-direction: column; align-items: flex-start; }
   .multiplayer-seat-actions { justify-content: flex-start; }
+}
+
+
+
+/* ── Responsive Ergonomics & Firefox/Mobile Compatibility ─────────────
+   The desktop game stays two-column. Narrow screens become a scrollable
+   map-first document so the sidebar no longer crushes the map. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #playerTabBar { background: rgba(240,228,198,0.98); }
+  #setupDialog { background: rgba(26,14,4,0.92); }
+  #gameOverOverlay { background: rgba(30,16,5,0.88); }
+}
+
+.map-controls {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(255,252,240,0.82);
+  border: 1px solid rgba(168,116,32,0.28);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(8px);
+}
+.map-control-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(168,116,32,0.35);
+  border-radius: 50%;
+  background: var(--parch-0);
+  color: var(--umber-1);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  touch-action: manipulation;
+}
+.map-control-btn:hover,
+.map-control-btn:focus-visible {
+  border-color: var(--gold-1);
+  outline: none;
+}
+.map-control-btn[data-map-control="reset"] { font-size: 13px; }
+
+button,
+select,
+input,
+summary { touch-action: manipulation; }
+
+@media (max-width: 1120px) {
+  :root { --sidebar-width: clamp(320px, 34vw, 380px); }
+  .game-title { letter-spacing: 3px; }
+  .phase-badge { padding-inline: 10px; }
+}
+
+@media (max-width: 900px) {
+  body {
+    overflow: auto;
+    min-height: var(--game-vh);
+    height: auto;
+  }
+
+  #app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto clamp(340px, 54svh, 580px) auto;
+    grid-template-areas:
+      "topbar"
+      "map"
+      "sidebar";
+    min-height: var(--game-vh);
+    height: auto;
+  }
+
+  #topBar {
+    min-height: var(--topbar-height);
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  #invasionDisplay {
+    margin-left: 0;
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .empire-fallen-banner {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  #mapArea {
+    min-height: 340px;
+    border-bottom: 1px solid var(--parch-3);
+  }
+
+  #sidebar {
+    overflow: visible;
+    border-left: 0;
+    border-top: 1px solid var(--parch-3);
+    box-shadow: 0 -8px 24px rgba(80,50,10,0.08);
+  }
+
+  #playerDashboard,
+  #historyPanel,
+  #actionPanel { min-width: 0; }
+
+  .sidebar-panel-body,
+  .player-dashboard .sidebar-panel-body,
+  .action-shell .sidebar-panel-body { padding: var(--main-panel-pad); }
+
+  .history-panel-list { padding: var(--main-panel-pad); }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --main-panel-pad: 14px;
+    --touch-target: 46px;
+  }
+
+  #app {
+    grid-template-rows: auto clamp(320px, 50svh, 520px) auto;
+  }
+
+  #topBar {
+    gap: 7px 10px;
+    align-items: center;
+  }
+
+  .game-title {
+    font-size: 15px;
+    letter-spacing: 2.5px;
+    flex: 1 1 130px;
+  }
+
+  #roundDisplay,
+  .phase-badge,
+  .connection-badge {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  #invasionDisplay {
+    order: 10;
+    flex-basis: 100%;
+    font-size: 12px;
+    white-space: normal;
+  }
+
+  #mapArea::before { inset: 8px 8px 54px; border-radius: 14px; }
+  #mapContainer { padding: 10px 10px calc(56px + env(safe-area-inset-bottom)); }
+  .game-map { border-radius: 12px; }
+
+  #playerTabBar { gap: 5px; }
+  .player-tab {
+    flex-basis: 145px;
+    padding: 7px 10px;
+    font-size: 11px;
+    border-width: 3px;
+    border-bottom-width: 0;
+  }
+  .tab-crest { width: 20px; height: 20px; }
+  .tab-gold { margin-left: 0; }
+
+  .map-controls {
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+  }
+  .map-control-btn { width: 38px; height: 38px; }
+
+  .sidebar-panel-head,
+  .history-panel-head {
+    padding: 12px var(--main-panel-pad);
+  }
+
+  .sidebar-panel-badge { white-space: normal; text-align: right; }
+  .fold-summary { align-items: flex-start; flex-wrap: wrap; }
+  .fold-summary-meta { flex-wrap: wrap; justify-content: flex-end; }
+
+  .dashboard-header,
+  .army-row,
+  .score-row,
+  .multiplayer-seat {
+    align-items: stretch;
+  }
+
+  .dashboard-list-row,
+  .dashboard-opinion-row,
+  .army-row,
+  .merc-row,
+  .score-row {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-list-row,
+  .dashboard-opinion-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+  }
+
+  .dashboard-list-value,
+  .dashboard-opinion-meta,
+  .score-breakdown,
+  .score-total {
+    text-align: right;
+  }
+
+  .theme-market,
+  .gift-options,
+  .appt-grid,
+  .finance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-item,
+  .gift-item,
+  .deploy-row,
+  .merc-row,
+  .candidate-btn {
+    padding: 10px 12px;
+  }
+
+  .deploy-row,
+  .merc-row { align-items: stretch; }
+  .deploy-toggle,
+  .merc-controls { margin-left: 0; width: 100%; }
+  .toggle-btn { flex: 1; min-height: 38px; }
+
+  .army-controls,
+  .army-dismiss {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .army-controls > *,
+  .army-dismiss > * { flex: 1; }
+  .army-dismiss-count { width: auto; min-width: 64px; }
+
+  .player-choice-grid,
+  .province-choice-grid,
+  .revocation-choice-grid {
+    gap: 7px;
+  }
+
+  .player-role-name,
+  .province-token,
+  .title-token {
+    border-width: 3px;
+    padding: 5px 9px 6px;
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .province-token-values {
+    display: inline-block;
+    padding-left: 4px;
+  }
+
+  #setupDialog { align-items: flex-start; }
+  .setup-card {
+    width: min(100%, 520px);
+    max-width: 100%;
+    padding: 24px 18px;
+  }
+  .setup-card h1 { font-size: 25px; letter-spacing: 4px; }
+  .setup-field select,
+  .setup-field input,
+  .setup-ai-seat select {
+    min-height: var(--touch-target);
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  #app { grid-template-rows: auto clamp(300px, 48svh, 480px) auto; }
+  .game-title { flex-basis: 100%; }
+  #roundDisplay { margin-right: auto; }
+  .phase-badge { padding: 4px 8px; }
+  .connection-badge { padding: 4px 8px; }
+  .dashboard-header { flex-wrap: wrap; }
+  .gold-display { align-items: flex-start; width: 100%; }
+  .dashboard-list-row,
+  .dashboard-opinion-row { grid-template-columns: 1fr; }
+  .dashboard-list-value,
+  .dashboard-opinion-meta,
+  .score-breakdown,
+  .score-total { text-align: left; }
+  .score-row { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .score-breakdown, .score-total { grid-column: 2; }
+  .court-actions,
+  .orders-actions,
+  .resolution-actions,
+  .scoring-panel { padding: var(--main-panel-pad); }
 }
 
 /* ── Scrollbar (global) ──────────────────────────────────────────── */

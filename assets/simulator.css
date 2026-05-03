@@ -20,6 +20,12 @@
   --radius-lg: 20px;
   --radius-md: 12px;
   --radius-sm: 8px;
+  --sim-vh: 100vh;
+  --touch-target: 44px;
+}
+
+@supports (min-height: 100dvh) {
+  :root { --sim-vh: 100dvh; }
 }
 
 * {
@@ -34,13 +40,13 @@ body {
     radial-gradient(circle at top left, rgba(213, 170, 77, 0.18), transparent 35%),
     radial-gradient(circle at 80% 20%, rgba(143, 97, 50, 0.16), transparent 25%),
     linear-gradient(160deg, #0a0f17 0%, #111825 42%, #151d29 100%);
-  min-height: 100vh;
+  min-height: var(--sim-vh);
 }
 
 .sim-shell {
   width: min(1540px, calc(100vw - 40px));
   margin: 0 auto;
-  padding: 28px 0 40px;
+  padding: max(28px, env(safe-area-inset-top)) 0 max(40px, env(safe-area-inset-bottom));
 }
 
 .sim-hero {
@@ -94,6 +100,27 @@ body {
 
 .hero-link:hover {
   background: var(--gold-soft);
+}
+
+
+button,
+a,
+input,
+select,
+summary {
+  touch-action: manipulation;
+}
+
+button,
+input,
+select,
+.hero-link {
+  min-height: var(--touch-target);
+}
+
+input,
+select {
+  font: inherit;
 }
 
 .sim-layout {
@@ -613,13 +640,20 @@ button:disabled {
 
 @media (max-width: 760px) {
   .sim-shell {
-    width: calc(100vw - 20px);
-    padding-top: 14px;
+    width: min(100%, calc(100vw - 20px));
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
   }
 
   .sim-hero {
     flex-direction: column;
     padding: 22px;
+  }
+
+  .control-card,
+  .results-hero,
+  .results-section {
+    padding: 18px;
   }
 
   .hero-summary {
@@ -634,5 +668,10 @@ button:disabled {
 
   .report-table {
     min-width: 640px;
+  }
+
+  input,
+  select {
+    font-size: 16px;
   }
 }

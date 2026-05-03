@@ -7,6 +7,9 @@ const THREAT_HATCH_SPACING = 3.6;
 const THREAT_HATCH_PRIMARY_STROKE = 1.4;
 const THREAT_HATCH_SECONDARY_STROKE = 0.7;
 const MIN_THREAT_HATCH_SCALE = 0.001;
+const MIN_MAP_ZOOM = 1;
+const MAX_MAP_ZOOM = 4;
+const MAP_ZOOM_STEP = 1.2;
 
 // Region outlines are rendered in their own layer and clipped to each
 // province interior. The stroke itself is drawn at double the visible width,
@@ -53,7 +56,7 @@ export async function createMapSVG(containerId, options = {}) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 297 210');
   svg.setAttribute('class', 'game-map');
-  svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   svg.setAttribute('overflow', 'hidden');
   svg.id = 'gameMap';
   svg.innerHTML = `
@@ -123,6 +126,7 @@ export async function createMapSVG(containerId, options = {}) {
   importProvinceShapes(svg, provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, HITZONES_SVG);
 
   container.replaceChildren(svg);
+  ensureMapControls(svg);
   configureThreatHatchPatterns(svg);
 
   requestAnimationFrame(() => {
@@ -636,6 +640,9 @@ export function setSelectedProvince(provinceId) {
 }
 
 function findProvinceAtClientPoint(svg, clientX, clientY) {
+  const directHit = findProvinceFromHitStack(clientX, clientY);
+  if (directHit) return directHit;
+
   const screenPoint = svg.createSVGPoint();
   screenPoint.x = clientX;
   screenPoint.y = clientY;
@@ -653,6 +660,57 @@ function findProvinceAtClientPoint(svg, clientX, clientY) {
   }
 
   return null;
+}
+
+
+function findProvinceFromHitStack(clientX, clientY) {
+  if (typeof document.elementsFromPoint !== 'function') return null;
+
+  for (const element of document.elementsFromPoint(clientX, clientY)) {
+    const provinceElement = findProvinceElement(element);
+    const provinceId = provinceElement?.getAttribute?.('data-id');
+    if (provinceId) return provinceId;
+  }
+
+  return null;
+}
+
+function findProvinceElement(element) {
+  let current = element;
+  while (current && current !== document.documentElement) {
+    if (current.matches?.('.province-hitbox, .province-shape, .region-stroke, .map-cartouche')) return current;
+    current = current.parentElement || current.parentNode;
+  }
+  return null;
+}
+
+function ensureMapControls(svg) {
+  const mapArea = document.getElementById('mapArea');
+  if (!mapArea) return;
+
+  let controls = mapArea.querySelector('.map-controls');
+  if (!controls) {
+    controls = document.createElement('div');
+    controls.className = 'map-controls';
+    controls.setAttribute('aria-label', 'Map zoom controls');
+    controls.innerHTML = `
+      <button class="map-control-btn" type="button" data-map-control="in" aria-label="Zoom map in">+</button>
+      <button class="map-control-btn" type="button" data-map-control="out" aria-label="Zoom map out">−</button>
+      <button class="map-control-btn" type="button" data-map-control="reset" aria-label="Reset map zoom">1×</button>
+    `;
+    mapArea.appendChild(controls);
+  }
+
+  controls.onclick = (event) => {
+    const button = event.target.closest?.('[data-map-control]');
+    if (!button) return;
+
+    event.preventDefault();
+    const action = button.dataset.mapControl;
+    if (action === 'in') zoomMapAtViewportCenter(svg, MAP_ZOOM_STEP);
+    if (action === 'out') zoomMapAtViewportCenter(svg, 1 / MAP_ZOOM_STEP);
+    if (action === 'reset') resetMapView(svg);
+  };
 }
 
 function updateHoveredProvince(provinceId) {
@@ -720,11 +778,14 @@ function endMapPan(svg, event) {
 
 function zoomMapAtPoint(svg, event) {
   event.preventDefault();
+  zoomMapAtClientPoint(svg, event.clientX, event.clientY, event.deltaY < 0 ? MAP_ZOOM_STEP : 1 / MAP_ZOOM_STEP);
+}
 
-  const point = clientPointToSvg(svg, event.clientX, event.clientY);
+function zoomMapAtClientPoint(svg, clientX, clientY, factor) {
+  const point = clientPointToSvg(svg, clientX, clientY);
   if (!point) return;
 
-  const nextZoom = clampValue(mapView.zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15), 1, 4);
+  const nextZoom = clampValue(mapView.zoom * factor, MIN_MAP_ZOOM, MAX_MAP_ZOOM);
   if (Math.abs(nextZoom - mapView.zoom) < 0.001) return;
 
   const contentX = (point.x - mapView.panX) / mapView.zoom;
@@ -737,6 +798,11 @@ function zoomMapAtPoint(svg, event) {
   applyMapTransform();
   updateHoveredProvince(null);
   updateMapCursor(svg, null);
+}
+
+function zoomMapAtViewportCenter(svg, factor) {
+  const rect = svg.getBoundingClientRect();
+  zoomMapAtClientPoint(svg, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
 }
 
 function resetMapView(svg) {
@@ -758,12 +824,14 @@ function applyMapTransform() {
 }
 
 function clampMapView() {
-  if (mapView.zoom <= 1.001) {
+  if (mapView.zoom <= MIN_MAP_ZOOM + 0.001) {
     mapView.zoom = 1;
     mapView.panX = 0;
     mapView.panY = 0;
     return;
   }
+
+  mapView.zoom = clampValue(mapView.zoom, MIN_MAP_ZOOM, MAX_MAP_ZOOM);
 
   const minPanX = 297 * (1 - mapView.zoom);
   const minPanY = 210 * (1 - mapView.zoom);
