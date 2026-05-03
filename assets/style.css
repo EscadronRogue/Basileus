@@ -113,7 +113,7 @@
   --text-gold:     var(--gold-1);
   --occupied:      var(--occupied-fill);
   --occupied-border: #9a8060;
-  --invasion-lost-fill: rgba(210, 200, 178, 0.92);
+  --invasion-lost-fill: rgba(210, 200, 178, 0.68);
   --invasion-lost-border: var(--occupied-border);
   --region-border: var(--empire-border);
 }
@@ -346,9 +346,10 @@ body::before {
 /* ── Player Tabs ─────────────────────────────────────────────────── */
 #playerTabBar {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr));
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 9px;
   padding: var(--main-panel-pad);
   overflow: visible;
   background:
@@ -361,12 +362,14 @@ body::before {
 /* Player tabs reuse the cartouche grammar at a larger scale: thick role
    outline, dynasty-color fill, parchment ink, gold-leaf inner hairline. */
 .player-tab {
-  min-width: 0;
+  flex: 1 1 clamp(132px, 31%, 190px);
+  min-width: min(100%, 132px);
+  max-width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--sp-2);
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 9px 11px;
   border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
   border-radius: var(--r-md);
   background-color: var(--player-color, var(--parch-3));
@@ -406,34 +409,15 @@ body::before {
 .player-tab,
 .player-tab .tab-name,
 .player-tab .tab-finance,
-.player-tab .tab-finance-item,
 .player-tab .tab-finance-value,
-.player-tab .tab-finance-label,
 .player-tab .tab-you,
 .player-tab .tab-crown { color: #ffffff; text-shadow: inherit; }
-
-.tab-crest {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--player-color, var(--tab-color, var(--parch-3)));
-  background: color-mix(in srgb, var(--player-color, var(--tab-color, var(--parch-3))) 72%, #1f1a14 28%);
-  border: 1.5px solid rgba(255,255,255,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 11px;
-  color: #fff;
-  flex-shrink: 0;
-}
 
 .tab-body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
 }
 
 .tab-name {
@@ -442,45 +426,34 @@ body::before {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.12;
 }
 
 .tab-finance {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: inline-flex;
+  align-items: baseline;
   gap: 4px;
   min-width: 0;
-}
-
-.tab-finance-item {
-  min-width: 0;
-  padding: 3px 4px;
-  border-radius: 4px;
-  background: rgba(20,8,0,0.18);
-  border: 1px solid rgba(240,200,90,0.24);
-  text-align: center;
-}
-
-.tab-finance-value {
-  display: block;
+  max-width: 100%;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-family: var(--font-display);
+  font-size: 12.5px;
   line-height: 1.05;
   font-weight: 700;
 }
 
-.tab-finance-label {
-  display: block;
-  margin-top: 1px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-body);
-  font-size: 10px;
-  line-height: 1;
-  opacity: 0.82;
+.tab-finance-value,
+.tab-finance-separator {
+  display: inline-block;
+  min-width: 0;
+}
+
+.tab-finance-separator {
+  opacity: 0.72;
+  font-weight: 500;
 }
 
 .tab-you {
@@ -2135,6 +2108,7 @@ body::before {
 
 .invasion-cartouche-bg {
   fill: var(--invasion-lost-fill);
+  fill-opacity: 0.72;
   stroke: var(--invasion-lost-border);
   stroke-width: 0.52;
   paint-order: stroke fill;
@@ -2883,6 +2857,80 @@ textarea {
   line-height: 1.5;
 }
 
+
+/* ── Interface readability scale ──────────────────────────────────── */
+#sidebar {
+  font-size: 17px;
+}
+
+#sidebar > :not(#playerTabBar),
+#sidebar .sidebar-panel-body,
+#sidebar .history-panel-list,
+#sidebar .action-shell {
+  font-size: 1.05rem;
+  line-height: 1.58;
+}
+
+.sidebar-panel-kicker { font-size: 10.5px; }
+.sidebar-panel-title { font-size: 13px; }
+.sidebar-panel-subtitle { font-size: 13px; }
+.sidebar-panel-badge { font-size: 12px; }
+
+.section-hint,
+.dashboard-list-note,
+.dashboard-list-value,
+.dashboard-province-detail,
+.dashboard-province-meta,
+.dashboard-opinion-debt,
+.theme-detail,
+.market-detail,
+.gift-detail,
+.deploy-note,
+.merc-note,
+.history-entry-body,
+.history-entry-meta,
+.fold-summary-note,
+.war-estimate,
+.section-empty {
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.dashboard-list-title,
+.market-title,
+.gift-title,
+.theme-title,
+.appt-label,
+.deploy-title,
+.merc-title,
+.history-entry-title,
+.fold-title,
+.candidate-name {
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.stat-label,
+.dashboard-tag,
+.current-basileus-tag,
+.finance-label,
+.score-label,
+.vote-breakdown,
+.badge-detail {
+  font-size: 0.82rem;
+}
+
+.btn-confirm,
+.btn-lock-orders,
+.btn-continue,
+.btn-new-game,
+button.deploy-toggle,
+button.market-buy,
+button.gift-button,
+button.merc-button {
+  font-size: 0.9rem;
+}
+
 @media (max-width: 1180px) {
   :root { --sidebar-width: clamp(460px, 46vw, 620px); --main-panel-pad: 17px; }
   .game-title { letter-spacing: 3px; }
@@ -2987,14 +3035,15 @@ textarea {
   #mapContainer { padding: 10px; }
   .game-map { border-radius: 12px; }
 
-  #playerTabBar { grid-template-columns: repeat(auto-fit, minmax(min(100%, 146px), 1fr)); gap: 8px; padding: 12px; }
+  #playerTabBar { gap: 8px; padding: 12px; }
   .player-tab {
+    flex-basis: clamp(124px, 45%, 180px);
+    min-width: min(100%, 124px);
     padding: 8px 10px;
     font-size: 12px;
     border-width: 3px;
   }
-  .tab-crest { width: 20px; height: 20px; }
-  .tab-finance-label { font-size: 9px; }
+  .tab-finance { font-size: 12px; }
 
   .sidebar-panel-head,
   .history-panel-head {

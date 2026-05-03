@@ -19,8 +19,8 @@ function getPlayerMaintenance(player) {
 
 function formatSignedGold(value, { expense = false } = {}) {
   const amount = Math.max(0, Number(value) || 0);
-  if (expense) return amount > 0 ? `−${amount}g` : '0g';
-  return amount > 0 ? `+${amount}g` : '0g';
+  if (expense) return amount > 0 ? `-${amount}` : '0';
+  return amount > 0 ? `+${amount}` : '0';
 }
 
 function getPlayerTabEconomy(player, administration) {
@@ -33,10 +33,12 @@ function getPlayerTabEconomy(player, administration) {
 
 function renderPlayerTabFinance(economy) {
   return `
-    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure">
-      <span class="tab-finance-item" title="Gold in reserve"><span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span><span class="tab-finance-label">reserve</span></span>
-      <span class="tab-finance-item" title="Expected income"><span class="tab-finance-value" data-tab-finance="income">${economy.income}</span><span class="tab-finance-label">income</span></span>
-      <span class="tab-finance-item" title="Expected expenditure"><span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span><span class="tab-finance-label">expense</span></span>
+    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure" title="Gold reserve / expected income / expected expenditure">
+      <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
+      <span class="tab-finance-separator" aria-hidden="true">/</span>
+      <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
+      <span class="tab-finance-separator" aria-hidden="true">/</span>
+      <span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span>
     </span>
   `;
 }
@@ -556,12 +558,11 @@ export class MultiplayerController {
       const seat = seatMap.get(player.id);
       const viewing = player.id === this.viewPlayerId;
       const youBadge = player.id === controlledSeatId ? '<span class="tab-you">You</span>' : '';
-      const crown = player.id === this.state.basileusId ? '<span class="tab-crown" title="Basileus">C</span>' : '';
+      const crown = player.id === this.state.basileusId ? '<span class="tab-crown" title="Basileus">B</span>' : '';
       const connectionBadge = seat?.status === 'disconnected' ? '<span class="tab-you">Away</span>' : '';
       return `
         <button class="player-tab ${viewing ? 'active' : ''}"
           data-player="${player.id}" style="${getPlayerStyleAttr(this.state, player.id)}">
-          <span class="tab-crest" aria-hidden="true">${player.dynasty.charAt(0)}</span>
           <span class="tab-body">
             <span class="tab-name">${player.dynasty}</span>
             ${renderPlayerTabFinance(economy)}

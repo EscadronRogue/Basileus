@@ -269,7 +269,7 @@ function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
     <div class="player-choice-grid" data-player-choice-group>
       ${players.map((player) => `
         <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
-          ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
+          ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}
         </button>
       `).join('')}
       <input type="hidden"${inputIdAttr} class="appt-player-select" value="${normalizedSelectedId}">
@@ -850,7 +850,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Dynasty View</span>
           <span class="sidebar-panel-title">${renderPlayerRoleName(state, player)}</span>
-          <span class="sidebar-panel-subtitle">${isBasileus ? 'Current Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'Untitled dynasty')}</span>
+          <span class="sidebar-panel-subtitle">${isBasileus ? 'Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'Untitled dynasty')}</span>
         </span>
         <span class="sidebar-panel-badge">${player.gold}g | +${finance.projectedIncome} / -${finance.maintenance}</span>
       </button>
@@ -1541,7 +1541,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
         <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}" style="${getPlayerStyleAttr(state, p.id)}">
           <span class="candidate-crest" style="background: ${p.color}">${p.dynasty.charAt(0)}</span>
           <span>${renderPlayerRoleName(state, p)}</span>
-          ${p.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
+          ${p.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}
         </button>
       `).join('')}
     </div>
