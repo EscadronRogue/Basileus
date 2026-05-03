@@ -1,6 +1,6 @@
 // engine/state.js — Game state initialization and core state structure
 import { PROVINCES, buildAdjacency } from '../data/provinces.js';
-import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE } from '../data/invasions.js';
+import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE, INVASION_MIN_ESTIMATE_SPREAD } from '../data/invasions.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 // ─── Seeded RNG ───
@@ -32,8 +32,20 @@ const PLAYER_ROLE_TEXT_STYLES = {
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'DOM_WEST', 'DOM_EAST', 'ADMIRAL', 'PATRIARCH'];
 
-function createInvasionStrengthRange() {
-  return INVASION_STRENGTH_RANGE.slice();
+function createInvasionStrengthRange(rng) {
+  const [baseMin, baseMax] = INVASION_STRENGTH_RANGE;
+  if (baseMax - baseMin < INVASION_MIN_ESTIMATE_SPREAD) {
+    throw new Error('Invasion strength bounds must be at least as wide as the minimum estimate spread.');
+  }
+
+  const first = rollRange(baseMin, baseMax, rng);
+  let second = rollRange(baseMin, baseMax, rng);
+
+  while (Math.abs(second - first) < INVASION_MIN_ESTIMATE_SPREAD) {
+    second = rollRange(baseMin, baseMax, rng);
+  }
+
+  return [Math.min(first, second), Math.max(first, second)];
 }
 
 function createInvasionInstance(template, rng) {
@@ -41,7 +53,7 @@ function createInvasionInstance(template, rng) {
     ...template,
     route: Array.isArray(template.route) ? template.route.slice() : [],
     originPos: template.originPos ? { ...template.originPos } : null,
-    strength: createInvasionStrengthRange(),
+    strength: createInvasionStrengthRange(rng),
   };
 }
 

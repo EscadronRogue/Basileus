@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { PROVINCES } from '../data/provinces.js';
-import { createGameState } from './state.js';
+import { createGameState, makeRng, rollInvasionStrength } from './state.js';
 import { runAdministration } from './cascade.js';
 import { buyTheme, canRecruitProfessional, grantTaxExemption, hireMercenaries, recruitProfessional } from './actions.js';
 import {
@@ -231,10 +231,28 @@ test('Patriarch, Empress, and Chief of Eunuchs cannot recruit professional troop
   }
 });
 
-test('all invasion instances use the shared 10-30 strength range', () => {
-  const state = createGameState({ playerCount: 4, deckSize: 9, seed: 4 });
+test('invasion estimates stay inside 10-30 with at least five points of uncertainty', () => {
+  for (let seed = 1; seed <= 50; seed++) {
+    const state = createGameState({ playerCount: 4, deckSize: 9, seed });
+    for (const invasion of state.invasionDeck) {
+      const [minStrength, maxStrength] = invasion.strength;
+      assert.ok(minStrength >= 10, `estimate minimum ${minStrength} should be at least 10`);
+      assert.ok(maxStrength <= 30, `estimate maximum ${maxStrength} should be at most 30`);
+      assert.ok(maxStrength - minStrength >= 5, `estimate ${minStrength}-${maxStrength} should span at least 5`);
+    }
+  }
+});
+
+test('revealed invasion strength is rolled inside the announced estimate', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 9, seed: 7 });
+  const rng = makeRng(99);
+
   for (const invasion of state.invasionDeck) {
-    assert.deepEqual(invasion.strength, [10, 30]);
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const rolled = rollInvasionStrength(invasion, rng);
+      assert.ok(rolled >= invasion.strength[0], `${rolled} should be at least ${invasion.strength[0]}`);
+      assert.ok(rolled <= invasion.strength[1], `${rolled} should be at most ${invasion.strength[1]}`);
+    }
   }
 });
 
