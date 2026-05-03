@@ -1,6 +1,6 @@
 // engine/state.js — Game state initialization and core state structure
 import { PROVINCES, buildAdjacency } from '../data/provinces.js';
-import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE, INVASION_MIN_ESTIMATE_SPREAD } from '../data/invasions.js';
+import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE, INVASION_ESTIMATE_INTERVAL } from '../data/invasions.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 // ─── Seeded RNG ───
@@ -38,18 +38,12 @@ const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAS
 
 function createInvasionStrengthRange(rng) {
   const [baseMin, baseMax] = INVASION_STRENGTH_RANGE;
-  if (baseMax - baseMin < INVASION_MIN_ESTIMATE_SPREAD) {
-    throw new Error('Invasion strength bounds must be at least as wide as the minimum estimate spread.');
+  if (baseMax - baseMin < INVASION_ESTIMATE_INTERVAL) {
+    throw new Error('Invasion strength bounds must be at least as wide as the estimate interval.');
   }
 
-  const first = rollRange(baseMin, baseMax, rng);
-  let second = rollRange(baseMin, baseMax, rng);
-
-  while (Math.abs(second - first) < INVASION_MIN_ESTIMATE_SPREAD) {
-    second = rollRange(baseMin, baseMax, rng);
-  }
-
-  return [Math.min(first, second), Math.max(first, second)];
+  const estimateMin = rollRange(baseMin, baseMax - INVASION_ESTIMATE_INTERVAL, rng);
+  return [estimateMin, estimateMin + INVASION_ESTIMATE_INTERVAL];
 }
 
 function createInvasionInstance(template, rng) {

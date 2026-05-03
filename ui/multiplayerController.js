@@ -589,7 +589,6 @@ export class MultiplayerController {
             <span class="sidebar-panel-title">${panelTitleByPhase[this.state.phase] || 'Action Panel'}</span>
             <span class="sidebar-panel-subtitle">${panelSubtitleByPhase[this.state.phase] || 'Current phase controls and details'}</span>
           </span>
-          <span class="sidebar-panel-badge">${controlledSeatId != null ? renderPlayerRoleName(this.state, getPlayer(this.state, controlledSeatId)) : 'Lobby'}</span>
         </button>
         ${isOpen ? '<div class="sidebar-panel-body" data-role="action-panel-body"></div>' : ''}
       </div>

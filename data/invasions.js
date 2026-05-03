@@ -1,7 +1,7 @@
 // data/invasions.js — Invasion routes and shared invasion strength bounds.
 
 export const INVASION_STRENGTH_RANGE = [10, 30];
-export const INVASION_MIN_ESTIMATE_SPREAD = 5;
+export const INVASION_ESTIMATE_INTERVAL = 7;
 
 export const INVASIONS = [
   {

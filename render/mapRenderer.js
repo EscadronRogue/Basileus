@@ -378,7 +378,7 @@ function computeCentroids(svg) {
 
 // Map labels are stacked SVG cartouches that mirror the HTML
 // .province-token grammar: outline = region color, fill = owner color,
-// gold inner hairline. Three lines per cartouche: id / name / profit-tax-levy.
+// gold inner hairline. Two lines per cartouche: name / profit-tax-levy.
 const MAP_CART_PAD_X = 1.0;
 
 function addProvinceLabels(layer) {
@@ -412,7 +412,6 @@ function buildMapCartouche(province, centroid) {
   inner.setAttribute('class', 'map-cart-inner');
   g.appendChild(inner);
 
-  appendCartLine(g, 'map-cart-id', province.id);
   appendCartLine(g, 'map-cart-name', province.name);
   appendCartLine(g, 'map-cart-values', `P${province.P} T${province.T} L${province.L}`);
 
@@ -432,25 +431,23 @@ function appendCartLine(parent, className, text) {
 function layoutMapCartouche(g) {
   const bg = g.querySelector('.map-cart-bg');
   const inner = g.querySelector('.map-cart-inner');
-  const idText = g.querySelector('.map-cart-id');
   const nameText = g.querySelector('.map-cart-name');
   const valuesText = g.querySelector('.map-cart-values');
 
   // Vertical layout — y is the text baseline (dominant-baseline: middle).
-  idText.setAttribute('y', -1.7);
-  nameText.setAttribute('y', 0.2);
-  valuesText.setAttribute('y', 1.95);
+  nameText.setAttribute('y', -0.75);
+  valuesText.setAttribute('y', 0.95);
 
   // Compute width from the widest line (getBBox needs the node attached).
   let maxW = 0;
-  for (const t of [idText, nameText, valuesText]) {
+  for (const t of [nameText, valuesText]) {
     if (!t) continue;
     const w = t.getBBox().width;
     if (w > maxW) maxW = w;
   }
 
   const width = maxW + MAP_CART_PAD_X * 2;
-  const height = 6.4;
+  const height = 4.7;
 
   bg.setAttribute('x', -width / 2);
   bg.setAttribute('y', -height / 2);

@@ -249,14 +249,14 @@ test('Patriarch, Empress, and Chief of Eunuchs cannot recruit professional troop
   }
 });
 
-test('invasion estimates stay inside 10-30 with at least five points of uncertainty', () => {
+test('invasion estimates stay inside 10-30 with exactly seven points of uncertainty', () => {
   for (let seed = 1; seed <= 50; seed++) {
     const state = createGameState({ playerCount: 4, deckSize: 9, seed });
     for (const invasion of state.invasionDeck) {
       const [minStrength, maxStrength] = invasion.strength;
       assert.ok(minStrength >= 10, `estimate minimum ${minStrength} should be at least 10`);
       assert.ok(maxStrength <= 30, `estimate maximum ${maxStrength} should be at most 30`);
-      assert.ok(maxStrength - minStrength >= 5, `estimate ${minStrength}-${maxStrength} should span at least 5`);
+      assert.equal(maxStrength - minStrength, 7, `estimate ${minStrength}-${maxStrength} should span exactly 7`);
     }
   }
 });

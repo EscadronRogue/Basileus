@@ -357,7 +357,7 @@ body::before {
       transparent 1px 5px
     ),
     linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
-  color: #fceec3;
+  color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   cursor: pointer;
   font-family: var(--font-display);
@@ -609,7 +609,7 @@ body::before {
 .player-dashboard .stat-value,
 .player-dashboard .stat-icon,
 .player-dashboard .player-role-name {
-  color: #fceec3;
+  color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
 }
 
@@ -1067,6 +1067,33 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
+}
+
+.appt-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: start;
+}
+
+.appt-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.appt-column-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+
+@media (max-width: 720px) {
+  .appt-grid { grid-template-columns: 1fr; }
 }
 
 .appt-select,
@@ -1918,8 +1945,8 @@ body::before {
 /* ── Map cartouches ──────────────────────────────────────────────────
    SVG counterpart of the HTML .province-token. Same visual grammar:
    outline = region color (--cart-border), fill = owner color (--cart-bg),
-   gold-leaf inner hairline. Three stacked text lines: id / name / P-T-L
-   (CPL drops the third line). Built and laid out by mapRenderer.js. */
+   gold-leaf inner hairline. Two stacked text lines: name / P-T-L.
+   Built and laid out by mapRenderer.js. */
 .map-cartouche { pointer-events: none; }
 
 .map-cart-bg {
@@ -1943,7 +1970,7 @@ body::before {
 .map-cart-id,
 .map-cart-name,
 .map-cart-values {
-  fill: #fceec3;
+  fill: #ffffff;
   text-shadow: 0 0.05px 0 rgba(20,8,0,0.6);
   dominant-baseline: middle;
   text-anchor: middle;
@@ -1956,7 +1983,7 @@ body::before {
 
 /* Capital cartouche: text leans into the imperial gold a touch more */
 .map-cartouche.is-capital .map-cart-id,
-.map-cartouche.is-capital .map-cart-name { fill: var(--gold-4); }
+.map-cartouche.is-capital .map-cart-name { fill: #ffffff; }
 
 /* Selected: stronger gold inner ring + slight scale-in via transform */
 .map-cartouche.selected .map-cart-inner {
@@ -2037,7 +2064,7 @@ body::before {
   font-size: 12px;
   letter-spacing: 0.4px;
   line-height: 1.5;
-  color: #fceec3;                                  /* warm parchment ink */
+  color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   white-space: nowrap;
   vertical-align: baseline;
@@ -2080,15 +2107,14 @@ body::before {
 
 /* Title cartouches (Basileus, Strategos of X, Bishop of Y, …).
    Outline encodes the role's region; background is the holder's dynasty
-   color, or parchment-cream when the title is vacant. The .vacant rule
-   flips the ink to umber so unfilled offices read as "open seat". */
+   color, or parchment-cream when the title is vacant. */
 .title-token.vacant {
   --cart-bg: var(--parch-0);
-  color: var(--umber-1);
-  text-shadow: none;
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
 }
 .title-token.vacant .v,
-.title-token.vacant .province-token-values { color: var(--umber-2); }
+.title-token.vacant .province-token-values { color: #ffffff; }
 
 /* Compact title-token shares the same compact rules as province-token. */
 .title-token.compact {
@@ -2115,6 +2141,7 @@ body::before {
   padding-left: 5px;
   margin-left: 1px;
   border-left: 1px solid rgba(240,200,90,0.32);
+  color: #ffffff;
 }
 
 /* State variants */
@@ -2130,8 +2157,14 @@ body::before {
 }
 .province-token.church {
   /* church land is black-on-black; lean on the gold hairline for legibility */
-  color: var(--gold-4);
+  color: #ffffff;
   text-shadow: 0 1px 0 rgba(0,0,0,0.85);
+}
+
+.player-role-name *,
+.province-token *,
+.title-token * {
+  color: #ffffff;
 }
 
 /* ── Choice grids (player picker / province picker) ─────────────────── */

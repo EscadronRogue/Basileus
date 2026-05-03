@@ -284,6 +284,20 @@ function selfAppointmentNotice(state, appointerId) {
   </div>`;
 }
 
+function renderAppointmentColumn(label, bodyHtml) {
+  return `<div class="appt-column">
+    <span class="appt-column-label">${label}</span>
+    ${bodyHtml}
+  </div>`;
+}
+
+function renderAppointmentGrid(titleOrLandHtml, appointeeHtml) {
+  return `<div class="appt-grid">
+    ${renderAppointmentColumn('Title / land', titleOrLandHtml)}
+    ${renderAppointmentColumn('Appointee', appointeeHtml)}
+  </div>`;
+}
+
 function getProvinceSummary(state, provinceId) {
   if (!provinceId) return null;
   const theme = state.themes[provinceId];
@@ -1198,15 +1212,17 @@ function renderBasileusAppointments(state, selectedProvinceId) {
     <span class="appt-label">Basileus appoints 1 minor title:</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
-      <select id="basileusApptType" class="appt-select">
-        <option value="">Choose title type...</option>
-        ${titleTypes.map((type) => `<option value="${type.value}">${type.label}</option>`).join('')}
-      </select>
-      ${renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: onCooldown ? appointerId : undefined })}
-      <div id="basileusApptThemeChoices" class="province-choice-grid" data-theme-choice-group style="display:none">
-        <div data-role="theme-choice-buttons"></div>
-        <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
-      </div>
+      ${renderAppointmentGrid(
+        `<select id="basileusApptType" class="appt-select">
+          <option value="">Choose title type...</option>
+          ${titleTypes.map((type) => `<option value="${type.value}">${type.label}</option>`).join('')}
+        </select>
+        <div id="basileusApptThemeChoices" class="province-choice-grid" data-theme-choice-group style="display:none">
+          <div data-role="theme-choice-buttons"></div>
+          <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
+        </div>`,
+        renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: onCooldown ? appointerId : undefined })
+      )}
       <button class="appt-btn" data-action="commit-basileus-appt">Appoint</button>
     </div>
   </div>`;
@@ -1239,8 +1255,10 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     <span class="appt-label">${title.name} → appoint Strategos:</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
-      ${renderThemeChoiceControl(state, themes, null, defaultThemeId)}
-      ${renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })}
+      ${renderAppointmentGrid(
+        renderThemeChoiceControl(state, themes, null, defaultThemeId),
+        renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })
+      )}
       <button class="appt-btn strategos-commit" data-titlekey="${titleKey}">Appoint</button>
     </div>
   </div>`;
@@ -1270,8 +1288,10 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
     <span class="appt-label">Patriarch → appoint Bishop:</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
-      ${renderThemeChoiceControl(state, themes, null, defaultThemeId)}
-      ${renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })}
+      ${renderAppointmentGrid(
+        renderThemeChoiceControl(state, themes, null, defaultThemeId),
+        renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })
+      )}
       <button class="appt-btn bishop-commit">Appoint</button>
     </div>
   </div>`;
