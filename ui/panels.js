@@ -229,13 +229,36 @@ function selfAppointmentOnCooldown(state, appointerId) {
   return appointer.appointmentCooldown?.__SELF_ANY === state.round - 1;
 }
 
-function playerSelectOptions(state, selectedId, options = {}) {
+function getSelectablePlayers(state, selectedId, options = {}) {
   const excludeId = options.excludeId;
-  return state.players
-    .filter(p => excludeId == null || p.id !== excludeId)
-    .map(p =>
-      `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${formatPlayerLabel(p)}${p.id === state.basileusId ? ' (Basileus)' : ''}</option>`
-    ).join('');
+  const players = state.players.filter((player) => excludeId == null || player.id !== excludeId);
+  const fallbackId = players[0]?.id ?? '';
+  const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : fallbackId;
+  return { players, selectedId: normalizedSelectedId };
+}
+
+function playerSelectOptions(state, selectedId, options = {}) {
+  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
+  return players
+    .map((player) => {
+      const style = `${getPlayerRoleTextStyleAttr(state, player.id)} background-color: ${player.color}; color: #fff;`;
+      return `<option value="${player.id}" ${player.id === normalizedSelectedId ? 'selected' : ''} style="${style}">${formatPlayerLabel(player)}${player.id === state.basileusId ? ' (Basileus)' : ''}</option>`;
+    }).join('');
+}
+
+function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
+  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
+  if (!players.length) return `<input type="hidden" id="${inputId || ''}" class="appt-player-select" value="">`;
+  const inputIdAttr = inputId ? ` id="${inputId}"` : '';
+  return `
+    <div class="player-choice-grid" data-player-choice-group>
+      ${players.map((player) => `
+        <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerRoleThemeStyleAttr(state, player.id)}">
+          ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
+        </button>
+      `).join('')}
+      <input type="hidden"${inputIdAttr} class="appt-player-select" value="${normalizedSelectedId}">
+    </div>`;
 }
 
 function selfAppointmentNotice(state, appointerId) {
@@ -1128,6 +1151,17 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
 }
 
 function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId) {
+  container.querySelectorAll('[data-player-choice]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const group = button.closest('[data-player-choice-group]');
+      const input = group?.querySelector('.appt-player-select');
+      if (!input) return;
+      group.querySelectorAll('[data-player-choice]').forEach((other) => other.classList.remove('selected'));
+      button.classList.add('selected');
+      input.value = button.dataset.playerChoice;
+    });
+  });
+
   // Buy land
   container.querySelectorAll('[data-action="buy"]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1275,9 +1309,7 @@ function renderBasileusAppointments(state, selectedProvinceId) {
         <option value="">Choose title type...</option>
         ${titleTypes.map((type) => `<option value="${type.value}">${type.label}</option>`).join('')}
       </select>
-      <select id="basileusApptPlayer" class="appt-select">
-        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
-      </select>
+      ${renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: onCooldown ? appointerId : undefined })}
       <select id="basileusApptTheme" class="appt-select" data-selected-theme="${defaultThemeId}" style="display:none">
         <option value="">Choose theme...</option>
       </select>
@@ -1317,9 +1349,7 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
         <option value="">Choose theme...</option>
         ${themes.map(t => `<option value="${t.id}" ${t.id === defaultThemeId ? 'selected' : ''}>${t.name}</option>`).join('')}
       </select>
-      <select class="appt-player-select appt-select">
-        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
-      </select>
+      ${renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })}
       <button class="appt-btn strategos-commit" data-titlekey="${titleKey}">Appoint</button>
     </div>
   </div>`;
@@ -1353,9 +1383,7 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
         <option value="">Choose theme...</option>
         ${themes.map(t => `<option value="${t.id}" ${t.id === defaultThemeId ? 'selected' : ''}>${t.name}</option>`).join('')}
       </select>
-      <select class="appt-player-select appt-select">
-        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
-      </select>
+      ${renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })}
       <button class="appt-btn bishop-commit">Appoint</button>
     </div>
   </div>`;
@@ -1576,7 +1604,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
     <p class="section-hint">Who should be the next Basileus?</p>
     <div class="candidate-grid">
       ${state.players.map(p => `
-        <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}">
+        <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}" style="${getPlayerRoleThemeStyleAttr(state, p.id)}">
           <span class="candidate-crest" style="background: ${p.color}">${p.dynasty.charAt(0)}</span>
           <span>${renderPlayerRoleName(state, p)}</span>
           ${p.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
@@ -1690,7 +1718,7 @@ function renderMajorTitleReassignmentSection(state) {
           <span>${title.name}</span>
           <select class="appt-select major-title-select" data-title-assignment="${titleKey}">
             ${eligiblePlayers.map(player => `
-              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''}>${formatPlayerLabel(player)}</option>
+              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''} style="${getPlayerRoleTextStyleAttr(state, player.id)} background-color: ${player.color}; color: #fff;">${formatPlayerLabel(player)}</option>
             `).join('')}
           </select>
         </label>

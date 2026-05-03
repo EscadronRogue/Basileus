@@ -166,6 +166,24 @@ test('church land sends tax to the church cascade and levy to the regional pool'
   assert.equal(admin.levies.BASILEUS || 0, 1);
 });
 
+test('Empress, Patriarch, and Chief of Eunuchs receive 2 free capital levies each turn', () => {
+  const state = makeState([], {
+    1: { majorTitles: ['PATRIARCH'] },
+  });
+  state.empress = 2;
+  state.chiefEunuchs = 0;
+
+  const firstAdmin = runAdministration(state);
+  assert.equal(firstAdmin.levies.EMPRESS, 2);
+  assert.equal(firstAdmin.levies.PATRIARCH, 2);
+  assert.equal(firstAdmin.levies.CHIEF_EUNUCHS, 2);
+
+  const secondAdmin = runAdministration(state);
+  assert.equal(secondAdmin.levies.EMPRESS, 2);
+  assert.equal(secondAdmin.levies.PATRIARCH, 2);
+  assert.equal(secondAdmin.levies.CHIEF_EUNUCHS, 2);
+});
+
 test('tax exemption costs 2T, pays the Basileus, and grants profit plus tax to the owner', () => {
   const state = makeState(
     [makeTheme('ANT', { owner: 1 })],

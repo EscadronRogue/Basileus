@@ -347,8 +347,8 @@ body::before {
   padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: var(--r-sm) var(--r-sm) 0 0;
-  background: var(--role-color, var(--tab-color));
-  border-color: color-mix(in srgb, var(--role-color, var(--tab-color)) 70%, #18120d 30%);
+  background: var(--tab-color, var(--player-color));
+  border-color: var(--role-outline-color, var(--role-color, #18120d));
   color: var(--role-contrast);
   cursor: pointer;
   font-family: var(--font-body);
@@ -368,7 +368,7 @@ body::before {
 }
 
 .player-tab.active {
-  border-bottom: 3px solid rgba(255,255,255,0.9);
+  border-bottom: 3px solid var(--role-outline-color, rgba(255,255,255,0.9));
   filter: brightness(1.05) saturate(1.05);
   box-shadow:
     0 8px 18px rgba(30,16,0,0.2),
@@ -542,15 +542,17 @@ body::before {
   padding: 0;
 }
 
-/* Dashboard header is colored by player's dynasty color */
+/* Dashboard header is filled by the player's dynasty color and outlined by role. */
 .player-dashboard.sidebar-panel {
-  background: var(--role-color, var(--parch-0));
+  background: var(--player-color, var(--parch-0));
+  border-left: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
 }
 
 /* Use attribute selector to avoid !important specificity battles */
 .player-dashboard .sidebar-panel-head {
-  background: var(--role-color, var(--parch-0));
-  border-color: color-mix(in srgb, var(--role-color, var(--parch-0)) 60%, #000 40%);
+  background: var(--player-color, var(--parch-0));
+  border-color: var(--role-outline-color, var(--role-color, var(--parch-3)));
+  border-bottom-width: 2px;
   color: var(--role-contrast, var(--umber-1));
   min-height: 56px;
   height: auto;
@@ -559,13 +561,20 @@ body::before {
 }
 
 .player-dashboard .sidebar-panel-body {
-  background: var(--role-color, var(--parch-0));
+  background: var(--player-color, var(--parch-0));
   color: var(--role-contrast, var(--umber-1));
+  border-left: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
+  border-right: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
+  border-bottom: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
+}
+
+.player-dashboard .stat {
+  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.35)));
 }
 
 .player-dashboard .stat-button.active {
   background: rgba(255,255,255,0.18);
-  border-color: rgba(255,255,255,0.35);
+  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.35)));
   color: var(--role-contrast, var(--umber-1));
 }
 
@@ -593,9 +602,9 @@ body::before {
 .player-dashboard .sidebar-panel-badge,
 .player-dashboard .dashboard-tag,
 .player-dashboard .tab-you {
-  background: color-mix(in srgb, var(--role-color, var(--parch-0)) 75%, #000 25%);
+  background: color-mix(in srgb, var(--player-color, var(--parch-0)) 75%, #000 25%);
   color: var(--role-contrast, var(--umber-1));
-  border: 1px solid rgba(255,255,255,0.3);
+  border: 1px solid var(--role-outline-color, rgba(255,255,255,0.3));
 }
 
 .dynasty-crest {
@@ -1300,10 +1309,10 @@ body::before {
   align-items: center;
   gap: var(--sp-2);
   padding: 7px 10px;
-  background: var(--parch-0);
-  border: 1px solid var(--parch-2);
+  background: var(--player-color, var(--parch-0));
+  border: 1.5px solid var(--role-outline-color, var(--role-color, var(--parch-2)));
   border-radius: var(--r-sm);
-  color: var(--umber-1);
+  color: var(--role-contrast, #ffffff);
   cursor: pointer;
   font-family: var(--font-body);
   font-size: 13px;
@@ -1311,12 +1320,12 @@ body::before {
   text-align: left;
   box-shadow: var(--shadow-card);
 }
-.candidate-btn:hover { border-color: var(--parch-3); }
+.candidate-btn:hover { filter: brightness(1.08); }
 .candidate-btn.selected {
-  border-color: var(--gold-1);
-  background: rgba(200,146,30,0.08);
-  box-shadow: 0 0 0 1px rgba(168,116,32,0.18);
+  border-color: var(--role-outline-color, var(--role-color, var(--gold-1)));
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.75), 0 0 0 4px var(--role-outline-color, var(--role-color, var(--gold-1)));
 }
+.candidate-btn, .candidate-btn * { color: var(--role-contrast, #ffffff); }
 
 .candidate-crest {
   width: 24px;
@@ -1869,8 +1878,8 @@ body::before {
 .province-label {
   font-family: var(--font-display);
   font-size: 2.8px;
-  fill: #5a3810;
-  stroke: rgba(255,248,228,0.78);
+  fill: var(--province-label-fill, #5a3810);
+  stroke: var(--province-label-outline, rgba(255,248,228,0.78));
   stroke-width: 0.20;
   paint-order: stroke fill;
   text-anchor: middle;
@@ -1880,22 +1889,21 @@ body::before {
   letter-spacing: 0.12px;
 }
 
-/* White labels on church (black) provinces */
 .province-label[data-church="true"],
 .province-name[data-church="true"],
 .province-values[data-church="true"] {
-  fill: rgba(255, 255, 255, 0.92);
-  stroke: rgba(0, 0, 0, 0.5);
+  fill: var(--province-label-fill, rgba(255, 255, 255, 0.92));
+  stroke: var(--province-label-outline, rgba(0, 0, 0, 0.5));
   stroke-width: 0.15;
 }
 
-.cpl-label { font-size: 4px; fill: var(--gold-0); }
+.cpl-label { font-size: 4px; fill: var(--province-label-fill, var(--gold-0)); }
 
 .province-name {
   font-family: var(--font-body);
   font-size: 1.8px;
-  fill: rgba(90,56,20,0.85);
-  stroke: rgba(255,248,228,0.65);
+  fill: var(--province-label-fill, rgba(90,56,20,0.85));
+  stroke: var(--province-label-outline, rgba(255,248,228,0.65));
   stroke-width: 0.12;
   paint-order: stroke fill;
   text-anchor: middle;
@@ -1903,13 +1911,13 @@ body::before {
   pointer-events: none;
 }
 
-.cpl-name { font-family: var(--font-display); font-size: 2px; fill: var(--gold-1); }
+.cpl-name { font-family: var(--font-display); font-size: 2px; fill: var(--province-label-fill, var(--gold-1)); }
 
 .province-values {
   font-family: var(--font-body);
   font-size: 1.6px;
-  fill: rgba(106,76,36,0.78);
-  stroke: rgba(255,248,228,0.55);
+  fill: var(--province-label-fill, rgba(106,76,36,0.78));
+  stroke: var(--province-label-outline, rgba(255,248,228,0.55));
   stroke-width: 0.10;
   paint-order: stroke fill;
   text-anchor: middle;
@@ -1920,7 +1928,7 @@ body::before {
 .province-label.selected,
 .province-name.selected,
 .province-values.selected {
-  fill: #5a3810;
+  fill: var(--province-label-fill, #5a3810);
   font-weight: 700;
   filter: drop-shadow(0 0 0.4px rgba(255,255,255,0.55));
 }
@@ -1970,18 +1978,50 @@ body::before {
 #layer-bg-map .fil6, #layer-bg-map .fil11 { fill: #d9dada !important; }
 #layer-bg-map .str0, #layer-bg-map .str1, #layer-bg-map .str2 { stroke: #003399 !important; }
 
-/* ── Player Role Coloring ─────────────────────────────────────────── */
-/* On neutral/parchment backgrounds: render in the role's own color */
+/* ── Player Name Badges ───────────────────────────────────────────── */
 .player-role-name {
-  color: var(--player-name-fill, var(--umber-1));
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 1px 6px 2px;
+  border: 1.5px solid var(--player-name-outline, var(--role-outline-color, var(--role-color, var(--umber-1))));
+  border-radius: 6px;
+  background: var(--player-name-bg, var(--player-color, var(--dynasty-color, transparent)));
+  color: var(--player-name-fill, var(--role-contrast, #ffffff));
+  line-height: 1.15;
   -webkit-text-stroke: 0;
-  text-shadow: none;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
 }
 
-/* Inside a dynasty-colored panel: inherit the panel's contrast color (white) */
 .player-dashboard .player-role-name,
-.player-tab .player-role-name {
-  color: var(--role-contrast, #ffffff);
+.player-tab .player-role-name,
+.candidate-btn .player-role-name,
+.player-choice-btn .player-role-name {
+  color: var(--player-name-fill, var(--role-contrast, #ffffff));
+}
+
+.player-choice-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.player-choice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.player-choice-btn:hover { filter: brightness(1.08); }
+.player-choice-btn.selected .player-role-name {
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.75), 0 0 0 4px var(--role-outline-color, var(--role-color, var(--gold-1)));
 }
 
 /* ── Game Over Overlay ────────────────────────────────────────────── */
@@ -2324,7 +2364,7 @@ body::before {
 /* Fold sections inside a dynasty-colored dashboard should blend with the role color */
 .player-dashboard .fold-section {
   background: rgba(0,0,0,0.12);
-  border-color: rgba(255,255,255,0.16);
+  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.16)));
 }
 .player-dashboard .fold-summary {
   background: rgba(0,0,0,0.10);
@@ -2341,7 +2381,7 @@ body::before {
 .player-dashboard .finance-card,
 .player-dashboard .fold-section .finance-card {
   background: rgba(255,255,255,0.14) !important;
-  border-color: rgba(255,255,255,0.14) !important;
+  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.14))) !important;
 }
 .player-dashboard .finance-label,
 .player-dashboard .fold-section .finance-label {
@@ -2351,9 +2391,10 @@ body::before {
 .player-dashboard .fold-section .finance-card strong {
   color: rgba(255,255,255,0.95) !important;
 }
-.player-dashboard .dashboard-list-row {
+.player-dashboard .dashboard-list-row,
+.player-dashboard .dashboard-opinion-row {
   background: rgba(255,255,255,0.12);
-  border-color: rgba(255,255,255,0.12);
+  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.12)));
 }
 .player-dashboard .dashboard-list-title { color: rgba(255,255,255,0.95); }
 .player-dashboard .dashboard-list-note { color: rgba(255,255,255,0.65); }
