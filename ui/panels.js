@@ -1,6 +1,5 @@
 // ui/panels.js — Interactive UI panels: Court, Orders, player dashboard
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
-import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { runAdministration } from '../engine/cascade.js';
 import { canGrantTaxExemption, canRecruitProfessional, suggestMajorTitleAssignments } from '../engine/actions.js';
 import {
@@ -12,59 +11,18 @@ import {
   getThemeOwnerIncome,
   isThemeThreatened,
 } from '../engine/rules.js';
-import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel, getPlayerRoleTextStyleAttr, getPlayerRoleThemeStyleAttr } from '../engine/state.js';
+import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel } from '../engine/state.js';
+import {
+  getPlayerStyleAttr,
+  getProvinceStyleAttr,
+  getProvinceOptionStyleAttr,
+  getRegionLabel,
+  renderPlayerRoleName,
+  renderPlayerRoleNameById,
+  renderProvinceBadge,
+  renderProvinceBadgeList,
+} from './labels.js';
 
-
-function renderPlayerRoleName(state, player, fallback = '') {
-  if (!player) return fallback;
-  return `<span class="player-role-name" style="${getPlayerRoleTextStyleAttr(state, player.id)}">${formatPlayerLabel(player)}</span>`;
-}
-
-function renderPlayerRoleNameById(state, playerId, fallback = null) {
-  const player = getPlayer(state, playerId);
-  return renderPlayerRoleName(state, player, fallback ?? `Player ${Number(playerId) + 1}`);
-}
-
-function getProvinceOwnerColor(state, theme) {
-  if (!theme) return '#6a4a8a';
-  if (theme.occupied) return '#625c52';
-  if (theme.owner === 'church') return '#1a1a1a';
-  if (theme.owner !== null) return getPlayer(state, theme.owner)?.color || '#5a3810';
-  if (theme.id === 'CPL') return '#9a7010';
-  return '#6a4a8a';
-}
-
-function getProvinceRoleColor(theme) {
-  return REGION_BORDER_COLORS[theme?.region] || '#2e1e0f';
-}
-
-function getProvinceStyleAttr(state, theme) {
-  return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; --province-region-color: ${getProvinceRoleColor(theme)};`;
-}
-
-function getProvinceOptionStyleAttr(state, theme) {
-  return `background-color: ${getProvinceOwnerColor(state, theme)}; color: #ffffff;`;
-}
-
-function renderProvinceBadge(state, themeOrId, options = {}) {
-  const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
-  if (!theme) return options.fallback || '';
-  const id = options.showId ? `<span class="province-token-id">${theme.id}</span>` : '';
-  const values = options.showValues ? `<span class="province-token-values">P${theme.P} T${theme.T} L${theme.L}</span>` : '';
-  const classes = [
-    'province-token',
-    options.compact ? 'compact' : '',
-    theme.taxExempt ? 'tax-exempt' : '',
-    theme.occupied ? 'occupied' : '',
-    theme.owner === 'church' ? 'church' : '',
-  ].filter(Boolean).join(' ');
-  return `<span class="${classes}" style="${getProvinceStyleAttr(state, theme)}" title="${theme.name} — ${getRegionLabel(theme.region)}">${theme.name}${id}${values}</span>`;
-}
-
-function renderProvinceBadgeList(state, themeIds = []) {
-  const badges = themeIds.map((themeId) => renderProvinceBadge(state, themeId, { compact: true })).filter(Boolean);
-  return badges.length ? badges.join(' ') : 'none';
-}
 
 function renderThemeChoiceButtons(state, themes, selectedId) {
   return themes.map((theme) => `
@@ -304,7 +262,8 @@ function playerSelectOptions(state, selectedId, options = {}) {
   const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
   return players
     .map((player) => {
-      const style = `${getPlayerRoleTextStyleAttr(state, player.id)} background-color: ${player.color}; color: #fff;`;
+      // <option> elements ignore CSS variables, so set bg/color directly.
+      const style = `background-color: ${player.color}; color: #fff;`;
       return `<option value="${player.id}" ${player.id === normalizedSelectedId ? 'selected' : ''} style="${style}">${formatPlayerLabel(player)}${player.id === state.basileusId ? ' (Basileus)' : ''}</option>`;
     }).join('');
 }
@@ -316,7 +275,7 @@ function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
   return `
     <div class="player-choice-grid" data-player-choice-group>
       ${players.map((player) => `
-        <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerRoleThemeStyleAttr(state, player.id)}">
+        <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
           ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
         </button>
       `).join('')}
@@ -330,10 +289,6 @@ function selfAppointmentNotice(state, appointerId) {
     <span class="self-appoint-lockout-icon">⊘</span>
     <span>You cannot appoint yourself this round (you self-appointed last round).</span>
   </div>`;
-}
-
-function getRegionLabel(region) {
-  return { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' }[region] || region;
 }
 
 function getProvinceSummary(state, provinceId) {
@@ -838,8 +793,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     `
       <div class="dashboard-province">
         <div class="dashboard-province-head">
-          <span class="dashboard-province-name">${renderProvinceBadge(state, selectedProvince.id, { showId: true, showValues: true })}</span>
-          <span class="dashboard-province-region">${selectedProvince.region}</span>
+          ${renderProvinceBadge(state, selectedProvince.id, { showValues: true })}
         </div>
         <div class="dashboard-province-meta">P${selectedProvince.profit} T${selectedProvince.tax} L${selectedProvince.levies} | price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
         <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
@@ -885,7 +839,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
   ) : '';
 
   container.innerHTML = `
-    <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="--player-color: ${player.color}; --dynasty-color: ${player.color}; ${getPlayerRoleThemeStyleAttr(state, player.id)}">
+    <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="${getPlayerStyleAttr(state, player.id)}">
       <button class="sidebar-panel-head player-dashboard-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Dynasty View</span>
@@ -896,18 +850,9 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body">
-          <div class="dashboard-header">
-            <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
-            <div class="dynasty-info">
-              <h2 class="dynasty-name">${renderPlayerRoleName(state, player)}</h2>
-              <div class="dynasty-title">${isBasileus ? 'Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'No major office')}</div>
-            </div>
-            <div class="gold-display">
-              <span class="gold-amount">${player.gold}g</span>
-              <span class="gold-projection">+${finance.projectedIncome} next | -${finance.maintenance} upkeep</span>
-            </div>
-          </div>
-
+          <!-- Dynasty crest, name, titles and gold are already shown by the
+               panel head above; the body jumps straight into stats and
+               drill-downs to avoid the chip-in-chip duplication. -->
           <div class="dashboard-stats">
             <button class="stat stat-button ${dashboardFocus === 'themes' ? 'active' : ''}" type="button" data-dashboard-focus="themes">
               <span class="stat-icon">LND</span>
@@ -939,7 +884,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
   return;
 
   container.innerHTML = `
-    <div class="player-dashboard" style="--player-color: ${player.color}; --dynasty-color: ${player.color}; ${getPlayerRoleThemeStyleAttr(state, player.id)}">
+    <div class="player-dashboard" style="${getPlayerStyleAttr(state, player.id)}">
       <div class="dashboard-header">
         <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
         <div class="dynasty-info">
@@ -979,8 +924,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       ${selectedProvince ? `
         <div class="dashboard-province">
           <div class="dashboard-province-head">
-            <span class="dashboard-province-name">${renderProvinceBadge(state, selectedProvince.id, { showId: true, showValues: true })}</span>
-            <span class="dashboard-province-region">${selectedProvince.region}</span>
+            ${renderProvinceBadge(state, selectedProvince.id, { showValues: true })}
           </div>
           <div class="dashboard-province-meta">${selectedProvince.profit}P ${selectedProvince.tax}T ${selectedProvince.levies}L${selectedProvince.taxExempt ? ' Tax-exempt' : ''}</div>
           <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
@@ -1679,7 +1623,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
     <p class="section-hint">Who should be the next Basileus?</p>
     <div class="candidate-grid">
       ${state.players.map(p => `
-        <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}" style="${getPlayerRoleThemeStyleAttr(state, p.id)}">
+        <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}" style="${getPlayerStyleAttr(state, p.id)}">
           <span class="candidate-crest" style="background: ${p.color}">${p.dynasty.charAt(0)}</span>
           <span>${renderPlayerRoleName(state, p)}</span>
           ${p.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
@@ -1793,7 +1737,7 @@ function renderMajorTitleReassignmentSection(state) {
           <span>${title.name}</span>
           <select class="appt-select major-title-select" data-title-assignment="${titleKey}">
             ${eligiblePlayers.map(player => `
-              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''} style="${getPlayerRoleTextStyleAttr(state, player.id)} background-color: ${player.color}; color: #fff;">${formatPlayerLabel(player)}</option>
+              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''} style="background-color: ${player.color}; color: #fff;">${formatPlayerLabel(player)}</option>
             `).join('')}
           </select>
         </label>

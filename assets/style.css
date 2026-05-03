@@ -383,7 +383,7 @@ body::before {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--tab-color) 72%, #1f1a14 28%);
+  background: color-mix(in srgb, var(--player-color, var(--tab-color, var(--parch-3))) 72%, #1f1a14 28%);
   border: 1.5px solid rgba(255,255,255,0.45);
   display: flex;
   align-items: center;
@@ -1763,17 +1763,12 @@ body::before {
 }
 .dashboard-province-head {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--sp-2);
   margin-bottom: 4px;
 }
-.dashboard-province-name {
-  font-family: var(--font-display);
-  font-size: 12px;
-  color: var(--umber-1);
-  letter-spacing: 0.3px;
-}
-.dashboard-province-region,
+/* Province name + region are encoded by the cartouche itself
+   (outline = region, background = owner). No wrapper styling needed. */
 .dashboard-province-meta,
 .dashboard-province-detail {
   font-size: 12px;
@@ -1978,39 +1973,111 @@ body::before {
 #layer-bg-map .fil6, #layer-bg-map .fil11 { fill: #d9dada !important; }
 #layer-bg-map .str0, #layer-bg-map .str1, #layer-bg-map .str2 { stroke: #003399 !important; }
 
-/* ── Player and Province Cartouches ──────────────────────────────── */
-.player-role-name {
+/* ── Player & Province Cartouches ─────────────────────────────────────
+   Shared visual grammar: a small Byzantine-style nameplate.
+   • Background = owner / dynasty color  (--cart-bg)
+   • Outline   = region / role color    (--cart-border)
+   • Inner gold hairline (var(--gold-3)) suggests a leafed manuscript
+     border; subtle parchment-linen overlay tones the dynasty color
+     down to feel "painted onto vellum" rather than flat web-coloured.
+   ────────────────────────────────────────────────────────────────── */
+.player-role-name,
+.province-token {
+  --cart-bg: var(--parch-3);
+  --cart-border: var(--empire-border);
+
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
+  gap: 6px;
   width: fit-content;
   max-width: 100%;
-  padding: 1px 7px 2px;
-  border: 2.35px solid var(--player-name-outline, var(--role-outline-color, var(--role-color, var(--umber-1))));
-  border-radius: 4px;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--player-name-bg, var(--player-color, var(--dynasty-color, #5a3810))) 86%, #fff 14%) 0%,
-      color-mix(in srgb, var(--player-name-bg, var(--player-color, var(--dynasty-color, #5a3810))) 82%, #000 18%) 100%);
-  color: #ffffff;
-  line-height: 1.12;
-  -webkit-text-stroke: 0;
-  text-shadow: 0 1px 1px rgba(0,0,0,0.42);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.28),
-    inset 0 -1px 0 rgba(0,0,0,0.18),
-    0 0 0 1px rgba(255,245,210,0.20),
-    0 1px 2px rgba(30,16,0,0.20);
+  padding: 5px 11px 6px;
+  border: 5px solid var(--cart-border);
+  border-radius: 3px;
+  font-family: var(--font-display);
   font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  line-height: 1.5;
+  color: #fceec3;                                  /* warm parchment ink */
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  white-space: nowrap;
   vertical-align: baseline;
+
+  background-color: var(--cart-bg);
+  background-image:
+    /* fine linen texture */
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,250,225,0.07) 0 1px,
+      transparent 1px 5px
+    ),
+    /* soft top→bottom shading: highlight, ink */
+    linear-gradient(
+      180deg,
+      rgba(255,248,220,0.18) 0%,
+      rgba(20,8,0,0.18) 100%
+    );
+
+  box-shadow:
+    /* gold-leaf inner hairline (sits between the role outline and the fill) */
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    /* upper highlight + lower ink shadow → engraved feel */
+    inset 0 1px 0 rgba(255,250,228,0.16),
+    inset 0 -1px 0 rgba(20,8,0,0.24),
+    /* settled-on-parchment lift */
+    0 1px 0 rgba(255,248,220,0.22),
+    0 1px 2px rgba(46,30,15,0.20);
 }
 
-.player-dashboard .player-role-name,
-.player-tab .player-role-name,
-.candidate-btn .player-role-name,
-.player-choice-btn .player-role-name {
-  color: #ffffff;
+.player-role-name {
+  --cart-bg: var(--player-color, var(--parch-3));
+  --cart-border: var(--role-outline-color, var(--role-color, var(--empire-border)));
 }
 
+.province-token {
+  --cart-bg: var(--province-owner-color, var(--free-fill));
+  --cart-border: var(--province-region-color, var(--empire-border));
+}
+
+/* Compact variant — used inline inside flowing label text
+   ("Strategos of <badge>"). Slightly tighter but keeps the same
+   role-color outline so the region remains legible. */
+.province-token.compact {
+  font-size: 11px;
+  padding: 4px 9px 5px;
+  letter-spacing: 0.3px;
+}
+
+.province-token-values {
+  font-family: var(--font-body);
+  font-size: 0.82em;
+  font-weight: 500;
+  letter-spacing: 0;
+  opacity: 0.88;
+  padding-left: 5px;
+  margin-left: 1px;
+  border-left: 1px solid rgba(240,200,90,0.32);
+}
+
+/* State variants */
+.province-token.occupied { opacity: 0.78; filter: saturate(0.6); }
+.province-token.tax-exempt {
+  /* extra outer gold ring — like a wax sigil over the cartouche */
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.70),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.24),
+    0 0 0 1.5px rgba(240,200,90,0.40),
+    0 1px 2px rgba(46,30,15,0.20);
+}
+.province-token.church {
+  /* church land is black-on-black; lean on the gold hairline for legibility */
+  color: var(--gold-4);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.85);
+}
+
+/* ── Choice grids (player picker / province picker) ─────────────────── */
 .player-choice-grid,
 .province-choice-grid {
   display: flex;
@@ -2026,71 +2093,53 @@ body::before {
   padding: 2px;
   border: 0;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
+  transition: filter 0.12s, transform 0.12s;
 }
 
 .player-choice-btn:hover,
-.province-choice-btn:hover { filter: brightness(1.08); }
+.province-choice-btn:hover { filter: brightness(1.06); }
+
 .player-choice-btn.selected .player-role-name,
 .province-choice-btn.selected .province-token {
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.30),
-    inset 0 -1px 0 rgba(0,0,0,0.18),
-    0 0 0 2px rgba(255,245,210,0.80),
-    0 0 0 5px var(--role-outline-color, var(--province-region-color, var(--gold-1)));
+    inset 0 0 0 1px rgba(240,200,90,0.70),
+    inset 0 1px 0 rgba(255,250,228,0.20),
+    inset 0 -1px 0 rgba(20,8,0,0.24),
+    0 0 0 1.5px var(--gold-4),
+    0 0 0 4px var(--cart-border, var(--gold-1)),
+    0 1px 4px rgba(46,30,15,0.24);
 }
 
-.province-token {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  width: fit-content;
-  max-width: 100%;
-  padding: 1px 7px 2px;
-  border: 2px solid var(--province-region-color, var(--empire-border));
-  border-radius: 4px;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--province-owner-color, var(--free-fill)) 84%, #fff 16%) 0%,
-      color-mix(in srgb, var(--province-owner-color, var(--free-fill)) 82%, #000 18%) 100%);
-  color: #ffffff;
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 12px;
-  line-height: 1.12;
-  text-shadow: 0 1px 1px rgba(0,0,0,0.42);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.26),
-    inset 0 -1px 0 rgba(0,0,0,0.18),
-    0 1px 2px rgba(30,16,0,0.16);
-  vertical-align: baseline;
-  white-space: nowrap;
-}
-
-.province-token.compact {
-  padding: 0 6px 1px;
-  font-size: 11.5px;
-}
-
-.province-token-id,
-.province-token-values {
-  font-size: 0.86em;
-  opacity: 0.92;
-}
-
-.province-token-values {
-  padding-left: 5px;
-  border-left: 1px solid rgba(255,255,255,0.34);
-}
-
-.province-token.occupied { opacity: 0.88; }
-.province-token.tax-exempt { box-shadow: inset 0 1px 0 rgba(255,255,255,0.26), 0 0 0 1px rgba(240,200,90,0.25), 0 1px 2px rgba(30,16,0,0.16); }
 .province-note { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+
 .province-choice-grid [data-role="theme-choice-buttons"] {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1);
+}
+
+/* ── Nested-cartouche flattening ─────────────────────────────────────
+   When a player cartouche appears INSIDE a container that already
+   carries the same player+role visual language (the dashboard panel
+   head, the player tab, the candidate row, the score row), the inner
+   chip dissolves into plain inline text. This avoids the chip-in-chip
+   double-bordered look while preserving identical typography. */
+.player-tab .player-role-name,
+.candidate-btn .player-role-name,
+.player-dashboard .sidebar-panel-head .player-role-name,
+.player-dashboard .sidebar-panel-badge .player-role-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+  color: inherit;
+  text-shadow: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: 0.35px;
 }
 
 /* ── Game Over Overlay ────────────────────────────────────────────── */

@@ -276,16 +276,6 @@ export function getPlayerRoleTextStyle(state, playerId) {
   return roleKey ? PLAYER_ROLE_TEXT_STYLES[roleKey] : { color: '#2f2215', contrast: '#ffffff' };
 }
 
-export function getPlayerRoleTextStyleAttr(state, playerId) {
-  const style = getPlayerRoleTextStyle(state, playerId);
-  const player = getPlayer(state, playerId);
-  const playerColor = player?.color || '#5a3810';
-  return `--player-name-fill: ${style.contrast || '#ffffff'}; --player-name-bg: ${playerColor}; --player-name-outline: ${style.color}; --role-color: ${style.color}; --role-outline-color: ${style.color}; --role-contrast: ${style.contrast || '#ffffff'}; --player-color: ${playerColor}; --dynasty-color: ${playerColor};`;
-}
-
-export function getPlayerRoleThemeStyleAttr(state, playerId) {
-  const style = getPlayerRoleTextStyle(state, playerId);
-  const player = getPlayer(state, playerId);
-  const playerColor = player?.color || '#5a3810';
-  return `--player-color: ${playerColor}; --dynasty-color: ${playerColor}; --role-color: ${style.color}; --role-outline-color: ${style.color}; --role-contrast: ${style.contrast || '#ffffff'};`;
-}
+// Note: cartouche/CSS-variable plumbing for player names lives in
+// ui/labels.js (single source of truth for the player+province visual
+// language). state.js exposes only the data lookups above.
