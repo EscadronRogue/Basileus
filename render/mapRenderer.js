@@ -599,29 +599,72 @@ export function drawInvasionRoute(invasion) {
     pathData += ` L ${points[index].cx} ${points[index].cy}`;
   }
 
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const path = document.createElementNS(SVG_NS, 'path');
   path.setAttribute('d', pathData);
   path.setAttribute('class', 'invasion-route');
-  path.style.stroke = invasion.color;
   layer.appendChild(path);
 
   for (let index = 1; index < points.length; index += 1) {
-    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    const marker = document.createElementNS(SVG_NS, 'circle');
     marker.setAttribute('cx', points[index].cx);
     marker.setAttribute('cy', points[index].cy);
     marker.setAttribute('r', 0.8);
     marker.setAttribute('class', 'invasion-marker');
-    marker.style.fill = invasion.color;
     layer.appendChild(marker);
   }
 
-  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  label.setAttribute('x', points[0].cx);
-  label.setAttribute('y', points[0].cy - 1.5);
-  label.setAttribute('class', 'invasion-label');
-  label.style.fill = invasion.color;
-  label.textContent = invasion.name;
-  layer.appendChild(label);
+  appendInvasionCartouche(layer, invasion, points[0]);
+}
+
+function appendInvasionCartouche(layer, invasion, point) {
+  if (!point) return;
+
+  const strengthText = Array.isArray(invasion.strength) && invasion.strength.length === 2
+    ? `Strength ${invasion.strength[0]}-${invasion.strength[1]}`
+    : 'Strength ?';
+  const nameText = invasion.name || 'Invasion';
+  const width = Math.max(26, Math.min(44, Math.max(nameText.length, strengthText.length) * 1.45 + 7));
+  const height = 9.6;
+  const x = clampValue(point.cx, (width / 2) + 1.2, 297 - (width / 2) - 1.2);
+  const y = clampValue(point.cy - 7.3, 1.2, 210 - height - 1.2);
+
+  const group = document.createElementNS(SVG_NS, 'g');
+  group.setAttribute('class', 'invasion-cartouche');
+  group.setAttribute('transform', `translate(${x - (width / 2)} ${y})`);
+
+  const bg = document.createElementNS(SVG_NS, 'rect');
+  bg.setAttribute('class', 'invasion-cartouche-bg');
+  bg.setAttribute('width', width.toFixed(2));
+  bg.setAttribute('height', height.toFixed(2));
+  bg.setAttribute('rx', '1.6');
+  bg.setAttribute('ry', '1.6');
+  group.appendChild(bg);
+
+  const inner = document.createElementNS(SVG_NS, 'rect');
+  inner.setAttribute('class', 'invasion-cartouche-inner');
+  inner.setAttribute('x', '0.8');
+  inner.setAttribute('y', '0.8');
+  inner.setAttribute('width', (width - 1.6).toFixed(2));
+  inner.setAttribute('height', (height - 1.6).toFixed(2));
+  inner.setAttribute('rx', '1.1');
+  inner.setAttribute('ry', '1.1');
+  group.appendChild(inner);
+
+  const name = document.createElementNS(SVG_NS, 'text');
+  name.setAttribute('class', 'invasion-cartouche-name');
+  name.setAttribute('x', (width / 2).toFixed(2));
+  name.setAttribute('y', '3.75');
+  name.textContent = nameText;
+  group.appendChild(name);
+
+  const strength = document.createElementNS(SVG_NS, 'text');
+  strength.setAttribute('class', 'invasion-cartouche-strength');
+  strength.setAttribute('x', (width / 2).toFixed(2));
+  strength.setAttribute('y', '7.15');
+  strength.textContent = strengthText;
+  group.appendChild(strength);
+
+  layer.appendChild(group);
 }
 
 export function getCentroids() {

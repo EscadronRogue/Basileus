@@ -488,15 +488,8 @@ export class MultiplayerController {
     }
     this.renderEmpireFallenBanner();
 
-    if (!invasionEl) return;
-    if (this.state.currentInvasion) {
-      const invasion = this.state.currentInvasion;
-      invasionEl.innerHTML = `
-        <span class="invasion-name" style="color:${invasion.color}">War: ${invasion.name}</span>
-        <span class="invasion-strength">Est. ${invasion.strength[0]}-${invasion.strength[1]}</span>
-      `;
-      invasionEl.style.display = '';
-    } else {
+    if (invasionEl) {
+      invasionEl.textContent = '';
       invasionEl.style.display = 'none';
     }
   }

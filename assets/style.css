@@ -83,9 +83,9 @@
 
   /* Responsive shell */
   --topbar-height: 52px;
-  --sidebar-width: clamp(410px, 34vw, 560px);
+  --sidebar-width: clamp(440px, 37vw, 640px);
   --map-aspect: 297 / 210;
-  --map-reserve-bottom: calc(76px + env(safe-area-inset-bottom));
+  --map-reserve-bottom: var(--map-shell-pad);
   --map-shell-pad: clamp(14px, 1.8vw, 24px);
   --sidebar-gap: clamp(12px, 1.3vw, 18px);
   --main-panel-pad: clamp(16px, 1.7vw, 24px);
@@ -113,6 +113,8 @@
   --text-gold:     var(--gold-1);
   --occupied:      var(--occupied-fill);
   --occupied-border: #9a8060;
+  --invasion-lost-fill: rgba(210, 200, 178, 0.92);
+  --invasion-lost-border: var(--occupied-border);
   --region-border: var(--empire-border);
 }
 
@@ -164,7 +166,7 @@ body::before {
   z-index: 1;
   display: grid;
   grid-template-rows: var(--topbar-height) minmax(0, 1fr);
-  grid-template-columns: minmax(460px, 1fr) minmax(390px, var(--sidebar-width));
+  grid-template-columns: minmax(420px, 1fr) minmax(430px, var(--sidebar-width));
   grid-template-areas:
     "topbar topbar"
     "map    sidebar";
@@ -343,34 +345,35 @@ body::before {
 
 /* ── Player Tabs ─────────────────────────────────────────────────── */
 #playerTabBar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  flex: 0 0 auto;
   display: flex;
-  gap: 8px;
-  padding: 10px max(14px, env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-right));
+  gap: 10px;
+  padding: clamp(12px, 1.5vw, 18px) var(--main-panel-pad);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  background: linear-gradient(180deg, rgba(240,228,198,0.92) 0%, rgba(220,205,168,0.97) 100%);
-  border-top: 1px solid rgba(168,116,32,0.35);
+  background:
+    linear-gradient(180deg, rgba(255,250,235,0.98) 0%, rgba(240,228,198,0.96) 100%);
+  border-bottom: 1px solid rgba(168,116,32,0.30);
+  box-shadow: 0 5px 16px rgba(80,50,10,0.08);
   backdrop-filter: blur(8px);
-  z-index: 2;
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Player tabs reuse the cartouche grammar at a larger scale: thick role
    outline, dynasty-color fill, parchment ink, gold-leaf inner hairline. */
 .player-tab {
-  flex: 1 0 clamp(156px, 18vw, 220px);
+  flex: 1 0 clamp(158px, 48%, 240px);
   min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: 8px 14px 9px;
+  padding: 9px 14px 10px;
   border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
-  border-bottom-width: 0;
-  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  border-radius: var(--r-md);
   background-color: var(--player-color, var(--parch-3));
   background-image:
     repeating-linear-gradient(
@@ -391,7 +394,7 @@ body::before {
     inset 0 0 0 1px rgba(240,200,90,0.45),
     inset 0 1px 0 rgba(255,250,228,0.18),
     inset 0 -1px 0 rgba(20,8,0,0.22),
-    0 -2px 6px rgba(30,16,0,0.10);
+    0 2px 8px rgba(30,16,0,0.12);
 }
 
 #playerTabBar::-webkit-scrollbar { display: none; }
@@ -404,7 +407,7 @@ body::before {
     inset 0 0 0 1px rgba(240,200,90,0.70),
     inset 0 1px 0 rgba(255,250,228,0.22),
     inset 0 -1px 0 rgba(20,8,0,0.22),
-    0 -4px 10px rgba(30,16,0,0.18);
+    0 3px 12px rgba(30,16,0,0.18);
 }
 
 .player-tab,
@@ -2056,21 +2059,58 @@ body::before {
 /* Invasion route */
 .invasion-route {
   fill: none;
+  stroke: var(--invasion-lost-border);
   stroke-width: 0.7;
   stroke-dasharray: 1.8 1.2;
-  opacity: 0.75;
+  opacity: 0.82;
   animation: marchingAnts 1s linear infinite;
 }
 @keyframes marchingAnts { to { stroke-dashoffset: -3; } }
 
-.invasion-marker { opacity: 0.65; }
+.invasion-marker {
+  fill: var(--invasion-lost-border);
+  opacity: 0.78;
+}
 
-.invasion-label {
-  font-family: var(--font-display);
-  font-size: 2.5px;
+.invasion-cartouche {
+  pointer-events: none;
+}
+
+.invasion-cartouche-bg {
+  fill: var(--invasion-lost-fill);
+  stroke: var(--invasion-lost-border);
+  stroke-width: 0.52;
+  paint-order: stroke fill;
+}
+
+.invasion-cartouche-inner {
+  fill: none;
+  stroke: rgba(255,250,228,0.64);
+  stroke-width: 0.12;
+}
+
+.invasion-cartouche-name,
+.invasion-cartouche-strength {
   text-anchor: middle;
+  dominant-baseline: middle;
+  fill: var(--invasion-lost-border);
+  paint-order: stroke fill;
+  stroke: rgba(255,250,228,0.46);
+  stroke-width: 0.08;
+  pointer-events: none;
+}
+
+.invasion-cartouche-name {
+  font-family: var(--font-display);
+  font-size: 2.15px;
+  font-weight: 700;
+  letter-spacing: 0.12px;
+}
+
+.invasion-cartouche-strength {
+  font-family: var(--font-body);
+  font-size: 1.72px;
   font-weight: 600;
-  fill: var(--gold-1);
 }
 
 .province-threat-overlay {
@@ -2737,7 +2777,7 @@ body::before {
 
 @media (max-width: 1180px) and (min-width: 981px) {
   #app {
-    grid-template-columns: minmax(420px, 1fr) minmax(380px, var(--sidebar-width));
+    grid-template-columns: minmax(390px, 1fr) minmax(420px, var(--sidebar-width));
   }
 
   .deploy-row {
@@ -2802,7 +2842,7 @@ input,
 summary { touch-action: manipulation; }
 
 @media (max-width: 1180px) {
-  :root { --sidebar-width: clamp(380px, 38vw, 460px); --main-panel-pad: 16px; }
+  :root { --sidebar-width: clamp(400px, 42vw, 520px); --main-panel-pad: 16px; }
   .game-title { letter-spacing: 3px; }
   .phase-badge { padding-inline: 10px; }
 }
@@ -2902,16 +2942,15 @@ summary { touch-action: manipulation; }
   }
 
   #mapArea::before { inset: 10px 10px calc(68px + env(safe-area-inset-bottom)); border-radius: 14px; }
-  #mapContainer { padding: 10px 10px calc(72px + env(safe-area-inset-bottom)); }
+  #mapContainer { padding: 10px; }
   .game-map { border-radius: 12px; }
 
-  #playerTabBar { gap: 7px; padding-top: 9px; }
+  #playerTabBar { gap: 8px; padding-top: 12px; padding-bottom: 12px; }
   .player-tab {
     flex-basis: 156px;
     padding: 8px 10px;
     font-size: 11px;
     border-width: 3px;
-    border-bottom-width: 0;
   }
   .tab-crest { width: 20px; height: 20px; }
   .tab-gold { margin-left: 0; }
