@@ -376,6 +376,11 @@ function computeCentroids(svg) {
   }
 }
 
+// Map labels are stacked SVG cartouches that mirror the HTML
+// .province-token grammar: outline = region color, fill = owner color,
+// gold inner hairline. Three lines per cartouche: id / name / profit-tax-levy.
+const MAP_CART_PAD_X = 1.0;
+
 function addProvinceLabels(layer) {
   layer.replaceChildren();
 
@@ -383,83 +388,110 @@ function addProvinceLabels(layer) {
     const centroid = provinceCentroids[province.id];
     if (!centroid) continue;
 
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', centroid.cx);
-    label.setAttribute('y', centroid.cy);
-    label.setAttribute('class', `province-label${province.id === 'CPL' ? ' cpl-label' : ''}`);
-    label.setAttribute('data-id', province.id);
-    applyProvinceLabelTheme(label, province);
-    label.textContent = province.id === 'CPL' ? 'CPL' : province.id;
-    layer.appendChild(label);
-
-    const name = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    name.setAttribute('x', centroid.cx);
-    name.setAttribute('y', centroid.cy + 1.5);
-    name.setAttribute('class', `province-name${province.id === 'CPL' ? ' cpl-name' : ''}`);
-    name.setAttribute('data-id', province.id);
-    applyProvinceLabelTheme(name, province);
-    name.textContent = province.name;
-    layer.appendChild(name);
-
-    if (province.id === 'CPL' || province.P <= 0 && province.T <= 0 && province.L <= 0) continue;
-
-    const values = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    values.setAttribute('x', centroid.cx);
-    values.setAttribute('y', centroid.cy + 3);
-    values.setAttribute('class', 'province-values');
-    values.setAttribute('data-id', province.id);
-    applyProvinceLabelTheme(values, province);
-    values.textContent = `${province.P}P ${province.T}T ${province.L}L`;
-    layer.appendChild(values);
+    const g = buildMapCartouche(province, centroid);
+    layer.appendChild(g);
+    layoutMapCartouche(g);
   }
 }
 
+function buildMapCartouche(province, centroid) {
+  const isCapital = province.id === 'CPL';
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('class', `map-cartouche${isCapital ? ' is-capital' : ''}`);
+  g.setAttribute('data-id', province.id);
+  g.setAttribute('transform', `translate(${centroid.cx} ${centroid.cy})`);
 
-function applyProvinceLabelTheme(element, province) {
-  const color = REGION_BORDER_COLORS[province.region];
-  if (!color) return;
+  const regionColor = REGION_BORDER_COLORS[province.region] || '#2e1e0f';
+  g.style.setProperty('--cart-border', regionColor);
 
-  element.setAttribute('data-region', province.region);
-  element.style.setProperty('--province-label-fill', color);
-  element.style.setProperty('--province-label-outline', province.region === 'cpl' ? '#ffffff' : 'rgba(255, 249, 237, 0.76)');
+  const bg = document.createElementNS(SVG_NS, 'rect');
+  bg.setAttribute('class', 'map-cart-bg');
+  g.appendChild(bg);
+
+  const inner = document.createElementNS(SVG_NS, 'rect');
+  inner.setAttribute('class', 'map-cart-inner');
+  g.appendChild(inner);
+
+  appendCartLine(g, 'map-cart-id', province.id);
+  appendCartLine(g, 'map-cart-name', province.name);
+  appendCartLine(g, 'map-cart-values', `P${province.P} T${province.T} L${province.L}`);
+
+  return g;
+}
+
+function appendCartLine(parent, className, text) {
+  const t = document.createElementNS(SVG_NS, 'text');
+  t.setAttribute('class', className);
+  t.setAttribute('text-anchor', 'middle');
+  t.setAttribute('x', 0);
+  t.textContent = text;
+  parent.appendChild(t);
+  return t;
+}
+
+function layoutMapCartouche(g) {
+  const bg = g.querySelector('.map-cart-bg');
+  const inner = g.querySelector('.map-cart-inner');
+  const idText = g.querySelector('.map-cart-id');
+  const nameText = g.querySelector('.map-cart-name');
+  const valuesText = g.querySelector('.map-cart-values');
+
+  // Vertical layout — y is the text baseline (dominant-baseline: middle).
+  idText.setAttribute('y', -1.7);
+  nameText.setAttribute('y', 0.2);
+  valuesText.setAttribute('y', 1.95);
+
+  // Compute width from the widest line (getBBox needs the node attached).
+  let maxW = 0;
+  for (const t of [idText, nameText, valuesText]) {
+    if (!t) continue;
+    const w = t.getBBox().width;
+    if (w > maxW) maxW = w;
+  }
+
+  const width = maxW + MAP_CART_PAD_X * 2;
+  const height = 6.4;
+
+  bg.setAttribute('x', -width / 2);
+  bg.setAttribute('y', -height / 2);
+  bg.setAttribute('width', width);
+  bg.setAttribute('height', height);
+  bg.setAttribute('rx', 0.45);
+
+  // Gold-leaf inner hairline, inset slightly inside the role outline.
+  const inset = 0.32;
+  inner.setAttribute('x', -width / 2 + inset);
+  inner.setAttribute('y', -height / 2 + inset);
+  inner.setAttribute('width', width - inset * 2);
+  inner.setAttribute('height', height - inset * 2);
+  inner.setAttribute('rx', 0.25);
 }
 
 export function updateMapState(state) {
   for (const [provinceId, theme] of Object.entries(state.themes)) {
     const shape = document.querySelector(`.province-shape[data-id="${provinceId}"]`);
+    const cart = document.querySelector(`.map-cartouche[data-id="${provinceId}"]`);
     if (!shape) continue;
 
-    shape.className.baseVal = `province-shape province-${provinceId}`;
-    shape.style.removeProperty('--owner-color');
+    const ownership = resolveProvinceOwnership(state, provinceId, theme);
 
-    if (theme.occupied) {
-      shape.classList.add('occupied');
-      setChurchLabels(provinceId, false);
-      continue;
-    }
-
-    shape.classList.add('imperial');
-
-    if (theme.owner === 'church') {
-      shape.classList.add('church');
-      setChurchLabels(provinceId, true);
-      continue;
-    }
-
-    setChurchLabels(provinceId, false);
-
-    if (theme.owner !== null) {
-      shape.classList.add('owned');
-      const player = state.players.find((candidate) => candidate.id === theme.owner);
-      if (player) shape.style.setProperty('--owner-color', player.color);
-      if (theme.taxExempt) shape.classList.add('tax-exempt');
-      continue;
-    }
-
-    if (provinceId === 'CPL') {
-      shape.classList.add('capital');
+    // Province shape: low-saturation parchment-tinted fill via class.
+    shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')}`.trim();
+    if (ownership.ownerColor) {
+      shape.style.setProperty('--owner-color', ownership.ownerColor);
     } else {
-      shape.classList.add('free');
+      shape.style.removeProperty('--owner-color');
+    }
+
+    // Map cartouche: same class set drives full-saturation owner color.
+    if (cart) {
+      const baseClasses = `map-cartouche${provinceId === 'CPL' ? ' is-capital' : ''}`;
+      cart.className.baseVal = `${baseClasses} ${ownership.classes.join(' ')}`.trim();
+      if (ownership.ownerColor) {
+        cart.style.setProperty('--cart-bg', ownership.ownerColor);
+      } else {
+        cart.style.removeProperty('--cart-bg');
+      }
     }
   }
 
@@ -467,14 +499,26 @@ export function updateMapState(state) {
   updateBadges(state);
 }
 
-function setChurchLabels(provinceId, isChurch) {
-  const val = isChurch ? 'true' : null;
-  for (const cls of ['province-label', 'province-name', 'province-values']) {
-    const el = document.querySelector(`.${cls}[data-id="${provinceId}"]`);
-    if (!el) continue;
-    if (isChurch) el.setAttribute('data-church', 'true');
-    else el.removeAttribute('data-church');
+// Single source of truth for the ownership-derived state class set used by
+// both the province shape and the map cartouche (and shared with the HTML
+// .province-token via data/style conventions).
+function resolveProvinceOwnership(state, provinceId, theme) {
+  if (theme.occupied) {
+    return { classes: ['occupied'], ownerColor: null };
   }
+  if (theme.owner === 'church') {
+    return { classes: ['imperial', 'church'], ownerColor: null };
+  }
+  if (theme.owner !== null) {
+    const player = state.players.find((candidate) => candidate.id === theme.owner);
+    const classes = ['imperial', 'owned'];
+    if (theme.taxExempt) classes.push('tax-exempt');
+    return { classes, ownerColor: player?.color || null };
+  }
+  if (provinceId === 'CPL') {
+    return { classes: ['imperial', 'capital'], ownerColor: null };
+  }
+  return { classes: ['imperial', 'free'], ownerColor: null };
 }
 
 function updateThreatOverlay(state) {
@@ -584,16 +628,14 @@ export function getCentroids() {
 }
 
 export function setSelectedProvince(provinceId) {
-  document.querySelectorAll('.province-shape.selected, .region-stroke.selected, .province-label.selected, .province-name.selected, .province-values.selected')
+  document.querySelectorAll('.province-shape.selected, .region-stroke.selected, .map-cartouche.selected')
     .forEach((element) => element.classList.remove('selected'));
 
   if (!provinceId) return;
 
   document.querySelector(`.province-shape[data-id="${provinceId}"]`)?.classList.add('selected');
   document.querySelector(`.region-stroke[data-id="${provinceId}"]`)?.classList.add('selected');
-  document.querySelector(`.province-label[data-id="${provinceId}"]`)?.classList.add('selected');
-  document.querySelector(`.province-name[data-id="${provinceId}"]`)?.classList.add('selected');
-  document.querySelector(`.province-values[data-id="${provinceId}"]`)?.classList.add('selected');
+  document.querySelector(`.map-cartouche[data-id="${provinceId}"]`)?.classList.add('selected');
 }
 
 function findProvinceAtClientPoint(svg, clientX, clientY) {

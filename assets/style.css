@@ -338,46 +338,57 @@ body::before {
   z-index: 2;
 }
 
+/* Player tabs reuse the cartouche grammar at a larger scale: thick role
+   outline, dynasty-color fill, parchment ink, gold-leaf inner hairline. */
 .player-tab {
-  --role-contrast: #ffffff;
   flex: 1;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: 6px 10px;
-  border: 1px solid transparent;
+  padding: 6px 12px 7px;
+  border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-bottom-width: 0;
   border-radius: var(--r-sm) var(--r-sm) 0 0;
-  background: var(--tab-color, var(--player-color));
-  border-color: var(--role-outline-color, var(--role-color, #18120d));
-  color: var(--role-contrast);
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,250,225,0.07) 0 1px,
+      transparent 1px 5px
+    ),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #fceec3;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   cursor: pointer;
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.15s;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  transition: filter 0.15s, box-shadow 0.15s;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.18),
-    0 4px 10px rgba(30,16,0,0.12);
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22),
+    0 -2px 6px rgba(30,16,0,0.10);
 }
 
-.player-tab:hover {
-  filter: brightness(1.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.22),
-    0 6px 14px rgba(30,16,0,0.16);
-}
+.player-tab:hover { filter: brightness(1.06); }
 
 .player-tab.active {
-  border-bottom: 3px solid var(--role-outline-color, rgba(255,255,255,0.9));
-  filter: brightness(1.05) saturate(1.05);
+  filter: brightness(1.06) saturate(1.05);
   box-shadow:
-    0 8px 18px rgba(30,16,0,0.2),
-    inset 0 1px 0 rgba(255,255,255,0.25);
+    inset 0 0 0 1px rgba(240,200,90,0.70),
+    inset 0 1px 0 rgba(255,250,228,0.22),
+    inset 0 -1px 0 rgba(20,8,0,0.22),
+    0 -4px 10px rgba(30,16,0,0.18);
 }
 
-.player-tab, .player-tab *, .player-tab .tab-name,
-.player-tab .tab-gold, .player-tab .tab-you, .player-tab .tab-crown,
-.player-tab .player-role-name { color: var(--role-contrast, #fff); }
+.player-tab,
+.player-tab .tab-name,
+.player-tab .tab-gold,
+.player-tab .tab-you,
+.player-tab .tab-crown,
+.player-tab .player-role-name { color: inherit; text-shadow: inherit; }
 
 .tab-crest {
   width: 22px;
@@ -537,23 +548,36 @@ body::before {
   overflow: visible;
 }
 
-/* ── Player Dashboard ─────────────────────────────────────────────── */
+/* ── Dynasty View / Player Dashboard ─────────────────────────────────
+   The dashboard panel itself is one large cartouche: 4px role-color
+   border, dynasty-color fill with parchment-linen overlay, gold inner
+   hairline, parchment ink text. Everything inside inherits that grammar. */
 .player-dashboard {
   padding: 0;
 }
 
-/* Dashboard header is filled by the player's dynasty color and outlined by role. */
 .player-dashboard.sidebar-panel {
-  background: var(--player-color, var(--parch-0));
-  border-left: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,250,225,0.07) 0 1px,
+      transparent 1px 5px
+    ),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-radius: 3px;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22),
+    var(--shadow-card);
 }
 
-/* Use attribute selector to avoid !important specificity battles */
 .player-dashboard .sidebar-panel-head {
-  background: var(--player-color, var(--parch-0));
-  border-color: var(--role-outline-color, var(--role-color, var(--parch-3)));
-  border-bottom-width: 2px;
-  color: var(--role-contrast, var(--umber-1));
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
   min-height: 56px;
   height: auto;
   overflow: visible;
@@ -561,25 +585,14 @@ body::before {
 }
 
 .player-dashboard .sidebar-panel-body {
-  background: var(--player-color, var(--parch-0));
-  color: var(--role-contrast, var(--umber-1));
-  border-left: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
-  border-right: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
-  border-bottom: 2px solid var(--role-outline-color, var(--role-color, var(--parch-3)));
+  background: transparent;
+  color: inherit;
+  border-top: 1px solid rgba(240,200,90,0.32);
 }
 
-.player-dashboard .stat {
-  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.35)));
-}
-
-.player-dashboard .stat-button.active {
-  background: rgba(255,255,255,0.18);
-  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.35)));
-  color: var(--role-contrast, var(--umber-1));
-}
-
+/* All text inside the dashboard inherits the parchment ink color and
+   text shadow set on the panel root. */
 .player-dashboard,
-.player-dashboard *,
 .player-dashboard .sidebar-panel-title,
 .player-dashboard .sidebar-panel-kicker,
 .player-dashboard .sidebar-panel-subtitle,
@@ -596,15 +609,39 @@ body::before {
 .player-dashboard .stat-value,
 .player-dashboard .stat-icon,
 .player-dashboard .player-role-name {
-  color: var(--role-contrast, var(--umber-1));
+  color: #fceec3;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+}
+
+/* Display type for headings to match the cartouche grammar. */
+.player-dashboard .sidebar-panel-title,
+.player-dashboard .sidebar-panel-kicker,
+.player-dashboard .dynasty-name,
+.player-dashboard .stat-label,
+.player-dashboard .stat-icon { font-family: var(--font-display); letter-spacing: 0.4px; }
+
+.player-dashboard .stat {
+  background: rgba(20,8,0,0.18);
+  border: 1px solid rgba(240,200,90,0.32);
+  border-radius: 2px;
+}
+
+.player-dashboard .stat-button:hover { filter: brightness(1.06); }
+
+.player-dashboard .stat-button.active {
+  background: rgba(20,8,0,0.32);
+  border-color: rgba(240,200,90,0.65);
+  box-shadow: inset 0 0 0 1px rgba(240,200,90,0.45);
 }
 
 .player-dashboard .sidebar-panel-badge,
-.player-dashboard .dashboard-tag,
-.player-dashboard .tab-you {
-  background: color-mix(in srgb, var(--player-color, var(--parch-0)) 75%, #000 25%);
-  color: var(--role-contrast, var(--umber-1));
-  border: 1px solid var(--role-outline-color, rgba(255,255,255,0.3));
+.player-dashboard .dashboard-tag {
+  background: rgba(20,8,0,0.28);
+  color: inherit;
+  text-shadow: inherit;
+  border: 1px solid rgba(240,200,90,0.32);
+  font-family: var(--font-display);
+  letter-spacing: 0.3px;
 }
 
 .dynasty-crest {
@@ -1012,11 +1049,6 @@ body::before {
   white-space: nowrap;
 }
 
-.market-values {
-  font-size: 11px;
-  color: var(--umber-2);
-  margin-left: var(--sp-1);
-}
 
 /* ── Appointment blocks ──────────────────────────────────────────── */
 .appointment-block { margin-bottom: var(--sp-3); }
@@ -1301,31 +1333,45 @@ body::before {
 }
 .merc-total .over-budget { color: var(--crimson-1); font-weight: 600; }
 
-/* Candidate buttons */
+/* Candidate buttons — share the cartouche grammar at row scale. */
 .candidate-grid { display: flex; flex-direction: column; gap: var(--sp-1); }
 
 .candidate-btn {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: 7px 10px;
-  background: var(--player-color, var(--parch-0));
-  border: 1.5px solid var(--role-outline-color, var(--role-color, var(--parch-2)));
-  border-radius: var(--r-sm);
-  color: var(--role-contrast, #ffffff);
+  padding: 7px 12px 8px;
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,250,225,0.07) 0 1px,
+      transparent 1px 5px
+    ),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-radius: 3px;
+  color: #fceec3;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-display);
+  font-weight: 600;
   font-size: 13px;
-  transition: all 0.12s;
+  letter-spacing: 0.4px;
+  transition: filter 0.12s;
   text-align: left;
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22),
+    var(--shadow-card);
 }
-.candidate-btn:hover { filter: brightness(1.08); }
+.candidate-btn:hover { filter: brightness(1.06); }
 .candidate-btn.selected {
   border-color: var(--role-outline-color, var(--role-color, var(--gold-1)));
   box-shadow: 0 0 0 2px rgba(255,255,255,0.75), 0 0 0 4px var(--role-outline-color, var(--role-color, var(--gold-1)));
 }
-.candidate-btn, .candidate-btn * { color: var(--role-contrast, #ffffff); }
+.candidate-btn, .candidate-btn * { color: inherit; text-shadow: inherit; }
 
 .candidate-crest {
   width: 24px;
@@ -1869,64 +1915,55 @@ body::before {
   pointer-events: all;
 }
 
-/* Province text labels */
-.province-label {
-  font-family: var(--font-display);
-  font-size: 2.8px;
-  fill: var(--province-label-fill, #5a3810);
-  stroke: var(--province-label-outline, rgba(255,248,228,0.78));
-  stroke-width: 0.20;
+/* ── Map cartouches ──────────────────────────────────────────────────
+   SVG counterpart of the HTML .province-token. Same visual grammar:
+   outline = region color (--cart-border), fill = owner color (--cart-bg),
+   gold-leaf inner hairline. Three stacked text lines: id / name / P-T-L
+   (CPL drops the third line). Built and laid out by mapRenderer.js. */
+.map-cartouche { pointer-events: none; }
+
+.map-cart-bg {
+  fill: var(--cart-bg, var(--free-fill));
+  stroke: var(--cart-border, var(--empire-border));
+  stroke-width: 0.55;
   paint-order: stroke fill;
-  text-anchor: middle;
-  dominant-baseline: central;
-  pointer-events: none;
-  font-weight: 600;
-  letter-spacing: 0.12px;
 }
+.map-cartouche.church .map-cart-bg { fill: #1a1a1a; }
+.map-cartouche.occupied .map-cart-bg { fill: #625c52; opacity: 0.85; }
+.map-cartouche.free .map-cart-bg { fill: var(--free-fill); }
+.map-cartouche.capital .map-cart-bg { fill: var(--capital-fill); }
 
-.province-label[data-church="true"],
-.province-name[data-church="true"],
-.province-values[data-church="true"] {
-  fill: var(--province-label-fill, rgba(255, 255, 255, 0.92));
-  stroke: var(--province-label-outline, rgba(0, 0, 0, 0.5));
-  stroke-width: 0.15;
-}
-
-.cpl-label { font-size: 4px; fill: var(--province-label-fill, var(--gold-0)); }
-
-.province-name {
-  font-family: var(--font-body);
-  font-size: 1.8px;
-  fill: var(--province-label-fill, rgba(90,56,20,0.85));
-  stroke: var(--province-label-outline, rgba(255,248,228,0.65));
+.map-cart-inner {
+  fill: none;
+  stroke: rgba(240,200,90,0.55);
   stroke-width: 0.12;
-  paint-order: stroke fill;
+}
+.map-cartouche.tax-exempt .map-cart-inner { stroke: rgba(240,200,90,0.85); stroke-width: 0.18; }
+
+.map-cart-id,
+.map-cart-name,
+.map-cart-values {
+  fill: #fceec3;
+  text-shadow: 0 0.05px 0 rgba(20,8,0,0.6);
+  dominant-baseline: middle;
   text-anchor: middle;
-  dominant-baseline: hanging;
   pointer-events: none;
-}
-
-.cpl-name { font-family: var(--font-display); font-size: 2px; fill: var(--province-label-fill, var(--gold-1)); }
-
-.province-values {
-  font-family: var(--font-body);
-  font-size: 1.6px;
-  fill: var(--province-label-fill, rgba(106,76,36,0.78));
-  stroke: var(--province-label-outline, rgba(255,248,228,0.55));
-  stroke-width: 0.10;
   paint-order: stroke fill;
-  text-anchor: middle;
-  dominant-baseline: hanging;
-  pointer-events: none;
 }
+.map-cart-id    { font-family: var(--font-display); font-weight: 700; font-size: 1.6px; letter-spacing: 0.18px; }
+.map-cart-name  { font-family: var(--font-display); font-weight: 600; font-size: 1.45px; letter-spacing: 0.06px; }
+.map-cart-values{ font-family: var(--font-body);    font-weight: 500; font-size: 1.15px; opacity: 0.92; }
 
-.province-label.selected,
-.province-name.selected,
-.province-values.selected {
-  fill: var(--province-label-fill, #5a3810);
-  font-weight: 700;
-  filter: drop-shadow(0 0 0.4px rgba(255,255,255,0.55));
+/* Capital cartouche: text leans into the imperial gold a touch more */
+.map-cartouche.is-capital .map-cart-id,
+.map-cartouche.is-capital .map-cart-name { fill: var(--gold-4); }
+
+/* Selected: stronger gold inner ring + slight scale-in via transform */
+.map-cartouche.selected .map-cart-inner {
+  stroke: var(--gold-3);
+  stroke-width: 0.22;
 }
+.map-cartouche.selected .map-cart-bg { stroke-width: 0.75; }
 
 .officer-badge { stroke: rgba(46,30,15,0.9); stroke-width: 0.3; }
 
@@ -1982,7 +2019,8 @@ body::before {
      down to feel "painted onto vellum" rather than flat web-coloured.
    ────────────────────────────────────────────────────────────────── */
 .player-role-name,
-.province-token {
+.province-token,
+.title-token {
   --cart-bg: var(--parch-3);
   --cart-border: var(--empire-border);
 
@@ -2038,6 +2076,25 @@ body::before {
 .province-token {
   --cart-bg: var(--province-owner-color, var(--free-fill));
   --cart-border: var(--province-region-color, var(--empire-border));
+}
+
+/* Title cartouches (Basileus, Strategos of X, Bishop of Y, …).
+   Outline encodes the role's region; background is the holder's dynasty
+   color, or parchment-cream when the title is vacant. The .vacant rule
+   flips the ink to umber so unfilled offices read as "open seat". */
+.title-token.vacant {
+  --cart-bg: var(--parch-0);
+  color: var(--umber-1);
+  text-shadow: none;
+}
+.title-token.vacant .v,
+.title-token.vacant .province-token-values { color: var(--umber-2); }
+
+/* Compact title-token shares the same compact rules as province-token. */
+.title-token.compact {
+  font-size: 11px;
+  padding: 4px 9px 5px;
+  letter-spacing: 0.3px;
 }
 
 /* Compact variant — used inline inside flowing label text
@@ -2118,6 +2175,49 @@ body::before {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1);
+}
+
+/* Revocation choice grid — same cartouche pattern as player/province
+   choice grids. Each button wraps one or two cartouches that describe
+   what the revocation will affect. */
+.revocation-shell { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: 4px; }
+.revocation-group { display: flex; flex-direction: column; gap: 4px; }
+.revocation-group-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+.revocation-choice-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+.revocation-choice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+.revocation-choice-btn:hover { filter: brightness(1.06); }
+.revocation-choice-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+.revocation-choice-btn.selected .player-role-name,
+.revocation-choice-btn.selected .province-token,
+.revocation-choice-btn.selected .title-token {
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.70),
+    inset 0 1px 0 rgba(255,250,228,0.20),
+    inset 0 -1px 0 rgba(20,8,0,0.24),
+    0 0 0 1.5px var(--gold-4),
+    0 0 0 4px var(--cart-border, var(--gold-1)),
+    0 1px 4px rgba(46,30,15,0.24);
 }
 
 /* ── Nested-cartouche flattening ─────────────────────────────────────

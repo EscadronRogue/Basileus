@@ -62,11 +62,6 @@ export function getProvinceStyleAttr(state, theme) {
   return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; --province-region-color: ${getRegionColor(theme?.region)};`;
 }
 
-// Some <select><option> renderers cannot use CSS variables (browsers strip
-// them in option styling). Fall back to plain background-color/color.
-export function getProvinceOptionStyleAttr(state, theme) {
-  return `background-color: ${getProvinceOwnerColor(state, theme)}; color: #ffffff;`;
-}
 
 // ── Cartouche renderers ───────────────────────────────────────────────
 
@@ -102,4 +97,78 @@ export function renderProvinceBadgeList(state, themeIds = []) {
     .map((themeId) => renderProvinceBadge(state, themeId, { compact: true }))
     .filter(Boolean);
   return badges.length ? badges.join(' ') : 'none';
+}
+
+// ── Title cartouche ───────────────────────────────────────────────────
+//
+// Rules (single source of truth):
+//   • Outline color encodes the role's region:
+//       BASILEUS / EMPRESS / CHIEF_EUNUCHS → Constantinople gold
+//       PATRIARCH                          → black
+//       DOM_EAST / DOM_WEST / ADMIRAL      → that region's color
+//       STRATEGOS / BISHOP                 → the linked land's region color
+//   • Background color is the holder's dynasty color, or parchment-white
+//     when the title is vacant.
+//
+// Default labels are provided; callers can override via options.label.
+
+const TITLE_OUTLINE_COLORS = {
+  BASILEUS: '#9a7010',       // CPL gold
+  EMPRESS: '#9a7010',
+  CHIEF_EUNUCHS: '#9a7010',
+  PATRIARCH: '#000000',
+  DOM_EAST: '#1e5c34',
+  DOM_WEST: '#7a2020',
+  ADMIRAL: '#1e3a7a',
+};
+
+const TITLE_DEFAULT_LABELS = {
+  BASILEUS: 'Basileus',
+  EMPRESS: 'Empress',
+  CHIEF_EUNUCHS: 'Chief of Eunuchs',
+  PATRIARCH: 'Patriarch',
+  DOM_EAST: 'Domestic of the East',
+  DOM_WEST: 'Domestic of the West',
+  ADMIRAL: 'Admiral',
+  STRATEGOS: 'Strategos',
+  BISHOP: 'Bishop',
+};
+
+function getTitleOutlineColor(state, kind, themeId) {
+  if (kind === 'STRATEGOS' || kind === 'BISHOP') {
+    const theme = themeId ? state.themes[themeId] : null;
+    return REGION_BORDER_COLORS[theme?.region] || '#2e1e0f';
+  }
+  return TITLE_OUTLINE_COLORS[kind] || '#2e1e0f';
+}
+
+function getTitleBackgroundColor(state, holderId) {
+  if (holderId == null) return null;                 // vacant — parchment fill
+  if (holderId === 'church') return CHURCH_FILL;
+  return getPlayer(state, holderId)?.color || '#5a3810';
+}
+
+// Render a title cartouche. For STRATEGOS/BISHOP the caller is expected
+// to pair it with the land's province cartouche (e.g. "<title> of <land>").
+export function renderTitleBadge(state, kind, options = {}) {
+  const { holderId = null, themeId = null, label = null, compact = false } = options;
+  const outline = getTitleOutlineColor(state, kind, themeId);
+  const bg = getTitleBackgroundColor(state, holderId);
+  const vacant = bg == null;
+  const styleAttr = vacant
+    ? `--cart-border: ${outline};`
+    : `--cart-bg: ${bg}; --cart-border: ${outline};`;
+  const text = label || TITLE_DEFAULT_LABELS[kind] || kind;
+  const classes = ['title-token', vacant ? 'vacant' : '', compact ? 'compact' : ''].filter(Boolean).join(' ');
+  return `<span class="${classes}" style="${styleAttr}" title="${text}">${text}</span>`;
+}
+
+// Convenience: "<Strategos> of <Land>" or "<Bishop> of <Land>", both as
+// cartouches in the established grammar. Single helper so every callsite
+// renders the pairing identically.
+export function renderThemeOfficeBadge(state, kind, themeId) {
+  const theme = state.themes[themeId];
+  if (!theme) return '';
+  const holderId = kind === 'STRATEGOS' ? theme.strategos : theme.bishop;
+  return `${renderTitleBadge(state, kind, { holderId, themeId, compact: true })} of ${renderProvinceBadge(state, theme, { compact: true })}`;
 }

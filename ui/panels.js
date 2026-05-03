@@ -15,12 +15,13 @@ import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel } from '..
 import {
   getPlayerStyleAttr,
   getProvinceStyleAttr,
-  getProvinceOptionStyleAttr,
   getRegionLabel,
   renderPlayerRoleName,
   renderPlayerRoleNameById,
   renderProvinceBadge,
   renderProvinceBadgeList,
+  renderTitleBadge,
+  renderThemeOfficeBadge,
 } from './labels.js';
 
 
@@ -53,28 +54,33 @@ function isCapitalLockedOfficeKey(officeKey) {
 }
 
 // ─── Helpers used everywhere ───
+//
+// `label` is HTML — for major/minor offices it's a single title cartouche,
+// and for theme commands it's a "<title-cartouche> of <land-cartouche>" pair.
+// `plain` is a fallback string for non-HTML contexts (e.g. log copy).
 function getPlayerOffices(state, playerId) {
   const offices = [];
+  const titleBadge = (kind, opts) => renderTitleBadge(state, kind, { holderId: playerId, compact: true, ...opts });
   if (playerId === state.basileusId) {
-    offices.push({ key: 'BASILEUS', label: 'Basileus' });
+    offices.push({ key: 'BASILEUS', label: titleBadge('BASILEUS'), plain: 'Basileus' });
   }
   const player = getPlayer(state, playerId);
   for (const t of player.majorTitles) {
-    if (t === 'PATRIARCH') {
-      offices.push({ key: 'PATRIARCH', label: 'Patriarch', capitalLocked: true });
-      continue;
-    }
-    offices.push({ key: t, label: MAJOR_TITLES[t]?.name || t });
+    offices.push({ key: t, label: titleBadge(t), plain: MAJOR_TITLES[t]?.name || t, capitalLocked: t === 'PATRIARCH' });
   }
   if (state.empress === playerId) {
-    offices.push({ key: 'EMPRESS', label: 'Empress', capitalLocked: true });
+    offices.push({ key: 'EMPRESS', label: titleBadge('EMPRESS'), plain: 'Empress', capitalLocked: true });
   }
   if (state.chiefEunuchs === playerId) {
-    offices.push({ key: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs', capitalLocked: true });
+    offices.push({ key: 'CHIEF_EUNUCHS', label: titleBadge('CHIEF_EUNUCHS'), plain: 'Chief of Eunuchs', capitalLocked: true });
   }
   for (const theme of Object.values(state.themes)) {
     if (theme.strategos === playerId && !theme.occupied) {
-      offices.push({ key: `STRAT_${theme.id}`, label: `Strategos of ${renderProvinceBadge(state, theme, { compact: true })}` });
+      offices.push({
+        key: `STRAT_${theme.id}`,
+        label: renderThemeOfficeBadge(state, 'STRATEGOS', theme.id),
+        plain: `Strategos of ${theme.name}`,
+      });
     }
   }
   return offices;
@@ -131,31 +137,28 @@ function getProjectedFinance(state, playerId) {
 
 function getPlayerTitleEntries(state, playerId) {
   const titles = [];
+  const titleBadge = (kind, opts) => renderTitleBadge(state, kind, { holderId: playerId, compact: true, ...opts });
   if (playerId === state.basileusId) {
-    titles.push({ scope: 'throne', label: 'Basileus', detail: 'Imperial throne' });
+    titles.push({ scope: 'throne', label: titleBadge('BASILEUS'), detail: 'Imperial throne' });
   }
 
   const player = getPlayer(state, playerId);
   for (const titleKey of player.majorTitles) {
-    titles.push({
-      scope: 'major',
-      label: MAJOR_TITLES[titleKey]?.name || titleKey,
-      detail: 'Major office',
-    });
+    titles.push({ scope: 'major', label: titleBadge(titleKey), detail: 'Major office' });
   }
   if (state.empress === playerId) {
-    titles.push({ scope: 'minor', label: 'Empress', detail: 'Minor court title' });
+    titles.push({ scope: 'minor', label: titleBadge('EMPRESS'), detail: 'Minor court title' });
   }
   if (state.chiefEunuchs === playerId) {
-    titles.push({ scope: 'minor', label: 'Chief of Eunuchs', detail: 'Minor court title' });
+    titles.push({ scope: 'minor', label: titleBadge('CHIEF_EUNUCHS'), detail: 'Minor court title' });
   }
   for (const theme of Object.values(state.themes)) {
     if (theme.occupied) continue;
     if (theme.strategos === playerId) {
-      titles.push({ scope: 'minor', label: `Strategos of ${renderProvinceBadge(state, theme, { compact: true })}`, detail: 'Theme command' });
+      titles.push({ scope: 'minor', label: renderThemeOfficeBadge(state, 'STRATEGOS', theme.id), detail: 'Theme command' });
     }
     if (theme.bishop === playerId) {
-      titles.push({ scope: 'minor', label: `Bishop of ${renderProvinceBadge(state, theme, { compact: true })}`, detail: theme.bishopIsDonor ? 'Donor bishopric' : 'Bishopric' });
+      titles.push({ scope: 'minor', label: renderThemeOfficeBadge(state, 'BISHOP', theme.id), detail: theme.bishopIsDonor ? 'Donor bishopric' : 'Bishopric' });
     }
   }
   return titles;
@@ -256,16 +259,6 @@ function getSelectablePlayers(state, selectedId, options = {}) {
   const fallbackId = players[0]?.id ?? '';
   const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : fallbackId;
   return { players, selectedId: normalizedSelectedId };
-}
-
-function playerSelectOptions(state, selectedId, options = {}) {
-  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
-  return players
-    .map((player) => {
-      // <option> elements ignore CSS variables, so set bg/color directly.
-      const style = `background-color: ${player.color}; color: #fff;`;
-      return `<option value="${player.id}" ${player.id === normalizedSelectedId ? 'selected' : ''} style="${style}">${formatPlayerLabel(player)}${player.id === state.basileusId ? ' (Basileus)' : ''}</option>`;
-    }).join('');
 }
 
 function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
@@ -720,10 +713,9 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <div class="dashboard-list-row">
             <div>
               <div class="dashboard-list-title">${renderProvinceBadge(state, theme, { showValues: true })}</div>
-              <div class="dashboard-list-note">${getRegionLabel(theme.region)}${theme.taxExempt ? ' | tax-exempt' : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''}</div>
-              <div class="dashboard-list-note">Profit ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g | exempt ${getTaxExemptOwnerIncome(theme)}g</div>
+              <div class="dashboard-list-note">${theme.taxExempt ? 'tax-exempt | ' : ''}${isThemeThreatened(state, theme.id) ? 'threatened | ' : ''}profit ${getNormalOwnerIncome(theme)}g, tax ${getNormalTaxIncome(theme)}g, exempt ${getTaxExemptOwnerIncome(theme)}g</div>
             </div>
-            <span class="dashboard-list-value">P${theme.P} T${theme.T} L${theme.L} | ${getThemeLandPrice(theme)}g</span>
+            <span class="dashboard-list-value">${getThemeLandPrice(theme)}g</span>
           </div>
         `).join('')}
       </div>
@@ -795,7 +787,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         <div class="dashboard-province-head">
           ${renderProvinceBadge(state, selectedProvince.id, { showValues: true })}
         </div>
-        <div class="dashboard-province-meta">P${selectedProvince.profit} T${selectedProvince.tax} L${selectedProvince.levies} | price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
+        <div class="dashboard-province-meta">price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
         <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
         <div class="dashboard-province-detail">Normal split: owner profit ${selectedProvince.normalOwnerIncome}g, tax ${selectedProvince.normalTaxIncome}g</div>
         <div class="dashboard-province-detail">Tax-exempt income: ${selectedProvince.taxExemptIncome}g</div>
@@ -883,57 +875,6 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
   `;
   return;
 
-  container.innerHTML = `
-    <div class="player-dashboard" style="${getPlayerStyleAttr(state, player.id)}">
-      <div class="dashboard-header">
-        <div class="dynasty-crest">${player.dynasty.charAt(0)}</div>
-        <div class="dynasty-info">
-          <h2 class="dynasty-name">${renderPlayerRoleName(state, player)}</h2>
-          <div class="dynasty-title">${isBasileus ? '☧ Basileus' : player.majorTitles.map(t => MAJOR_TITLES[t]?.name || t).join(', ')}</div>
-        </div>
-        <div class="gold-display">
-          <span class="gold-icon">⬡</span>
-          <span class="gold-amount">${player.gold}</span>
-        </div>
-      </div>
-
-      <div class="dashboard-stats">
-        <div class="stat">
-          <span class="stat-label">Themes</span>
-          <span class="stat-value">${themes.length}</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Army</span>
-          <span class="stat-value">${getTotalProfessionalArmy(player)}</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Titles</span>
-          <span class="stat-value">${player.majorTitles.length + countMinorTitles(state, playerId)}</span>
-        </div>
-      </div>
-
-      <div class="dashboard-themes">
-        ${themes.map(t => `
-          <div class="theme-chip ${t.taxExempt ? 'exempt' : ''}">
-            <span class="theme-name">${renderProvinceBadge(state, t, { showValues: true })}</span>
-            <span class="theme-values">${t.P}P ${t.T}T ${t.L}⚔</span>
-          </div>
-        `).join('')}
-      </div>
-
-      ${selectedProvince ? `
-        <div class="dashboard-province">
-          <div class="dashboard-province-head">
-            ${renderProvinceBadge(state, selectedProvince.id, { showValues: true })}
-          </div>
-          <div class="dashboard-province-meta">${selectedProvince.profit}P ${selectedProvince.tax}T ${selectedProvince.levies}L${selectedProvince.taxExempt ? ' Tax-exempt' : ''}</div>
-          <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
-          <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos}</div>
-          <div class="dashboard-province-detail">Bishop: ${selectedProvince.bishop}</div>
-        </div>
-      ` : ''}
-    </div>
-  `;
 }
 
 // ─── Court Phase Panel ───
@@ -990,7 +931,6 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
               data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
               <span class="market-name">${renderProvinceBadge(state, theme, { showValues: true })}</span>
               <span class="market-cost">${cost}g</span>
-              <span class="market-values">P${theme.P} T${theme.T} L${theme.L} | profit ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g</span>
             </button>`;
           }).join('')}
         </div>
@@ -1073,88 +1013,6 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId);
   return;
 
-  let html = `<div class="court-panel">
-    <div class="phase-header">
-      <h3>Imperial Court</h3>
-      <p class="phase-hint">Appointments, purchases, negotiations</p>
-    </div>`;
-
-  // ── Appointments Section ──
-  html += `<div class="court-section">
-    <h4>Appointments</h4>`;
-
-  // Basileus appoints exactly 1 minor title of any kind
-  if (isBasileus) {
-    html += renderBasileusAppointments(state, selectedProvinceId);
-  }
-
-  // Domestic/Admiral each appoint 1 Strategos in their region
-  for (const titleKey of player.majorTitles) {
-    if (titleKey === 'PATRIARCH') {
-      html += renderPatriarchAppointment(state, selectedProvinceId, activePlayerId);
-    } else {
-      html += renderStrategosAppointment(state, titleKey, selectedProvinceId, activePlayerId);
-    }
-  }
-
-  html += `</div>`;
-
-  // ── Land Purchase Section ──
-  const freeThemes = getFreeThemes(state);
-  if (freeThemes.length > 0) {
-    html += `<div class="court-section">
-      <h4>Buy Land</h4>
-      <div class="theme-market">
-        ${freeThemes.map(t => {
-          const cost = getThemeLandPrice(t);
-          const canAfford = player.gold >= cost;
-          return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === t.id ? 'selected' : ''}"
-            data-action="buy" data-theme="${t.id}" ${canAfford ? '' : 'disabled'}>
-            <span class="market-name">${renderProvinceBadge(state, t, { showValues: true })}</span>
-            <span class="market-cost">${cost}⬡</span>
-            <span class="market-values">P${t.P} T${t.T} L${t.L} | profit ${getNormalOwnerIncome(t)}g | tax ${getNormalTaxIncome(t)}g</span>
-          </button>`;
-        }).join('')}
-      </div>
-    </div>`;
-  }
-
-  // ── Church Gift Section ──
-  const ownedThemes = getPlayerThemes(state, activePlayerId);
-  if (ownedThemes.length > 0) {
-    html += `<div class="court-section">
-      <h4>Gift to Church</h4>
-      <div class="gift-options">
-        ${ownedThemes.map(t => `
-          <button class="gift-item ${selectedProvinceId === t.id ? 'selected' : ''}" data-action="gift" data-theme="${t.id}">
-            ${renderProvinceBadge(state, t, { showValues: true })} → Church
-          </button>
-        `).join('')}
-      </div>
-    </div>`;
-  }
-
-  // ── Basileus Revocation ──
-  if (isBasileus) {
-    html += renderRevocationOptions(state);
-  }
-
-  // ── Professional Army ──
-  html += renderArmyManagement(state, activePlayerId);
-
-  // ── Confirm Button ──
-  const alreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
-  html += `<div class="court-actions">
-    <button class="btn-confirm ${alreadyConfirmed ? 'disabled' : ''}" data-action="confirm-court" ${alreadyConfirmed ? 'disabled' : ''}>
-      ${alreadyConfirmed ? '✓ Confirmed' : 'Confirm Actions'}
-    </button>
-  </div>`;
-
-  html += `</div>`;
-  container.innerHTML = html;
-
-  // ── Bind all events ──
-  bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId);
 }
 
 
@@ -1293,12 +1151,23 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
     });
   });
 
-  // Revocation
+  // Revocation choice grid: clicking a cartouche stages the value on the
+  // hidden input, and the commit button submits it.
+  container.querySelectorAll('[data-revocation-group] .revocation-choice-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const group = btn.closest('[data-revocation-group]');
+      if (!group) return;
+      group.querySelectorAll('.revocation-choice-btn.selected').forEach((b) => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      const hidden = group.querySelector('.revoke-select');
+      if (hidden) hidden.value = btn.dataset.revokeValue || '';
+    });
+  });
   container.querySelectorAll('[data-action="commit-revoke"]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const select = container.querySelector('.revoke-select');
-      if (select?.value) {
-        callbacks.revoke?.(select.value);
+      const hidden = container.querySelector('.revoke-select');
+      if (hidden?.value) {
+        callbacks.revoke?.(hidden.value);
       }
     });
   });
@@ -1316,7 +1185,7 @@ function renderBasileusAppointments(state, selectedProvinceId) {
   const titleTypes = getOpenBasileusMinorTitleTypes(state);
   if (!titleTypes.length) {
     return `<div class="appointment-block done">
-      <span class="appt-label">âœ“ No eligible Basileus appointments remain</span>
+      <span class="appt-label">✓ No eligible Basileus appointments remain</span>
     </div>`;
   }
 
@@ -1408,42 +1277,9 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
   </div>`;
 }
 
-// ─── Revocation: all four types ───
+// ─── Revocation: cartouche grid (same grammar as appointment) ───
 function renderRevocationOptions(state) {
-  // Collect revocable items
-  const majorTitleOpts = state.players.filter(p => p.id !== state.basileusId).flatMap(p =>
-    p.majorTitles.map(t => `<option value="major:${p.id}:${t}">${formatPlayerLabel(p)} — ${MAJOR_TITLES[t]?.name}</option>`)
-  );
-
-  const minorTitleOpts = [];
-  // Strategos slots
-  for (const t of Object.values(state.themes)) {
-    if (t.strategos !== null && !t.occupied) {
-      const holder = state.players.find(p => p.id === t.strategos);
-      minorTitleOpts.push(`<option value="minor:${t.id}:strategos" style="${getProvinceOptionStyleAttr(state, t)}">Strategos of ${t.name} (${formatPlayerLabel(holder)})</option>`);
-    }
-    if (t.bishop !== null && !t.occupied) {
-      const holder = state.players.find(p => p.id === t.bishop);
-      minorTitleOpts.push(`<option value="minor:${t.id}:bishop" style="${getProvinceOptionStyleAttr(state, t)}">Bishop of ${t.name} (${formatPlayerLabel(holder)})</option>`);
-    }
-  }
-  if (state.empress !== null) {
-    const h = state.players.find(p => p.id === state.empress);
-    minorTitleOpts.push(`<option value="court:EMPRESS">Empress (${formatPlayerLabel(h)})</option>`);
-  }
-  if (state.chiefEunuchs !== null) {
-    const h = state.players.find(p => p.id === state.chiefEunuchs);
-    minorTitleOpts.push(`<option value="court:CHIEF_EUNUCHS">Chief of Eunuchs (${formatPlayerLabel(h)})</option>`);
-  }
-
-  const exemptOpts = Object.values(state.themes).filter(t => t.taxExempt).map(t =>
-    `<option value="exempt:${t.id}" style="${getProvinceOptionStyleAttr(state, t)}">${t.name} tax exemption</option>`
-  );
-
-  const themeOpts = Object.values(state.themes).filter(t => t.owner !== null && t.owner !== 'church' && !t.occupied).map(t => {
-    const owner = state.players.find(p => p.id === t.owner);
-    return `<option value="theme:${t.id}" style="${getProvinceOptionStyleAttr(state, t)}">${t.name} (owned by ${formatPlayerLabel(owner)})</option>`;
-  });
+  const groups = collectRevocationGroups(state);
 
   const used = state.courtActions?.basileusRevocationsUsed || 0;
   const nextCost = used + 1;
@@ -1456,19 +1292,98 @@ function renderRevocationOptions(state) {
     ? `Next revocation costs <strong>${nextCost}</strong> troop${nextCost === 1 ? '' : 's'} (Basileus has ${available}).`
     : `Next revocation would cost ${nextCost} troop${nextCost === 1 ? '' : 's'}, but the Basileus only has ${available}. <em>Cannot revoke further this round.</em>`;
 
+  const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0);
+  const body = totalItems
+    ? groups.filter((g) => g.items.length).map((group) => `
+        <div class="revocation-group">
+          <div class="revocation-group-label">${group.label}</div>
+          <div class="revocation-choice-grid">
+            ${group.items.map((item) => `
+              <button type="button" class="revocation-choice-btn" data-revoke-value="${item.value}" ${canAfford ? '' : 'disabled'}>
+                ${item.body}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')
+    : '<p class="section-hint">Nothing currently revocable.</p>';
+
   return `<div class="court-section revocation">
     <h4>Imperial Revocation</h4>
     <p class="section-hint">${costLine}</p>
     <p class="section-hint revocation-cost">${costStatus}</p>
-    <select class="revoke-select appt-select" ${canAfford ? '' : 'disabled'}>
-      <option value="">No revocation</option>
-      ${majorTitleOpts.length ? `<optgroup label="Major Titles">${majorTitleOpts.join('')}</optgroup>` : ''}
-      ${minorTitleOpts.length ? `<optgroup label="Minor Titles">${minorTitleOpts.join('')}</optgroup>` : ''}
-      ${exemptOpts.length ? `<optgroup label="Tax Exemptions">${exemptOpts.join('')}</optgroup>` : ''}
-      ${themeOpts.length ? `<optgroup label="Player Themes">${themeOpts.join('')}</optgroup>` : ''}
-    </select>
-    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${canAfford ? '' : 'disabled'}>Revoke (${nextCost} troop${nextCost === 1 ? '' : 's'})</button>
+    <div class="revocation-shell" data-revocation-group>
+      ${body}
+      <input type="hidden" class="revoke-select" value="">
+    </div>
+    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${canAfford && totalItems ? '' : 'disabled'}>Revoke (${nextCost} troop${nextCost === 1 ? '' : 's'})</button>
   </div>`;
+}
+
+// Build the cartouche rows for each revocable category. The button body
+// is the visual signature ("what gets revoked"); the value is the same
+// colon-encoded token the existing event handler already understands.
+function collectRevocationGroups(state) {
+  const major = [];
+  for (const player of state.players) {
+    if (player.id === state.basileusId) continue;
+    for (const titleKey of player.majorTitles) {
+      major.push({
+        value: `major:${player.id}:${titleKey}`,
+        body: renderTitleBadge(state, titleKey, { holderId: player.id, compact: true }),
+      });
+    }
+  }
+
+  const minor = [];
+  for (const t of Object.values(state.themes)) {
+    if (t.occupied) continue;
+    if (t.strategos !== null) {
+      minor.push({
+        value: `minor:${t.id}:strategos`,
+        body: renderThemeOfficeBadge(state, 'STRATEGOS', t.id),
+      });
+    }
+    if (t.bishop !== null) {
+      minor.push({
+        value: `minor:${t.id}:bishop`,
+        body: renderThemeOfficeBadge(state, 'BISHOP', t.id),
+      });
+    }
+  }
+  if (state.empress !== null) {
+    minor.push({
+      value: 'court:EMPRESS',
+      body: renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true }),
+    });
+  }
+  if (state.chiefEunuchs !== null) {
+    minor.push({
+      value: 'court:CHIEF_EUNUCHS',
+      body: renderTitleBadge(state, 'CHIEF_EUNUCHS', { holderId: state.chiefEunuchs, compact: true }),
+    });
+  }
+
+  const exempt = Object.values(state.themes)
+    .filter((t) => t.taxExempt)
+    .map((t) => ({
+      value: `exempt:${t.id}`,
+      body: renderProvinceBadge(state, t, { compact: true }),
+    }));
+
+  const estates = Object.values(state.themes)
+    .filter((t) => t.owner !== null && t.owner !== 'church' && !t.occupied)
+    .map((t) => ({
+      value: `theme:${t.id}`,
+      body: renderProvinceBadge(state, t, { compact: true }),
+    }));
+
+  return [
+    { label: 'Major Titles', items: major },
+    { label: 'Minor Titles', items: minor },
+    { label: 'Tax Exemptions', items: exempt },
+    { label: 'Estates', items: estates },
+  ];
 }
 
 function getBasileusAvailableTroopCount(state) {
@@ -1519,26 +1434,6 @@ function renderArmyManagement(state, playerId) {
       }).join('')}
     </div>
   `;
-
-  return `<div class="court-section">
-    <h4>Professional Army</h4>
-    <p class="section-hint">Recruit +1 per office per round (1⬡/troop maintenance at cleanup)</p>
-    <div class="army-grid">
-      ${offices.map(o => {
-        const count = player.professionalArmies[o.key] || 0;
-        const recruitCheck = canRecruitProfessional(state, playerId, o.key);
-        const canRecruit = recruitCheck.ok;
-        const recruitLabel = canRecruit ? '+1' : (recruitCheck.reason?.includes('cannot hold') ? '—' : '✓');
-        return `<div class="army-row">
-          <span>${o.label}</span>
-          <span class="army-count">${count} troops</span>
-          <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${o.key}" ${canRecruit ? '' : 'disabled'}>
-            ${recruitLabel}
-          </button>
-        </div>`;
-      }).join('')}
-    </div>
-  </div>`;
 }
 
 // ─── Orders Phase Panel (Secret, per-player) ───
