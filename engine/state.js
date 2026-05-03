@@ -24,13 +24,17 @@ export function rollRange(min, max, rng) {
 
 const PLAYER_ROLE_TEXT_STYLES = {
   BASILEUS: { color: '#9a7010', contrast: '#ffffff' }, // deep imperial gold — CPL region
-  DOM_WEST: { color: '#7a2020', contrast: '#ffffff' }, // deep crimson — West region
-  DOM_EAST: { color: '#1e5c34', contrast: '#ffffff' }, // deep forest green — East region
+  PATRIARCH:{ color: '#000000', contrast: '#ffffff' }, // black — church/ecclesiastical
   ADMIRAL:  { color: '#1e3a7a', contrast: '#ffffff' }, // deep cobalt — Sea region
-  PATRIARCH:{ color: '#4a1a5c', contrast: '#ffffff' }, // deep purple — church/ecclesiastical
+  DOM_EAST: { color: '#1e5c34', contrast: '#ffffff' }, // deep forest green — East region
+  DOM_WEST: { color: '#7a2020', contrast: '#ffffff' }, // deep crimson — West region
 };
 
-const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'DOM_WEST', 'DOM_EAST', 'ADMIRAL', 'PATRIARCH'];
+// A player may hold multiple major titles in 3-4 player games. The first matching
+// entry is used as the public outline color in the interface. Patriarch is placed
+// before regional military commands so a Patriarch holder gets the requested black
+// outline even when they also hold another major office.
+const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAST', 'DOM_WEST'];
 
 function createInvasionStrengthRange(rng) {
   const [baseMin, baseMax] = INVASION_STRENGTH_RANGE;
@@ -274,12 +278,14 @@ export function getPlayerRoleTextStyle(state, playerId) {
 
 export function getPlayerRoleTextStyleAttr(state, playerId) {
   const style = getPlayerRoleTextStyle(state, playerId);
-  // Use the role color (not contrast) so names render legibly on neutral/parchment backgrounds.
-  // On colored role backgrounds the parent sets color via --role-contrast override.
-  return `--player-name-fill: ${style.color};`;
+  const player = getPlayer(state, playerId);
+  const playerColor = player?.color || '#5a3810';
+  return `--player-name-fill: ${style.contrast || '#ffffff'}; --player-name-bg: ${playerColor}; --player-name-outline: ${style.color}; --role-color: ${style.color}; --role-outline-color: ${style.color}; --role-contrast: ${style.contrast || '#ffffff'}; --player-color: ${playerColor}; --dynasty-color: ${playerColor};`;
 }
 
 export function getPlayerRoleThemeStyleAttr(state, playerId) {
   const style = getPlayerRoleTextStyle(state, playerId);
-  return `--role-color: ${style.color}; --role-contrast: ${style.contrast || '#ffffff'};`;
+  const player = getPlayer(state, playerId);
+  const playerColor = player?.color || '#5a3810';
+  return `--player-color: ${playerColor}; --dynasty-color: ${playerColor}; --role-color: ${style.color}; --role-outline-color: ${style.color}; --role-contrast: ${style.contrast || '#ffffff'};`;
 }

@@ -1,5 +1,6 @@
 // ui/panels.js — Interactive UI panels: Court, Orders, player dashboard
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
+import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { runAdministration } from '../engine/cascade.js';
 import { canGrantTaxExemption, canRecruitProfessional, suggestMajorTitleAssignments } from '../engine/actions.js';
 import {
@@ -22,6 +23,68 @@ function renderPlayerRoleName(state, player, fallback = '') {
 function renderPlayerRoleNameById(state, playerId, fallback = null) {
   const player = getPlayer(state, playerId);
   return renderPlayerRoleName(state, player, fallback ?? `Player ${Number(playerId) + 1}`);
+}
+
+function getProvinceOwnerColor(state, theme) {
+  if (!theme) return '#6a4a8a';
+  if (theme.occupied) return '#625c52';
+  if (theme.owner === 'church') return '#1a1a1a';
+  if (theme.owner !== null) return getPlayer(state, theme.owner)?.color || '#5a3810';
+  if (theme.id === 'CPL') return '#9a7010';
+  return '#6a4a8a';
+}
+
+function getProvinceRoleColor(theme) {
+  return REGION_BORDER_COLORS[theme?.region] || '#2e1e0f';
+}
+
+function getProvinceStyleAttr(state, theme) {
+  return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; --province-region-color: ${getProvinceRoleColor(theme)};`;
+}
+
+function getProvinceOptionStyleAttr(state, theme) {
+  return `background-color: ${getProvinceOwnerColor(state, theme)}; color: #ffffff;`;
+}
+
+function renderProvinceBadge(state, themeOrId, options = {}) {
+  const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
+  if (!theme) return options.fallback || '';
+  const id = options.showId ? `<span class="province-token-id">${theme.id}</span>` : '';
+  const values = options.showValues ? `<span class="province-token-values">P${theme.P} T${theme.T} L${theme.L}</span>` : '';
+  const classes = [
+    'province-token',
+    options.compact ? 'compact' : '',
+    theme.taxExempt ? 'tax-exempt' : '',
+    theme.occupied ? 'occupied' : '',
+    theme.owner === 'church' ? 'church' : '',
+  ].filter(Boolean).join(' ');
+  return `<span class="${classes}" style="${getProvinceStyleAttr(state, theme)}" title="${theme.name} — ${getRegionLabel(theme.region)}">${theme.name}${id}${values}</span>`;
+}
+
+function renderProvinceBadgeList(state, themeIds = []) {
+  const badges = themeIds.map((themeId) => renderProvinceBadge(state, themeId, { compact: true })).filter(Boolean);
+  return badges.length ? badges.join(' ') : 'none';
+}
+
+function renderThemeChoiceButtons(state, themes, selectedId) {
+  return themes.map((theme) => `
+    <button type="button" class="province-choice-btn ${theme.id === selectedId ? 'selected' : ''}" data-theme-choice="${theme.id}" style="${getProvinceStyleAttr(state, theme)}">
+      ${renderProvinceBadge(state, theme, { showValues: true })}
+    </button>
+  `).join('');
+}
+
+function renderThemeChoiceControl(state, themes, inputId, selectedId, options = {}) {
+  const fallbackId = themes[0]?.id || '';
+  const normalizedSelectedId = themes.some((theme) => theme.id === selectedId) ? selectedId : fallbackId;
+  const inputIdAttr = inputId ? ` id="${inputId}"` : '';
+  const extraClass = options.className ? ` ${options.className}` : '';
+  const hidden = options.hidden ? ' style="display:none"' : '';
+  return `
+    <div class="province-choice-grid${extraClass}" data-theme-choice-group${hidden}>
+      ${renderThemeChoiceButtons(state, themes, normalizedSelectedId)}
+      <input type="hidden"${inputIdAttr} class="appt-theme-select" value="${normalizedSelectedId}">
+    </div>`;
 }
 
 // Court titles whose levies are locked to the capital.
@@ -53,7 +116,7 @@ function getPlayerOffices(state, playerId) {
   }
   for (const theme of Object.values(state.themes)) {
     if (theme.strategos === playerId && !theme.occupied) {
-      offices.push({ key: `STRAT_${theme.id}`, label: `Strategos of ${theme.name}` });
+      offices.push({ key: `STRAT_${theme.id}`, label: `Strategos of ${renderProvinceBadge(state, theme, { compact: true })}` });
     }
   }
   return offices;
@@ -131,10 +194,10 @@ function getPlayerTitleEntries(state, playerId) {
   for (const theme of Object.values(state.themes)) {
     if (theme.occupied) continue;
     if (theme.strategos === playerId) {
-      titles.push({ scope: 'minor', label: `Strategos of ${theme.name}`, detail: 'Theme command' });
+      titles.push({ scope: 'minor', label: `Strategos of ${renderProvinceBadge(state, theme, { compact: true })}`, detail: 'Theme command' });
     }
     if (theme.bishop === playerId) {
-      titles.push({ scope: 'minor', label: `Bishop of ${theme.name}`, detail: theme.bishopIsDonor ? 'Donor bishopric' : 'Bishopric' });
+      titles.push({ scope: 'minor', label: `Bishop of ${renderProvinceBadge(state, theme, { compact: true })}`, detail: theme.bishopIsDonor ? 'Donor bishopric' : 'Bishopric' });
     }
   }
   return titles;
@@ -229,13 +292,36 @@ function selfAppointmentOnCooldown(state, appointerId) {
   return appointer.appointmentCooldown?.__SELF_ANY === state.round - 1;
 }
 
-function playerSelectOptions(state, selectedId, options = {}) {
+function getSelectablePlayers(state, selectedId, options = {}) {
   const excludeId = options.excludeId;
-  return state.players
-    .filter(p => excludeId == null || p.id !== excludeId)
-    .map(p =>
-      `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${formatPlayerLabel(p)}${p.id === state.basileusId ? ' (Basileus)' : ''}</option>`
-    ).join('');
+  const players = state.players.filter((player) => excludeId == null || player.id !== excludeId);
+  const fallbackId = players[0]?.id ?? '';
+  const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : fallbackId;
+  return { players, selectedId: normalizedSelectedId };
+}
+
+function playerSelectOptions(state, selectedId, options = {}) {
+  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
+  return players
+    .map((player) => {
+      const style = `${getPlayerRoleTextStyleAttr(state, player.id)} background-color: ${player.color}; color: #fff;`;
+      return `<option value="${player.id}" ${player.id === normalizedSelectedId ? 'selected' : ''} style="${style}">${formatPlayerLabel(player)}${player.id === state.basileusId ? ' (Basileus)' : ''}</option>`;
+    }).join('');
+}
+
+function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
+  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
+  if (!players.length) return `<input type="hidden" id="${inputId || ''}" class="appt-player-select" value="">`;
+  const inputIdAttr = inputId ? ` id="${inputId}"` : '';
+  return `
+    <div class="player-choice-grid" data-player-choice-group>
+      ${players.map((player) => `
+        <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerRoleThemeStyleAttr(state, player.id)}">
+          ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
+        </button>
+      `).join('')}
+      <input type="hidden"${inputIdAttr} class="appt-player-select" value="${normalizedSelectedId}">
+    </div>`;
 }
 
 function selfAppointmentNotice(state, appointerId) {
@@ -523,10 +609,10 @@ function renderHistoryDetails(state, event) {
           <span>${event.details.invaderStrength}</span>
         </div>
         ${event.details.themesLost?.length ? `
-          <div class="history-breakdown-note">Lost: ${event.details.themesLost.join(', ')}</div>
+          <div class="history-breakdown-note province-note">Lost: ${renderProvinceBadgeList(state, event.details.themesLost)}</div>
         ` : ''}
         ${event.details.themesRecovered?.length ? `
-          <div class="history-breakdown-note">Recovered: ${event.details.themesRecovered.join(', ')}</div>
+          <div class="history-breakdown-note province-note">Recovered: ${renderProvinceBadgeList(state, event.details.themesRecovered)}</div>
         ` : ''}
       </div>
       ${renderWarContributionBreakdown(event.details.contributions)}
@@ -538,7 +624,7 @@ function renderHistoryDetails(state, event) {
   }
 
   if (event.type === 'invasion_drawn') {
-    return `<div class="history-breakdown-note">Route: ${event.details.route.join(' -> ')}</div>`;
+    return `<div class="history-breakdown-note province-note">Route: ${renderProvinceBadgeList(state, event.details.route)}</div>`;
   }
 
   return '';
@@ -678,7 +764,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         ${themes.map((theme) => `
           <div class="dashboard-list-row">
             <div>
-              <div class="dashboard-list-title">${theme.name}</div>
+              <div class="dashboard-list-title">${renderProvinceBadge(state, theme, { showValues: true })}</div>
               <div class="dashboard-list-note">${getRegionLabel(theme.region)}${theme.taxExempt ? ' | tax-exempt' : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''}</div>
               <div class="dashboard-list-note">Profit ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g | exempt ${getTaxExemptOwnerIncome(theme)}g</div>
             </div>
@@ -752,7 +838,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     `
       <div class="dashboard-province">
         <div class="dashboard-province-head">
-          <span class="dashboard-province-name">${selectedProvince.name} (${selectedProvince.id})</span>
+          <span class="dashboard-province-name">${renderProvinceBadge(state, selectedProvince.id, { showId: true, showValues: true })}</span>
           <span class="dashboard-province-region">${selectedProvince.region}</span>
         </div>
         <div class="dashboard-province-meta">P${selectedProvince.profit} T${selectedProvince.tax} L${selectedProvince.levies} | price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
@@ -884,7 +970,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       <div class="dashboard-themes">
         ${themes.map(t => `
           <div class="theme-chip ${t.taxExempt ? 'exempt' : ''}">
-            <span class="theme-name">${t.name}</span>
+            <span class="theme-name">${renderProvinceBadge(state, t, { showValues: true })}</span>
             <span class="theme-values">${t.P}P ${t.T}T ${t.L}⚔</span>
           </div>
         `).join('')}
@@ -893,7 +979,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       ${selectedProvince ? `
         <div class="dashboard-province">
           <div class="dashboard-province-head">
-            <span class="dashboard-province-name">${selectedProvince.name} (${selectedProvince.id})</span>
+            <span class="dashboard-province-name">${renderProvinceBadge(state, selectedProvince.id, { showId: true, showValues: true })}</span>
             <span class="dashboard-province-region">${selectedProvince.region}</span>
           </div>
           <div class="dashboard-province-meta">${selectedProvince.profit}P ${selectedProvince.tax}T ${selectedProvince.levies}L${selectedProvince.taxExempt ? ' Tax-exempt' : ''}</div>
@@ -958,7 +1044,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
             const canAfford = player.gold >= cost;
             return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}"
               data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
-              <span class="market-name">${theme.name}</span>
+              <span class="market-name">${renderProvinceBadge(state, theme, { showValues: true })}</span>
               <span class="market-cost">${cost}g</span>
               <span class="market-values">P${theme.P} T${theme.T} L${theme.L} | profit ${getNormalOwnerIncome(theme)}g | tax ${getNormalTaxIncome(theme)}g</span>
             </button>`;
@@ -982,7 +1068,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
           ${taxExemptionThemes.map((theme) => {
             const check = canGrantTaxExemption(state, activePlayerId, theme.id);
             return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="exempt" data-theme="${theme.id}">
-              ${theme.name} for ${check.cost}g -> ${getTaxExemptOwnerIncome(theme)}g income
+              ${renderProvinceBadge(state, theme, { showValues: true })} for ${check.cost}g -> ${getTaxExemptOwnerIncome(theme)}g income
             </button>`;
           }).join('')}
         </div>
@@ -1003,7 +1089,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
         <div class="gift-options">
           ${playerOwnedThemes.map((theme) => `
             <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
-              ${theme.name} to Church -> ${getNormalTaxIncome(theme)}g church tax
+              ${renderProvinceBadge(state, theme, { showValues: true })} to Church -> ${getNormalTaxIncome(theme)}g church tax
             </button>
           `).join('')}
         </div>
@@ -1080,7 +1166,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
           const canAfford = player.gold >= cost;
           return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === t.id ? 'selected' : ''}"
             data-action="buy" data-theme="${t.id}" ${canAfford ? '' : 'disabled'}>
-            <span class="market-name">${t.name}</span>
+            <span class="market-name">${renderProvinceBadge(state, t, { showValues: true })}</span>
             <span class="market-cost">${cost}⬡</span>
             <span class="market-values">P${t.P} T${t.T} L${t.L} | profit ${getNormalOwnerIncome(t)}g | tax ${getNormalTaxIncome(t)}g</span>
           </button>`;
@@ -1097,7 +1183,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
       <div class="gift-options">
         ${ownedThemes.map(t => `
           <button class="gift-item ${selectedProvinceId === t.id ? 'selected' : ''}" data-action="gift" data-theme="${t.id}">
-            ${t.name} → ☦ Church
+            ${renderProvinceBadge(state, t, { showValues: true })} → Church
           </button>
         `).join('')}
       </div>
@@ -1127,7 +1213,36 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId);
 }
 
+
+function bindThemeChoiceControls(root) {
+  root.querySelectorAll('[data-theme-choice]').forEach((button) => {
+    if (button.dataset.bound === 'true') return;
+    button.dataset.bound = 'true';
+    button.addEventListener('click', () => {
+      const group = button.closest('[data-theme-choice-group]');
+      const input = group?.querySelector('.appt-theme-select');
+      if (!input) return;
+      group.querySelectorAll('[data-theme-choice]').forEach((other) => other.classList.remove('selected'));
+      button.classList.add('selected');
+      input.value = button.dataset.themeChoice;
+    });
+  });
+}
+
 function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId) {
+  container.querySelectorAll('[data-player-choice]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const group = button.closest('[data-player-choice-group]');
+      const input = group?.querySelector('.appt-player-select');
+      if (!input) return;
+      group.querySelectorAll('[data-player-choice]').forEach((other) => other.classList.remove('selected'));
+      button.classList.add('selected');
+      input.value = button.dataset.playerChoice;
+    });
+  });
+
+  bindThemeChoiceControls(container);
+
   // Buy land
   container.querySelectorAll('[data-action="buy"]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1172,8 +1287,10 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
   });
 
   const basileusTypeSelect = container.querySelector('#basileusApptType');
+  const basileusThemeChoiceGroup = container.querySelector('#basileusApptThemeChoices');
+  const basileusThemeButtons = basileusThemeChoiceGroup?.querySelector('[data-role="theme-choice-buttons"]');
   const basileusThemeSelect = container.querySelector('#basileusApptTheme');
-  if (basileusTypeSelect && basileusThemeSelect) {
+  if (basileusTypeSelect && basileusThemeChoiceGroup && basileusThemeButtons && basileusThemeSelect) {
     const refreshThemeOptions = () => {
       const appointmentType = basileusTypeSelect.value;
       const themes = appointmentType === 'STRATEGOS'
@@ -1183,13 +1300,10 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
           : [];
       const suggestedThemeId = getSuggestedThemeId(themes, selectedProvinceId);
 
-      basileusThemeSelect.innerHTML = `
-        <option value="">Choose theme...</option>
-        ${themes.map(theme => `
-          <option value="${theme.id}" ${theme.id === suggestedThemeId ? 'selected' : ''}>${theme.name} (${theme.region})</option>
-        `).join('')}
-      `;
-      basileusThemeSelect.style.display = (appointmentType === 'STRATEGOS' || appointmentType === 'BISHOP') ? '' : 'none';
+      basileusThemeButtons.innerHTML = renderThemeChoiceButtons(state, themes, suggestedThemeId);
+      basileusThemeSelect.value = suggestedThemeId || '';
+      basileusThemeChoiceGroup.style.display = (appointmentType === 'STRATEGOS' || appointmentType === 'BISHOP') ? '' : 'none';
+      bindThemeChoiceControls(basileusThemeChoiceGroup);
     };
 
     basileusTypeSelect.addEventListener('change', refreshThemeOptions);
@@ -1275,12 +1389,11 @@ function renderBasileusAppointments(state, selectedProvinceId) {
         <option value="">Choose title type...</option>
         ${titleTypes.map((type) => `<option value="${type.value}">${type.label}</option>`).join('')}
       </select>
-      <select id="basileusApptPlayer" class="appt-select">
-        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
-      </select>
-      <select id="basileusApptTheme" class="appt-select" data-selected-theme="${defaultThemeId}" style="display:none">
-        <option value="">Choose theme...</option>
-      </select>
+      ${renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: onCooldown ? appointerId : undefined })}
+      <div id="basileusApptThemeChoices" class="province-choice-grid" data-theme-choice-group style="display:none">
+        <div data-role="theme-choice-buttons"></div>
+        <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
+      </div>
       <button class="appt-btn" data-action="commit-basileus-appt">Appoint</button>
     </div>
   </div>`;
@@ -1313,13 +1426,8 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     <span class="appt-label">${title.name} → appoint Strategos:</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
-      <select class="appt-theme-select appt-select">
-        <option value="">Choose theme...</option>
-        ${themes.map(t => `<option value="${t.id}" ${t.id === defaultThemeId ? 'selected' : ''}>${t.name}</option>`).join('')}
-      </select>
-      <select class="appt-player-select appt-select">
-        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
-      </select>
+      ${renderThemeChoiceControl(state, themes, null, defaultThemeId)}
+      ${renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })}
       <button class="appt-btn strategos-commit" data-titlekey="${titleKey}">Appoint</button>
     </div>
   </div>`;
@@ -1349,13 +1457,8 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
     <span class="appt-label">Patriarch → appoint Bishop:</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
-      <select class="appt-theme-select appt-select">
-        <option value="">Choose theme...</option>
-        ${themes.map(t => `<option value="${t.id}" ${t.id === defaultThemeId ? 'selected' : ''}>${t.name}</option>`).join('')}
-      </select>
-      <select class="appt-player-select appt-select">
-        ${playerSelectOptions(state, undefined, { excludeId: onCooldown ? appointerId : undefined })}
-      </select>
+      ${renderThemeChoiceControl(state, themes, null, defaultThemeId)}
+      ${renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })}
       <button class="appt-btn bishop-commit">Appoint</button>
     </div>
   </div>`;
@@ -1373,11 +1476,11 @@ function renderRevocationOptions(state) {
   for (const t of Object.values(state.themes)) {
     if (t.strategos !== null && !t.occupied) {
       const holder = state.players.find(p => p.id === t.strategos);
-      minorTitleOpts.push(`<option value="minor:${t.id}:strategos">Strategos of ${t.name} (${formatPlayerLabel(holder)})</option>`);
+      minorTitleOpts.push(`<option value="minor:${t.id}:strategos" style="${getProvinceOptionStyleAttr(state, t)}">Strategos of ${t.name} (${formatPlayerLabel(holder)})</option>`);
     }
     if (t.bishop !== null && !t.occupied) {
       const holder = state.players.find(p => p.id === t.bishop);
-      minorTitleOpts.push(`<option value="minor:${t.id}:bishop">Bishop of ${t.name} (${formatPlayerLabel(holder)})</option>`);
+      minorTitleOpts.push(`<option value="minor:${t.id}:bishop" style="${getProvinceOptionStyleAttr(state, t)}">Bishop of ${t.name} (${formatPlayerLabel(holder)})</option>`);
     }
   }
   if (state.empress !== null) {
@@ -1390,12 +1493,12 @@ function renderRevocationOptions(state) {
   }
 
   const exemptOpts = Object.values(state.themes).filter(t => t.taxExempt).map(t =>
-    `<option value="exempt:${t.id}">${t.name} tax exemption</option>`
+    `<option value="exempt:${t.id}" style="${getProvinceOptionStyleAttr(state, t)}">${t.name} tax exemption</option>`
   );
 
   const themeOpts = Object.values(state.themes).filter(t => t.owner !== null && t.owner !== 'church' && !t.occupied).map(t => {
     const owner = state.players.find(p => p.id === t.owner);
-    return `<option value="theme:${t.id}">${t.name} (owned by ${formatPlayerLabel(owner)})</option>`;
+    return `<option value="theme:${t.id}" style="${getProvinceOptionStyleAttr(state, t)}">${t.name} (owned by ${formatPlayerLabel(owner)})</option>`;
   });
 
   const used = state.courtActions?.basileusRevocationsUsed || 0;
@@ -1576,7 +1679,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
     <p class="section-hint">Who should be the next Basileus?</p>
     <div class="candidate-grid">
       ${state.players.map(p => `
-        <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}">
+        <button class="candidate-btn ${p.id === state.basileusId ? 'current-bas' : ''}" data-candidate="${p.id}" style="${getPlayerRoleThemeStyleAttr(state, p.id)}">
           <span class="candidate-crest" style="background: ${p.color}">${p.dynasty.charAt(0)}</span>
           <span>${renderPlayerRoleName(state, p)}</span>
           ${p.id === state.basileusId ? '<span class="current-basileus-tag">current</span>' : ''}
@@ -1683,14 +1786,14 @@ function renderMajorTitleReassignmentSection(state) {
 
   return `<div class="resolution-section title-reassignment">
     <h4>Redistribute Major Titles</h4>
-    <p class="section-hint">${newBasileus ? formatPlayerLabel(newBasileus) : 'The new Basileus'} must reassign all four major offices before the next round. The non-Basileus title distribution must be ${describeMajorTitleDistribution(state)}.</p>
+    <p class="section-hint">${newBasileus ? renderPlayerRoleName(state, newBasileus) : 'The new Basileus'} must reassign all four major offices before the next round. The non-Basileus title distribution must be ${describeMajorTitleDistribution(state)}.</p>
     <div class="title-reassignment-grid">
       ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => `
         <label class="title-reassignment-row">
           <span>${title.name}</span>
           <select class="appt-select major-title-select" data-title-assignment="${titleKey}">
             ${eligiblePlayers.map(player => `
-              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''}>${formatPlayerLabel(player)}</option>
+              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''} style="${getPlayerRoleTextStyleAttr(state, player.id)} background-color: ${player.color}; color: #fff;">${formatPlayerLabel(player)}</option>
             `).join('')}
           </select>
         </label>
@@ -1751,8 +1854,8 @@ export function renderResolutionPanel(container, state, options = {}) {
         </div>
         ${inv?.strength?.length === 2 ? `<div class="war-estimate">Estimate: ${inv.strength[0]}-${inv.strength[1]}</div>` : ''}
         <div class="war-outcome">${
-          war.outcome === 'victory' ? '🏆 Victory! Reconquered: ' + (war.themesRecovered.join(', ') || 'none') :
-          war.outcome === 'defeat' ? '💀 Defeat. Lost: ' + (war.themesLost.join(', ') || 'none') :
+          war.outcome === 'victory' ? 'Victory. Reconquered: ' + renderProvinceBadgeList(state, war.themesRecovered) :
+          war.outcome === 'defeat' ? 'Defeat. Lost: ' + renderProvinceBadgeList(state, war.themesLost) :
           '⚖ Stalemate'
         }</div>
         ${war.reachedCPL ? '<div class="empire-falls">☠ CONSTANTINOPLE HAS FALLEN</div>' : ''}
@@ -1809,9 +1912,9 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
   if (war) {
     const invasionName = state.currentInvasion?.name || 'Invasion';
     const outcomeText = war.outcome === 'victory'
-      ? `Victory. Reconquered: ${war.themesRecovered.join(', ') || 'none'}`
+      ? `Victory. Reconquered: ${renderProvinceBadgeList(state, war.themesRecovered)}`
       : war.outcome === 'defeat'
-        ? `Defeat. Lost: ${war.themesLost.join(', ') || 'none'}`
+        ? `Defeat. Lost: ${renderProvinceBadgeList(state, war.themesLost)}`
         : 'Stalemate';
 
     html += `<div class="resolution-section">
