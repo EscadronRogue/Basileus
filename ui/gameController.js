@@ -220,12 +220,17 @@ export class GameController {
       return resolvePendingTitleReassignment(this.state, this.aiMeta, this);
     }
 
-    const titleAssignments = {};
-    panel.querySelectorAll('[data-title-assignment]').forEach((select) => {
-      titleAssignments[select.dataset.titleAssignment] = Number(select.value);
-    });
+    const assignmentControls = Array.from(panel.querySelectorAll('[data-title-assignment]'));
+    const titleAssignments = assignmentControls.length
+      ? Object.fromEntries(assignmentControls.map((select) => [
+        select.dataset.titleAssignment,
+        Number(select.value),
+      ]))
+      : null;
 
-    const result = resolvePendingTitleReassignment(this.state, this.aiMeta, this, titleAssignments);
+    const result = titleAssignments
+      ? resolvePendingTitleReassignment(this.state, this.aiMeta, this, titleAssignments)
+      : resolvePendingTitleReassignment(this.state, this.aiMeta, this);
     const errorEl = panel.querySelector('[data-role="title-reassignment-error"]');
     if (!result.ok && errorEl) errorEl.textContent = result.reason || '';
     else if (errorEl) errorEl.textContent = '';

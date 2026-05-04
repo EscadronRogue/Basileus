@@ -35,6 +35,7 @@
     "test:economy": "node engine/economy.test.js",
     "smoke:simulation": "node simulation/smoke-test.js",
     "test:multiplayer": "node multiplayer/verify.js",
-    "test": "npm run test:economy && npm run smoke:simulation && npm run test:multiplayer"
+    "test": "npm run test:economy && npm run test:ui && npm run smoke:simulation && npm run test:multiplayer",
+    "test:ui": "node ui/gameController.test.js"
   }
 }
