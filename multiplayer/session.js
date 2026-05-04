@@ -94,7 +94,6 @@ export class MultiplayerRoom {
     this.gameOverSent = false;
 
     this.ensureSession(hostSessionId, hostPlayerName);
-    this.claimSeat(hostSessionId, 0, hostPlayerName);
   }
 
   touch() {
@@ -127,6 +126,7 @@ export class MultiplayerRoom {
 
   canStartGame() {
     if (this.status !== ROOM_STATUS.LOBBY) return false;
+    if (!this.findSeatBySession(this.hostSessionId)) return false;
     return this.seats.every((seat) => seat.kind === 'ai' || seat.sessionId != null);
   }
 
@@ -183,7 +183,6 @@ export class MultiplayerRoom {
 
   releaseLobbySeat(sessionId) {
     assert(this.status === ROOM_STATUS.LOBBY, 'Seats can only be released in the lobby.');
-    assert(!this.isHostSession(sessionId), 'The host seat cannot be released.');
     const seat = this.findSeatBySession(sessionId);
     assert(seat, 'You do not control a seat.');
     seat.playerName = null;
@@ -348,7 +347,7 @@ export class MultiplayerRoom {
       roomCode: this.roomCode,
       status: this.status,
       yourSeatId: viewerSeatId,
-      hostSeatId: this.findSeatBySession(this.hostSessionId)?.seatId ?? 0,
+      hostSeatId: this.findSeatBySession(this.hostSessionId)?.seatId ?? null,
       state: serializePublicGameState(this.gameState, viewerSeatId),
     };
   }
@@ -557,7 +556,6 @@ export class MultiplayerRoom {
       if (message.type === 'leave_room') {
         if (this.status === ROOM_STATUS.LOBBY) {
           const seat = this.releaseLobbySeat(sessionId);
-          this.connections.get(sessionId)?.close();
           this.finalizeMutation(sessionId, requestId, null, { action: message.type, seatId: seat.seatId });
           return;
         }

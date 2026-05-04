@@ -109,12 +109,28 @@ async function requestJson(path, payload) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 404 && String(path).startsWith('/api/rooms')) {
-      throw new Error('This server does not have the multiplayer backend yet. Stop the current local server and start it again.');
-    }
-    throw new Error(body?.error || 'Request failed.');
+    const message = response.status === 404 && String(path).startsWith('/api/rooms')
+      ? 'This server does not have the multiplayer backend yet. Stop the current local server and start it again.'
+      : body?.error || 'Request failed.';
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return body;
+}
+
+async function joinRoomPayload(roomCode, playerName, stored) {
+  try {
+    return await requestJson(`/api/rooms/${encodeURIComponent(roomCode)}/join`, {
+      playerName,
+    });
+  } catch (error) {
+    if (error?.status !== 409 || !stored?.seatToken) throw error;
+    return requestJson(`/api/rooms/${encodeURIComponent(roomCode)}/join`, {
+      playerName,
+      seatToken: stored.seatToken,
+    });
+  }
 }
 
 export async function launchMultiplayerClient(options = {}) {
@@ -132,10 +148,7 @@ export async function launchMultiplayerClient(options = {}) {
   const stored = roomCode ? getStoredMultiplayerSession(roomCode) : null;
 
   const payload = intent === 'join'
-    ? await requestJson(`/api/rooms/${encodeURIComponent(roomCode)}/join`, {
-      playerName,
-      seatToken: stored?.seatToken || '',
-    })
+    ? await joinRoomPayload(roomCode, playerName, stored)
     : await requestJson('/api/rooms', {
       playerName,
       config: options.config || {},
@@ -146,7 +159,7 @@ export async function launchMultiplayerClient(options = {}) {
     roomCode: payload.roomCode,
     playerName,
     sessionToken: payload.sessionToken,
-    seatToken: payload.seatToken || stored?.seatToken || '',
+    seatToken: payload.seatToken || '',
     roomSnapshot: payload.roomSnapshot || null,
   });
 
@@ -338,10 +351,8 @@ export class MultiplayerController {
 
     if (message.type === 'private_snapshot') {
       this.privateSnapshot = message;
-      if (message.seatToken) {
-        this.seatToken = message.seatToken;
-        this.persistSession();
-      }
+      this.seatToken = message.seatToken || '';
+      this.persistSession();
       this.render();
       return;
     }
@@ -499,6 +510,9 @@ export class MultiplayerController {
     const seats = this.roomSnapshot.seats || [];
     const config = this.roomSnapshot.config || {};
     const controlledSeatId = this.getControlledSeatId();
+    const previousCard = this.setupDialog.querySelector('.setup-card');
+    const previousDialogScrollTop = this.setupDialog.scrollTop;
+    const previousCardScrollTop = previousCard?.scrollTop ?? 0;
 
     this.setupDialog.style.display = 'flex';
     this.setupDialog.innerHTML = `
@@ -543,8 +557,8 @@ export class MultiplayerController {
                   <span class="setup-hint">${seat.isViewerSeat ? 'You' : (seat.playerName || (seat.kind === 'ai' ? 'AI-controlled' : 'Open human seat'))} - ${seat.status}</span>
                 </div>
                 <div class="multiplayer-seat-actions">
-                  ${seat.kind === 'human' && !seat.claimed ? `
-                    <button class="btn-start btn-claim-seat" data-seat-id="${seat.seatId}">Claim</button>
+                  ${seat.kind === 'human' && !seat.claimed && controlledSeatId == null ? `
+                    <button class="btn-start btn-claim-seat" type="button" data-seat-id="${seat.seatId}">Claim</button>
                   ` : ''}
                   ${isHost && !seat.claimed ? `
                     <button class="btn-secondary-link btn-seat-kind" type="button" data-seat-id="${seat.seatId}" data-kind="${seat.kind === 'ai' ? 'human' : 'ai'}">
@@ -558,11 +572,20 @@ export class MultiplayerController {
           </div>
         </div>
         <div class="setup-actions">
-          ${isHost ? `<button class="btn-start" id="btnStartRoom" ${this.roomSnapshot.canStart ? '' : 'disabled'}>Start Match</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
-          <button class="btn-secondary-link" type="button" id="btnLeaveRoom">${controlledSeatId != null && !isHost ? 'Leave Seat' : 'Close Connection'}</button>
+          ${isHost && controlledSeatId == null ? '<span class="setup-hint">Claim one human seat before starting the match.</span>' : ''}
+          ${isHost ? `<button class="btn-start" type="button" id="btnStartRoom" ${this.roomSnapshot.canStart ? '' : 'disabled'}>Start Match</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
+          <button class="btn-secondary-link" type="button" id="btnLeaveRoom">${controlledSeatId != null ? 'Leave Seat' : 'Close Connection'}</button>
         </div>
       </div>
     `;
+
+    const restoreLobbyScroll = () => {
+      this.setupDialog.scrollTop = previousDialogScrollTop;
+      const nextCard = this.setupDialog.querySelector('.setup-card');
+      if (nextCard) nextCard.scrollTop = previousCardScrollTop;
+    };
+    restoreLobbyScroll();
+    window.requestAnimationFrame?.(restoreLobbyScroll);
 
     this.setupDialog.querySelectorAll('.btn-claim-seat').forEach((button) => {
       button.addEventListener('click', () => {
@@ -590,9 +613,9 @@ export class MultiplayerController {
     });
 
     this.setupDialog.querySelector('#btnLeaveRoom')?.addEventListener('click', () => {
-      if (!isHost && controlledSeatId != null) {
+      if (controlledSeatId != null) {
         this.send('leave_room');
-        this.clearSession();
+        return;
       }
       this.disconnect();
       window.location.reload();

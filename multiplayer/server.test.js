@@ -134,6 +134,9 @@ async function createStartedThreePlayerRoom(t) {
     },
   });
 
+  assert.equal(createPayload.claimResult, null);
+  assert.equal(createPayload.seatToken, null);
+
   const hostSocket = await connectSocket(instance.url, {
     roomCode: createPayload.roomCode,
     sessionToken: createPayload.sessionToken,
@@ -141,9 +144,20 @@ async function createStartedThreePlayerRoom(t) {
     seatToken: createPayload.seatToken,
   });
 
+  hostSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-host',
+    seatId: 0,
+    playerName: 'Host',
+  });
+  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-host');
+  const hostPrivate = await hostSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
+
   const joinPayload = await joinRoom(instance.url, createPayload.roomCode, {
     playerName: 'Guest',
   });
+  assert.equal(joinPayload.claimResult, null);
+  assert.equal(joinPayload.seatToken, null);
 
   const guestSocket = await connectSocket(instance.url, {
     roomCode: joinPayload.roomCode,
@@ -183,7 +197,7 @@ async function createStartedThreePlayerRoom(t) {
     host: {
       socket: hostSocket,
       sessionToken: createPayload.sessionToken,
-      seatToken: createPayload.seatToken,
+      seatToken: hostPrivate.seatToken,
       game: hostGame,
     },
     guest: {
@@ -205,6 +219,9 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
       seed: 'room-seed',
     },
   });
+  assert.equal(created.claimResult, null);
+  assert.equal(created.seatToken, null);
+
   const hostSocket = await connectSocket(instance.url, {
     roomCode: created.roomCode,
     sessionToken: created.sessionToken,
@@ -219,9 +236,20 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
   const earlyReject = await hostSocket.waitFor((message) => message.type === 'action_rejected' && message.requestId === 'too-early');
   assert.match(earlyReject.reason, /claimed/i);
 
+  hostSocket.send({
+    type: 'claim_seat',
+    requestId: 'host-claim',
+    seatId: 0,
+    playerName: 'Host',
+  });
+  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'host-claim');
+
   const joined = await joinRoom(instance.url, created.roomCode, {
     playerName: 'Guest',
   });
+  assert.equal(joined.claimResult, null);
+  assert.equal(joined.seatToken, null);
+
   const guestSocket = await connectSocket(instance.url, {
     roomCode: joined.roomCode,
     sessionToken: joined.sessionToken,

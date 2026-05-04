@@ -69,13 +69,12 @@ export class MultiplayerRoomManager {
       config,
     });
     this.rooms.set(room.roomCode, room);
-    const hostSeat = room.findSeatBySession(sessionToken);
 
     return {
       room,
       sessionToken,
-      seatToken: hostSeat?.seatToken ?? null,
-      claimResult: hostSeat ? { seatId: hostSeat.seatId } : null,
+      seatToken: null,
+      claimResult: null,
     };
   }
 
