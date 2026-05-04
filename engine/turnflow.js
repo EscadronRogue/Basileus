@@ -8,7 +8,6 @@ import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './ac
 import { recordHistoryEvent } from './history.js';
 import { rollInvasionStrength, getPlayer, formatPlayerLabel } from './state.js';
 import { MAJOR_TITLES } from '../data/titles.js';
-import { getInvasionOriginLabel } from '../data/mapPoints.js';
 
 export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
 
@@ -103,7 +102,6 @@ export function phaseInvasion(state) {
 
   state.currentInvasion = state.invasionDeck.shift();
   state.invasionStrength = 0; // Will be rolled at resolution
-  const originLabel = getInvasionOriginLabel(state.currentInvasion);
   state.log.push({
     type: 'invasion',
     invader: state.currentInvasion.name,
@@ -113,12 +111,9 @@ export function phaseInvasion(state) {
   recordHistoryEvent(state, {
     category: 'system',
     type: 'invasion_drawn',
-    summary: `Round ${state.round} begins with the ${state.currentInvasion.name} invasion${originLabel ? ` from ${originLabel}` : ''}.`,
+    summary: `Round ${state.round} begins with the ${state.currentInvasion.name} invasion.`,
     details: {
       invader: state.currentInvasion.name,
-      originLabel,
-      originProfileId: state.currentInvasion.originProfileId || null,
-      entryTheme: state.currentInvasion.entryTheme || state.currentInvasion.route?.[0] || null,
       strengthRange: state.currentInvasion.strength,
       route: state.currentInvasion.route.slice(),
     },
@@ -322,7 +317,6 @@ export function phaseResolution(state) {
           : `The empire fights the ${invasion.name} to a stalemate.`,
       details: {
         invader: invasion.name,
-        originLabel: getInvasionOriginLabel(invasion),
         estimatedStrengthRange: invasion.strength.slice(),
         invaderStrength: rolled,
         frontierTroops: totalFrontier,

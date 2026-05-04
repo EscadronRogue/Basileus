@@ -49,15 +49,6 @@ function renderThemeChoiceControl(state, themes, inputId, selectedId, options = 
 // Court titles whose levies are locked to the capital.
 const CAPITAL_LOCKED_OFFICE_KEYS = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function isCapitalLockedOfficeKey(officeKey) {
   return CAPITAL_LOCKED_OFFICE_KEYS.has(officeKey);
 }
@@ -595,10 +586,7 @@ function renderHistoryDetails(state, event) {
   }
 
   if (event.type === 'invasion_drawn') {
-    const origin = event.details.originLabel
-      ? `<div class="history-breakdown-note">Origin: ${escapeHtml(event.details.originLabel)}</div>`
-      : '';
-    return `${origin}<div class="history-breakdown-note province-note">Route: ${renderProvinceBadgeList(state, event.details.route)}</div>`;
+    return `<div class="history-breakdown-note province-note">Route: ${renderProvinceBadgeList(state, event.details.route)}</div>`;
   }
 
   return '';

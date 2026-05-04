@@ -2,7 +2,7 @@ import { PROVINCES } from '../data/provinces.js';
 import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
-import { getProvinceLabelPoint, resolveInvasionOriginPoint } from '../data/mapPoints.js';
+import { getMapPoint, getProvinceLabelPoint } from '../data/mapPoints.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const THREAT_HATCH_SPACING = 3.6;
@@ -564,7 +564,7 @@ export function drawInvasionRoute(invasion) {
   if (!invasion) return;
 
   const points = [];
-  const originPoint = resolveInvasionOriginPoint(invasion, provinceCentroids);
+  const originPoint = resolveInvasionOriginPoint(invasion);
   if (originPoint) points.push(originPoint);
 
   for (const provinceId of invasion.route) {
@@ -579,11 +579,9 @@ export function drawInvasionRoute(invasion) {
     pathData += ` L ${points[index].cx} ${points[index].cy}`;
   }
 
-  const invasionColor = getInvasionColor(invasion);
   const path = document.createElementNS(SVG_NS, 'path');
   path.setAttribute('d', pathData);
   path.setAttribute('class', 'invasion-route');
-  if (invasionColor) path.style.setProperty('--invasion-color', invasionColor);
   layer.appendChild(path);
 
   for (let index = 1; index < points.length; index += 1) {
@@ -592,34 +590,40 @@ export function drawInvasionRoute(invasion) {
     marker.setAttribute('cy', points[index].cy);
     marker.setAttribute('r', 0.8);
     marker.setAttribute('class', 'invasion-marker');
-    if (invasionColor) marker.style.setProperty('--invasion-color', invasionColor);
     layer.appendChild(marker);
   }
 
-  appendInvasionCartouche(layer, invasion, points[0], invasionColor);
+  appendInvasionCartouche(layer, invasion, points[0]);
+}
+
+function resolveInvasionOriginPoint(invasion) {
+  const point = getMapPoint(invasion?.originPointId);
+  if (point) return point;
+
+  const legacyPoint = invasion?.originPos;
+  if (legacyPoint) {
+    return {
+      cx: legacyPoint.cx * (297 / 1150),
+      cy: legacyPoint.cy * (210 / 560),
+    };
+  }
+
+  return provinceCentroids[invasion?.origin] || null;
 }
 
 function isSameMapPoint(a, b) {
   return Boolean(a && b && Math.hypot(a.cx - b.cx, a.cy - b.cy) < 0.01);
 }
 
-function getInvasionColor(invasion) {
-  const color = invasion?.color;
-  return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color : null;
-}
-
-function appendInvasionCartouche(layer, invasion, point, invasionColor = null) {
+function appendInvasionCartouche(layer, invasion, point) {
   if (!point) return;
 
   const strengthText = Array.isArray(invasion.strength) && invasion.strength.length === 2
     ? `Strength ${invasion.strength[0]}-${invasion.strength[1]}`
     : 'Strength ?';
   const nameText = invasion.name || 'Invasion';
-  const originText = point.originLabel || invasion.originLabel || null;
-  const originLineText = originText ? `from ${originText}` : '';
-  const longestLine = Math.max(nameText.length, strengthText.length, originLineText.length);
-  const width = Math.max(27, Math.min(47, longestLine * 1.32 + 7));
-  const height = originText ? 12.4 : 9.6;
+  const width = Math.max(26, Math.min(44, Math.max(nameText.length, strengthText.length) * 1.45 + 7));
+  const height = 9.6;
   const cartoucheCenterX = point.cx + (Number(point.cartoucheDx) || 0);
   const cartoucheTopY = point.cy + (Number.isFinite(point.cartoucheDy) ? point.cartoucheDy : -7.3);
   const x = clampValue(cartoucheCenterX, (width / 2) + 1.2, 297 - (width / 2) - 1.2);
@@ -628,11 +632,6 @@ function appendInvasionCartouche(layer, invasion, point, invasionColor = null) {
   const group = document.createElementNS(SVG_NS, 'g');
   group.setAttribute('class', 'invasion-cartouche');
   group.setAttribute('transform', `translate(${x - (width / 2)} ${y})`);
-  if (invasionColor) group.style.setProperty('--invasion-color', invasionColor);
-
-  const title = document.createElementNS(SVG_NS, 'title');
-  title.textContent = originText ? `${nameText} invasion from ${originText}` : `${nameText} invasion`;
-  group.appendChild(title);
 
   const bg = document.createElementNS(SVG_NS, 'rect');
   bg.setAttribute('class', 'invasion-cartouche-bg');
@@ -655,23 +654,14 @@ function appendInvasionCartouche(layer, invasion, point, invasionColor = null) {
   const name = document.createElementNS(SVG_NS, 'text');
   name.setAttribute('class', 'invasion-cartouche-name');
   name.setAttribute('x', (width / 2).toFixed(2));
-  name.setAttribute('y', originText ? '3.35' : '3.75');
+  name.setAttribute('y', '3.75');
   name.textContent = nameText;
   group.appendChild(name);
-
-  if (originText) {
-    const origin = document.createElementNS(SVG_NS, 'text');
-    origin.setAttribute('class', 'invasion-cartouche-origin');
-    origin.setAttribute('x', (width / 2).toFixed(2));
-    origin.setAttribute('y', '6.55');
-    origin.textContent = originLineText;
-    group.appendChild(origin);
-  }
 
   const strength = document.createElementNS(SVG_NS, 'text');
   strength.setAttribute('class', 'invasion-cartouche-strength');
   strength.setAttribute('x', (width / 2).toFixed(2));
-  strength.setAttribute('y', originText ? '9.65' : '7.15');
+  strength.setAttribute('y', '7.15');
   strength.textContent = strengthText;
   group.appendChild(strength);
 
