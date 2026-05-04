@@ -1,42 +1,28 @@
-import { recordHistoryEvent } from '../engine/history.js';
 import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
 import {
   advanceToNextInteractivePhase,
   allOrdersSubmitted,
-  isCourtComplete,
   phaseCleanup,
-  phaseOrders,
   phaseResolution,
 } from '../engine/turnflow.js';
-import {
-  applyCoupTitleReassignment,
-  buyTheme,
-  dismissProfessional,
-  giftToChurch,
-  grantTaxExemption,
-  recruitProfessional,
-  appointStrategos,
-  appointBishop,
-  appointCourtTitle,
-  revokeMajorTitle,
-  revokeMinorTitle,
-  revokeTheme,
-  revokeTaxExemption,
-  revokeCourtTitle,
-  canPayRevocationCost,
-  validateMajorTitleAssignments,
-} from '../engine/actions.js';
 import { getMercenaryOrderCost } from '../engine/rules.js';
 import {
-  applyAIOrderCosts,
+  applyCourtAction,
+  applyManualTitleReassignment,
+  confirmCourt,
+  submitHumanOrders,
+} from '../engine/commands.js';
+import {
+  autoResolveUnavailableHumanAppointments as autoResolveCourtForPlayer,
+  maybeAdvanceCourt,
+  processAiFlow,
+} from '../engine/runtime.js';
+import {
   applyPlannedAiTitleAssignment,
-  buildAIOrders,
   createAIMeta,
   handlePostResolutionAI,
   invalidateRoundContext,
-  isAIPlayer,
   observeCourtAction,
-  runAICourtAutomation,
 } from '../ai/brain.js';
 import { normalizeAiProfile } from '../ai/profileStore.js';
 
@@ -130,10 +116,6 @@ function getSeatStatus(seat) {
   return seat.connected ? 'connected' : 'disconnected';
 }
 
-function getMercenaryCost(mercenaries = []) {
-  return getMercenaryOrderCost(mercenaries);
-}
-
 function serializeCourtActions(courtActions = null) {
   if (!courtActions) return null;
   return {
@@ -155,7 +137,7 @@ function serializeCurrentInvasion(invasion) {
 function serializePlayersForViewer(state, viewerSeatId) {
   return state.players.map((player) => {
     const hiddenSpend = state.phase === 'orders' && viewerSeatId !== player.id
-      ? getMercenaryCost(state.allOrders?.[player.id]?.mercenaries || [])
+      ? getMercenaryOrderCost(state.allOrders?.[player.id]?.mercenaries || [])
       : 0;
     return {
       ...clonePlain(player),
@@ -264,62 +246,10 @@ function sanitizeOrdersForPlayer(state, playerId, rawOrders = {}) {
   const candidate = toInt(rawOrders?.candidate, playerId);
   assert(candidate >= 0 && candidate < state.players.length, 'Choose a valid Basileus candidate.');
 
-  const totalCost = getMercenaryCost(mercenaries);
+  const totalCost = getMercenaryOrderCost(mercenaries);
   assert(player.gold >= totalCost, `Need ${totalCost}g, have ${player.gold}g.`);
 
   return { deployments, mercenaries, candidate, totalCost };
-}
-
-function autoResolveUnavailableHumanAppointments(state, playerId) {
-  if (state.phase !== 'court') return;
-  const player = getPlayer(state, playerId);
-  if (!player) return;
-
-  const hasOpenStrategos = (region = null) => Object.values(state.themes).some((theme) =>
-    !theme.occupied &&
-    theme.id !== 'CPL' &&
-    theme.owner !== 'church' &&
-    theme.strategos === null &&
-    (region == null || theme.region === region)
-  );
-  const hasOpenBishop = () => Object.values(state.themes).some((theme) =>
-    !theme.occupied &&
-    theme.id !== 'CPL' &&
-    !theme.bishopIsDonor &&
-    theme.bishop === null
-  );
-
-  if (playerId === state.basileusId && !state.courtActions?.basileusAppointed) {
-    const canAppointMinorTitle =
-      state.empress === null ||
-      state.chiefEunuchs === null ||
-      hasOpenStrategos() ||
-      hasOpenBishop();
-    if (!canAppointMinorTitle) {
-      state.courtActions.basileusAppointed = true;
-    }
-  }
-
-  if (player.majorTitles.includes('DOM_EAST') && !state.courtActions?.domesticEastAppointed && !hasOpenStrategos('east')) {
-    state.courtActions.domesticEastAppointed = true;
-    state.courtActions.DOM_EAST_appointed = true;
-  }
-  if (player.majorTitles.includes('DOM_WEST') && !state.courtActions?.domesticWestAppointed && !hasOpenStrategos('west')) {
-    state.courtActions.domesticWestAppointed = true;
-    state.courtActions.DOM_WEST_appointed = true;
-  }
-  if (player.majorTitles.includes('ADMIRAL') && !state.courtActions?.admiralAppointed && !hasOpenStrategos('sea')) {
-    state.courtActions.admiralAppointed = true;
-    state.courtActions.ADMIRAL_appointed = true;
-  }
-  if (player.majorTitles.includes('PATRIARCH') && !state.courtActions?.patriarchAppointed && !hasOpenBishop()) {
-    state.courtActions.patriarchAppointed = true;
-  }
-}
-
-function playerName(state, playerId) {
-  const player = getPlayer(state, playerId);
-  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
 }
 
 function createSeatSummary(room, seat, viewerSessionId) {
@@ -723,21 +653,12 @@ export class MultiplayerRoom {
     else this.sendToSession(sessionId, this.createPrivateSnapshotFor(sessionId));
   }
 
-  maybeAdvanceCourt() {
-    if (this.gameState && isCourtComplete(this.gameState)) {
-      phaseOrders(this.gameState);
-      if (this.aiMeta) invalidateRoundContext(this.aiMeta);
-    }
-  }
-
   autoResolveUnavailableHumanAppointments() {
-    if (!this.gameState || this.gameState.phase !== 'court') return;
+    if (!this.gameState) return;
     for (const seat of this.seats) {
-      if (seat.kind === 'human') {
-        autoResolveUnavailableHumanAppointments(this.gameState, seat.seatId);
-      }
+      if (seat.kind === 'human') autoResolveCourtForPlayer(this.gameState, seat.seatId);
     }
-    this.maybeAdvanceCourt();
+    maybeAdvanceCourt(this.gameState, this.aiMeta);
   }
 
   afterHumanCourtAction(observation = null, options = {}) {
@@ -751,61 +672,12 @@ export class MultiplayerRoom {
   processAiFlow(options = {}) {
     if (!this.aiMeta || !this.gameState || this.aiBusy) return;
     this.aiBusy = true;
-    const courtMode = options.courtMode || 'finish';
-
     try {
-      let safety = 0;
-      while (safety < 24) {
-        safety += 1;
-
-        if (this.gameState.gameOver || this.gameState.phase === 'scoring' || this.gameState.phase === 'resolution') {
-          break;
-        }
-
-        if (this.gameState.phase === 'court') {
-          this.autoResolveUnavailableHumanAppointments();
-          runAICourtAutomation(this.gameState, this.aiMeta, { mode: courtMode });
-          this.autoResolveUnavailableHumanAppointments();
-          if (isCourtComplete(this.gameState)) {
-            phaseOrders(this.gameState);
-            invalidateRoundContext(this.aiMeta);
-            continue;
-          }
-          break;
-        }
-
-        if (this.gameState.phase === 'orders') {
-          for (const seat of this.seats) {
-            if (seat.kind !== 'ai') continue;
-            if (this.gameState.allOrders[seat.seatId]) continue;
-            if (!isAIPlayer(this.aiMeta, seat.seatId)) continue;
-
-            const orders = buildAIOrders(this.gameState, this.aiMeta, seat.seatId);
-            applyAIOrderCosts(this.gameState, this.aiMeta, seat.seatId, orders);
-            this.gameState.allOrders[seat.seatId] = orders;
-            recordHistoryEvent(this.gameState, {
-              category: 'orders',
-              type: 'orders_submitted',
-              actorId: seat.seatId,
-              actorAi: true,
-              summary: `${playerName(this.gameState, seat.seatId)} seals secret orders.`,
-            });
-          }
-
-          if (allOrdersSubmitted(this.gameState)) {
-            const previousBasileusId = this.gameState.basileusId;
-            phaseResolution(this.gameState);
-            const aftermath = handlePostResolutionAI(this.gameState, this.aiMeta, {
-              previousBasileusId,
-              autoApplyTitleAssignments: false,
-            });
-            this.pendingAiTitleAssignment = aftermath.plannedAssignment;
-          }
-          break;
-        }
-
-        advanceToNextInteractivePhase(this.gameState);
-      }
+      const result = processAiFlow(this.gameState, this.aiMeta, {
+        ...options,
+        pendingAiTitleAssignment: this.pendingAiTitleAssignment,
+      });
+      if (result) this.pendingAiTitleAssignment = result.pendingAiTitleAssignment;
     } finally {
       this.aiBusy = false;
       this.refreshStatusFromGame();
@@ -821,165 +693,6 @@ export class MultiplayerRoom {
     return seat;
   }
 
-  applyCourtAction(playerId, payload = {}) {
-    const state = this.gameState;
-    const action = String(payload.action || '').trim();
-    let observation = null;
-
-    if (action === 'buy') {
-      const result = buyTheme(state, playerId, payload.themeId);
-      assert(result?.ok, result?.reason || 'Could not buy that theme.');
-      return { observation };
-    }
-
-    if (action === 'gift') {
-      const result = giftToChurch(state, playerId, payload.themeId);
-      assert(result?.ok, result?.reason || 'Could not gift that theme.');
-      return { observation };
-    }
-
-    if (action === 'exempt') {
-      const result = grantTaxExemption(state, playerId, payload.themeId);
-      assert(result?.ok, result?.reason || 'Could not buy that tax exemption.');
-      return { observation };
-    }
-
-    if (action === 'recruit') {
-      const result = recruitProfessional(state, playerId, payload.office);
-      assert(result?.ok, result?.reason || 'Could not recruit for that office.');
-      return { observation };
-    }
-
-    if (action === 'dismiss') {
-      const result = dismissProfessional(state, playerId, payload.office, payload.count);
-      assert(result?.ok, result?.reason || 'Could not dismiss that many troops.');
-      return { observation };
-    }
-
-    if (action === 'basileus-appoint') {
-      assert(playerId === state.basileusId, 'Only the Basileus can use this appointment.');
-      assert(!state.courtActions?.basileusAppointed, 'The Basileus already made the mandatory appointment.');
-
-      const titleType = payload.titleType;
-      const appointeeId = toInt(payload.appointeeId, -1);
-      const themeId = payload.themeId || null;
-      let previousHolderId = null;
-      if (titleType === 'EMPRESS') previousHolderId = state.empress;
-      if (titleType === 'CHIEF_EUNUCHS') previousHolderId = state.chiefEunuchs;
-      if (titleType === 'STRATEGOS' && themeId) previousHolderId = state.themes[themeId]?.strategos ?? null;
-      if (titleType === 'BISHOP' && themeId) previousHolderId = state.themes[themeId]?.bishop ?? null;
-
-      let result = null;
-      if (titleType === 'EMPRESS' || titleType === 'CHIEF_EUNUCHS') {
-        result = appointCourtTitle(state, titleType, appointeeId);
-      } else if (titleType === 'STRATEGOS' && themeId) {
-        result = appointStrategos(state, state.basileusId, themeId, appointeeId);
-      } else if (titleType === 'BISHOP' && themeId) {
-        result = appointBishop(state, state.basileusId, themeId, appointeeId);
-      }
-
-      assert(result?.ok, result?.reason || 'Could not complete that appointment.');
-      state.courtActions.basileusAppointed = true;
-      observation = {
-        type: 'appointment',
-        actorId: state.basileusId,
-        appointeeId,
-        previousHolderId,
-        value: (titleType === 'EMPRESS' || titleType === 'CHIEF_EUNUCHS') ? 1.2 : 1.0,
-      };
-      return { observation };
-    }
-
-    if (action === 'appoint-strategos') {
-      const titleKey = String(payload.titleKey || '').trim();
-      const themeId = String(payload.themeId || '').trim();
-      const appointeeId = toInt(payload.appointeeId, -1);
-      const theme = state.themes[themeId];
-      const region = { DOM_EAST: 'east', DOM_WEST: 'west', ADMIRAL: 'sea' }[titleKey];
-      assert(theme && theme.region === region, 'Choose a valid strategos theme.');
-
-      const previousHolderId = theme.strategos;
-      const result = appointStrategos(state, playerId, themeId, appointeeId);
-      assert(result?.ok, result?.reason || 'Could not appoint that strategos.');
-
-      state.courtActions[`${titleKey}_appointed`] = true;
-      if (titleKey === 'DOM_EAST') state.courtActions.domesticEastAppointed = true;
-      if (titleKey === 'DOM_WEST') state.courtActions.domesticWestAppointed = true;
-      if (titleKey === 'ADMIRAL') state.courtActions.admiralAppointed = true;
-      observation = {
-        type: 'appointment',
-        actorId: playerId,
-        appointeeId,
-        previousHolderId,
-        value: 0.95,
-      };
-      return { observation };
-    }
-
-    if (action === 'appoint-bishop') {
-      const themeId = String(payload.themeId || '').trim();
-      const appointeeId = toInt(payload.appointeeId, -1);
-      const previousHolderId = state.themes[themeId]?.bishop ?? null;
-      const result = appointBishop(state, playerId, themeId, appointeeId);
-      assert(result?.ok, result?.reason || 'Could not appoint that bishop.');
-
-      state.courtActions.patriarchAppointed = true;
-      observation = {
-        type: 'appointment',
-        actorId: playerId,
-        appointeeId,
-        previousHolderId,
-        value: 1.0,
-      };
-      return { observation };
-    }
-
-    if (action === 'revoke') {
-      assert(playerId === state.basileusId, 'Only the Basileus can revoke titles or land.');
-      const costCheck = canPayRevocationCost(state);
-      assert(costCheck.ok, `The Basileus needs ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (has ${costCheck.available || 0}).`);
-      const value = String(payload.value || '').trim();
-      const parts = value.split(':');
-      observation = { type: 'revocation', actorId: state.basileusId };
-
-      if (parts[0] === 'major') {
-        const revokedPlayerId = toInt(parts[1], -1);
-        const titleKey = parts[2];
-        const eligible = state.players.filter((candidate) => candidate.id !== state.basileusId && candidate.id !== revokedPlayerId);
-        assert(eligible.length > 0, 'No eligible recipient exists for that major office.');
-        const newHolderId = eligible[0].id;
-        const result = revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId);
-        assert(result?.ok, result?.reason || 'Could not revoke that major title.');
-        observation = { ...observation, targetPlayerId: revokedPlayerId, newHolderId };
-      } else if (parts[0] === 'minor') {
-        const theme = state.themes[parts[1]];
-        const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
-        const result = revokeMinorTitle(state, parts[1], parts[2]);
-        assert(result?.ok, result?.reason || 'Could not revoke that minor title.');
-        observation = { ...observation, targetPlayerId };
-      } else if (parts[0] === 'court') {
-        const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-        const result = revokeCourtTitle(state, parts[1]);
-        assert(result?.ok, result?.reason || 'Could not revoke that court title.');
-        observation = { ...observation, targetPlayerId };
-      } else if (parts[0] === 'exempt') {
-        const result = revokeTaxExemption(state, parts[1]);
-        assert(result?.ok, result?.reason || 'Could not revoke that tax exemption.');
-      } else if (parts[0] === 'theme') {
-        const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
-        const result = revokeTheme(state, parts[1]);
-        assert(result?.ok, result?.reason || 'Could not revoke that estate.');
-        observation = { ...observation, targetPlayerId };
-      } else {
-        throw new Error('Choose a valid revocation target.');
-      }
-
-      return { observation };
-    }
-
-    throw new Error('Unknown court action.');
-  }
-
   handleGameCommand(sessionId, message = {}) {
     const requestId = message.requestId || null;
     const previousPhase = this.gameState?.phase || null;
@@ -990,26 +703,19 @@ export class MultiplayerRoom {
         assert(this.gameState.phase === 'court', 'Court actions are not available right now.');
         assert(!this.gameState.courtActions?.playerConfirmed?.has(seat.seatId), 'You already confirmed court actions this round.');
         this.autoResolveUnavailableHumanAppointments();
-        const result = this.applyCourtAction(seat.seatId, message);
-        this.maybeAdvanceCourt();
-        this.afterHumanCourtAction(result.observation, { courtMode: 'react' });
+        const result = applyCourtAction(this.gameState, seat.seatId, message);
+        assert(result.ok, result.reason);
+        maybeAdvanceCourt(this.gameState, this.aiMeta);
+        this.afterHumanCourtAction(result.observation || null, { courtMode: 'react' });
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
 
       if (message.type === 'confirm_court') {
         const seat = this.requireHumanSeatForSession(sessionId);
-        assert(this.gameState.phase === 'court', 'Court confirmation is not available right now.');
-        assert(!this.gameState.courtActions?.playerConfirmed?.has(seat.seatId), 'Court actions already confirmed.');
-        this.gameState.courtActions.playerConfirmed.add(seat.seatId);
-        recordHistoryEvent(this.gameState, {
-          category: 'court',
-          type: 'court_confirmed',
-          actorId: seat.seatId,
-          actorAi: false,
-          summary: `${playerName(this.gameState, seat.seatId)} ends court business for the round.`,
-        });
-        this.maybeAdvanceCourt();
+        const result = confirmCourt(this.gameState, seat.seatId);
+        assert(result.ok, result.reason);
+        maybeAdvanceCourt(this.gameState, this.aiMeta);
         this.afterHumanCourtAction(null, { courtMode: 'finish' });
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
@@ -1017,18 +723,9 @@ export class MultiplayerRoom {
 
       if (message.type === 'submit_orders') {
         const seat = this.requireHumanSeatForSession(sessionId);
-        assert(this.gameState.phase === 'orders', 'Orders cannot be submitted right now.');
-        assert(!this.gameState.allOrders[seat.seatId], 'Orders are already locked for this seat.');
-        const { deployments, mercenaries, candidate, totalCost } = sanitizeOrdersForPlayer(this.gameState, seat.seatId, message.orders);
-        getPlayer(this.gameState, seat.seatId).gold -= totalCost;
-        this.gameState.allOrders[seat.seatId] = { deployments, mercenaries, candidate };
-        recordHistoryEvent(this.gameState, {
-          category: 'orders',
-          type: 'orders_submitted',
-          actorId: seat.seatId,
-          actorAi: false,
-          summary: `${playerName(this.gameState, seat.seatId)} seals secret orders.`,
-        });
+        const sanitized = sanitizeOrdersForPlayer(this.gameState, seat.seatId, message.orders);
+        const submitResult = submitHumanOrders(this.gameState, seat.seatId, sanitized);
+        assert(submitResult.ok, submitResult.reason);
         this.processAiFlow();
         if (allOrdersSubmitted(this.gameState) && this.gameState.phase === 'orders') {
           const previousBasileusId = this.gameState.basileusId;
@@ -1049,27 +746,9 @@ export class MultiplayerRoom {
         assert(this.gameState.nextBasileusId !== this.gameState.basileusId, 'No new Basileus needs to reassign titles.');
         assert(seat.seatId === this.gameState.nextBasileusId, 'Only the new Basileus may assign major titles.');
         const assignments = message.assignments && typeof message.assignments === 'object' ? message.assignments : {};
-        const validation = validateMajorTitleAssignments(this.gameState, seat.seatId, assignments);
-        assert(validation?.ok, validation?.reason || 'Invalid major title assignments.');
-        const previousAssignments = {};
-        for (const player of this.gameState.players) {
-          for (const titleKey of player.majorTitles) {
-            previousAssignments[titleKey] = player.id;
-          }
-        }
-        applyCoupTitleReassignment(this.gameState, seat.seatId, assignments);
+        const result = applyManualTitleReassignment(this.gameState, this.aiMeta, seat.seatId, assignments);
+        assert(result.ok, result.reason);
         this.pendingAiTitleAssignment = null;
-        if (this.aiMeta) {
-          for (const [titleKey, appointeeId] of Object.entries(assignments)) {
-            observeCourtAction(this.gameState, this.aiMeta, {
-              type: 'appointment',
-              actorId: seat.seatId,
-              appointeeId: Number(appointeeId),
-              previousHolderId: previousAssignments[titleKey] ?? null,
-              value: 1.25,
-            });
-          }
-        }
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
@@ -1077,9 +756,9 @@ export class MultiplayerRoom {
       if (message.type === 'continue_after_resolution') {
         assert(this.isHostSession(sessionId), 'Only the host can advance past resolution.');
         assert(this.gameState.phase === 'resolution', 'Continue is only available during resolution.');
-        const needsHumanReassignment = this.gameState.nextBasileusId !== this.gameState.basileusId &&
-          this.seats[this.gameState.nextBasileusId]?.kind === 'human' &&
-          this.pendingAiTitleAssignment == null;
+        const needsHumanReassignment = this.gameState.nextBasileusId !== this.gameState.basileusId
+          && this.seats[this.gameState.nextBasileusId]?.kind === 'human'
+          && this.pendingAiTitleAssignment == null;
         assert(!needsHumanReassignment, 'The new Basileus must reassign major titles first.');
         if (this.pendingAiTitleAssignment && this.aiMeta) {
           applyPlannedAiTitleAssignment(

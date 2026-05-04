@@ -1,31 +1,17 @@
 import { createServer } from 'node:http';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
   attachMultiplayerSocketServer,
   closeMultiplayerConnections,
-  createMultiplayerError,
   handleMultiplayerApiRequest,
   MultiplayerRoomManager,
 } from './service.js';
+import { closeServer, jsonResponse, listenServer, serveStatic } from './httpUtils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
-
-const MIME_TYPES = new Map([
-  ['.html', 'text/html; charset=utf-8'],
-  ['.js', 'text/javascript; charset=utf-8'],
-  ['.css', 'text/css; charset=utf-8'],
-  ['.json', 'application/json; charset=utf-8'],
-  ['.svg', 'image/svg+xml'],
-  ['.png', 'image/png'],
-  ['.jpg', 'image/jpeg'],
-  ['.jpeg', 'image/jpeg'],
-  ['.ico', 'image/x-icon'],
-]);
 
 // Origins allowed to talk to the API/WebSocket from a browser. Localhost on any
 // port always works (so the local dev server keeps functioning), and the
@@ -87,40 +73,6 @@ function applyCorsHeaders(req, res) {
   return Boolean(allowedOrigin);
 }
 
-function jsonResponse(res, statusCode, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(statusCode, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(body),
-    'cache-control': 'no-store',
-  });
-  res.end(body);
-}
-
-function serveStaticFile(res, filePath, fileInfo) {
-  res.writeHead(200, {
-    'content-type': MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream',
-    'content-length': fileInfo.size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(filePath).pipe(res);
-}
-
-async function serveStatic(req, res, url) {
-  let pathname = decodeURIComponent(url.pathname);
-  if (pathname === '/') pathname = '/index.html';
-  const filePath = resolve(projectRoot, `.${pathname}`);
-  const relativePath = relative(projectRoot, filePath);
-  if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
-    throw createMultiplayerError(403, 'Forbidden path.');
-  }
-  const fileInfo = await stat(filePath);
-  if (!fileInfo.isFile()) {
-    throw createMultiplayerError(404, 'Not found.');
-  }
-  serveStaticFile(res, filePath, fileInfo);
-}
-
 export async function startMultiplayerServer(options = {}) {
   const manager = new MultiplayerRoomManager();
   const host = options.host || '127.0.0.1';
@@ -149,7 +101,7 @@ export async function startMultiplayerServer(options = {}) {
         jsonResponse(res, result.statusCode, result.payload);
         return;
       }
-      await serveStatic(req, res, url);
+      await serveStatic(req, res, url, projectRoot);
     } catch (error) {
       jsonResponse(res, error?.statusCode || 500, {
         error: error?.message || 'Internal server error.',
@@ -164,9 +116,7 @@ export async function startMultiplayerServer(options = {}) {
     },
   });
 
-  await new Promise((resolveReady) => {
-    server.listen(port, host, resolveReady);
-  });
+  await listenServer(server, port, host);
 
   const address = server.address();
   const resolvedPort = typeof address === 'object' && address ? address.port : port;
@@ -179,13 +129,7 @@ export async function startMultiplayerServer(options = {}) {
     url: `http://${host}:${resolvedPort}/`,
     close: async () => {
       closeMultiplayerConnections(manager);
-
-      await new Promise((resolveClose, rejectClose) => {
-        server.close((error) => {
-          if (error) rejectClose(error);
-          else resolveClose();
-        });
-      });
+      await closeServer(server);
     },
   };
 }

@@ -1,7 +1,6 @@
 import { createServer } from 'node:http';
-import { createReadStream } from 'node:fs';
-import { mkdir, readFile, stat } from 'node:fs/promises';
-import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
+import { mkdir, readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -13,34 +12,13 @@ import {
   handleMultiplayerApiRequest,
   MultiplayerRoomManager,
 } from '../multiplayer/service.js';
+import { closeServer, jsonResponse, listenServer, serveStatic as serveStaticFile } from '../multiplayer/httpUtils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 const runsDir = resolve(projectRoot, '.training-runs');
 
 const jobs = new Map();
-
-const MIME_TYPES = new Map([
-  ['.html', 'text/html; charset=utf-8'],
-  ['.js', 'text/javascript; charset=utf-8'],
-  ['.css', 'text/css; charset=utf-8'],
-  ['.json', 'application/json; charset=utf-8'],
-  ['.svg', 'image/svg+xml'],
-  ['.png', 'image/png'],
-  ['.jpg', 'image/jpeg'],
-  ['.jpeg', 'image/jpeg'],
-  ['.ico', 'image/x-icon'],
-]);
-
-function jsonResponse(res, statusCode, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(statusCode, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(body),
-    'cache-control': 'no-store',
-  });
-  res.end(body);
-}
 
 function readRequestJson(req) {
   return new Promise((resolveRequest, rejectRequest) => {
@@ -219,25 +197,10 @@ async function createTrainingJob(config) {
 }
 
 async function serveStatic(req, res, url) {
-  let pathname = decodeURIComponent(url.pathname);
-  if (pathname === '/') pathname = '/simulator.html';
-  const filePath = resolve(projectRoot, `.${pathname}`);
-  const relativePath = relative(projectRoot, filePath);
-  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
-    jsonResponse(res, 403, { error: "Forbidden path." });
-    return;
-  }
   try {
-    const fileInfo = await stat(filePath);
-    if (!fileInfo.isFile()) throw new Error('Not a file.');
-    res.writeHead(200, {
-      'content-type': MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream',
-      'content-length': fileInfo.size,
-      'cache-control': 'no-store',
-    });
-    createReadStream(filePath).pipe(res);
-  } catch {
-    jsonResponse(res, 404, { error: 'Not found.' });
+    await serveStaticFile(req, res, url, projectRoot, { indexFile: 'simulator.html' });
+  } catch (error) {
+    jsonResponse(res, error?.statusCode || 404, { error: error?.message || 'Not found.' });
   }
 }
 
@@ -389,9 +352,7 @@ export async function startTrainingServer(options = {}) {
 
   attachMultiplayerSocketServer(server, multiplayerManager);
 
-  await new Promise((resolveReady) => {
-    server.listen(port, host, resolveReady);
-  });
+  await listenServer(server, port, host);
 
   const address = server.address();
   const resolvedPort = typeof address === 'object' && address ? address.port : port;
@@ -416,12 +377,7 @@ export async function startTrainingServer(options = {}) {
     url: `${baseUrl}/`,
     close: async () => {
       closeMultiplayerConnections(multiplayerManager);
-      await new Promise((resolveClose, rejectClose) => {
-        server.close((error) => {
-          if (error) rejectClose(error);
-          else resolveClose();
-        });
-      });
+      await closeServer(server);
     },
   };
 }

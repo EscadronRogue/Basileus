@@ -1,48 +1,29 @@
-import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
+import { createGameState, getPlayer } from '../engine/state.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
-import { recordHistoryEvent } from '../engine/history.js';
 import { runAdministration } from '../engine/cascade.js';
 import {
   advanceToNextInteractivePhase,
   allOrdersSubmitted,
-  isCourtComplete,
   phaseCleanup,
-  phaseOrders,
   phaseResolution,
-  submitOrders,
 } from '../engine/turnflow.js';
+import { computeFullWealth } from '../engine/actions.js';
 import {
-  applyCoupTitleReassignment,
-  buyTheme,
-  computeFullWealth,
-  dismissProfessional,
-  giftToChurch,
-  grantTaxExemption,
-  hireMercenaries,
-  recruitProfessional,
-  appointStrategos,
-  appointBishop,
-  appointCourtTitle,
-  revokeMajorTitle,
-  revokeMinorTitle,
-  revokeTheme,
-  revokeTaxExemption,
-  revokeCourtTitle,
-  canPayRevocationCost,
-  getNextRevocationCost,
-  validateMajorTitleAssignments,
-} from '../engine/actions.js';
-import { getMercenaryOrderCost } from '../engine/rules.js';
+  applyCourtAction,
+  applyManualTitleReassignment,
+  confirmCourt,
+  submitHumanOrders,
+} from '../engine/commands.js';
 import {
-  applyAIOrderCosts,
+  autoResolveUnavailableHumanAppointments,
+  maybeAdvanceCourt,
+  processAiFlow,
+} from '../engine/runtime.js';
+import {
   applyPlannedAiTitleAssignment,
-  buildAIOrders,
   createAIMeta,
-  handlePostResolutionAI,
   invalidateRoundContext,
-  isAIPlayer,
   observeCourtAction,
-  runAICourtAutomation,
 } from '../ai/brain.js';
 import { PERSONALITIES } from '../ai/personalities.js';
 import { createMapSVG, updateMapState, drawInvasionRoute, setSelectedProvince } from '../render/mapRenderer.js';
@@ -246,65 +227,21 @@ export class GameController {
 
   handleCourtActionUpdate(observation = null, options = {}) {
     const finalize = Boolean(options.finalize);
-    if (!this.isSinglePlayer()) {
-      this.maybeAdvanceCourt();
-    }
+    if (!this.isSinglePlayer()) maybeAdvanceCourt(this.state, this.aiMeta);
     this.afterHumanAction(observation, {
-      courtMode: this.isSinglePlayer() && this.state.phase === 'court'
-        ? (finalize ? 'finish' : 'react')
-        : 'finish',
+      courtMode: this.state.phase === 'court' && this.isSinglePlayer() && !finalize ? 'react' : 'finish',
     });
   }
 
   processAiFlow(options = {}) {
     if (!this.aiMeta || this.aiBusy) return;
     this.aiBusy = true;
-    const courtMode = options.courtMode || 'finish';
-
     try {
-      let safety = 0;
-      while (safety < 20) {
-        safety++;
-
-        if (this.state.gameOver || this.state.phase === 'scoring' || this.state.phase === 'resolution') {
-          break;
-        }
-
-        if (this.state.phase === 'court') {
-          runAICourtAutomation(this.state, this.aiMeta, { mode: courtMode });
-          if (courtMode === 'finish' && isCourtComplete(this.state)) {
-            phaseOrders(this.state);
-            this.invalidateAiPlans();
-            continue;
-          }
-          break;
-        }
-
-        if (this.state.phase === 'orders') {
-          for (const player of this.state.players) {
-            if (!isAIPlayer(this.aiMeta, player.id)) continue;
-            if (this.state.allOrders[player.id]) continue;
-
-            const orders = buildAIOrders(this.state, this.aiMeta, player.id);
-            applyAIOrderCosts(this.state, this.aiMeta, player.id, orders);
-            submitOrders(this.state, player.id, orders);
-          }
-
-          if (allOrdersSubmitted(this.state)) {
-            const previousBasileusId = this.state.basileusId;
-            phaseResolution(this.state);
-            const aftermath = handlePostResolutionAI(this.state, this.aiMeta, {
-              previousBasileusId,
-              autoApplyTitleAssignments: false,
-            });
-            this.pendingAiTitleAssignment = aftermath.plannedAssignment;
-          }
-          break;
-        }
-
-        advanceToNextInteractivePhase(this.state);
-      }
-
+      const result = processAiFlow(this.state, this.aiMeta, {
+        ...options,
+        pendingAiTitleAssignment: this.pendingAiTitleAssignment,
+      });
+      if (result) this.pendingAiTitleAssignment = result.pendingAiTitleAssignment;
       this.ensureHumanFocus();
     } finally {
       this.aiBusy = false;
@@ -506,16 +443,11 @@ export class GameController {
 
         renderOrdersPanel(body, this.state, this.activePlayer, {
           lockOrders: (orders) => {
-            const totalCost = getMercenaryOrderCost(orders.mercenaries);
-            if (getPlayer(this.state, this.activePlayer)?.gold < totalCost) {
+            const result = submitHumanOrders(this.state, this.activePlayer, orders);
+            if (!result.ok) {
               this.render();
               return;
             }
-            for (const mercenary of orders.mercenaries) {
-              hireMercenaries(this.state, this.activePlayer, mercenary.officeKey, mercenary.count);
-            }
-            submitOrders(this.state, this.activePlayer, orders);
-
             if (this.aiMeta) {
               this.processAiFlow();
             } else if (allOrdersSubmitted(this.state)) {
@@ -568,70 +500,6 @@ export class GameController {
     `;
   }
 
-  maybeAdvanceCourt() {
-    if (isCourtComplete(this.state)) {
-      phaseOrders(this.state);
-      this.invalidateAiPlans();
-    }
-  }
-
-  autoResolveUnavailableHumanAppointments(playerId) {
-    if (this.state.phase !== 'court') return;
-    const player = getPlayer(this.state, playerId);
-    if (!player) return;
-
-    const hasOpenStrategos = (region = null) => Object.values(this.state.themes).some(theme =>
-      !theme.occupied &&
-      theme.id !== 'CPL' &&
-      theme.owner !== 'church' &&
-      theme.strategos === null &&
-      (region == null || theme.region === region)
-    );
-    const hasOpenBishop = () => Object.values(this.state.themes).some(theme =>
-      !theme.occupied &&
-      theme.id !== 'CPL' &&
-      !theme.bishopIsDonor &&
-      theme.bishop === null
-    );
-
-    let changed = false;
-    if (playerId === this.state.basileusId && !this.state.courtActions.basileusAppointed) {
-      const canAppointMinorTitle =
-        this.state.empress === null ||
-        this.state.chiefEunuchs === null ||
-        hasOpenStrategos() ||
-        hasOpenBishop();
-      if (!canAppointMinorTitle) {
-        this.state.courtActions.basileusAppointed = true;
-        changed = true;
-      }
-    }
-
-    if (player.majorTitles.includes('DOM_EAST') && !this.state.courtActions.domesticEastAppointed && !hasOpenStrategos('east')) {
-      this.state.courtActions.domesticEastAppointed = true;
-      this.state.courtActions.DOM_EAST_appointed = true;
-      changed = true;
-    }
-    if (player.majorTitles.includes('DOM_WEST') && !this.state.courtActions.domesticWestAppointed && !hasOpenStrategos('west')) {
-      this.state.courtActions.domesticWestAppointed = true;
-      this.state.courtActions.DOM_WEST_appointed = true;
-      changed = true;
-    }
-    if (player.majorTitles.includes('ADMIRAL') && !this.state.courtActions.admiralAppointed && !hasOpenStrategos('sea')) {
-      this.state.courtActions.admiralAppointed = true;
-      this.state.courtActions.ADMIRAL_appointed = true;
-      changed = true;
-    }
-    if (player.majorTitles.includes('PATRIARCH') && !this.state.courtActions.patriarchAppointed && !hasOpenBishop()) {
-      this.state.courtActions.patriarchAppointed = true;
-      changed = true;
-    }
-
-    if (changed) {
-      this.maybeAdvanceCourt();
-    }
-  }
-
   tryResolveTitleReassignment(panel) {
     if (this.pendingAiTitleAssignment && this.aiMeta) {
       applyPlannedAiTitleAssignment(
@@ -643,219 +511,64 @@ export class GameController {
       return { ok: true };
     }
 
-    const newBasileusId = this.state.nextBasileusId;
-    if (newBasileusId === null || newBasileusId === this.state.basileusId) {
-      return { ok: true };
-    }
-
     const titleAssignments = {};
     panel.querySelectorAll('[data-title-assignment]').forEach((select) => {
       titleAssignments[select.dataset.titleAssignment] = Number(select.value);
     });
 
-    const validation = validateMajorTitleAssignments(this.state, newBasileusId, titleAssignments);
+    const result = applyManualTitleReassignment(this.state, this.aiMeta, this.state.nextBasileusId, titleAssignments);
     const errorEl = panel.querySelector('[data-role="title-reassignment-error"]');
-    if (!validation.ok) {
-      if (errorEl) errorEl.textContent = validation.reason;
-      return validation;
-    }
-
-    if (errorEl) errorEl.textContent = '';
-    const previousAssignments = {};
-    this.state.players.forEach((player) => {
-      player.majorTitles.forEach((titleKey) => {
-        previousAssignments[titleKey] = player.id;
-      });
-    });
-    applyCoupTitleReassignment(this.state, newBasileusId, titleAssignments);
-    if (this.aiMeta) {
-      Object.entries(titleAssignments).forEach(([titleKey, appointeeId]) => {
-        observeCourtAction(this.state, this.aiMeta, {
-          type: 'appointment',
-          actorId: newBasileusId,
-          appointeeId: Number(appointeeId),
-          previousHolderId: previousAssignments[titleKey] ?? null,
-          value: 1.25,
-        });
-      });
-    }
-    return { ok: true };
+    if (!result.ok && errorEl) errorEl.textContent = result.reason || '';
+    else if (errorEl) errorEl.textContent = '';
+    return result;
   }
 
   renderCourtPhase(panel) {
     const state = this.state;
     const playerId = this.activePlayer;
-    this.autoResolveUnavailableHumanAppointments(playerId);
-    if (this.state.phase !== 'court') {
+    autoResolveUnavailableHumanAppointments(state, playerId);
+    if (state.phase !== 'court') {
       this.render();
       return;
     }
 
+    const dispatch = (payload) => {
+      const result = applyCourtAction(state, playerId, payload);
+      if (!result.ok) {
+        this.render();
+        return;
+      }
+      this.handleCourtActionUpdate(result.observation || null);
+    };
+
     renderCourtPanel(panel, state, playerId, {
-      buy: (themeId) => {
-        buyTheme(state, playerId, themeId);
-        this.handleCourtActionUpdate();
-      },
-      gift: (themeId) => {
-        giftToChurch(state, playerId, themeId);
-        this.handleCourtActionUpdate();
-      },
-      exempt: (themeId) => {
-        const result = grantTaxExemption(state, playerId, themeId);
-        if (!result?.ok) {
-          this.render();
-          return;
-        }
-        this.handleCourtActionUpdate();
-      },
-      recruit: (_, data) => {
-        const result = recruitProfessional(state, playerId, data.office);
-        if (!result?.ok) {
-          this.render();
-          return;
-        }
-        this.handleCourtActionUpdate();
-      },
-      dismiss: (_, data) => {
-        const count = Number(data.count);
-        const result = dismissProfessional(state, playerId, data.office, count);
-        if (!result?.ok) {
-          this.render();
-          return;
-        }
-        this.handleCourtActionUpdate();
-      },
+      buy: (themeId) => dispatch({ action: 'buy', themeId }),
+      gift: (themeId) => dispatch({ action: 'gift', themeId }),
+      exempt: (themeId) => dispatch({ action: 'exempt', themeId }),
+      recruit: (_, data) => dispatch({ action: 'recruit', office: data.office }),
+      dismiss: (_, data) => dispatch({ action: 'dismiss', office: data.office, count: data.count }),
       'confirm-court': () => {
-        state.courtActions.playerConfirmed.add(playerId);
-        recordHistoryEvent(state, {
-          category: 'court',
-          type: 'court_confirmed',
-          actorId: playerId,
-          actorAi: false,
-          summary: `${formatPlayerLabel(getPlayer(state, playerId)) || `Player ${playerId + 1}`} ends court business for the round.`,
-        });
+        const result = confirmCourt(state, playerId);
+        if (!result.ok) {
+          this.render();
+          return;
+        }
         this.handleCourtActionUpdate(null, { finalize: true });
       },
-      'basileus-appoint': (titleType, appointeeId, themeId) => {
-        if (state.courtActions.basileusAppointed) return;
-
-        let result = null;
-        let previousHolderId = null;
-        if (titleType === 'EMPRESS') previousHolderId = state.empress;
-        if (titleType === 'CHIEF_EUNUCHS') previousHolderId = state.chiefEunuchs;
-        if (titleType === 'STRATEGOS' && themeId) previousHolderId = state.themes[themeId]?.strategos ?? null;
-        if (titleType === 'BISHOP' && themeId) previousHolderId = state.themes[themeId]?.bishop ?? null;
-
-        if (titleType === 'EMPRESS' || titleType === 'CHIEF_EUNUCHS') {
-          result = appointCourtTitle(state, titleType, appointeeId);
-        } else if (titleType === 'STRATEGOS' && themeId) {
-          result = appointStrategos(state, state.basileusId, themeId, appointeeId);
-        } else if (titleType === 'BISHOP' && themeId) {
-          result = appointBishop(state, state.basileusId, themeId, appointeeId);
-        }
-
-        if (!result?.ok) {
-          this.render();
-          return;
-        }
-
-        state.courtActions.basileusAppointed = true;
-        this.handleCourtActionUpdate({
-          type: 'appointment',
-          actorId: state.basileusId,
-          appointeeId,
-          previousHolderId,
-          value: (titleType === 'EMPRESS' || titleType === 'CHIEF_EUNUCHS') ? 1.2 : 1.0,
-        });
-      },
-      'appoint-strategos': (titleKey, themeId, appointeeId) => {
-        const region = { DOM_EAST: 'east', DOM_WEST: 'west', ADMIRAL: 'sea' }[titleKey];
-        const theme = state.themes[themeId];
-        if (!theme || theme.region !== region) return;
-
-        const previousHolderId = theme.strategos;
-        const result = appointStrategos(state, playerId, themeId, appointeeId);
-        if (!result?.ok) {
-          this.render();
-          return;
-        }
-
-        state.courtActions[`${titleKey}_appointed`] = true;
-        if (titleKey === 'DOM_EAST') state.courtActions.domesticEastAppointed = true;
-        if (titleKey === 'DOM_WEST') state.courtActions.domesticWestAppointed = true;
-        if (titleKey === 'ADMIRAL') state.courtActions.admiralAppointed = true;
-        this.handleCourtActionUpdate({
-          type: 'appointment',
-          actorId: playerId,
-          appointeeId,
-          previousHolderId,
-          value: 0.95,
-        });
-      },
-      'appoint-bishop': (themeId, appointeeId) => {
-        const previousHolderId = state.themes[themeId]?.bishop ?? null;
-        const result = appointBishop(state, playerId, themeId, appointeeId);
-        if (!result?.ok) {
-          this.render();
-          return;
-        }
-
-        state.courtActions.patriarchAppointed = true;
-        this.handleCourtActionUpdate({
-          type: 'appointment',
-          actorId: playerId,
-          appointeeId,
-          previousHolderId,
-          value: 1.0,
-        });
-      },
-      revoke: (value) => {
-        const check = canPayRevocationCost(state);
-        if (!check.ok) {
-          this.render();
-          return;
-        }
-        const parts = value.split(':');
-        let observation = { type: 'revocation', actorId: state.basileusId };
-        let result = null;
-
-        if (parts[0] === 'major') {
-          const revokedPlayerId = parseInt(parts[1], 10);
-          const titleKey = parts[2];
-          const eligible = state.players.filter(player => player.id !== state.basileusId && player.id !== revokedPlayerId);
-          if (eligible.length > 0) {
-            const newHolderId = eligible[0].id;
-            result = revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId);
-            if (result?.ok) observation = { ...observation, targetPlayerId: revokedPlayerId, newHolderId };
-          }
-        } else if (parts[0] === 'minor') {
-          const theme = state.themes[parts[1]];
-          const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
-          result = revokeMinorTitle(state, parts[1], parts[2]);
-          if (result?.ok) observation = { ...observation, targetPlayerId };
-        } else if (parts[0] === 'court') {
-          const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-          result = revokeCourtTitle(state, parts[1]);
-          if (result?.ok) observation = { ...observation, targetPlayerId };
-        } else if (parts[0] === 'exempt') {
-          result = revokeTaxExemption(state, parts[1]);
-        } else if (parts[0] === 'theme') {
-          const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
-          result = revokeTheme(state, parts[1]);
-          if (result?.ok) observation = { ...observation, targetPlayerId };
-        }
-
-        if (result?.ok) {
-          this.handleCourtActionUpdate(observation);
-        } else {
-          this.render();
-        }
-      },
+      'basileus-appoint': (titleType, appointeeId, themeId) => dispatch({
+        action: 'basileus-appoint', titleType, appointeeId, themeId,
+      }),
+      'appoint-strategos': (titleKey, themeId, appointeeId) => dispatch({
+        action: 'appoint-strategos', titleKey, themeId, appointeeId,
+      }),
+      'appoint-bishop': (themeId, appointeeId) => dispatch({
+        action: 'appoint-bishop', themeId, appointeeId,
+      }),
+      revoke: (value) => dispatch({ action: 'revoke', value }),
     }, {
       selectedProvinceId: this.selectedProvinceId,
       uiState: this.uiState,
     });
-
   }
 
   renderScoring(panel) {
