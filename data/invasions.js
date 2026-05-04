@@ -11,8 +11,8 @@ export const INVASIONS = [
     id: 'aghlabids',
     name: 'Aghlabids',
     origin: 'SIC',           // first theme on the route
-    originLabel: 'North Africa',
-    originPointId: 'north_africa',
+    originLabel: 'West Libya',
+    originPointId: 'west_libya',
     route: ['SIC', 'ITA', 'KEP', 'KRE', 'AEG', 'CPL'],
     color: '#c9a84c'
   },
@@ -29,8 +29,8 @@ export const INVASIONS = [
     id: 'normans',
     name: 'Normans',
     origin: 'ITA',
-    originLabel: 'Southern Italy',
-    originPointId: 'southern_italy',
+    originLabel: 'Norman Italy',
+    originPointId: 'norman_italy',
     route: ['ITA', 'SIC', 'DYR', 'KEP', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#a35638'
   },
@@ -57,7 +57,7 @@ export const INVASIONS = [
     name: 'Serbs',
     origin: 'SRB',
     originLabel: 'Serbia',
-    originPointId: 'serbia',
+    originPointId: 'serbia_interior',
     route: ['SRB', 'DAL', 'BUL', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#b04050'
   },
