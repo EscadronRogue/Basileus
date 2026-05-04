@@ -3,13 +3,16 @@
 export const INVASION_STRENGTH_RANGE = [10, 30];
 export const INVASION_ESTIMATE_INTERVAL = 7;
 
+// origin remains the first theme hit by the route. originPointId is the visual
+// geopolitical spawn point from data/mapPoints.js, expressed directly in the
+// 297×210 SVG map viewBox.
 export const INVASIONS = [
   {
     id: 'aghlabids',
     name: 'Aghlabids',
     origin: 'SIC',           // first theme on the route
     originLabel: 'North Africa',
-    originPos: { cx: 100, cy: 440 },
+    originPointId: 'north_africa',
     route: ['SIC', 'ITA', 'KEP', 'KRE', 'AEG', 'CPL'],
     color: '#c9a84c'
   },
@@ -18,7 +21,7 @@ export const INVASIONS = [
     name: 'Kievan Rus',
     origin: 'CHE',
     originLabel: 'Steppes',
-    originPos: { cx: 650, cy: 60 },
+    originPointId: 'steppe',
     route: ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#5b8fb9'
   },
@@ -27,7 +30,7 @@ export const INVASIONS = [
     name: 'Normans',
     origin: 'ITA',
     originLabel: 'Southern Italy',
-    originPos: { cx: 120, cy: 220 },
+    originPointId: 'southern_italy',
     route: ['ITA', 'SIC', 'DYR', 'KEP', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#a35638'
   },
@@ -36,7 +39,7 @@ export const INVASIONS = [
     name: 'Venetians',
     origin: 'KEP',
     originLabel: 'Venice',
-    originPos: { cx: 210, cy: 160 },
+    originPointId: 'venice',
     route: ['KEP', 'KRE', 'AEG', 'CPL'],
     color: '#2e6b5e'
   },
@@ -45,7 +48,7 @@ export const INVASIONS = [
     name: 'Bulgars',
     origin: 'BUL',
     originLabel: 'Bulgaria',
-    originPos: { cx: 440, cy: 130 },
+    originPointId: 'bulgaria',
     route: ['BUL', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#7a4988'
   },
@@ -54,7 +57,7 @@ export const INVASIONS = [
     name: 'Serbs',
     origin: 'SRB',
     originLabel: 'Serbia',
-    originPos: { cx: 310, cy: 130 },
+    originPointId: 'serbia',
     route: ['SRB', 'DAL', 'BUL', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#b04050'
   },
@@ -63,7 +66,7 @@ export const INVASIONS = [
     name: 'Hungarians',
     origin: 'SIM',
     originLabel: 'Pannonia',
-    originPos: { cx: 280, cy: 80 },
+    originPointId: 'pannonia',
     route: ['SIM', 'CRO', 'SRB', 'DAL', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#3d7a3d'
   },
@@ -72,7 +75,7 @@ export const INVASIONS = [
     name: 'Turks',
     origin: 'VAS',
     originLabel: 'Persia',
-    originPos: { cx: 1060, cy: 250 },
+    originPointId: 'turkic_east',
     route: ['VAS', 'MES', 'KOL', 'SEB', 'CHA', 'KAP', 'ANA', 'BOU', 'ARM', 'PAP', 'OPT', 'CPL'],
     color: '#cc3333'
   },
@@ -81,7 +84,7 @@ export const INVASIONS = [
     name: 'Caliphate',
     origin: 'ANT',
     originLabel: 'Levant',
-    originPos: { cx: 1000, cy: 460 },
+    originPointId: 'levant',
     route: ['ANT', 'CIL', 'KYP', 'SEL', 'KIB', 'AEG', 'SAM', 'THK', 'OPS', 'OPT', 'CPL'],
     color: '#d4a017'
   }

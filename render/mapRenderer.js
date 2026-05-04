@@ -2,6 +2,7 @@ import { PROVINCES } from '../data/provinces.js';
 import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
+import { getMapPoint } from '../data/mapPoints.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const THREAT_HATCH_SPACING = 3.6;
@@ -354,6 +355,12 @@ function getElementLinearScale(element) {
   return Number.isFinite(averageScale) && averageScale > 0 ? averageScale : 1;
 }
 
+const LABEL_ANCHOR_MAX_GRID_STEPS = 24;
+const LABEL_ANCHOR_MIN_GRID_STEPS = 8;
+const LABEL_ANCHOR_BORDER_SAMPLES = 120;
+const LABEL_ANCHOR_REFINEMENT_PASSES = 3;
+const LABEL_ANCHOR_REFINEMENT_RADIUS = 2;
+
 function computeCentroids(svg) {
   provinceCentroids = {};
 
@@ -362,22 +369,165 @@ function computeCentroids(svg) {
     if (!provinceId) continue;
 
     try {
-      const bbox = path.getBBox();
-      const point = svg.createSVGPoint();
-      point.x = bbox.x + bbox.width / 2;
-      point.y = bbox.y + bbox.height / 2;
-
-      const ctm = path.getCTM();
-      const svgCtm = svg.getCTM();
-      if (!ctm || !svgCtm) continue;
-
-      const screenPoint = point.matrixTransform(ctm);
-      const svgPoint = screenPoint.matrixTransform(svgCtm.inverse());
-      provinceCentroids[provinceId] = { cx: svgPoint.x, cy: svgPoint.y };
+      const anchor = findProvinceInteriorAnchor(svg, path) || findTransformedBBoxCenter(svg, path);
+      if (anchor) provinceCentroids[provinceId] = anchor;
     } catch {
       // Ignore shapes that have not been laid out yet.
     }
   }
+}
+
+function findProvinceInteriorAnchor(svg, path) {
+  if (typeof path.isPointInFill !== 'function' || typeof path.getTotalLength !== 'function') return null;
+
+  const bbox = path.getBBox();
+  if (!isUsableBBox(bbox)) return null;
+
+  const toSvgMatrix = getElementToSvgMatrix(svg, path);
+  if (!toSvgMatrix) return null;
+
+  const borderSamples = samplePathBorderPoints(svg, path, toSvgMatrix);
+  if (!borderSamples.length) return null;
+
+  const rootBBox = getTransformedBBox(svg, bbox, toSvgMatrix);
+  const longestSide = Math.max(rootBBox.width, rootBBox.height);
+  const steps = Math.max(
+    LABEL_ANCHOR_MIN_GRID_STEPS,
+    Math.min(LABEL_ANCHOR_MAX_GRID_STEPS, Math.ceil(longestSide / 1.5)),
+  );
+
+  const xStep = bbox.width / steps;
+  const yStep = bbox.height / steps;
+  let best = findBestFilledGridPoint(svg, path, toSvgMatrix, borderSamples, bbox, xStep, yStep);
+  if (!best) return null;
+
+  for (let pass = 0; pass < LABEL_ANCHOR_REFINEMENT_PASSES; pass += 1) {
+    const radius = LABEL_ANCHOR_REFINEMENT_RADIUS;
+    const localXStep = xStep / (2 ** (pass + 1));
+    const localYStep = yStep / (2 ** (pass + 1));
+
+    const refinementBox = {
+      x: best.localX - localXStep * radius,
+      y: best.localY - localYStep * radius,
+      width: localXStep * radius * 2,
+      height: localYStep * radius * 2,
+    };
+
+    best = findBestFilledGridPoint(
+      svg,
+      path,
+      toSvgMatrix,
+      borderSamples,
+      refinementBox,
+      localXStep,
+      localYStep,
+      best,
+    );
+  }
+
+  return { cx: best.svgX, cy: best.svgY };
+}
+
+function findBestFilledGridPoint(svg, path, toSvgMatrix, borderSamples, box, xStep, yStep, fallback = null) {
+  let best = fallback;
+
+  for (let y = box.y; y <= box.y + box.height + Number.EPSILON; y += yStep) {
+    for (let x = box.x; x <= box.x + box.width + Number.EPSILON; x += xStep) {
+      const localX = clampValue(x, box.x, box.x + box.width);
+      const localY = clampValue(y, box.y, box.y + box.height);
+      if (!isPathFillPoint(svg, path, localX, localY)) continue;
+
+      const svgPoint = transformPoint(svg, localX, localY, toSvgMatrix);
+      const score = getNearestBorderDistanceSquared(svgPoint, borderSamples);
+      if (!best || score > best.score) {
+        best = { localX, localY, svgX: svgPoint.x, svgY: svgPoint.y, score };
+      }
+    }
+  }
+
+  return best;
+}
+
+function samplePathBorderPoints(svg, path, toSvgMatrix) {
+  const length = path.getTotalLength();
+  if (!Number.isFinite(length) || length <= 0) return [];
+
+  const sampleCount = Math.max(12, Math.min(LABEL_ANCHOR_BORDER_SAMPLES, Math.ceil(length / 180)));
+  const samples = [];
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const pathPoint = path.getPointAtLength((length * index) / sampleCount);
+    samples.push(transformPoint(svg, pathPoint.x, pathPoint.y, toSvgMatrix));
+  }
+
+  return samples;
+}
+
+function getNearestBorderDistanceSquared(point, borderSamples) {
+  let minDistance = Infinity;
+
+  for (const sample of borderSamples) {
+    const dx = point.x - sample.x;
+    const dy = point.y - sample.y;
+    const distance = dx * dx + dy * dy;
+    if (distance < minDistance) minDistance = distance;
+  }
+
+  return minDistance;
+}
+
+function isPathFillPoint(svg, path, x, y) {
+  const point = svg.createSVGPoint();
+  point.x = x;
+  point.y = y;
+  return path.isPointInFill(point);
+}
+
+function findTransformedBBoxCenter(svg, path) {
+  const bbox = path.getBBox();
+  if (!isUsableBBox(bbox)) return null;
+
+  const toSvgMatrix = getElementToSvgMatrix(svg, path);
+  if (!toSvgMatrix) return null;
+
+  const center = transformPoint(svg, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2, toSvgMatrix);
+  return { cx: center.x, cy: center.y };
+}
+
+function getTransformedBBox(svg, bbox, matrix) {
+  const points = [
+    transformPoint(svg, bbox.x, bbox.y, matrix),
+    transformPoint(svg, bbox.x + bbox.width, bbox.y, matrix),
+    transformPoint(svg, bbox.x + bbox.width, bbox.y + bbox.height, matrix),
+    transformPoint(svg, bbox.x, bbox.y + bbox.height, matrix),
+  ];
+
+  const xValues = points.map((point) => point.x);
+  const yValues = points.map((point) => point.y);
+  const xMin = Math.min(...xValues);
+  const xMax = Math.max(...xValues);
+  const yMin = Math.min(...yValues);
+  const yMax = Math.max(...yValues);
+
+  return { x: xMin, y: yMin, width: xMax - xMin, height: yMax - yMin };
+}
+
+function getElementToSvgMatrix(svg, element) {
+  const elementMatrix = element.getCTM?.();
+  const svgMatrix = svg.getCTM?.();
+  if (!elementMatrix || !svgMatrix) return null;
+  return svgMatrix.inverse().multiply(elementMatrix);
+}
+
+function transformPoint(svg, x, y, matrix) {
+  const point = svg.createSVGPoint();
+  point.x = x;
+  point.y = y;
+  return point.matrixTransform(matrix);
+}
+
+function isUsableBBox(bbox) {
+  return bbox && Number.isFinite(bbox.x) && Number.isFinite(bbox.y) && bbox.width > 0 && bbox.height > 0;
 }
 
 // Map labels are stacked SVG cartouches that mirror the HTML
@@ -580,16 +730,12 @@ export function drawInvasionRoute(invasion) {
   if (!invasion) return;
 
   const points = [];
-  if (invasion.originPos) {
-    points.push({
-      cx: invasion.originPos.cx * (297 / 1150),
-      cy: invasion.originPos.cy * (210 / 560),
-    });
-  }
+  const originPoint = resolveInvasionOriginPoint(invasion);
+  if (originPoint) points.push(originPoint);
 
   for (const provinceId of invasion.route) {
     const centroid = provinceCentroids[provinceId];
-    if (centroid) points.push(centroid);
+    if (centroid && !isSameMapPoint(points[points.length - 1], centroid)) points.push(centroid);
   }
 
   if (points.length < 2) return;
@@ -614,6 +760,25 @@ export function drawInvasionRoute(invasion) {
   }
 
   appendInvasionCartouche(layer, invasion, points[0]);
+}
+
+function resolveInvasionOriginPoint(invasion) {
+  const point = getMapPoint(invasion?.originPointId);
+  if (point) return point;
+
+  const legacyPoint = invasion?.originPos;
+  if (legacyPoint) {
+    return {
+      cx: legacyPoint.cx * (297 / 1150),
+      cy: legacyPoint.cy * (210 / 560),
+    };
+  }
+
+  return provinceCentroids[invasion?.origin] || null;
+}
+
+function isSameMapPoint(a, b) {
+  return Boolean(a && b && Math.hypot(a.cx - b.cx, a.cy - b.cy) < 0.01);
 }
 
 function appendInvasionCartouche(layer, invasion, point) {
