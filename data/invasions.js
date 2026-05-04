@@ -1,94 +1,87 @@
 // data/invasions.js — Invasion routes and shared invasion strength bounds.
 
+import { getInvasionOriginProfile } from './mapPoints.js';
+
 export const INVASION_STRENGTH_RANGE = [10, 30];
 export const INVASION_ESTIMATE_INTERVAL = 7;
 
-// origin remains the first theme hit by the route. originPointId is the visual
-// geopolitical spawn point from data/mapPoints.js, expressed directly in the
-// 297×210 SVG map viewBox.
-export const INVASIONS = [
+// entryTheme is the first imperial theme hit by the gameplay route.
+// originProfileId is the historical/geographic source used by the map renderer
+// to derive the visible route origin from the current SVG calibration.
+export const INVASIONS = validateInvasionDefinitions([
   {
     id: 'aghlabids',
     name: 'Aghlabids',
-    origin: 'SIC',           // first theme on the route
-    originLabel: 'West Libya',
-    originPointId: 'west_libya',
+    entryTheme: 'SIC',
+    originProfileId: 'ifriqiya',
     route: ['SIC', 'ITA', 'KEP', 'KRE', 'AEG', 'CPL'],
-    color: '#c9a84c'
+    color: '#c9a84c',
   },
   {
     id: 'kievan_rus',
     name: 'Kievan Rus',
-    origin: 'CHE',
-    originLabel: 'Steppes',
-    originPointId: 'steppe',
+    entryTheme: 'CHE',
+    originProfileId: 'pontic_steppe',
     route: ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
-    color: '#5b8fb9'
+    color: '#5b8fb9',
   },
   {
     id: 'normans',
     name: 'Normans',
-    origin: 'ITA',
-    originLabel: 'Norman Italy',
-    originPointId: 'norman_italy',
+    entryTheme: 'ITA',
+    originProfileId: 'norman_italy',
     route: ['ITA', 'SIC', 'DYR', 'KEP', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
-    color: '#a35638'
+    color: '#a35638',
   },
   {
     id: 'venetians',
     name: 'Venetians',
-    origin: 'KEP',
-    originLabel: 'Venice',
-    originPointId: 'venice',
+    entryTheme: 'KEP',
+    originProfileId: 'venice',
     route: ['KEP', 'KRE', 'AEG', 'CPL'],
-    color: '#2e6b5e'
+    color: '#2e6b5e',
   },
   {
     id: 'bulgars',
     name: 'Bulgars',
-    origin: 'BUL',
-    originLabel: 'Bulgaria',
-    originPointId: 'bulgaria',
+    entryTheme: 'BUL',
+    originProfileId: 'bulgaria',
     route: ['BUL', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
-    color: '#7a4988'
+    color: '#7a4988',
   },
   {
     id: 'serbs',
     name: 'Serbs',
-    origin: 'SRB',
-    originLabel: 'Serbia',
-    originPointId: 'serbia_interior',
+    entryTheme: 'SRB',
+    originProfileId: 'serbia',
     route: ['SRB', 'DAL', 'BUL', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
-    color: '#b04050'
+    color: '#b04050',
   },
   {
     id: 'hungarians',
     name: 'Hungarians',
-    origin: 'SIM',
-    originLabel: 'Pannonia',
-    originPointId: 'pannonia',
+    entryTheme: 'SIM',
+    originProfileId: 'pannonia',
     route: ['SIM', 'CRO', 'SRB', 'DAL', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
-    color: '#3d7a3d'
+    color: '#3d7a3d',
   },
   {
     id: 'turks',
     name: 'Turks',
-    origin: 'VAS',
-    originLabel: 'Persia',
-    originPointId: 'turkic_east',
+    entryTheme: 'VAS',
+    originProfileId: 'persia',
     route: ['VAS', 'MES', 'KOL', 'SEB', 'CHA', 'KAP', 'ANA', 'BOU', 'ARM', 'PAP', 'OPT', 'CPL'],
-    color: '#cc3333'
+    color: '#cc3333',
   },
   {
     id: 'caliphate',
     name: 'Caliphate',
-    origin: 'ANT',
-    originLabel: 'Levant',
-    originPointId: 'levant',
+    entryTheme: 'ANT',
+    originProfileId: 'levant',
     route: ['ANT', 'CIL', 'KYP', 'SEL', 'KIB', 'AEG', 'SAM', 'THK', 'OPS', 'OPT', 'CPL'],
-    color: '#d4a017'
-  }
-];
+    color: '#d4a017',
+  },
+]);
 
 export const DYNASTIES = [
   'Doukas', 'Phokas', 'Komnenos', 'Angeloi', 'Skleros',
@@ -107,3 +100,26 @@ export const DYNASTY_COLORS = [
   '#2a8030', // green
   '#d06010', // orange
 ];
+
+function validateInvasionDefinitions(invasions) {
+  const seenIds = new Set();
+
+  for (const invasion of invasions) {
+    if (!invasion?.id) throw new Error('Every invasion requires an id.');
+    if (seenIds.has(invasion.id)) throw new Error(`Duplicate invasion id: ${invasion.id}`);
+    seenIds.add(invasion.id);
+
+    if (!Array.isArray(invasion.route) || invasion.route.length < 2) {
+      throw new Error(`Invasion ${invasion.id} requires a route with at least two themes.`);
+    }
+    if (!invasion.entryTheme) throw new Error(`Invasion ${invasion.id} requires an entryTheme.`);
+    if (invasion.route[0] !== invasion.entryTheme) {
+      throw new Error(`Invasion ${invasion.id} entryTheme must match the first route theme.`);
+    }
+    if (!getInvasionOriginProfile(invasion.originProfileId)) {
+      throw new Error(`Invasion ${invasion.id} references unknown origin profile: ${invasion.originProfileId}`);
+    }
+  }
+
+  return Object.freeze(invasions.map((invasion) => Object.freeze({ ...invasion })));
+}

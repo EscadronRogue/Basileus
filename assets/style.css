@@ -2100,7 +2100,7 @@ body::before {
 /* Invasion route */
 .invasion-route {
   fill: none;
-  stroke: var(--invasion-lost-border);
+  stroke: var(--invasion-color, var(--invasion-lost-border));
   stroke-width: 0.95;
   stroke-dasharray: 1.8 1.2;
   opacity: 0.96;
@@ -2109,7 +2109,7 @@ body::before {
 @keyframes marchingAnts { to { stroke-dashoffset: -3; } }
 
 .invasion-marker {
-  fill: var(--invasion-lost-border);
+  fill: var(--invasion-color, var(--invasion-lost-border));
   opacity: 0.96;
 }
 
@@ -2120,7 +2120,7 @@ body::before {
 .invasion-cartouche-bg {
   fill: var(--invasion-lost-fill);
   fill-opacity: 0.92;
-  stroke: var(--invasion-lost-border);
+  stroke: var(--invasion-color, var(--invasion-lost-border));
   stroke-width: 0.7;
   paint-order: stroke fill;
 }
@@ -2132,10 +2132,11 @@ body::before {
 }
 
 .invasion-cartouche-name,
+.invasion-cartouche-origin,
 .invasion-cartouche-strength {
   text-anchor: middle;
   dominant-baseline: middle;
-  fill: var(--invasion-lost-border);
+  fill: var(--invasion-color, var(--invasion-lost-border));
   paint-order: stroke fill;
   stroke: rgba(255,250,228,0.46);
   stroke-width: 0.08;
@@ -2149,9 +2150,17 @@ body::before {
   letter-spacing: 0.12px;
 }
 
+.invasion-cartouche-origin {
+  font-family: var(--font-body);
+  font-size: 1.58px;
+  font-weight: 600;
+  letter-spacing: 0.04px;
+  opacity: 0.86;
+}
+
 .invasion-cartouche-strength {
   font-family: var(--font-body);
-  font-size: 1.72px;
+  font-size: 1.62px;
   font-weight: 600;
 }
 
