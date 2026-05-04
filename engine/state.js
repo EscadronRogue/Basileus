@@ -161,6 +161,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     historySeq: 0,
     round: 0,
     maxRounds: deck.length,
+    startingAdministrationResolved: false,
     phase: 'setup',   // setup → invasion → administration → court → orders → resolution → cleanup
 
     basileusId: basileusIdx,

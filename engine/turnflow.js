@@ -10,6 +10,15 @@ import { rollInvasionStrength, getPlayer, formatPlayerLabel } from './state.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
 export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
+export const STARTING_ADMINISTRATION_GOLD = 4;
+
+function isStartingAdministration(state) {
+  return state.round === 1 && !state.startingAdministrationResolved;
+}
+
+function buildStartingAdministrationIncome(state) {
+  return Object.fromEntries(state.players.map(player => [player.id, STARTING_ADMINISTRATION_GOLD]));
+}
 
 function playerName(state, playerId) {
   const player = getPlayer(state, playerId);
@@ -123,7 +132,13 @@ export function phaseInvasion(state) {
 // ─── Phase: Administration (auto-resolved) ───
 export function phaseAdministration(state) {
   state.phase = 'administration';
-  const result = runAdministration(state);
+  const administration = runAdministration(state);
+  const result = {
+    ...administration,
+    income: isStartingAdministration(state)
+      ? buildStartingAdministrationIncome(state)
+      : administration.income,
+  };
 
   // Apply gold income
   for (const [pidStr, amount] of Object.entries(result.income)) {
@@ -131,6 +146,7 @@ export function phaseAdministration(state) {
     const player = state.players.find(p => p.id === pid);
     if (player) player.gold += amount;
   }
+  state.startingAdministrationResolved = state.startingAdministrationResolved || state.round === 1;
 
   // Store levies for deployment phase
   state.currentLevies = result.levies;

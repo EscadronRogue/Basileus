@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { PROVINCES } from '../data/provinces.js';
 import { createGameState, makeRng, rollInvasionStrength } from './state.js';
 import { runAdministration } from './cascade.js';
+import { phaseAdministration, phaseInvasion, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
 import { buyTheme, canRecruitProfessional, grantTaxExemption, hireMercenaries, recruitProfessional } from './actions.js';
 import {
   getMercenaryOrderCost,
@@ -103,6 +104,26 @@ test('new games start every dynasty at 0 gold', () => {
   for (const player of state.players) {
     assert.equal(player.gold, 0);
   }
+});
+
+
+test('first administration grants every dynasty the fixed starting gold', () => {
+  const state = createGameState({ playerCount: 5, deckSize: 2, seed: 11 });
+
+  phaseInvasion(state);
+  const firstAdmin = phaseAdministration(state);
+
+  for (const player of state.players) {
+    assert.equal(firstAdmin.income[player.id], STARTING_ADMINISTRATION_GOLD);
+    assert.equal(player.gold, STARTING_ADMINISTRATION_GOLD);
+  }
+
+  state.phase = 'cleanup';
+  phaseInvasion(state);
+  const expectedSecondIncome = runAdministration(state).income;
+  const secondAdmin = phaseAdministration(state);
+
+  assert.deepEqual(secondAdmin.income, expectedSecondIncome);
 });
 
 test('theme pricing and split-income helpers follow the new rules', () => {
