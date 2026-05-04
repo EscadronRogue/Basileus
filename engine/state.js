@@ -50,7 +50,7 @@ function createInvasionInstance(template, rng) {
   return {
     ...template,
     route: Array.isArray(template.route) ? template.route.slice() : [],
-    originPointId: template.originPointId || null,
+    originPos: template.originPos ? { ...template.originPos } : null,
     strength: createInvasionStrengthRange(rng),
   };
 }
