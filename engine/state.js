@@ -1,5 +1,5 @@
 // engine/state.js — Game state initialization and core state structure
-import { PROVINCES, buildAdjacency } from '../data/provinces.js';
+import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE, INVASION_ESTIMATE_INTERVAL } from '../data/invasions.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
@@ -23,11 +23,11 @@ export function rollRange(min, max, rng) {
 }
 
 const PLAYER_ROLE_TEXT_STYLES = {
-  BASILEUS: { color: '#9a7010', contrast: '#ffffff' }, // deep imperial gold — CPL region
-  PATRIARCH:{ color: '#000000', contrast: '#ffffff' }, // black — church/ecclesiastical
-  ADMIRAL:  { color: '#1e3a7a', contrast: '#ffffff' }, // deep cobalt — Sea region
-  DOM_EAST: { color: '#1e5c34', contrast: '#ffffff' }, // deep forest green — East region
-  DOM_WEST: { color: '#7a2020', contrast: '#ffffff' }, // deep crimson — West region
+  BASILEUS: { color: REGION_BORDER_COLORS[REGIONS.CPL], contrast: '#ffffff' },
+  PATRIARCH:{ color: '#000000', contrast: '#ffffff' },
+  ADMIRAL:  { color: REGION_BORDER_COLORS[REGIONS.SEA], contrast: '#ffffff' },
+  DOM_EAST: { color: REGION_BORDER_COLORS[REGIONS.EAST], contrast: '#ffffff' },
+  DOM_WEST: { color: REGION_BORDER_COLORS[REGIONS.WEST], contrast: '#ffffff' },
 };
 
 // A player may hold multiple major titles in 3-4 player games. The first matching

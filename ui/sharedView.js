@@ -1,6 +1,14 @@
 import { computeFullWealth } from '../engine/actions.js';
+import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { runAdministration } from '../engine/cascade.js';
 import { getPlayer } from '../engine/state.js';
+import {
+  renderCourtPanel,
+  renderHistoryPanel,
+  renderOrdersPanel,
+  renderPlayerDashboard,
+  renderResolutionPanelDetailed,
+} from './panels.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
 
 export function createDefaultUiState() {
@@ -260,4 +268,129 @@ export function renderHiddenGameOverOverlay() {
   if (!overlay) return;
   overlay.innerHTML = '';
   overlay.style.display = 'none';
+}
+
+
+export function collectTitleAssignments(container) {
+  const assignments = {};
+  container?.querySelectorAll('[data-title-assignment]').forEach((select) => {
+    assignments[select.dataset.titleAssignment] = Number(select.value);
+  });
+  return assignments;
+}
+
+export function renderGameActionPanel({
+  panel,
+  state,
+  uiState,
+  activePlayerId,
+  selectedProvinceId = null,
+  canControl = true,
+  spectatorMessage = 'You can inspect this dynasty, but cannot issue commands.',
+  error = '',
+  handlers = {},
+  resolution = {},
+}) {
+  const body = renderActionShell(panel, state, uiState);
+  if (!body) return null;
+
+  if (!canControl && state.phase !== 'scoring') {
+    renderSpectatorPanel(body, state, activePlayerId, spectatorMessage);
+    return body;
+  }
+
+  if (error) {
+    body.innerHTML = `<div class="multiplayer-banner error">${error}</div>`;
+  }
+
+  const shell = document.createElement('div');
+  body.appendChild(shell);
+
+  switch (state.phase) {
+    case 'court':
+      renderCourtPanel(shell, state, activePlayerId, handlers.court || {}, {
+        selectedProvinceId,
+        uiState,
+      });
+      break;
+
+    case 'orders':
+      renderOrdersPanel(shell, state, activePlayerId, {
+        lockOrders: handlers.lockOrders,
+      }, {
+        uiState,
+      });
+      break;
+
+    case 'resolution': {
+      renderResolutionPanelDetailed(shell, state, {
+        allowManualTitleReassignment: Boolean(resolution.allowManualTitleReassignment),
+      });
+      const continueButton = shell.querySelector('[data-action="continue"]');
+      if (!continueButton) break;
+
+      if (resolution.submitTitleAssignments) {
+        continueButton.textContent = resolution.submitText || 'Submit Titles';
+        continueButton.addEventListener('click', () => {
+          resolution.submitTitleAssignments(collectTitleAssignments(shell));
+        });
+        break;
+      }
+
+      if (resolution.disabledText) {
+        continueButton.textContent = resolution.disabledText;
+        continueButton.disabled = true;
+        break;
+      }
+
+      continueButton.textContent = resolution.continueText || 'Continue';
+      continueButton.addEventListener('click', () => {
+        resolution.continue?.(shell);
+      });
+      break;
+    }
+
+    case 'scoring':
+      shell.innerHTML = renderScoringHtml(state, { includeNewGame: Boolean(handlers.includeNewGame) });
+      break;
+
+    default:
+      shell.innerHTML = '<div class="panel-empty"><p>Processing...</p></div>';
+      break;
+  }
+
+  return body;
+}
+
+
+export function renderGameFrame({
+  state,
+  activePlayerId,
+  selectedProvinceId = null,
+  uiState,
+  aiMeta = null,
+  renderTabs,
+  renderActionPanel,
+  renderConnectionBadge = null,
+  renderGameOverOverlay = null,
+  rerender = null,
+}) {
+  if (!state) return;
+  renderTopBar(state);
+  renderConnectionBadge?.();
+  updateMapState(state);
+  setSelectedProvince(selectedProvinceId);
+  drawInvasionRoute(state.currentInvasion);
+  renderPlayerDashboard(
+    document.getElementById('playerDashboard'),
+    state,
+    activePlayerId,
+    selectedProvinceId,
+    { aiMeta, uiState },
+  );
+  renderHistoryPanel(document.getElementById('historyPanel'), state, { aiMeta, uiState });
+  renderTabs?.();
+  renderActionPanel?.();
+  bindUiChrome({ uiState, render: rerender || (() => {}) });
+  if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
 }

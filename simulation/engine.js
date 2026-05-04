@@ -1,25 +1,11 @@
 import { createGameState, getPlayerThemes } from '../engine/state.js';
 import { runAdministration } from '../engine/cascade.js';
-import {
-  phaseAdministration,
-  phaseCleanup,
-  phaseCourt,
-  phaseInvasion,
-  phaseOrders,
-  phaseResolution,
-  isCourtComplete,
-  allOrdersSubmitted,
-  submitOrders,
-} from '../engine/turnflow.js';
 import { computeFullWealth } from '../engine/actions.js';
 import {
-  applyAIOrderCosts,
-  buildAIOrders,
   createAIMeta,
-  handlePostResolutionAI,
-  runAICourtAutomation,
   SUPPORTED_PLAYER_COUNTS,
 } from '../ai/brain.js';
+import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../engine/runtime.js';
 import { normalizeAiProfile } from '../ai/profileStore.js';
 import { DEFAULT_MIXED_DECK_SIZES } from './constants.js';
 
@@ -244,37 +230,16 @@ function recordRoundSnapshot(state, meta) {
   });
 }
 
-function simulateCourtPhase(state, meta) {
-  phaseCourt(state);
+function logRoundStart(state, meta, loggedRounds) {
+  if (state.phase !== 'court' || loggedRounds.has(state.round)) return;
+  loggedRounds.add(state.round);
   meta.decisionLog.push(`Round ${state.round}: ${state.currentInvasion.name} enters with strength ${state.currentInvasion.strength[0]}-${state.currentInvasion.strength[1]}.`);
-  runAICourtAutomation(state, meta);
-  if (isCourtComplete(state)) {
-    phaseOrders(state);
-  }
 }
 
-function simulateOrdersAndResolution(state, meta) {
-  if (state.phase !== 'orders') {
-    phaseOrders(state);
-  }
-  for (const player of state.players) {
-    const orders = buildAIOrders(state, meta, player.id);
-    applyAIOrderCosts(state, meta, player.id, orders);
-    submitOrders(state, player.id, orders);
-  }
-
-  const previousBasileusId = state.basileusId;
-  const invasionId = state.currentInvasion.id;
-  const invasionName = state.currentInvasion.name;
-
-  if (allOrdersSubmitted(state)) {
-    phaseResolution(state);
-  }
-
-  handlePostResolutionAI(state, meta, { previousBasileusId, autoApplyTitleAssignments: true });
-
+function recordResolvedRound(state, meta, recordedRounds) {
+  if (state.phase !== 'resolution' || recordedRounds.has(state.round)) return;
+  recordedRounds.add(state.round);
   recordRoundSnapshot(state, meta);
-  phaseCleanup(state);
 }
 
 function buildFinalScores(state, meta) {
@@ -354,6 +319,9 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
     strictTimeoutMs: Math.max(250, toInt(config.strictTimeoutMs, DEFAULT_SIMULATION_GUARDS.strictTimeoutMs)),
   };
   let loopIterations = 0;
+  const runtimeContext = { pendingAiTitleAssignment: null };
+  const loggedRounds = new Set();
+  const recordedRounds = new Set();
 
   const abortForGuard = (reason) => {
     state.gameOver = {
@@ -378,15 +346,25 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
       break;
     }
 
-    phaseInvasion(state);
-    if (state.phase === 'scoring' || state.gameOver) break;
-    phaseAdministration(state);
-    simulateCourtPhase(state, meta);
-    if (!isCourtComplete(state)) {
+    if (state.phase === 'setup' || state.phase === 'cleanup' || state.phase === 'invasion' || state.phase === 'administration') {
+      startInteractiveRuntime(state, meta, runtimeContext);
+    }
+
+    logRoundStart(state, meta, loggedRounds);
+
+    if (state.phase === 'court' || state.phase === 'orders') {
+      runAiRuntime(state, meta, runtimeContext, { courtMode: 'finish' });
+    }
+
+    if (state.phase === 'court') {
       abortForGuard('court_incomplete');
       break;
     }
-    simulateOrdersAndResolution(state, meta);
+
+    if (state.phase === 'resolution') {
+      recordResolvedRound(state, meta, recordedRounds);
+      handleContinueAfterResolution(state, meta, runtimeContext, { processAi: false });
+    }
   }
 
   const finalScores = buildFinalScores(state, meta);

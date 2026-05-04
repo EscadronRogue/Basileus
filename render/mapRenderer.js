@@ -1,4 +1,5 @@
-import { PROVINCES, REGION_BORDER_COLORS } from '../data/provinces.js';
+import { PROVINCES } from '../data/provinces.js';
+import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
 
@@ -228,7 +229,7 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
     // Apply region border color so the overlay stroke matches the province outline
     const province = PROVINCES.find((p) => p.id === provinceId);
     if (province) {
-      const regionColor = REGION_BORDER_COLORS[province.region];
+      const regionColor = getRegionColor(province.region);
       if (regionColor) path.style.setProperty('--region-border', regionColor);
     }
   }
@@ -252,7 +253,7 @@ function applyInsetRegionBorder(rootSvg, path, provinceId) {
   const province = PROVINCES.find((entry) => entry.id === provinceId);
   if (!province) return;
 
-  const regionColor = REGION_BORDER_COLORS[province.region];
+  const regionColor = getRegionColor(province.region);
   if (!regionColor) return;
 
   // Kypros is the only province path with its own transform inside the imported
@@ -304,7 +305,7 @@ function configureThreatHatchPatterns(svg) {
     if (!provinceId) return;
 
     const province = PROVINCES.find((p) => p.id === provinceId);
-    const regionColor = REGION_BORDER_COLORS[province?.region] || '#2e1e0f';
+    const regionColor = getRegionColor(province?.region);
 
     const patternId = `threat-hatch-${provinceId}`;
     const visualPath = svg.querySelector(`.province-shape[data-id="${provinceId}"]`);
@@ -404,7 +405,7 @@ function buildMapCartouche(province, centroid) {
   g.setAttribute('data-id', province.id);
   g.setAttribute('transform', `translate(${centroid.cx} ${centroid.cy})`);
 
-  const regionColor = REGION_BORDER_COLORS[province.region] || '#2e1e0f';
+  const regionColor = getRegionColor(province.region) || '#2e1e0f';
   g.style.setProperty('--cart-border', regionColor);
 
   const bg = document.createElementNS(SVG_NS, 'rect');
@@ -503,22 +504,22 @@ export function updateMapState(state) {
 // both the province shape and the map cartouche (and shared with the HTML
 // .province-token via data/style conventions).
 function resolveProvinceOwnership(state, provinceId, theme) {
+  const ownerColor = getProvinceOwnerColor(state, theme);
   if (theme.occupied) {
-    return { classes: ['occupied'], ownerColor: null };
+    return { classes: ['occupied'], ownerColor };
   }
   if (theme.owner === 'church') {
-    return { classes: ['imperial', 'church'], ownerColor: null };
+    return { classes: ['imperial', 'church'], ownerColor };
   }
   if (theme.owner !== null) {
-    const player = state.players.find((candidate) => candidate.id === theme.owner);
     const classes = ['imperial', 'owned'];
     if (theme.taxExempt) classes.push('tax-exempt');
-    return { classes, ownerColor: player?.color || null };
+    return { classes, ownerColor };
   }
   if (provinceId === 'CPL') {
-    return { classes: ['imperial', 'capital'], ownerColor: null };
+    return { classes: ['imperial', 'capital'], ownerColor };
   }
-  return { classes: ['imperial', 'free'], ownerColor: null };
+  return { classes: ['imperial', 'free'], ownerColor };
 }
 
 function updateThreatOverlay(state) {

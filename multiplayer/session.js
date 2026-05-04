@@ -1,19 +1,16 @@
+import assert from 'node:assert/strict';
+
 import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
-import { advanceToNextInteractivePhase } from '../engine/turnflow.js';
-import { getMercenaryOrderCost } from '../engine/rules.js';
 import {
-  applyCourtAction,
-  applyManualTitleReassignment,
-  confirmCourt,
-  submitHumanOrders,
-} from '../engine/commands.js';
-import {
-  autoResolveUnavailableHumanAppointments as autoResolveCourtForPlayer,
-  continueAfterResolution,
-  maybeAdvanceCourt,
-  processAiFlow,
-  processPostHumanAction,
+  handleContinueAfterResolution,
+  handleHumanCourtAction,
+  handleHumanCourtConfirmation,
+  handleHumanOrders,
+  handleManualTitleReassignment,
+  startInteractiveRuntime,
 } from '../engine/runtime.js';
+import { clonePlain, serializePublicGameState } from '../engine/publicState.js';
+import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, pickRandom, resolveConfiguredSeed, toInt } from '../engine/setup.js';
 import { createAIMeta } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { normalizeAiProfile } from '../ai/profileStore.js';
@@ -23,60 +20,6 @@ export const ROOM_STATUS = {
   IN_PROGRESS: 'in_progress',
   FINISHED: 'finished',
 };
-
-const PLAYER_COUNT_MIN = 3;
-const PLAYER_COUNT_MAX = 5;
-const DEFAULT_PLAYER_COUNT = 4;
-const DEFAULT_DECK_SIZE = 9;
-const DEFAULT_ROOM_CONFIG = {
-  playerCount: DEFAULT_PLAYER_COUNT,
-  deckSize: DEFAULT_DECK_SIZE,
-  seed: '',
-};
-
-function clonePlain(value) {
-  if (value == null) return value;
-  return JSON.parse(JSON.stringify(value));
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function toInt(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) ? parsed : fallback;
-}
-
-function hashSeedInput(seedInput) {
-  let seed = 0;
-  for (let index = 0; index < seedInput.length; index += 1) {
-    seed = ((seed << 5) - seed + seedInput.charCodeAt(index)) | 0;
-  }
-  return seed;
-}
-
-function resolveConfiguredSeed(rawSeed) {
-  const text = String(rawSeed || '').trim();
-  return text ? hashSeedInput(text) : Date.now();
-}
-
-function randomPick(rng, values) {
-  if (!values.length) return null;
-  return values[Math.floor(rng() * values.length)] ?? values[0] ?? null;
-}
-
-function assert(condition, reason) {
-  if (!condition) throw new Error(reason);
-}
-
-function normalizeRoomConfig(rawConfig = {}) {
-  return {
-    playerCount: clamp(toInt(rawConfig.playerCount, DEFAULT_PLAYER_COUNT), PLAYER_COUNT_MIN, PLAYER_COUNT_MAX),
-    deckSize: clamp(toInt(rawConfig.deckSize, DEFAULT_DECK_SIZE), 1, 30),
-    seed: String(rawConfig.seed ?? DEFAULT_ROOM_CONFIG.seed).trim(),
-  };
-}
 
 function normalizeTrainedAiProfiles(rawProfiles = []) {
   if (!Array.isArray(rawProfiles)) return [];
@@ -106,91 +49,6 @@ function getSeatStatus(seat) {
   if (seat.kind === 'ai') return 'ai';
   if (!seat.sessionId) return 'open';
   return seat.connected ? 'connected' : 'disconnected';
-}
-
-function serializeCourtActions(courtActions = null) {
-  if (!courtActions) return null;
-  return {
-    ...courtActions,
-    playerConfirmed: [...(courtActions.playerConfirmed || new Set())],
-  };
-}
-
-function serializeCurrentInvasion(invasion) {
-  if (!invasion) return null;
-  return {
-    ...clonePlain(invasion),
-    route: Array.isArray(invasion.route) ? invasion.route.slice() : [],
-    strength: Array.isArray(invasion.strength) ? invasion.strength.slice() : [],
-    baseStrength: Array.isArray(invasion.baseStrength) ? invasion.baseStrength.slice() : [],
-  };
-}
-
-function serializePlayersForViewer(state, viewerSeatId) {
-  return state.players.map((player) => {
-    const hiddenSpend = state.phase === 'orders' && viewerSeatId !== player.id
-      ? getMercenaryOrderCost(state.allOrders?.[player.id]?.mercenaries || [])
-      : 0;
-    return {
-      ...clonePlain(player),
-      gold: player.gold + hiddenSpend,
-    };
-  });
-}
-
-function sanitizePublicHistory(state) {
-  const history = Array.isArray(state.history) ? state.history : [];
-  const currentRound = state.round;
-  const inHiddenOrdersWindow = state.phase === 'orders';
-  const sanitized = [];
-
-  for (const event of history) {
-    if (event?.type === 'hire_mercenaries' && inHiddenOrdersWindow && event.round === currentRound) {
-      continue;
-    }
-
-    const nextEvent = {
-      ...clonePlain(event),
-      decision: null,
-    };
-
-    if (nextEvent.type === 'orders_submitted') {
-      nextEvent.details = null;
-      nextEvent.summary = `${nextEvent.summary || ''}`.trim() || 'Secret orders are sealed.';
-    }
-
-    sanitized.push(nextEvent);
-  }
-
-  return sanitized;
-}
-
-function serializePublicGameState(state, viewerSeatId) {
-  const pendingTitleReassignment = Boolean(state.pendingTitleReassignment) || state.nextBasileusId !== state.basileusId;
-  return {
-    round: state.round,
-    maxRounds: state.maxRounds,
-    phase: state.phase,
-    historyEnabled: true,
-    historySeq: state.historySeq || 0,
-    basileusId: state.basileusId,
-    nextBasileusId: state.nextBasileusId,
-    players: serializePlayersForViewer(state, viewerSeatId),
-    themes: clonePlain(state.themes),
-    empress: state.empress,
-    chiefEunuchs: state.chiefEunuchs,
-    currentInvasion: serializeCurrentInvasion(state.currentInvasion),
-    invasionStrength: state.invasionStrength,
-    currentLevies: clonePlain(state.currentLevies || {}),
-    allOrders: Object.fromEntries(Object.keys(state.allOrders || {}).map((playerId) => [playerId, true])),
-    lastCoupResult: clonePlain(state.lastCoupResult),
-    lastWarResult: clonePlain(state.lastWarResult),
-    gameOver: clonePlain(state.gameOver),
-    history: sanitizePublicHistory(state),
-    courtActions: serializeCourtActions(state.courtActions),
-    pendingTitleReassignment,
-    recruitedThisRound: clonePlain(state.recruitedThisRound || {}),
-  };
 }
 
 function createSeatSummary(room, seat, viewerSessionId) {
@@ -233,7 +91,6 @@ export class MultiplayerRoom {
     this.gameState = null;
     this.aiMeta = null;
     this.pendingAiTitleAssignment = null;
-    this.aiBusy = false;
     this.gameOverSent = false;
 
     this.ensureSession(hostSessionId, hostPlayerName);
@@ -397,7 +254,7 @@ export class MultiplayerRoom {
 
     const seatProfiles = {};
     for (const seatId of aiSeatIds) {
-      const profile = randomPick(this.gameState.rng, trainedRoster);
+      const profile = pickRandom(this.gameState.rng, trainedRoster, null);
       if (profile) seatProfiles[seatId] = profile;
     }
 
@@ -409,8 +266,7 @@ export class MultiplayerRoom {
     this.pendingAiTitleAssignment = null;
     this.status = ROOM_STATUS.IN_PROGRESS;
     this.gameOverSent = false;
-    advanceToNextInteractivePhase(this.gameState);
-    if (this.gameState.phase !== 'court') this.processAiFlow({ courtMode: 'finish' });
+    startInteractiveRuntime(this.gameState, this.aiMeta, this);
     this.refreshStatusFromGame();
     this.touch();
     return this.gameState;
@@ -588,45 +444,6 @@ export class MultiplayerRoom {
     else this.sendToSession(sessionId, this.createPrivateSnapshotFor(sessionId));
   }
 
-  autoResolveUnavailableHumanAppointments() {
-    if (!this.gameState) return;
-    for (const seat of this.seats) {
-      if (seat.kind === 'human') autoResolveCourtForPlayer(this.gameState, seat.seatId);
-    }
-    maybeAdvanceCourt(this.gameState, this.aiMeta);
-  }
-
-  afterHumanCourtAction(observation = null, options = {}) {
-    if (!this.aiMeta || !this.gameState || this.aiBusy) return;
-    this.aiBusy = true;
-    try {
-      const result = processPostHumanAction(this.gameState, this.aiMeta, {
-        ...options,
-        observation,
-        pendingAiTitleAssignment: this.pendingAiTitleAssignment,
-      });
-      if (result) this.pendingAiTitleAssignment = result.pendingAiTitleAssignment;
-    } finally {
-      this.aiBusy = false;
-      this.refreshStatusFromGame();
-    }
-  }
-
-  processAiFlow(options = {}) {
-    if (!this.aiMeta || !this.gameState || this.aiBusy) return;
-    this.aiBusy = true;
-    try {
-      const result = processAiFlow(this.gameState, this.aiMeta, {
-        ...options,
-        pendingAiTitleAssignment: this.pendingAiTitleAssignment,
-      });
-      if (result) this.pendingAiTitleAssignment = result.pendingAiTitleAssignment;
-    } finally {
-      this.aiBusy = false;
-      this.refreshStatusFromGame();
-    }
-  }
-
   requireHumanSeatForSession(sessionId) {
     assert(this.status !== ROOM_STATUS.LOBBY, 'The game has not started.');
     assert(this.gameState, 'The game has not started.');
@@ -643,45 +460,33 @@ export class MultiplayerRoom {
     try {
       if (message.type === 'court_action') {
         const seat = this.requireHumanSeatForSession(sessionId);
-        assert(this.gameState.phase === 'court', 'Court actions are not available right now.');
-        assert(!this.gameState.courtActions?.playerConfirmed?.has(seat.seatId), 'You already confirmed court actions this round.');
-        this.autoResolveUnavailableHumanAppointments();
-        const result = applyCourtAction(this.gameState, seat.seatId, message);
+        const result = handleHumanCourtAction(this.gameState, this.aiMeta, this, seat.seatId, message);
         assert(result.ok, result.reason);
-        maybeAdvanceCourt(this.gameState, this.aiMeta);
-        this.afterHumanCourtAction(result.observation || null, { courtMode: 'react' });
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
 
       if (message.type === 'confirm_court') {
         const seat = this.requireHumanSeatForSession(sessionId);
-        const result = confirmCourt(this.gameState, seat.seatId);
+        const result = handleHumanCourtConfirmation(this.gameState, this.aiMeta, this, seat.seatId);
         assert(result.ok, result.reason);
-        maybeAdvanceCourt(this.gameState, this.aiMeta);
-        this.afterHumanCourtAction(null, { courtMode: 'finish' });
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
 
       if (message.type === 'submit_orders') {
         const seat = this.requireHumanSeatForSession(sessionId);
-        const submitResult = submitHumanOrders(this.gameState, seat.seatId, message.orders);
+        const submitResult = handleHumanOrders(this.gameState, this.aiMeta, this, seat.seatId, message.orders);
         assert(submitResult.ok, submitResult.reason);
-        this.processAiFlow();
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
 
       if (message.type === 'reassign_major_titles') {
         const seat = this.requireHumanSeatForSession(sessionId);
-        assert(this.gameState.phase === 'resolution', 'Major title reassignment is only allowed during resolution.');
-        assert(this.gameState.nextBasileusId !== this.gameState.basileusId, 'No new Basileus needs to reassign titles.');
-        assert(seat.seatId === this.gameState.nextBasileusId, 'Only the new Basileus may assign major titles.');
         const assignments = message.assignments && typeof message.assignments === 'object' ? message.assignments : {};
-        const result = applyManualTitleReassignment(this.gameState, this.aiMeta, seat.seatId, assignments);
+        const result = handleManualTitleReassignment(this.gameState, this.aiMeta, this, seat.seatId, assignments);
         assert(result.ok, result.reason);
-        this.pendingAiTitleAssignment = null;
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
@@ -693,12 +498,8 @@ export class MultiplayerRoom {
           && this.seats[this.gameState.nextBasileusId]?.kind === 'human'
           && this.pendingAiTitleAssignment == null;
         assert(!needsHumanReassignment, 'The new Basileus must reassign major titles first.');
-        const continuation = continueAfterResolution(this.gameState, this.aiMeta, this.pendingAiTitleAssignment);
+        const continuation = handleContinueAfterResolution(this.gameState, this.aiMeta, this);
         assert(continuation.ok, continuation.reason);
-        this.pendingAiTitleAssignment = continuation.pendingAiTitleAssignment;
-        if (this.status !== ROOM_STATUS.FINISHED) {
-          this.processAiFlow({ courtMode: 'finish' });
-        }
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }

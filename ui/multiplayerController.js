@@ -1,20 +1,11 @@
-import { createMapSVG, drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
+import { hydratePublicState } from '../engine/publicState.js';
+import { createMapSVG } from '../render/mapRenderer.js';
 import {
-  renderCourtPanel,
-  renderHistoryPanel,
-  renderOrdersPanel,
-  renderPlayerDashboard,
-  renderResolutionPanelDetailed,
-} from './panels.js';
-import {
-  bindUiChrome,
   createDefaultUiState,
-  isPanelOpen,
-  renderActionShell,
+  renderGameActionPanel,
+  renderGameFrame,
   renderHiddenGameOverOverlay,
   renderPlayerTabs,
-  renderScoringHtml,
-  renderTopBar,
 } from './sharedView.js';
 
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
@@ -107,27 +98,6 @@ function buildWebSocketUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-function hydratePublicState(rawState = {}) {
-  return {
-    ...rawState,
-    historyEnabled: true,
-    history: Array.isArray(rawState.history) ? rawState.history : [],
-    players: Array.isArray(rawState.players) ? rawState.players : [],
-    themes: rawState.themes && typeof rawState.themes === 'object' ? rawState.themes : {},
-    currentLevies: rawState.currentLevies && typeof rawState.currentLevies === 'object' ? rawState.currentLevies : {},
-    allOrders: rawState.allOrders && typeof rawState.allOrders === 'object' ? rawState.allOrders : {},
-    recruitedThisRound: rawState.recruitedThisRound && typeof rawState.recruitedThisRound === 'object'
-      ? rawState.recruitedThisRound
-      : {},
-    courtActions: rawState.courtActions
-      ? {
-        ...rawState.courtActions,
-        playerConfirmed: new Set(rawState.courtActions.playerConfirmed || []),
-      }
-      : null,
-  };
-}
-
 async function requestJson(path, payload) {
   const url = resolveApiUrl(path);
   const response = await fetch(url, {
@@ -198,7 +168,7 @@ export class MultiplayerController {
     this.privateSnapshot = null;
     this.state = null;
     this.selectedProvinceId = null;
-    this.viewPlayerId = 0;
+    this.viewPlayerId = null;
     this.socket = null;
     this.connectionState = 'connecting';
     this.lastError = '';
@@ -405,10 +375,6 @@ export class MultiplayerController {
     }
   }
 
-  bindUiChrome() {
-    bindUiChrome({ uiState: this.uiState, render: () => this.render() });
-  }
-
   renderConnectionBadge() {
     const badge = document.getElementById('connectionDisplay');
     if (!badge) return;
@@ -422,10 +388,6 @@ export class MultiplayerController {
     badge.hidden = false;
     badge.textContent = labels[this.connectionState] || 'Connected';
     badge.className = `connection-badge ${this.connectionState}`;
-  }
-
-  renderTopBar() {
-    renderTopBar(this.state);
   }
 
   renderPlayerTabs() {
@@ -448,132 +410,83 @@ export class MultiplayerController {
     });
   }
 
-  isPanelOpen(panelKey, fallback = true) {
-    return isPanelOpen(this.uiState, panelKey, fallback);
-  }
-
   renderActionPanel() {
-    const body = renderActionShell(document.getElementById('actionPanel'), this.state, this.uiState);
-    if (!body) return;
     const controlledSeatId = this.getControlledSeatId();
+    const state = this.state;
+    if (!state) return;
 
-    if (controlledSeatId == null && this.state.phase !== 'scoring') {
-      body.innerHTML = `<div class="panel-empty spectator-panel"><p>Claim a human seat in the lobby to control a dynasty.</p></div>`;
-      return;
+    const waitingForHumanReassignment = state.phase === 'resolution'
+      && state.nextBasileusId !== state.basileusId
+      && state.pendingTitleReassignment
+      && controlledSeatId !== state.nextBasileusId
+      && !this.privateSnapshot?.pendingAiTitleAssignment;
+
+    const canAssignTitles = state.phase === 'resolution'
+      && controlledSeatId != null
+      && state.nextBasileusId !== state.basileusId
+      && controlledSeatId === state.nextBasileusId
+      && !this.privateSnapshot?.pendingAiTitleAssignment;
+
+    const resolution = {};
+    if (canAssignTitles) {
+      resolution.allowManualTitleReassignment = true;
+      resolution.submitText = 'Submit Titles';
+      resolution.submitTitleAssignments = (assignments) => this.send('reassign_major_titles', { assignments });
+    } else if (waitingForHumanReassignment) {
+      resolution.disabledText = 'Waiting For New Basileus';
+    } else if (!this.isHost() && state.phase === 'resolution') {
+      resolution.disabledText = 'Host Continues';
+    } else {
+      resolution.continue = () => this.send('continue_after_resolution');
     }
 
-    if (this.lastError) {
-      body.innerHTML = `<div class="multiplayer-banner error">${this.lastError}</div>`;
-    }
-
-    const shell = document.createElement('div');
-    body.appendChild(shell);
-
-    if (this.state.phase === 'court') {
-      renderCourtPanel(shell, this.state, controlledSeatId, {
-        buy: (themeId) => this.send('court_action', { action: 'buy', themeId }),
-        gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
-        exempt: (themeId) => this.send('court_action', { action: 'exempt', themeId }),
-        recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),
-        dismiss: (_, data) => this.send('court_action', { action: 'dismiss', office: data.office, count: data.count }),
-        'confirm-court': () => this.send('confirm_court'),
-        'basileus-appoint': (titleType, appointeeId, themeId) => this.send('court_action', {
-          action: 'basileus-appoint',
-          titleType,
-          appointeeId,
-          themeId,
-        }),
-        'appoint-strategos': (titleKey, themeId, appointeeId) => this.send('court_action', {
-          action: 'appoint-strategos',
-          titleKey,
-          themeId,
-          appointeeId,
-        }),
-        'appoint-bishop': (themeId, appointeeId) => this.send('court_action', {
-          action: 'appoint-bishop',
-          themeId,
-          appointeeId,
-        }),
-        revoke: (value) => this.send('court_action', {
-          action: 'revoke',
-          value,
-        }),
-      }, {
-        selectedProvinceId: this.selectedProvinceId,
-        uiState: this.uiState,
-      });
-      return;
-    }
-
-    if (this.state.phase === 'orders') {
-      renderOrdersPanel(shell, this.state, controlledSeatId, {
+    renderGameActionPanel({
+      panel: document.getElementById('actionPanel'),
+      state,
+      uiState: this.uiState,
+      activePlayerId: controlledSeatId ?? this.viewPlayerId,
+      selectedProvinceId: this.selectedProvinceId,
+      canControl: controlledSeatId != null || state.phase === 'scoring',
+      spectatorMessage: 'Claim a human seat in the lobby to control a dynasty.',
+      error: this.lastError,
+      handlers: {
+        court: this.createCourtHandlers(),
         lockOrders: (orders) => this.send('submit_orders', { orders }),
-      }, {
-        uiState: this.uiState,
-      });
-      return;
-    }
-
-    if (this.state.phase === 'resolution') {
-      const controlledSeat = this.getControlledSeatId();
-      const canAssignTitles = controlledSeat != null &&
-        this.state.nextBasileusId !== this.state.basileusId &&
-        controlledSeat === this.state.nextBasileusId &&
-        !this.privateSnapshot?.pendingAiTitleAssignment;
-
-      renderResolutionPanelDetailed(shell, this.state, {
-        allowManualTitleReassignment: canAssignTitles,
-      });
-
-      const continueButton = shell.querySelector('[data-action="continue"]');
-      const waitingForHumanReassignment = this.state.nextBasileusId !== this.state.basileusId &&
-        this.state.pendingTitleReassignment &&
-        controlledSeat !== this.state.nextBasileusId &&
-        !this.privateSnapshot?.pendingAiTitleAssignment;
-
-      if (continueButton) {
-        if (canAssignTitles) {
-          continueButton.textContent = this.isHost() ? 'Submit Titles' : 'Submit Titles';
-          continueButton.addEventListener('click', () => {
-            const assignments = {};
-            shell.querySelectorAll('[data-title-assignment]').forEach((select) => {
-              assignments[select.dataset.titleAssignment] = Number(select.value);
-            });
-            this.send('reassign_major_titles', { assignments });
-          });
-          return;
-        }
-
-        if (waitingForHumanReassignment) {
-          continueButton.textContent = 'Waiting For New Basileus';
-          continueButton.disabled = true;
-          return;
-        }
-
-        if (!this.isHost()) {
-          continueButton.textContent = 'Host Continues';
-          continueButton.disabled = true;
-          return;
-        }
-
-        continueButton.textContent = 'Continue';
-        continueButton.addEventListener('click', () => {
-          this.send('continue_after_resolution');
-        });
-      }
-      return;
-    }
-
-    if (this.state.phase === 'scoring' || this.state.gameOver) {
-      shell.innerHTML = this.renderScoringHtml();
-      return;
-    }
-
-    shell.innerHTML = '<div class="panel-empty"><p>Waiting for the server...</p></div>';
+      },
+      resolution,
+    });
   }
 
-  renderScoringHtml() {
-    return renderScoringHtml(this.state);
+  createCourtHandlers() {
+    return {
+      buy: (themeId) => this.send('court_action', { action: 'buy', themeId }),
+      gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
+      exempt: (themeId) => this.send('court_action', { action: 'exempt', themeId }),
+      recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),
+      dismiss: (_, data) => this.send('court_action', { action: 'dismiss', office: data.office, count: data.count }),
+      'confirm-court': () => this.send('confirm_court'),
+      'basileus-appoint': (titleType, appointeeId, themeId) => this.send('court_action', {
+        action: 'basileus-appoint',
+        titleType,
+        appointeeId,
+        themeId,
+      }),
+      'appoint-strategos': (titleKey, themeId, appointeeId) => this.send('court_action', {
+        action: 'appoint-strategos',
+        titleKey,
+        themeId,
+        appointeeId,
+      }),
+      'appoint-bishop': (themeId, appointeeId) => this.send('court_action', {
+        action: 'appoint-bishop',
+        themeId,
+        appointeeId,
+      }),
+      revoke: (value) => this.send('court_action', {
+        action: 'revoke',
+        value,
+      }),
+    };
   }
 
   renderGameOverOverlay() {
@@ -699,29 +612,18 @@ export class MultiplayerController {
   renderGame() {
     if (!this.state) return;
     this.ensureMap().then(() => {
-      this.renderTopBar();
-      this.renderConnectionBadge();
-      updateMapState(this.state);
-      setSelectedProvince(this.selectedProvinceId);
-      drawInvasionRoute(this.state.currentInvasion);
-      renderPlayerDashboard(
-        document.getElementById('playerDashboard'),
-        this.state,
-        this.viewPlayerId,
-        this.selectedProvinceId,
-        {
-          aiMeta: null,
-          uiState: this.uiState,
-        },
-      );
-      renderHistoryPanel(document.getElementById('historyPanel'), this.state, {
-        aiMeta: null,
+      renderGameFrame({
+        state: this.state,
+        activePlayerId: this.viewPlayerId,
+        selectedProvinceId: this.selectedProvinceId,
         uiState: this.uiState,
+        aiMeta: null,
+        renderTabs: () => this.renderPlayerTabs(),
+        renderActionPanel: () => this.renderActionPanel(),
+        renderConnectionBadge: () => this.renderConnectionBadge(),
+        renderGameOverOverlay: () => this.renderGameOverOverlay(),
+        rerender: () => this.render(),
       });
-      this.renderPlayerTabs();
-      this.renderActionPanel();
-      this.bindUiChrome();
-      this.renderGameOverOverlay();
     });
   }
 

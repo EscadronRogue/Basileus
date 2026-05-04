@@ -1,4 +1,5 @@
 import { listAvailableAiProfiles } from './ai/profileStore.js';
+import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup.js';
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
 
@@ -35,29 +36,8 @@ function escapeHtml(value) {
     .replaceAll('"', '&quot;');
 }
 
-function hashSeedInput(seedInput) {
-  let seed = 0;
-  for (let index = 0; index < seedInput.length; index += 1) {
-    seed = ((seed << 5) - seed + seedInput.charCodeAt(index)) | 0;
-  }
-  return seed;
-}
-
 function cloneProfile(profile) {
   return profile ? JSON.parse(JSON.stringify(profile)) : null;
-}
-
-function makeChoiceRng(seed = Date.now()) {
-  let state = (seed ^ 0x9e3779b9) >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
-
-function pickRandom(rng, values, fallback = null) {
-  if (!values.length) return fallback;
-  return values[Math.floor(rng() * values.length)] ?? values[0] ?? fallback;
 }
 
 function getNonRandomOptionValues(select) {
@@ -188,10 +168,6 @@ function refreshModeVisibility() {
   if (defaultSetupActions) defaultSetupActions.hidden = mode === 'multiplayer';
   setMultiplayerError('');
   renderAiRoster();
-}
-
-function resolveConfiguredSeed(seedInput) {
-  return seedInput ? hashSeedInput(seedInput) : Date.now();
 }
 
 function resolveAiSeatAssignments(playerCount, humanSeat, rng) {

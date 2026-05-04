@@ -43,7 +43,7 @@ export function getRegionLabel(region) {
   return REGION_LABELS[region] || region || '';
 }
 
-function getRegionColor(region) {
+export function getRegionColor(region) {
   return REGION_BORDER_COLORS[region] || '#2e1e0f';
 }
 
@@ -113,13 +113,13 @@ export function renderProvinceBadgeList(state, themeIds = []) {
 // Default labels are provided; callers can override via options.label.
 
 const TITLE_OUTLINE_COLORS = {
-  BASILEUS: '#9a7010',       // CPL gold
-  EMPRESS: '#9a7010',
-  CHIEF_EUNUCHS: '#9a7010',
+  BASILEUS: REGION_BORDER_COLORS.cpl,
+  EMPRESS: REGION_BORDER_COLORS.cpl,
+  CHIEF_EUNUCHS: REGION_BORDER_COLORS.cpl,
   PATRIARCH: '#000000',
-  DOM_EAST: '#1e5c34',
-  DOM_WEST: '#7a2020',
-  ADMIRAL: '#1e3a7a',
+  DOM_EAST: REGION_BORDER_COLORS.east,
+  DOM_WEST: REGION_BORDER_COLORS.west,
+  ADMIRAL: REGION_BORDER_COLORS.sea,
 };
 
 const TITLE_DEFAULT_LABELS = {
