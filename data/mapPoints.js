@@ -49,17 +49,31 @@ export const PROVINCE_LABEL_POINTS = Object.freeze({
   CPL: { cx: 156.25, cy: 85.00 },
 });
 
-// Geopolitical invasion spawn points, also in direct 297×210 SVG map units.
-// cartoucheDx/cartoucheDy move only the invasion label, not the route origin.
-export const INVASION_ORIGIN_POINTS = Object.freeze({
-  west_libya: { cx: 68.0, cy: 194.0, cartoucheDy: -14.0 },
+// Geopolitical invasion origin ids. At render time these are resolved from
+// reference circles drawn on assets/hitzones.svg, in the same 297×210 viewBox
+// as the visible map. The fallback values below preserve behavior if an SVG
+// without reference circles is loaded.
+export const INVASION_ORIGIN_POINT_IDS = Object.freeze([
+  'west_libya',
+  'steppe',
+  'norman_italy',
+  'venice',
+  'bulgaria',
+  'serbia_interior',
+  'pannonia',
+  'turkic_east',
+  'levant',
+]);
+
+export const INVASION_ORIGIN_POINT_FALLBACKS = Object.freeze({
+  west_libya: { cx: 68.0, cy: 194.0 },
   steppe: { cx: 181.0, cy: 18.0 },
-  norman_italy: { cx: 39.0, cy: 69.0, cartoucheDy: -11.0 },
-  venice: { cx: 45.5, cy: 63.0, cartoucheDx: -2.5, cartoucheDy: -11.0 },
+  norman_italy: { cx: 39.0, cy: 69.0 },
+  venice: { cx: 45.5, cy: 63.0 },
   bulgaria: { cx: 94.5, cy: 67.5 },
-  serbia_interior: { cx: 66.5, cy: 58.0, cartoucheDy: -18.0 },
+  serbia_interior: { cx: 66.5, cy: 58.0 },
   pannonia: { cx: 75.5, cy: 24.0 },
-  turkic_east: { cx: 290.0, cy: 92.0, cartoucheDy: -10.0 },
+  turkic_east: { cx: 290.0, cy: 92.0 },
   levant: { cx: 248.0, cy: 164.0 },
 });
 
@@ -68,7 +82,11 @@ export function getProvinceLabelPoint(provinceId) {
   return point ? { cx: point.cx, cy: point.cy } : null;
 }
 
-export function getMapPoint(pointId) {
-  const point = INVASION_ORIGIN_POINTS[pointId];
+export function getInvasionOriginFallbackPoint(pointId) {
+  const point = INVASION_ORIGIN_POINT_FALLBACKS[pointId];
   return point ? { ...point } : null;
+}
+
+export function getMapPoint(pointId) {
+  return getInvasionOriginFallbackPoint(pointId);
 }

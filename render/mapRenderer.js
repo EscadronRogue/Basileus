@@ -2,7 +2,12 @@ import { PROVINCES } from '../data/provinces.js';
 import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
-import { getMapPoint, getProvinceLabelPoint } from '../data/mapPoints.js';
+import {
+  INVASION_ORIGIN_POINT_FALLBACKS,
+  INVASION_ORIGIN_POINT_IDS,
+  getInvasionOriginFallbackPoint,
+  getProvinceLabelPoint,
+} from '../data/mapPoints.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const THREAT_HATCH_SPACING = 3.6;
@@ -12,6 +17,8 @@ const MIN_THREAT_HATCH_SCALE = 0.001;
 const MIN_MAP_ZOOM = 1;
 const MAX_MAP_ZOOM = 4;
 const MAP_ZOOM_STEP = 1.2;
+const MAP_VIEWBOX_WIDTH = 297;
+const MAP_VIEWBOX_HEIGHT = 210;
 
 // Region outlines are rendered in their own layer and clipped to each
 // province interior. The stroke itself is drawn at double the visible width,
@@ -23,6 +30,7 @@ let provinceCentroids = {};
 let provinceSelectHandler = null;
 let hoveredProvinceId = null;
 let viewportLayer = null;
+let invasionOriginPoints = {};
 let mapView = { zoom: 1, panX: 0, panY: 0 };
 let panState = {
   active: false,
@@ -54,6 +62,7 @@ export async function createMapSVG(containerId, options = {}) {
     moved: false,
     suppressClick: false,
   };
+  invasionOriginPoints = buildInvasionOriginPointsFromHitzones(HITZONES_SVG);
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 297 210');
@@ -184,6 +193,7 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
   const visualImported = document.importNode(provinceGroup, true);
   visualImported.id = 'province-container';
   stripSvgClipping(visualImported);
+  removeNonProvinceGeometry(visualImported);
 
   for (const path of visualImported.querySelectorAll('path')) {
     const provinceId = path.getAttribute('id') || '';
@@ -195,6 +205,7 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
   const regionStrokeImported = document.importNode(provinceGroup, true);
   regionStrokeImported.id = 'region-stroke-container';
   stripSvgClipping(regionStrokeImported);
+  removeNonProvinceGeometry(regionStrokeImported);
 
   for (const path of regionStrokeImported.querySelectorAll('path')) {
     const provinceId = path.getAttribute('id') || '';
@@ -207,6 +218,7 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
   const hitboxImported = document.importNode(provinceGroup, true);
   hitboxImported.id = 'province-hitbox-container';
   stripSvgClipping(hitboxImported);
+  removeNonProvinceGeometry(hitboxImported);
 
   for (const path of hitboxImported.querySelectorAll('path')) {
     const provinceId = path.getAttribute('id') || '';
@@ -218,6 +230,7 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
   const threatImported = document.importNode(provinceGroup, true);
   threatImported.id = 'province-threat-container';
   stripSvgClipping(threatImported);
+  removeNonProvinceGeometry(threatImported);
 
   for (const path of threatImported.querySelectorAll('path')) {
     const provinceId = path.getAttribute('id') || '';
@@ -248,6 +261,13 @@ function configureProvincePath(path, provinceId, className, idPrefix) {
   path.setAttribute('data-id', provinceId);
   path.setAttribute('fill-rule', 'evenodd');
   path.setAttribute('clip-rule', 'evenodd');
+}
+
+function removeNonProvinceGeometry(root) {
+  root.querySelectorAll('path, circle, ellipse, rect, polygon, polyline, line, use').forEach((element) => {
+    const elementId = element.getAttribute('id') || '';
+    if (!isProvinceId(elementId)) element.remove();
+  });
 }
 
 function applyInsetRegionBorder(rootSvg, path, provinceId) {
@@ -597,14 +617,15 @@ export function drawInvasionRoute(invasion) {
 }
 
 function resolveInvasionOriginPoint(invasion) {
-  const point = getMapPoint(invasion?.originPointId);
-  if (point) return point;
+  const pointId = invasion?.originPointId;
+  const point = pointId ? invasionOriginPoints[pointId] || getInvasionOriginFallbackPoint(pointId) : null;
+  if (point) return { ...point };
 
   const legacyPoint = invasion?.originPos;
   if (legacyPoint) {
     return {
-      cx: legacyPoint.cx * (297 / 1150),
-      cy: legacyPoint.cy * (210 / 560),
+      cx: legacyPoint.cx * (MAP_VIEWBOX_WIDTH / 1150),
+      cy: legacyPoint.cy * (MAP_VIEWBOX_HEIGHT / 560),
     };
   }
 
@@ -624,14 +645,12 @@ function appendInvasionCartouche(layer, invasion, point) {
   const nameText = invasion.name || 'Invasion';
   const width = Math.max(26, Math.min(44, Math.max(nameText.length, strengthText.length) * 1.45 + 7));
   const height = 9.6;
-  const cartoucheCenterX = point.cx + (Number(point.cartoucheDx) || 0);
-  const cartoucheTopY = point.cy + (Number.isFinite(point.cartoucheDy) ? point.cartoucheDy : -7.3);
-  const x = clampValue(cartoucheCenterX, (width / 2) + 1.2, 297 - (width / 2) - 1.2);
-  const y = clampValue(cartoucheTopY, 1.2, 210 - height - 1.2);
+  const x = point.cx - (width / 2);
+  const y = point.cy - (height / 2);
 
   const group = document.createElementNS(SVG_NS, 'g');
   group.setAttribute('class', 'invasion-cartouche');
-  group.setAttribute('transform', `translate(${x - (width / 2)} ${y})`);
+  group.setAttribute('transform', `translate(${x.toFixed(2)} ${y.toFixed(2)})`);
 
   const bg = document.createElementNS(SVG_NS, 'rect');
   bg.setAttribute('class', 'invasion-cartouche-bg');
@@ -887,6 +906,429 @@ function stripSvgClipping(root) {
     element.removeAttribute('clip-path');
     element.removeAttribute('mask');
   });
+}
+
+function buildInvasionOriginPointsFromHitzones(svgText) {
+  const fallbackPoints = Object.fromEntries(
+    Object.entries(INVASION_ORIGIN_POINT_FALLBACKS).map(([id, point]) => [id, { ...point }]),
+  );
+  const referencePoints = assignOriginMarkersToInvasions(extractOriginReferenceMarkers(svgText));
+  return Object.freeze({ ...fallbackPoints, ...referencePoints });
+}
+
+function extractOriginReferenceMarkers(svgText) {
+  const sourceSvg = parseSvgRoot(svgText);
+  if (!sourceSvg) return [];
+
+  const markers = [];
+  sourceSvg.querySelectorAll('circle, ellipse, path').forEach((element) => {
+    if (!isReferenceCircleElement(element)) return;
+
+    const localCenter = getReferenceCircleLocalCenter(element);
+    if (!localCenter) return;
+
+    const mapPoint = transformSvgPointToMap(element, localCenter);
+    if (!isPointInsideLooseMapFrame(mapPoint)) return;
+
+    markers.push({
+      id: element.getAttribute('id') || '',
+      cx: roundMapUnit(mapPoint.cx),
+      cy: roundMapUnit(mapPoint.cy),
+    });
+  });
+
+  return markers;
+}
+
+function isReferenceCircleElement(element) {
+  const tag = getLocalTagName(element);
+  if (tag === 'circle' || tag === 'ellipse') return true;
+  if (tag !== 'path') return false;
+  return readSvgAttribute(element, 'type', 'sodipodi') === 'arc' || isBlackReferencePath(element);
+}
+
+function getReferenceCircleLocalCenter(element) {
+  const cx = readFiniteNumber(element, 'cx') ?? readFiniteNumber(element, 'cx', 'sodipodi');
+  const cy = readFiniteNumber(element, 'cy') ?? readFiniteNumber(element, 'cy', 'sodipodi');
+  if (Number.isFinite(cx) && Number.isFinite(cy)) return { cx, cy };
+  return readPathCenterFromBounds(element);
+}
+
+function isBlackReferencePath(element) {
+  const elementId = element.getAttribute('id') || '';
+  if (isProvinceId(elementId) || isInsideSvgDefs(element)) return false;
+
+  const style = element.getAttribute('style') || '';
+  const fill = element.getAttribute('fill') || '';
+  const stroke = element.getAttribute('stroke') || '';
+  const colorSource = `${style};fill:${fill};stroke:${stroke}`.toLowerCase();
+  if (!/(^|[;\s:])(?:#000|#000000|black)(?:[;\s]|$)/.test(colorSource)) return false;
+
+  return Boolean(element.getAttribute('d'));
+}
+
+function readPathCenterFromBounds(element) {
+  const bounds = getSvgPathCoordinateBounds(element.getAttribute('d'));
+  if (!bounds) return null;
+  return {
+    cx: (bounds.minX + bounds.maxX) / 2,
+    cy: (bounds.minY + bounds.maxY) / 2,
+  };
+}
+
+function getSvgPathCoordinateBounds(pathData) {
+  const tokens = String(pathData || '').match(/[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:e[-+]?\d+)?/g) || [];
+  let command = null;
+  let index = 0;
+  let current = { x: 0, y: 0 };
+  let start = { x: 0, y: 0 };
+  const xs = [];
+  const ys = [];
+
+  const isCommand = (token) => /^[a-zA-Z]$/.test(token);
+  const readNumber = () => {
+    const value = Number(tokens[index]);
+    index += 1;
+    return Number.isFinite(value) ? value : null;
+  };
+  const record = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    xs.push(x);
+    ys.push(y);
+  };
+  const readPoint = (relative) => {
+    const x = readNumber();
+    const y = readNumber();
+    if (x === null || y === null) return null;
+    return {
+      x: relative ? current.x + x : x,
+      y: relative ? current.y + y : y,
+    };
+  };
+
+  while (index < tokens.length) {
+    if (isCommand(tokens[index])) {
+      command = tokens[index];
+      index += 1;
+    }
+    if (!command) break;
+
+    const relative = command === command.toLowerCase();
+    const type = command.toLowerCase();
+
+    if (type === 'z') {
+      current = { ...start };
+      record(current.x, current.y);
+      command = null;
+      continue;
+    }
+
+    if (type === 'm' || type === 'l' || type === 't') {
+      const point = readPoint(relative);
+      if (!point) break;
+      current = point;
+      if (type === 'm') start = { ...point };
+      record(current.x, current.y);
+      if (type === 'm') command = relative ? 'l' : 'L';
+      continue;
+    }
+
+    if (type === 'h') {
+      const x = readNumber();
+      if (x === null) break;
+      current = { x: relative ? current.x + x : x, y: current.y };
+      record(current.x, current.y);
+      continue;
+    }
+
+    if (type === 'v') {
+      const y = readNumber();
+      if (y === null) break;
+      current = { x: current.x, y: relative ? current.y + y : y };
+      record(current.x, current.y);
+      continue;
+    }
+
+    if (type === 'c') {
+      for (let pointIndex = 0; pointIndex < 3; pointIndex += 1) {
+        const point = readPoint(relative);
+        if (!point) return finalizeSvgPathBounds(xs, ys);
+        record(point.x, point.y);
+        if (pointIndex === 2) current = point;
+      }
+      continue;
+    }
+
+    if (type === 's' || type === 'q') {
+      for (let pointIndex = 0; pointIndex < 2; pointIndex += 1) {
+        const point = readPoint(relative);
+        if (!point) return finalizeSvgPathBounds(xs, ys);
+        record(point.x, point.y);
+        if (pointIndex === 1) current = point;
+      }
+      continue;
+    }
+
+    if (type === 'a') {
+      const rx = readNumber();
+      const ry = readNumber();
+      readNumber();
+      readNumber();
+      readNumber();
+      const x = readNumber();
+      const y = readNumber();
+      if ([rx, ry, x, y].some((value) => value === null)) break;
+      const end = { x: relative ? current.x + x : x, y: relative ? current.y + y : y };
+      record(current.x - Math.abs(rx), current.y - Math.abs(ry));
+      record(current.x + Math.abs(rx), current.y + Math.abs(ry));
+      record(end.x - Math.abs(rx), end.y - Math.abs(ry));
+      record(end.x + Math.abs(rx), end.y + Math.abs(ry));
+      current = end;
+      record(current.x, current.y);
+      continue;
+    }
+
+    break;
+  }
+
+  return finalizeSvgPathBounds(xs, ys);
+}
+
+function finalizeSvgPathBounds(xs, ys) {
+  if (!xs.length || !ys.length) return null;
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+}
+
+function isInsideSvgDefs(element) {
+  let current = element.parentElement;
+  while (current) {
+    if (getLocalTagName(current) === 'defs') return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function assignOriginMarkersToInvasions(markers) {
+  const assigned = {};
+  const remaining = [];
+
+  for (const marker of markers) {
+    const originId = normalizeOriginMarkerId(marker.id);
+    if (originId && INVASION_ORIGIN_POINT_IDS.includes(originId) && !assigned[originId]) {
+      assigned[originId] = { cx: marker.cx, cy: marker.cy };
+    } else {
+      remaining.push(marker);
+    }
+  }
+
+  const pairs = [];
+  INVASION_ORIGIN_POINT_IDS.forEach((originId) => {
+    if (assigned[originId]) return;
+    const fallback = INVASION_ORIGIN_POINT_FALLBACKS[originId];
+    if (!fallback) return;
+
+    remaining.forEach((marker, markerIndex) => {
+      pairs.push({
+        originId,
+        markerIndex,
+        distance: Math.hypot(marker.cx - fallback.cx, marker.cy - fallback.cy),
+      });
+    });
+  });
+
+  const usedMarkers = new Set();
+  pairs.sort((left, right) => left.distance - right.distance);
+  for (const pair of pairs) {
+    if (assigned[pair.originId] || usedMarkers.has(pair.markerIndex)) continue;
+    const marker = remaining[pair.markerIndex];
+    assigned[pair.originId] = { cx: marker.cx, cy: marker.cy };
+    usedMarkers.add(pair.markerIndex);
+  }
+
+  return assigned;
+}
+
+function normalizeOriginMarkerId(rawId) {
+  const key = String(rawId || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^invasion[-_\s]*/, '')
+    .replace(/^origin[-_\s]*/, '')
+    .replace(/[-_\s]*origin$/, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return ORIGIN_MARKER_ID_ALIASES[key] || null;
+}
+
+const ORIGIN_MARKER_ID_ALIASES = Object.freeze({
+  west_libya: 'west_libya',
+  westlibya: 'west_libya',
+  ifriqiya: 'west_libya',
+  aghlabids: 'west_libya',
+  aghlabid: 'west_libya',
+  steppe: 'steppe',
+  steppes: 'steppe',
+  pontic_steppe: 'steppe',
+  kievan_rus: 'steppe',
+  rus: 'steppe',
+  norman_italy: 'norman_italy',
+  normanitaly: 'norman_italy',
+  normans: 'norman_italy',
+  norman: 'norman_italy',
+  venice: 'venice',
+  venetians: 'venice',
+  venetian: 'venice',
+  bulgaria: 'bulgaria',
+  bulgars: 'bulgaria',
+  bulgar: 'bulgaria',
+  serbia_interior: 'serbia_interior',
+  serbiainterior: 'serbia_interior',
+  serbia: 'serbia_interior',
+  serbs: 'serbia_interior',
+  pannonia: 'pannonia',
+  hungarians: 'pannonia',
+  hungary: 'pannonia',
+  turkic_east: 'turkic_east',
+  turkiceast: 'turkic_east',
+  persia: 'turkic_east',
+  turks: 'turkic_east',
+  turk: 'turkic_east',
+  levant: 'levant',
+  caliphate: 'levant',
+});
+
+function transformSvgPointToMap(element, point) {
+  const chain = [];
+  let current = element;
+
+  while (current && current.nodeType === 1) {
+    chain.unshift(current);
+    if (getLocalTagName(current) === 'svg') break;
+    current = current.parentElement;
+  }
+
+  const matrix = chain.reduce(
+    (acc, node) => multiplySvgMatrices(acc, parseSvgTransform(node.getAttribute('transform'))),
+    identitySvgMatrix(),
+  );
+
+  return applySvgMatrix(matrix, point);
+}
+
+function parseSvgTransform(transform) {
+  if (!transform) return identitySvgMatrix();
+
+  const transformPattern = /([a-zA-Z]+)\(([^)]*)\)/g;
+  let matrix = identitySvgMatrix();
+  let match;
+
+  while ((match = transformPattern.exec(transform)) !== null) {
+    const fn = match[1].toLowerCase();
+    const values = parseSvgNumberList(match[2]);
+    matrix = multiplySvgMatrices(matrix, matrixForSvgTransform(fn, values));
+  }
+
+  return matrix;
+}
+
+function matrixForSvgTransform(fn, values) {
+  if (fn === 'matrix' && values.length >= 6) {
+    return { a: values[0], b: values[1], c: values[2], d: values[3], e: values[4], f: values[5] };
+  }
+
+  if (fn === 'translate') {
+    return { a: 1, b: 0, c: 0, d: 1, e: values[0] || 0, f: values[1] || 0 };
+  }
+
+  if (fn === 'scale') {
+    const sx = Number.isFinite(values[0]) ? values[0] : 1;
+    const sy = Number.isFinite(values[1]) ? values[1] : sx;
+    return { a: sx, b: 0, c: 0, d: sy, e: 0, f: 0 };
+  }
+
+  if (fn === 'rotate') {
+    const radians = ((values[0] || 0) * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const rotation = { a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 };
+    if (values.length >= 3) {
+      return multiplySvgMatrices(
+        multiplySvgMatrices(
+          { a: 1, b: 0, c: 0, d: 1, e: values[1], f: values[2] },
+          rotation,
+        ),
+        { a: 1, b: 0, c: 0, d: 1, e: -values[1], f: -values[2] },
+      );
+    }
+    return rotation;
+  }
+
+  return identitySvgMatrix();
+}
+
+function parseSvgNumberList(value) {
+  return String(value || '')
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number)
+    .filter(Number.isFinite);
+}
+
+function identitySvgMatrix() {
+  return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+}
+
+function multiplySvgMatrices(left, right) {
+  return {
+    a: (left.a * right.a) + (left.c * right.b),
+    b: (left.b * right.a) + (left.d * right.b),
+    c: (left.a * right.c) + (left.c * right.d),
+    d: (left.b * right.c) + (left.d * right.d),
+    e: (left.a * right.e) + (left.c * right.f) + left.e,
+    f: (left.b * right.e) + (left.d * right.f) + left.f,
+  };
+}
+
+function applySvgMatrix(matrix, point) {
+  return {
+    cx: (matrix.a * point.cx) + (matrix.c * point.cy) + matrix.e,
+    cy: (matrix.b * point.cx) + (matrix.d * point.cy) + matrix.f,
+  };
+}
+
+function isPointInsideLooseMapFrame(point) {
+  return point.cx >= -1
+    && point.cx <= MAP_VIEWBOX_WIDTH + 1
+    && point.cy >= -1
+    && point.cy <= MAP_VIEWBOX_HEIGHT + 1;
+}
+
+function readFiniteNumber(element, name, namespacePrefix = null) {
+  const value = readSvgAttribute(element, name, namespacePrefix);
+  if (value === null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function readSvgAttribute(element, name, namespacePrefix = null) {
+  if (!namespacePrefix) return element.getAttribute(name);
+  return element.getAttribute(`${namespacePrefix}:${name}`)
+    || element.getAttributeNS?.('http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd', name)
+    || null;
+}
+
+function getLocalTagName(element) {
+  return (element.localName || element.tagName || '').toLowerCase();
+}
+
+function roundMapUnit(value) {
+  return Math.round(value * 100) / 100;
 }
 
 function parseSvgRoot(svgText) {
