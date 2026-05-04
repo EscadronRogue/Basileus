@@ -1,12 +1,9 @@
 import { PROVINCES } from '../data/provinces.js';
 import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
-import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_INVADERS_SVG } from './svgAssets.js';
+import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_SVG } from './svgAssets.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const INKSCAPE_NS = 'http://www.inkscape.org/namespaces/inkscape';
-const INKSCAPE_CENTER_X = 'inkscape:transform-center-x';
-const INKSCAPE_CENTER_Y = 'inkscape:transform-center-y';
 const MAP_WIDTH = 297;
 const MAP_HEIGHT = 210;
 const LEGACY_ORIGIN_WIDTH = 1150;
@@ -15,7 +12,7 @@ const LEGACY_ORIGIN_HEIGHT = 560;
 const SVG_ASSET_PATHS = Object.freeze({
   background: '../assets/map.svg',
   hitzones: '../assets/hitzones.svg',
-  invasionOrigins: '../assets/origin_invaders.svg',
+  origin: '../assets/origin.svg',
 });
 
 const INVASION_ORIGIN_IDS = Object.freeze({
@@ -29,6 +26,7 @@ const INVASION_ORIGIN_IDS = Object.freeze({
   turks: 'TUR',
   caliphate: 'CAL',
 });
+const PROVINCE_LABEL_SUFFIX = 'LAB';
 const THREAT_HATCH_SPACING = 3.6;
 const THREAT_HATCH_PRIMARY_STROKE = 1.4;
 const THREAT_HATCH_SECONDARY_STROKE = 0.7;
@@ -167,7 +165,7 @@ export async function createMapSVG(containerId, options = {}) {
   const [backgroundSvg, hitzonesSvg, originSvg] = await Promise.all([
     loadSvgAsset(SVG_ASSET_PATHS.background, MAP_BACKGROUND_SVG),
     loadSvgAsset(SVG_ASSET_PATHS.hitzones, HITZONES_SVG),
-    loadSvgAsset(SVG_ASSET_PATHS.invasionOrigins, ORIGIN_INVADERS_SVG),
+    loadSvgAsset(SVG_ASSET_PATHS.origin, ORIGIN_SVG),
   ]);
 
   importBackgroundMap(svg, bgLayer, backgroundSvg);
@@ -177,11 +175,10 @@ export async function createMapSVG(containerId, options = {}) {
   container.replaceChildren(svg);
   configureThreatHatchPatterns(svg);
 
-  provinceCentroids = parseProvinceAnchors(hitzonesSvg);
+  provinceCentroids = parseProvinceLabelAnchors(originSvg);
 
   requestAnimationFrame(() => {
     configureThreatHatchPatterns(svg);
-    if (Object.keys(provinceCentroids).length === 0) computeCentroids(svg);
     addProvinceLabels(labelLayer);
   });
 
@@ -419,34 +416,59 @@ function getElementLinearScale(element) {
 }
 
 
-function parseProvinceAnchors(svgText) {
-  const sourceSvg = parseSvgRoot(svgText);
-  if (!sourceSvg) return {};
-
-  const viewBox = parseSvgViewBox(sourceSvg.getAttribute('viewBox'));
+function parseProvinceLabelAnchors(originSvgText) {
+  const sourceSvg = parseSvgRoot(originSvgText);
+  const markers = sourceSvg ? parseSvgPointMarkers(sourceSvg) : {};
   const anchors = {};
 
-  for (const path of sourceSvg.querySelectorAll('path[id]')) {
-    const provinceId = path.getAttribute('id') || '';
-    if (!isProvinceId(provinceId)) continue;
-
-    const bounds = getPathBounds(path.getAttribute('d'));
-    if (!bounds) continue;
-
-    const localCenter = {
-      cx: (bounds.minX + bounds.maxX) / 2,
-      cy: (bounds.minY + bounds.maxY) / 2,
-    };
-    const transformedCenter = applyElementTransforms(sourceSvg, path, localCenter);
-    const centerOffset = readInkscapeCenterOffset(path);
-
-    anchors[provinceId] = normalizeSvgPoint({
-      cx: transformedCenter.cx + centerOffset.x,
-      cy: transformedCenter.cy + centerOffset.y,
-    }, viewBox);
+  for (const province of PROVINCES) {
+    const marker = markers[`${province.id}${PROVINCE_LABEL_SUFFIX}`];
+    if (marker) anchors[province.id] = marker;
   }
 
   return anchors;
+}
+
+function parseSvgPointMarkers(sourceSvg) {
+  const viewBox = parseSvgViewBox(sourceSvg.getAttribute('viewBox'));
+  const markers = {};
+
+  for (const element of sourceSvg.querySelectorAll('[id]')) {
+    const markerId = element.getAttribute('id')?.trim().toUpperCase();
+    if (!markerId || !/^[A-Z0-9]+$/.test(markerId)) continue;
+
+    const center = readSvgElementCenter(element);
+    if (!center) continue;
+
+    markers[markerId] = normalizeSvgPoint(applyElementTransforms(sourceSvg, element, center), viewBox);
+  }
+
+  return markers;
+}
+
+function readSvgElementCenter(element) {
+  const tag = element.tagName?.toLowerCase?.().replace(/^.*:/, '') || '';
+
+  if (tag === 'circle' || tag === 'ellipse') {
+    const cx = parseFiniteNumber(element.getAttribute('cx'));
+    const cy = parseFiniteNumber(element.getAttribute('cy'));
+    return Number.isFinite(cx) && Number.isFinite(cy) ? { cx, cy } : null;
+  }
+
+  if (tag === 'rect') {
+    const x = parseFiniteNumber(element.getAttribute('x')) || 0;
+    const y = parseFiniteNumber(element.getAttribute('y')) || 0;
+    const width = parseFiniteNumber(element.getAttribute('width'));
+    const height = parseFiniteNumber(element.getAttribute('height'));
+    return Number.isFinite(width) && Number.isFinite(height) ? { cx: x + width / 2, cy: y + height / 2 } : null;
+  }
+
+  if (tag === 'path') {
+    const bounds = getPathBounds(element.getAttribute('d'));
+    return bounds ? { cx: (bounds.minX + bounds.maxX) / 2, cy: (bounds.minY + bounds.maxY) / 2 } : null;
+  }
+
+  return null;
 }
 
 function getPathBounds(pathData) {
@@ -691,48 +713,14 @@ function computeCentroids(svg) {
     const provinceId = path.getAttribute('data-id');
     if (!provinceId) continue;
 
-    const anchor = readProvinceAnchor(svg, path);
-    if (anchor) provinceCentroids[provinceId] = anchor;
-  }
-}
+    const bounds = getPathBounds(path.getAttribute('d'));
+    if (!bounds) continue;
 
-function readProvinceAnchor(svg, path) {
-  try {
-    const bbox = path.getBBox();
-    const point = svg.createSVGPoint();
-    point.x = bbox.x + bbox.width / 2;
-    point.y = bbox.y + bbox.height / 2;
-
-    const ctm = path.getCTM();
-    const svgCtm = svg.getCTM();
-    if (!ctm || !svgCtm) return null;
-
-    const screenPoint = point.matrixTransform(ctm);
-    const svgPoint = screenPoint.matrixTransform(svgCtm.inverse());
-    const centerOffset = readInkscapeCenterOffset(path);
-
-    return {
-      cx: svgPoint.x + centerOffset.x,
-      cy: svgPoint.y + centerOffset.y,
+    provinceCentroids[provinceId] = {
+      cx: (bounds.minX + bounds.maxX) / 2,
+      cy: (bounds.minY + bounds.maxY) / 2,
     };
-  } catch {
-    // Ignore shapes that have not been laid out yet.
-    return null;
   }
-}
-
-function readInkscapeCenterOffset(path) {
-  const x = parseFiniteNumber(readInkscapeAttribute(path, INKSCAPE_CENTER_X, 'transform-center-x'));
-  const y = parseFiniteNumber(readInkscapeAttribute(path, INKSCAPE_CENTER_Y, 'transform-center-y'));
-
-  return {
-    x: Number.isFinite(x) ? x : 0,
-    y: Number.isFinite(y) ? y : 0,
-  };
-}
-
-function readInkscapeAttribute(element, qualifiedName, localName) {
-  return element.getAttribute(qualifiedName) ?? element.getAttributeNS?.(INKSCAPE_NS, localName);
 }
 
 function parseFiniteNumber(value) {
@@ -1036,11 +1024,10 @@ function parseInvasionOrigins(svgText) {
 
   for (const circle of sourceSvg.querySelectorAll('circle[id]')) {
     const id = circle.getAttribute('id')?.trim().toUpperCase();
-    const cx = Number(circle.getAttribute('cx'));
-    const cy = Number(circle.getAttribute('cy'));
-    if (!id || !Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+    const center = readSvgElementCenter(circle);
+    if (!id || !/^[A-Z0-9]+$/.test(id) || id.endsWith(PROVINCE_LABEL_SUFFIX) || !center) continue;
 
-    const point = applyElementTransforms(sourceSvg, circle, { cx, cy });
+    const point = applyElementTransforms(sourceSvg, circle, center);
     origins[id] = normalizeSvgPoint(point, viewBox);
   }
 
