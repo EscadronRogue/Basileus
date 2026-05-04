@@ -1,9 +1,31 @@
 import { PROVINCES } from '../data/provinces.js';
 import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
-import { HITZONES_SVG, MAP_BACKGROUND_SVG } from './svgAssets.js';
+import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_INVADERS_SVG } from './svgAssets.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const MAP_WIDTH = 297;
+const MAP_HEIGHT = 210;
+const LEGACY_ORIGIN_WIDTH = 1150;
+const LEGACY_ORIGIN_HEIGHT = 560;
+
+const SVG_ASSET_PATHS = Object.freeze({
+  background: '../assets/map.svg',
+  hitzones: '../assets/hitzones.svg',
+  invasionOrigins: '../assets/origin_invaders.svg',
+});
+
+const INVASION_ORIGIN_IDS = Object.freeze({
+  aghlabids: 'AGH',
+  kievan_rus: 'RUS',
+  normans: 'NOR',
+  venetians: 'VEN',
+  bulgars: 'BBUULL',
+  serbs: 'SSRRBB',
+  hungarians: 'HON',
+  turks: 'TUR',
+  caliphate: 'CAL',
+});
 const THREAT_HATCH_SPACING = 3.6;
 const THREAT_HATCH_PRIMARY_STROKE = 1.4;
 const THREAT_HATCH_SECONDARY_STROKE = 0.7;
@@ -19,6 +41,7 @@ const MAP_ZOOM_STEP = 1.2;
 // provinces both remain visible at shared edges with no gap between them.
 
 let provinceCentroids = {};
+let invasionOrigins = {};
 let provinceSelectHandler = null;
 let hoveredProvinceId = null;
 let viewportLayer = null;
@@ -40,6 +63,7 @@ export async function createMapSVG(containerId, options = {}) {
 
   provinceSelectHandler = options.onProvinceSelect || null;
   provinceCentroids = {};
+  invasionOrigins = {};
   hoveredProvinceId = null;
   viewportLayer = null;
   mapView = { zoom: 1, panX: 0, panY: 0 };
@@ -55,7 +79,7 @@ export async function createMapSVG(containerId, options = {}) {
   };
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 297 210');
+  svg.setAttribute('viewBox', `0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`);
   svg.setAttribute('class', 'game-map');
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   svg.setAttribute('overflow', 'hidden');
@@ -67,7 +91,7 @@ export async function createMapSVG(containerId, options = {}) {
         <feComposite in="SourceGraphic" in2="blur" operator="over"/>
       </filter>
       <clipPath id="map-frame-clip">
-        <rect width="297" height="210" rx="5" ry="5"/>
+        <rect width="${MAP_WIDTH}" height="${MAP_HEIGHT}" rx="5" ry="5"/>
       </clipPath>
     </defs>
   `;
@@ -123,8 +147,15 @@ export async function createMapSVG(containerId, options = {}) {
   const labelLayer = createGroup(viewportLayer, 'layer-labels');
   const badgeLayer = createGroup(viewportLayer, 'layer-badges');
 
-  importBackgroundMap(svg, bgLayer, MAP_BACKGROUND_SVG);
-  importProvinceShapes(svg, provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, HITZONES_SVG);
+  const [backgroundSvg, hitzonesSvg, originSvg] = await Promise.all([
+    loadSvgAsset(SVG_ASSET_PATHS.background, MAP_BACKGROUND_SVG),
+    loadSvgAsset(SVG_ASSET_PATHS.hitzones, HITZONES_SVG),
+    loadSvgAsset(SVG_ASSET_PATHS.invasionOrigins, ORIGIN_INVADERS_SVG),
+  ]);
+
+  importBackgroundMap(svg, bgLayer, backgroundSvg);
+  importProvinceShapes(svg, provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, hitzonesSvg);
+  invasionOrigins = parseInvasionOrigins(originSvg);
 
   container.replaceChildren(svg);
   configureThreatHatchPatterns(svg);
@@ -136,6 +167,20 @@ export async function createMapSVG(containerId, options = {}) {
   });
 
   return svg;
+}
+
+
+async function loadSvgAsset(relativePath, fallbackText) {
+  if (typeof fetch !== 'function') return fallbackText;
+
+  try {
+    const response = await fetch(new URL(relativePath, import.meta.url));
+    if (response.ok) return await response.text();
+  } catch {
+    // Local file previews can block fetch; embedded SVG keeps the map usable.
+  }
+
+  return fallbackText;
 }
 
 function importBackgroundMap(rootSvg, layer, svgText) {
@@ -166,8 +211,8 @@ function appendSvgDefs(rootSvg, sourceSvg) {
 
 function appendDimOverlay(parent) {
   const dimRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-  dimRect.setAttribute('width', '297');
-  dimRect.setAttribute('height', '210');
+  dimRect.setAttribute('width', String(MAP_WIDTH));
+  dimRect.setAttribute('height', String(MAP_HEIGHT));
   dimRect.setAttribute('fill', 'rgba(235, 214, 170, 0.05)');
   dimRect.setAttribute('class', 'map-dim-overlay');
   parent.appendChild(dimRect);
@@ -580,12 +625,8 @@ export function drawInvasionRoute(invasion) {
   if (!invasion) return;
 
   const points = [];
-  if (invasion.originPos) {
-    points.push({
-      cx: invasion.originPos.cx * (297 / 1150),
-      cy: invasion.originPos.cy * (210 / 560),
-    });
-  }
+  const originPoint = resolveInvasionOrigin(invasion);
+  if (originPoint) points.push(originPoint);
 
   for (const provinceId of invasion.route) {
     const centroid = provinceCentroids[provinceId];
@@ -616,6 +657,125 @@ export function drawInvasionRoute(invasion) {
   appendInvasionCartouche(layer, invasion, points[0]);
 }
 
+
+function resolveInvasionOrigin(invasion) {
+  if (!invasion) return null;
+
+  const markerId = invasion.originMarker || INVASION_ORIGIN_IDS[invasion.id];
+  if (markerId && invasionOrigins[markerId]) return { ...invasionOrigins[markerId] };
+
+  // Backward-compatible fallback for old saved states or custom invasion data.
+  if (invasion.originPos) {
+    return {
+      cx: invasion.originPos.cx * (MAP_WIDTH / LEGACY_ORIGIN_WIDTH),
+      cy: invasion.originPos.cy * (MAP_HEIGHT / LEGACY_ORIGIN_HEIGHT),
+    };
+  }
+
+  return null;
+}
+
+function parseInvasionOrigins(svgText) {
+  const sourceSvg = parseSvgRoot(svgText);
+  if (!sourceSvg) return {};
+
+  const viewBox = parseSvgViewBox(sourceSvg.getAttribute('viewBox'));
+  const origins = {};
+
+  for (const circle of sourceSvg.querySelectorAll('circle[id]')) {
+    const id = circle.getAttribute('id')?.trim().toUpperCase();
+    const cx = Number(circle.getAttribute('cx'));
+    const cy = Number(circle.getAttribute('cy'));
+    if (!id || !Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+
+    const point = applyElementTransforms(sourceSvg, circle, { cx, cy });
+    origins[id] = normalizeSvgPoint(point, viewBox);
+  }
+
+  return origins;
+}
+
+function parseSvgViewBox(value) {
+  const parts = String(value || '')
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
+
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part)) || parts[2] === 0 || parts[3] === 0) {
+    return { x: 0, y: 0, width: MAP_WIDTH, height: MAP_HEIGHT };
+  }
+
+  return { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+}
+
+function normalizeSvgPoint(point, viewBox) {
+  return {
+    cx: ((point.cx - viewBox.x) / viewBox.width) * MAP_WIDTH,
+    cy: ((point.cy - viewBox.y) / viewBox.height) * MAP_HEIGHT,
+  };
+}
+
+function applyElementTransforms(sourceSvg, element, point) {
+  const chain = [];
+  let current = element;
+
+  while (current && current !== sourceSvg) {
+    chain.unshift(current);
+    current = current.parentNode;
+  }
+
+  return chain.reduce((accumulator, node) => {
+    return applyTransformList(accumulator, node.getAttribute?.('transform'));
+  }, point);
+}
+
+function applyTransformList(point, transform) {
+  let next = { ...point };
+  const transformText = String(transform || '').trim();
+  if (!transformText) return next;
+
+  const transformPattern = /(matrix|translate|scale|rotate)\(([^)]*)\)/g;
+  let match;
+  while ((match = transformPattern.exec(transformText))) {
+    const [, type, rawArgs] = match;
+    const args = rawArgs.trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
+    next = applyTransform(next, type, args);
+  }
+
+  return next;
+}
+
+function applyTransform(point, type, args) {
+  const [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0] = args;
+
+  if (type === 'matrix' && args.length >= 6) {
+    return { cx: (a * point.cx) + (c * point.cy) + e, cy: (b * point.cx) + (d * point.cy) + f };
+  }
+
+  if (type === 'translate') {
+    return { cx: point.cx + a, cy: point.cy + b };
+  }
+
+  if (type === 'scale') {
+    const sy = args.length > 1 ? b : a;
+    return { cx: point.cx * a, cy: point.cy * sy };
+  }
+
+  if (type === 'rotate') {
+    const angle = a * (Math.PI / 180);
+    const originX = args.length >= 3 ? b : 0;
+    const originY = args.length >= 3 ? c : 0;
+    const x = point.cx - originX;
+    const y = point.cy - originY;
+    return {
+      cx: originX + (x * Math.cos(angle)) - (y * Math.sin(angle)),
+      cy: originY + (x * Math.sin(angle)) + (y * Math.cos(angle)),
+    };
+  }
+
+  return point;
+}
+
 function appendInvasionCartouche(layer, invasion, point) {
   if (!point) return;
 
@@ -625,8 +785,8 @@ function appendInvasionCartouche(layer, invasion, point) {
   const nameText = invasion.name || 'Invasion';
   const width = Math.max(26, Math.min(44, Math.max(nameText.length, strengthText.length) * 1.45 + 7));
   const height = 9.6;
-  const x = clampValue(point.cx, (width / 2) + 1.2, 297 - (width / 2) - 1.2);
-  const y = clampValue(point.cy - 7.3, 1.2, 210 - height - 1.2);
+  const x = clampValue(point.cx, (width / 2) + 1.2, MAP_WIDTH - (width / 2) - 1.2);
+  const y = clampValue(point.cy - 7.3, 1.2, MAP_HEIGHT - height - 1.2);
 
   const group = document.createElementNS(SVG_NS, 'g');
   group.setAttribute('class', 'invasion-cartouche');
@@ -842,8 +1002,8 @@ function clampMapView() {
 
   mapView.zoom = clampValue(mapView.zoom, MIN_MAP_ZOOM, MAX_MAP_ZOOM);
 
-  const minPanX = 297 * (1 - mapView.zoom);
-  const minPanY = 210 * (1 - mapView.zoom);
+  const minPanX = MAP_WIDTH * (1 - mapView.zoom);
+  const minPanY = MAP_HEIGHT * (1 - mapView.zoom);
   mapView.panX = clampValue(mapView.panX, minPanX, 0);
   mapView.panY = clampValue(mapView.panY, minPanY, 0);
 }
