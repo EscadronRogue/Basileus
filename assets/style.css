@@ -2050,9 +2050,10 @@ body::before {
    outline = region color (--cart-border), fill = owner color (--cart-bg),
    gold-leaf inner hairline. Two stacked text lines: name / P-T-L.
    Built and laid out by mapRenderer.js. */
-.map-cartouche { pointer-events: none; }
+.map-cartouche { cursor: pointer; pointer-events: auto; }
 
 .map-cart-bg {
+  pointer-events: visiblePainted;
   fill: var(--cart-bg, var(--free-fill));
   stroke: var(--cart-border, var(--empire-border));
   stroke-width: 0.55;
@@ -2075,7 +2076,8 @@ body::before {
 .map-cart-values {
   fill: #ffffff;
   text-shadow: 0 0.05px 0 rgba(20,8,0,0.6);
-  dominant-baseline: middle;
+  dominant-baseline: auto;
+  alignment-baseline: baseline;
   text-anchor: middle;
   pointer-events: none;
   paint-order: stroke fill;

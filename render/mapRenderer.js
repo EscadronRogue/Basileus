@@ -4,6 +4,9 @@ import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_INVADERS_SVG } from './svgAssets.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const INKSCAPE_NS = 'http://www.inkscape.org/namespaces/inkscape';
+const INKSCAPE_CENTER_X = 'inkscape:transform-center-x';
+const INKSCAPE_CENTER_Y = 'inkscape:transform-center-y';
 const MAP_WIDTH = 297;
 const MAP_HEIGHT = 210;
 const LEGACY_ORIGIN_WIDTH = 1150;
@@ -127,7 +130,7 @@ export async function createMapSVG(containerId, options = {}) {
       return;
     }
 
-    provinceSelectHandler?.(findProvinceAtClientPoint(svg, event.clientX, event.clientY));
+    provinceSelectHandler?.(findProvinceAtEvent(svg, event));
   });
 
   const frameLayer = createGroup(svg, 'layer-frame');
@@ -402,33 +405,68 @@ function getElementLinearScale(element) {
 function computeCentroids(svg) {
   provinceCentroids = {};
 
-  for (const path of document.querySelectorAll('.province-shape')) {
+  for (const path of svg.querySelectorAll('.province-shape')) {
     const provinceId = path.getAttribute('data-id');
     if (!provinceId) continue;
 
-    try {
-      const bbox = path.getBBox();
-      const point = svg.createSVGPoint();
-      point.x = bbox.x + bbox.width / 2;
-      point.y = bbox.y + bbox.height / 2;
-
-      const ctm = path.getCTM();
-      const svgCtm = svg.getCTM();
-      if (!ctm || !svgCtm) continue;
-
-      const screenPoint = point.matrixTransform(ctm);
-      const svgPoint = screenPoint.matrixTransform(svgCtm.inverse());
-      provinceCentroids[provinceId] = { cx: svgPoint.x, cy: svgPoint.y };
-    } catch {
-      // Ignore shapes that have not been laid out yet.
-    }
+    const anchor = readProvinceAnchor(svg, path);
+    if (anchor) provinceCentroids[provinceId] = anchor;
   }
+}
+
+function readProvinceAnchor(svg, path) {
+  try {
+    const bbox = path.getBBox();
+    const point = svg.createSVGPoint();
+    point.x = bbox.x + bbox.width / 2;
+    point.y = bbox.y + bbox.height / 2;
+
+    const ctm = path.getCTM();
+    const svgCtm = svg.getCTM();
+    if (!ctm || !svgCtm) return null;
+
+    const screenPoint = point.matrixTransform(ctm);
+    const svgPoint = screenPoint.matrixTransform(svgCtm.inverse());
+    const centerOffset = readInkscapeCenterOffset(path);
+
+    return {
+      cx: svgPoint.x + centerOffset.x,
+      cy: svgPoint.y + centerOffset.y,
+    };
+  } catch {
+    // Ignore shapes that have not been laid out yet.
+    return null;
+  }
+}
+
+function readInkscapeCenterOffset(path) {
+  const x = parseFiniteNumber(readInkscapeAttribute(path, INKSCAPE_CENTER_X, 'transform-center-x'));
+  const y = parseFiniteNumber(readInkscapeAttribute(path, INKSCAPE_CENTER_Y, 'transform-center-y'));
+
+  return {
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0,
+  };
+}
+
+function readInkscapeAttribute(element, qualifiedName, localName) {
+  return element.getAttribute(qualifiedName) ?? element.getAttributeNS?.(INKSCAPE_NS, localName);
+}
+
+function parseFiniteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 // Map labels are stacked SVG cartouches that mirror the HTML
 // .province-token grammar: outline = region color, fill = owner color,
 // gold inner hairline. Two lines per cartouche: name / profit-tax-levy.
 const MAP_CART_PAD_X = 1.0;
+const MAP_CART_MIN_WIDTH = 7.8;
+const MAP_CART_HEIGHT = 4.7;
+const MAP_CART_INSET = 0.32;
+const MAP_CART_NAME_BASELINE_Y = -0.35;
+const MAP_CART_VALUES_BASELINE_Y = 1.35;
 
 function addProvinceLabels(layer) {
   layer.replaceChildren();
@@ -482,35 +520,67 @@ function layoutMapCartouche(g) {
   const inner = g.querySelector('.map-cart-inner');
   const nameText = g.querySelector('.map-cart-name');
   const valuesText = g.querySelector('.map-cart-values');
+  if (!bg || !inner || !nameText || !valuesText) return;
 
-  // Vertical layout — y is the text baseline (dominant-baseline: middle).
-  nameText.setAttribute('y', -0.75);
-  valuesText.setAttribute('y', 0.95);
+  // Use normal alphabetic baselines. Firefox handles SVG baseline keywords
+  // differently, so fixed baseline coordinates keep the text stable.
+  nameText.setAttribute('y', MAP_CART_NAME_BASELINE_Y);
+  valuesText.setAttribute('y', MAP_CART_VALUES_BASELINE_Y);
 
-  // Compute width from the widest line (getBBox needs the node attached).
-  let maxW = 0;
-  for (const t of [nameText, valuesText]) {
-    if (!t) continue;
-    const w = t.getBBox().width;
-    if (w > maxW) maxW = w;
-  }
+  const width = Math.max(
+    MAP_CART_MIN_WIDTH,
+    measureMapTextWidth(nameText) + MAP_CART_PAD_X * 2,
+    measureMapTextWidth(valuesText) + MAP_CART_PAD_X * 2,
+  );
+  const height = MAP_CART_HEIGHT;
 
-  const width = maxW + MAP_CART_PAD_X * 2;
-  const height = 4.7;
-
-  bg.setAttribute('x', -width / 2);
-  bg.setAttribute('y', -height / 2);
-  bg.setAttribute('width', width);
-  bg.setAttribute('height', height);
-  bg.setAttribute('rx', 0.45);
+  bg.setAttribute('x', (-width / 2).toFixed(3));
+  bg.setAttribute('y', (-height / 2).toFixed(3));
+  bg.setAttribute('width', width.toFixed(3));
+  bg.setAttribute('height', height.toFixed(3));
+  bg.setAttribute('rx', '0.45');
 
   // Gold-leaf inner hairline, inset slightly inside the role outline.
-  const inset = 0.32;
-  inner.setAttribute('x', -width / 2 + inset);
-  inner.setAttribute('y', -height / 2 + inset);
-  inner.setAttribute('width', width - inset * 2);
-  inner.setAttribute('height', height - inset * 2);
-  inner.setAttribute('rx', 0.25);
+  inner.setAttribute('x', (-width / 2 + MAP_CART_INSET).toFixed(3));
+  inner.setAttribute('y', (-height / 2 + MAP_CART_INSET).toFixed(3));
+  inner.setAttribute('width', (width - MAP_CART_INSET * 2).toFixed(3));
+  inner.setAttribute('height', (height - MAP_CART_INSET * 2).toFixed(3));
+  inner.setAttribute('rx', '0.25');
+}
+
+function measureMapTextWidth(textElement) {
+  try {
+    const computedLength = textElement.getComputedTextLength?.();
+    if (Number.isFinite(computedLength) && computedLength > 0) return computedLength;
+
+    const bboxWidth = textElement.getBBox?.().width;
+    if (Number.isFinite(bboxWidth) && bboxWidth > 0) return bboxWidth;
+  } catch {
+    // Fall through to deterministic estimate.
+  }
+
+  const fontSize = textElement.classList.contains('map-cart-values') ? 1.15 : 1.45;
+  return estimateTextWidth(textElement.textContent || '', fontSize);
+}
+
+function estimateTextWidth(text, fontSize) {
+  let units = 0;
+
+  for (const char of text) {
+    if (/\s/.test(char)) {
+      units += 0.32;
+    } else if (/[MW]/.test(char)) {
+      units += 0.82;
+    } else if (/[A-Z0-9]/.test(char)) {
+      units += 0.62;
+    } else if (/[ilI.,:;]/.test(char)) {
+      units += 0.32;
+    } else {
+      units += 0.52;
+    }
+  }
+
+  return units * fontSize;
 }
 
 export function updateMapState(state) {
@@ -840,6 +910,13 @@ export function setSelectedProvince(provinceId) {
   document.querySelector(`.province-shape[data-id="${provinceId}"]`)?.classList.add('selected');
   document.querySelector(`.region-stroke[data-id="${provinceId}"]`)?.classList.add('selected');
   document.querySelector(`.map-cartouche[data-id="${provinceId}"]`)?.classList.add('selected');
+}
+
+function findProvinceAtEvent(svg, event) {
+  const eventTargetHit = findProvinceElement(event.target)?.getAttribute?.('data-id');
+  if (eventTargetHit) return eventTargetHit;
+
+  return findProvinceAtClientPoint(svg, event.clientX, event.clientY);
 }
 
 function findProvinceAtClientPoint(svg, clientX, clientY) {
