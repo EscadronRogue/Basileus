@@ -102,7 +102,7 @@ export async function createMapSVG(containerId, options = {}) {
       return;
     }
 
-    const provinceId = findProvinceAtClientPoint(svg, event.clientX, event.clientY);
+    const provinceId = findProvinceAtClientPoint(svg, event.clientX, event.clientY, event.target);
     updateHoveredProvince(provinceId);
     updateMapCursor(svg, provinceId);
   });
@@ -127,7 +127,7 @@ export async function createMapSVG(containerId, options = {}) {
       return;
     }
 
-    provinceSelectHandler?.(findProvinceAtClientPoint(svg, event.clientX, event.clientY));
+    provinceSelectHandler?.(findProvinceAtClientPoint(svg, event.clientX, event.clientY, event.target));
   });
 
   const frameLayer = createGroup(svg, 'layer-frame');
@@ -441,6 +441,22 @@ function addProvinceLabels(layer) {
     layer.appendChild(g);
     layoutMapCartouche(g);
   }
+
+  scheduleMapCartoucheRelayout(layer);
+}
+
+function scheduleMapCartoucheRelayout(layer) {
+  const relayout = () => {
+    if (!layer.isConnected) return;
+    layer.querySelectorAll('.map-cartouche').forEach(layoutMapCartouche);
+  };
+
+  requestAnimationFrame(relayout);
+
+  const fontsReady = document.fonts?.ready;
+  if (fontsReady && typeof fontsReady.then === 'function') {
+    fontsReady.then(() => requestAnimationFrame(relayout)).catch(() => {});
+  }
 }
 
 function buildMapCartouche(province, centroid) {
@@ -449,6 +465,16 @@ function buildMapCartouche(province, centroid) {
   g.setAttribute('class', `map-cartouche${isCapital ? ' is-capital' : ''}`);
   g.setAttribute('data-id', province.id);
   g.setAttribute('transform', `translate(${centroid.cx} ${centroid.cy})`);
+  g.setAttribute('role', 'button');
+  g.setAttribute('aria-label', province.name);
+  g.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (panState.suppressClick) {
+      panState.suppressClick = false;
+      return;
+    }
+    provinceSelectHandler?.(province.id);
+  });
 
   const regionColor = getRegionColor(province.region) || '#2e1e0f';
   g.style.setProperty('--cart-border', regionColor);
@@ -483,15 +509,16 @@ function layoutMapCartouche(g) {
   const nameText = g.querySelector('.map-cart-name');
   const valuesText = g.querySelector('.map-cart-values');
 
-  // Vertical layout — y is the text baseline (dominant-baseline: middle).
-  nameText.setAttribute('y', -0.75);
-  valuesText.setAttribute('y', 0.95);
+  // Explicit baseline positions avoid cross-browser SVG baseline differences.
+  nameText.setAttribute('y', -0.25);
+  valuesText.setAttribute('y', 1.38);
 
-  // Compute width from the widest line (getBBox needs the node attached).
+  // Compute width from the widest line. Prefer text length because Firefox
+  // can throw on getBBox while SVG text/fonts are still settling.
   let maxW = 0;
   for (const t of [nameText, valuesText]) {
     if (!t) continue;
-    const w = t.getBBox().width;
+    const w = measureMapTextWidth(t);
     if (w > maxW) maxW = w;
   }
 
@@ -511,6 +538,25 @@ function layoutMapCartouche(g) {
   inner.setAttribute('width', width - inset * 2);
   inner.setAttribute('height', height - inset * 2);
   inner.setAttribute('rx', 0.25);
+}
+
+function measureMapTextWidth(textElement) {
+  try {
+    const textLength = textElement.getComputedTextLength?.();
+    if (Number.isFinite(textLength) && textLength > 0) return textLength;
+  } catch {
+    // Fall through to getBBox/fallback.
+  }
+
+  try {
+    const bboxWidth = textElement.getBBox().width;
+    if (Number.isFinite(bboxWidth) && bboxWidth > 0) return bboxWidth;
+  } catch {
+    // Fall through to deterministic fallback.
+  }
+
+  const charWidth = textElement.classList.contains('map-cart-values') ? 0.72 : 0.86;
+  return (textElement.textContent || '').length * charWidth;
 }
 
 export function updateMapState(state) {
@@ -842,7 +888,10 @@ export function setSelectedProvince(provinceId) {
   document.querySelector(`.map-cartouche[data-id="${provinceId}"]`)?.classList.add('selected');
 }
 
-function findProvinceAtClientPoint(svg, clientX, clientY) {
+function findProvinceAtClientPoint(svg, clientX, clientY, target = null) {
+  const targetHit = getProvinceIdFromElement(target);
+  if (targetHit) return targetHit;
+
   const directHit = findProvinceFromHitStack(clientX, clientY);
   if (directHit) return directHit;
 
@@ -865,6 +914,11 @@ function findProvinceAtClientPoint(svg, clientX, clientY) {
   return null;
 }
 
+
+function getProvinceIdFromElement(element) {
+  const provinceElement = findProvinceElement(element);
+  return provinceElement?.getAttribute?.('data-id') || null;
+}
 
 function findProvinceFromHitStack(clientX, clientY) {
   if (typeof document.elementsFromPoint !== 'function') return null;
