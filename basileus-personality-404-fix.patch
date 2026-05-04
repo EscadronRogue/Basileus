@@ -1,0 +1,70 @@
+diff --git a/ai/profileStore.js b/ai/profileStore.js
+index a5cc9fc..5fcc97b 100644
+--- a/ai/profileStore.js
++++ b/ai/profileStore.js
+@@ -11,13 +11,10 @@ import {
+ const STORAGE_KEY = 'basileus.savedAiProfiles.v1';
+ const EXPORTED_PROFILE_INDEX_ENDPOINTS = [
+   'api/personalities/exported',
+-  '/api/personalities/exported',
+ ];
+ 
+ const EXPORTED_PROFILE_MANIFEST_PATHS = [
+-  'trained-personalities/latest/latest-manifest.json',
+   'trained-personalities/latest/manifest.json',
+-  'trained-personalities/definitive/manifest.json',
+ ];
+ 
+ function clamp(value, min, max) {
+@@ -136,12 +133,14 @@ async function fetchJsonMaybe(path) {
+   }
+ }
+ 
+-function resolveManifestBaseDir(manifestPath, manifest) {
+-  const manifestDir = manifestPath.replace(/[^/]+$/, '');
+-  if (manifestPath.endsWith('/latest/latest-manifest.json') && manifest?.runId) {
+-    return `${manifestDir}${manifest.runId}/`;
+-  }
+-  return manifestDir;
++function resolveManifestBaseDir(manifestPath) {
++  return manifestPath.replace(/[^/]+$/, '');
++}
++
++function canUseExportedProfileIndexApi() {
++  if (typeof window === 'undefined') return false;
++  const host = window.location?.hostname || '';
++  return ['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(host) || host.endsWith('.localhost');
+ }
+ 
+ async function loadProfilesFromManifest(manifestPath) {
+@@ -172,21 +171,22 @@ async function loadProfilesFromIndexApi(endpointPath) {
+     .map(profile => ({ ...profile, librarySource: 'exported' }));
+ }
+ async function readExportedProfiles() {
+-  const indexProfiles = await Promise.all(
+-    EXPORTED_PROFILE_INDEX_ENDPOINTS.map(path => loadProfilesFromIndexApi(path))
+-  );
+   const merged = new Map();
+-  for (const profile of indexProfiles.flat()) {
++  const manifestProfiles = await Promise.all(
++    EXPORTED_PROFILE_MANIFEST_PATHS.map(path => loadProfilesFromManifest(path))
++  );
++
++  for (const profile of manifestProfiles.flat()) {
+     if (!merged.has(profile.id)) {
+       merged.set(profile.id, profile);
+     }
+   }
+-  if (merged.size > 0) return [...merged.values()];
++  if (merged.size > 0 || !canUseExportedProfileIndexApi()) return [...merged.values()];
+ 
+-  const manifestProfiles = await Promise.all(
+-    EXPORTED_PROFILE_MANIFEST_PATHS.map(path => loadProfilesFromManifest(path))
++  const indexProfiles = await Promise.all(
++    EXPORTED_PROFILE_INDEX_ENDPOINTS.map(path => loadProfilesFromIndexApi(path))
+   );
+-  for (const profile of manifestProfiles.flat()) {
++  for (const profile of indexProfiles.flat()) {
+     if (!merged.has(profile.id)) {
+       merged.set(profile.id, profile);
+     }
