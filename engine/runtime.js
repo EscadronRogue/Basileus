@@ -7,16 +7,19 @@ import {
   advanceToNextInteractivePhase,
   allOrdersSubmitted,
   isCourtComplete,
+  phaseCleanup,
   phaseOrders,
   phaseResolution,
   submitOrders,
 } from './turnflow.js';
 import {
   applyAIOrderCosts,
+  applyPlannedAiTitleAssignment,
   buildAIOrders,
   handlePostResolutionAI,
   invalidateRoundContext,
   isAIPlayer,
+  observeCourtAction,
   runAICourtAutomation,
 } from '../ai/brain.js';
 
@@ -126,4 +129,37 @@ export function processAiFlow(state, aiMeta, options = {}) {
   }
 
   return { pendingAiTitleAssignment };
+}
+
+
+export function processPostHumanAction(state, aiMeta, options = {}) {
+  if (!aiMeta || !state) return { pendingAiTitleAssignment: options.pendingAiTitleAssignment ?? null };
+  if (options.observation) observeCourtAction(state, aiMeta, options.observation);
+  else invalidateRoundContext(aiMeta);
+  return processAiFlow(state, aiMeta, options);
+}
+
+
+export function applyPendingAiTitleAssignment(state, aiMeta, pendingAiTitleAssignment = null) {
+  if (!pendingAiTitleAssignment || !aiMeta) return null;
+  applyPlannedAiTitleAssignment(
+    state,
+    aiMeta,
+    pendingAiTitleAssignment,
+    state.nextBasileusId,
+  );
+  return null;
+}
+
+export function continueAfterResolution(state, aiMeta, pendingAiTitleAssignment = null) {
+  if (!state || state.phase !== 'resolution') {
+    return { ok: false, reason: 'Continue is only available during resolution.', pendingAiTitleAssignment };
+  }
+
+  applyPendingAiTitleAssignment(state, aiMeta, pendingAiTitleAssignment);
+
+  phaseCleanup(state);
+  advanceToNextInteractivePhase(state);
+  if (aiMeta) invalidateRoundContext(aiMeta);
+  return { ok: true, pendingAiTitleAssignment: null };
 }

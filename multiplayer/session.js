@@ -1,10 +1,5 @@
 import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
-import {
-  advanceToNextInteractivePhase,
-  allOrdersSubmitted,
-  phaseCleanup,
-  phaseResolution,
-} from '../engine/turnflow.js';
+import { advanceToNextInteractivePhase } from '../engine/turnflow.js';
 import { getMercenaryOrderCost } from '../engine/rules.js';
 import {
   applyCourtAction,
@@ -14,16 +9,13 @@ import {
 } from '../engine/commands.js';
 import {
   autoResolveUnavailableHumanAppointments as autoResolveCourtForPlayer,
+  continueAfterResolution,
   maybeAdvanceCourt,
   processAiFlow,
+  processPostHumanAction,
 } from '../engine/runtime.js';
-import {
-  applyPlannedAiTitleAssignment,
-  createAIMeta,
-  handlePostResolutionAI,
-  invalidateRoundContext,
-  observeCourtAction,
-} from '../ai/brain.js';
+import { createAIMeta } from '../ai/brain.js';
+import { getAiDisplayName } from '../ai/names.js';
 import { normalizeAiProfile } from '../ai/profileStore.js';
 
 export const ROOM_STATUS = {
@@ -199,57 +191,6 @@ function serializePublicGameState(state, viewerSeatId) {
     pendingTitleReassignment,
     recruitedThisRound: clonePlain(state.recruitedThisRound || {}),
   };
-}
-
-function getPlayerOfficeKeys(state, playerId) {
-  const offices = [];
-  if (playerId === state.basileusId) offices.push('BASILEUS');
-  const player = getPlayer(state, playerId);
-  for (const titleKey of player?.majorTitles || []) {
-    if (titleKey !== 'PATRIARCH') offices.push(titleKey);
-  }
-  for (const theme of Object.values(state.themes)) {
-    if (theme.strategos === playerId && !theme.occupied) {
-      offices.push(`STRAT_${theme.id}`);
-    }
-  }
-  return offices;
-}
-
-function sanitizeMercenaries(mercenaries = []) {
-  const totals = new Map();
-  for (const entry of Array.isArray(mercenaries) ? mercenaries : []) {
-    const officeKey = String(entry?.officeKey || '').trim();
-    const count = toInt(entry?.count, 0);
-    if (!officeKey || count <= 0) continue;
-    totals.set(officeKey, (totals.get(officeKey) || 0) + count);
-  }
-  return [...totals.entries()].map(([officeKey, count]) => ({ officeKey, count }));
-}
-
-function sanitizeOrdersForPlayer(state, playerId, rawOrders = {}) {
-  const player = getPlayer(state, playerId);
-  assert(player, 'Player not found.');
-
-  const officeKeySet = new Set(getPlayerOfficeKeys(state, playerId));
-  const deployments = {};
-  for (const officeKey of officeKeySet) {
-    const rawDestination = rawOrders?.deployments?.[officeKey];
-    deployments[officeKey] = rawDestination === 'capital' ? 'capital' : 'frontier';
-  }
-
-  const mercenaries = sanitizeMercenaries(rawOrders?.mercenaries);
-  for (const mercenary of mercenaries) {
-    assert(officeKeySet.has(mercenary.officeKey), 'Mercenaries can only be assigned to your offices.');
-  }
-
-  const candidate = toInt(rawOrders?.candidate, playerId);
-  assert(candidate >= 0 && candidate < state.players.length, 'Choose a valid Basileus candidate.');
-
-  const totalCost = getMercenaryOrderCost(mercenaries);
-  assert(player.gold >= totalCost, `Need ${totalCost}g, have ${player.gold}g.`);
-
-  return { deployments, mercenaries, candidate, totalCost };
 }
 
 function createSeatSummary(room, seat, viewerSessionId) {
@@ -469,7 +410,7 @@ export class MultiplayerRoom {
     this.status = ROOM_STATUS.IN_PROGRESS;
     this.gameOverSent = false;
     advanceToNextInteractivePhase(this.gameState);
-    this.processAiFlow({ courtMode: 'finish' });
+    if (this.gameState.phase !== 'court') this.processAiFlow({ courtMode: 'finish' });
     this.refreshStatusFromGame();
     this.touch();
     return this.gameState;
@@ -495,14 +436,8 @@ export class MultiplayerRoom {
           continue;
         }
       }
-      const aiMetaForPlayer = this.aiMeta?.players?.[player.id];
-      const profile = aiMetaForPlayer?.profile;
-      const personalityId = aiMetaForPlayer?.personalityId;
-      const personalityName = profile?.name
-        || (personalityId ? (personalityId.charAt(0).toUpperCase() + personalityId.slice(1)) : null);
-      if (personalityName) {
-        player.firstName = personalityName;
-      }
+      const aiName = getAiDisplayName(this.aiMeta, player.id);
+      if (aiName) player.firstName = aiName;
     }
   }
 
@@ -662,11 +597,19 @@ export class MultiplayerRoom {
   }
 
   afterHumanCourtAction(observation = null, options = {}) {
-    if (this.aiMeta) {
-      if (observation) observeCourtAction(this.gameState, this.aiMeta, observation);
-      else invalidateRoundContext(this.aiMeta);
+    if (!this.aiMeta || !this.gameState || this.aiBusy) return;
+    this.aiBusy = true;
+    try {
+      const result = processPostHumanAction(this.gameState, this.aiMeta, {
+        ...options,
+        observation,
+        pendingAiTitleAssignment: this.pendingAiTitleAssignment,
+      });
+      if (result) this.pendingAiTitleAssignment = result.pendingAiTitleAssignment;
+    } finally {
+      this.aiBusy = false;
+      this.refreshStatusFromGame();
     }
-    this.processAiFlow(options);
   }
 
   processAiFlow(options = {}) {
@@ -723,19 +666,9 @@ export class MultiplayerRoom {
 
       if (message.type === 'submit_orders') {
         const seat = this.requireHumanSeatForSession(sessionId);
-        const sanitized = sanitizeOrdersForPlayer(this.gameState, seat.seatId, message.orders);
-        const submitResult = submitHumanOrders(this.gameState, seat.seatId, sanitized);
+        const submitResult = submitHumanOrders(this.gameState, seat.seatId, message.orders);
         assert(submitResult.ok, submitResult.reason);
         this.processAiFlow();
-        if (allOrdersSubmitted(this.gameState) && this.gameState.phase === 'orders') {
-          const previousBasileusId = this.gameState.basileusId;
-          phaseResolution(this.gameState);
-          const aftermath = handlePostResolutionAI(this.gameState, this.aiMeta, {
-            previousBasileusId,
-            autoApplyTitleAssignments: false,
-          });
-          this.pendingAiTitleAssignment = aftermath.plannedAssignment;
-        }
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
@@ -760,18 +693,9 @@ export class MultiplayerRoom {
           && this.seats[this.gameState.nextBasileusId]?.kind === 'human'
           && this.pendingAiTitleAssignment == null;
         assert(!needsHumanReassignment, 'The new Basileus must reassign major titles first.');
-        if (this.pendingAiTitleAssignment && this.aiMeta) {
-          applyPlannedAiTitleAssignment(
-            this.gameState,
-            this.aiMeta,
-            this.pendingAiTitleAssignment,
-            this.gameState.nextBasileusId,
-          );
-          this.pendingAiTitleAssignment = null;
-        }
-        phaseCleanup(this.gameState);
-        advanceToNextInteractivePhase(this.gameState);
-        if (this.aiMeta) invalidateRoundContext(this.aiMeta);
+        const continuation = continueAfterResolution(this.gameState, this.aiMeta, this.pendingAiTitleAssignment);
+        assert(continuation.ok, continuation.reason);
+        this.pendingAiTitleAssignment = continuation.pendingAiTitleAssignment;
         if (this.status !== ROOM_STATUS.FINISHED) {
           this.processAiFlow({ courtMode: 'finish' });
         }

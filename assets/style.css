@@ -226,6 +226,8 @@ body::before {
 
 .phase-badge {
   padding: 4px 14px;
+  cursor: default;
+  transition: background 0.15s;
   border-radius: var(--r-sm);
   border: 1px solid rgba(200,146,30,0.5);
   background: rgba(200,146,30,0.14);
@@ -1334,9 +1336,9 @@ body::before {
 .deploy-grid { display: flex; flex-direction: column; gap: var(--sp-2); }
 
 .deploy-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto auto;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--sp-2);
   padding: 9px 12px;
   background: var(--parch-0);
@@ -1361,6 +1363,7 @@ body::before {
 
 .deploy-toggle {
   display: flex;
+  min-width: min(100%, 150px);
   gap: 2px;
   background: rgba(168,116,32,0.08);
   border: 1px solid rgba(168,116,32,0.20);
@@ -2401,6 +2404,7 @@ body::before {
    double-bordered look while preserving identical typography. */
 .player-tab .player-role-name,
 .candidate-btn .player-role-name,
+.score-row .player-role-name,
 .player-dashboard .sidebar-panel-head .player-role-name,
 .player-dashboard .sidebar-panel-badge .player-role-name {
   background: none;
@@ -2778,16 +2782,6 @@ body::before {
 .orders-actions,
 .resolution-actions {
   min-width: 0;
-}
-
-.deploy-row {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto auto;
-  align-items: center;
-}
-
-.deploy-toggle {
-  min-width: min(100%, 150px);
 }
 
 .toggle-btn,
@@ -3274,12 +3268,6 @@ button.merc-button {
   background: linear-gradient(90deg, transparent 0%, var(--parch-3) 30%, var(--parch-3) 70%, transparent 100%);
   margin: 0;
   opacity: 0.6;
-}
-
-/* Better visibility for phase-badge in top bar on hover */
-.phase-badge {
-  cursor: default;
-  transition: background 0.15s;
 }
 
 /* Score row winner crown */

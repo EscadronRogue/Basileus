@@ -25,7 +25,7 @@ import {
   revokeTheme,
   validateMajorTitleAssignments,
 } from './actions.js';
-import { getMercenaryOrderCost } from './rules.js';
+import { normalizeHumanOrders } from './orders.js';
 import { observeCourtAction } from '../ai/brain.js';
 
 function fail(reason) {
@@ -215,20 +215,17 @@ export function confirmCourt(state, playerId) {
 // Single source of truth for human order locking: hires mercenaries (records
 // hire_mercenaries history events and deducts gold) and seals the orders.
 export function submitHumanOrders(state, playerId, orders) {
-  const player = getPlayer(state, playerId);
-  if (!player) return fail('Player not found.');
   if (state.phase !== 'orders') return fail('Orders cannot be submitted right now.');
   if (state.allOrders?.[playerId]) return fail('Orders are already locked for this seat.');
 
-  const mercenaries = Array.isArray(orders?.mercenaries) ? orders.mercenaries : [];
-  const totalCost = getMercenaryOrderCost(mercenaries);
-  if (player.gold < totalCost) return fail(`Need ${totalCost}g, have ${player.gold}g.`);
+  const normalized = normalizeHumanOrders(state, playerId, orders);
+  if (!normalized.ok) return fail(normalized.reason || 'Invalid orders.');
 
-  for (const mercenary of mercenaries) {
+  for (const mercenary of normalized.orders.mercenaries) {
     hireMercenaries(state, playerId, mercenary.officeKey, mercenary.count);
   }
-  submitOrders(state, playerId, orders);
-  return { ok: true };
+  submitOrders(state, playerId, normalized.orders);
+  return { ok: true, orders: normalized.orders, totalCost: normalized.totalCost };
 }
 
 // ─── Resolution / title reassignment ───────────────────────────────────────

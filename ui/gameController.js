@@ -1,13 +1,9 @@
-import { createGameState, getPlayer } from '../engine/state.js';
-import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
-import { runAdministration } from '../engine/cascade.js';
+import { createGameState } from '../engine/state.js';
 import {
   advanceToNextInteractivePhase,
   allOrdersSubmitted,
-  phaseCleanup,
   phaseResolution,
 } from '../engine/turnflow.js';
-import { computeFullWealth } from '../engine/actions.js';
 import {
   applyCourtAction,
   applyManualTitleReassignment,
@@ -16,16 +12,17 @@ import {
 } from '../engine/commands.js';
 import {
   autoResolveUnavailableHumanAppointments,
+  applyPendingAiTitleAssignment,
+  continueAfterResolution,
   maybeAdvanceCourt,
   processAiFlow,
+  processPostHumanAction,
 } from '../engine/runtime.js';
 import {
-  applyPlannedAiTitleAssignment,
   createAIMeta,
   invalidateRoundContext,
-  observeCourtAction,
 } from '../ai/brain.js';
-import { PERSONALITIES } from '../ai/personalities.js';
+import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG, updateMapState, drawInvasionRoute, setSelectedProvince } from '../render/mapRenderer.js';
 import {
   renderCourtPanel,
@@ -34,38 +31,18 @@ import {
   renderPlayerDashboard,
   renderResolutionPanelDetailed,
 } from './panels.js';
-
-
-
-function getPlayerMaintenance(player) {
-  return Object.values(player.professionalArmies || {}).reduce((total, count) => total + count, 0);
-}
-
-function formatSignedGold(value, { expense = false } = {}) {
-  const amount = Math.max(0, Number(value) || 0);
-  if (expense) return amount > 0 ? `-${amount}` : '0';
-  return amount > 0 ? `+${amount}` : '0';
-}
-
-function getPlayerTabEconomy(player, administration) {
-  return {
-    reserve: `${player.gold}g`,
-    income: formatSignedGold(administration?.income?.[player.id] || 0),
-    expense: formatSignedGold(getPlayerMaintenance(player), { expense: true }),
-  };
-}
-
-function renderPlayerTabFinance(economy) {
-  return `
-    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure" title="Gold reserve / expected income / expected expenditure">
-      <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
-      <span class="tab-finance-separator" aria-hidden="true">/</span>
-      <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
-      <span class="tab-finance-separator" aria-hidden="true">/</span>
-      <span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span>
-    </span>
-  `;
-}
+import {
+  bindUiChrome,
+  createDefaultUiState,
+  isPanelOpen,
+  renderActionShell,
+  renderHiddenGameOverOverlay,
+  renderPlayerTabs,
+  renderScoringHtml,
+  renderSpectatorPanel,
+  renderTopBar,
+  setPanelOpen,
+} from './sharedView.js';
 
 export class GameController {
   constructor(config = {}) {
@@ -91,21 +68,9 @@ export class GameController {
     this.aiMeta = null;
     this.pendingAiTitleAssignment = null;
     this.aiBusy = false;
-    this.orderRevealed = false;
     this.selectedProvinceId = null;
     this.activePlayer = this.config.humanPlayerIds[0] ?? 0;
-    this.uiState = {
-      panels: {
-        dashboard: false,
-        history: false,
-        action: true,
-      },
-      sections: {
-        'court:land': true,
-      },
-      dashboardFocus: null,
-    };
-    this.gameOverDismissed = false;
+    this.uiState = createDefaultUiState();
   }
 
   async init() {
@@ -147,22 +112,9 @@ export class GameController {
         player.firstName = '(You)';
         continue;
       }
-      const aiMetaForPlayer = this.aiMeta?.players?.[player.id];
-      const profile = aiMetaForPlayer?.profile;
-      const personalityId = aiMetaForPlayer?.personalityId;
-      const personalityName = profile?.name
-        || (personalityId ? this.getPersonalityNameById(personalityId) : null);
-      if (personalityName) {
-        player.firstName = personalityName;
-      }
+      const aiName = getAiDisplayName(this.aiMeta, player.id);
+      if (aiName) player.firstName = aiName;
     }
-  }
-
-  getPersonalityNameById(personalityId) {
-    const built = PERSONALITIES?.[personalityId]?.name;
-    if (built) return built;
-    if (typeof personalityId !== 'string' || !personalityId.length) return null;
-    return personalityId.charAt(0).toUpperCase() + personalityId.slice(1);
   }
 
   isHumanPlayer(playerId) {
@@ -184,53 +136,15 @@ export class GameController {
   }
 
   isPanelOpen(panelKey, fallback = true) {
-    const value = this.uiState.panels[panelKey];
-    return value == null ? fallback : Boolean(value);
+    return isPanelOpen(this.uiState, panelKey, fallback);
   }
 
   setPanelOpen(panelKey, open) {
-    this.uiState.panels[panelKey] = Boolean(open);
+    setPanelOpen(this.uiState, panelKey, open);
   }
 
   bindUiChrome() {
-    const containers = [
-      document.getElementById('playerDashboard'),
-      document.getElementById('historyPanel'),
-      document.getElementById('actionPanel'),
-    ].filter(Boolean);
-
-    for (const container of containers) {
-      container.querySelectorAll('[data-ui-panel-toggle]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const panelKey = button.dataset.uiPanelToggle;
-          this.setPanelOpen(panelKey, !this.isPanelOpen(panelKey, true));
-          this.render();
-        });
-      });
-
-      container.querySelectorAll('details[data-section-key]').forEach((section) => {
-        section.addEventListener('toggle', () => {
-          this.uiState.sections[section.dataset.sectionKey] = section.open;
-        });
-      });
-
-      container.querySelectorAll('[data-dashboard-focus]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const focusKey = button.dataset.dashboardFocus;
-          this.uiState.dashboardFocus = focusKey;
-          this.uiState.sections[`dashboard:${focusKey}`] = true;
-          this.render();
-        });
-      });
-    }
-  }
-
-  handleCourtActionUpdate(observation = null, options = {}) {
-    const finalize = Boolean(options.finalize);
-    if (!this.isSinglePlayer()) maybeAdvanceCourt(this.state, this.aiMeta);
-    this.afterHumanAction(observation, {
-      courtMode: this.state.phase === 'court' && this.isSinglePlayer() && !finalize ? 'react' : 'finish',
-    });
+    bindUiChrome({ uiState: this.uiState, render: () => this.render() });
   }
 
   processAiFlow(options = {}) {
@@ -249,18 +163,34 @@ export class GameController {
   }
 
   afterHumanAction(observation = null, options = {}) {
-    if (observation && this.aiMeta) {
-      observeCourtAction(this.state, this.aiMeta, observation);
-    } else {
-      this.invalidateAiPlans();
+    if (this.aiBusy) return;
+    this.aiBusy = true;
+    try {
+      const result = processPostHumanAction(this.state, this.aiMeta, {
+        ...options,
+        observation,
+        pendingAiTitleAssignment: this.pendingAiTitleAssignment,
+      });
+      if (result) this.pendingAiTitleAssignment = result.pendingAiTitleAssignment;
+      this.ensureHumanFocus();
+    } finally {
+      this.aiBusy = false;
     }
-    this.processAiFlow(options);
     this.render();
+  }
+
+  handleCourtActionUpdate(observation = null, options = {}) {
+    const finalize = Boolean(options.finalize);
+    if (!this.isSinglePlayer()) maybeAdvanceCourt(this.state, this.aiMeta);
+    this.afterHumanAction(observation, {
+      courtMode: this.state.phase === 'court' && this.isSinglePlayer() && !finalize ? 'react' : 'finish',
+    });
   }
 
   render() {
     const state = this.state;
-    this.renderTopBar();
+    if (!state) return;
+    renderTopBar(state);
     updateMapState(state);
     setSelectedProvince(this.selectedProvinceId);
     drawInvasionRoute(state.currentInvasion);
@@ -281,155 +211,35 @@ export class GameController {
     });
     this.renderPlayerTabs();
     this.bindUiChrome();
-    if (state.gameOver || state.phase === 'scoring') {
-      this.renderGameOver();
-    }
+    if (state.gameOver || state.phase === 'scoring') this.renderGameOver();
   }
 
   renderTopBar() {
-    const state = this.state;
-    const roundEl = document.getElementById('roundDisplay');
-    const phaseEl = document.getElementById('phaseDisplay');
-    const invasionEl = document.getElementById('invasionDisplay');
-
-    if (roundEl) roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
-    if (phaseEl) {
-      const phaseNames = {
-        setup: 'Setup',
-        invasion: 'Invasion',
-        administration: 'Administration',
-        court: 'Court',
-        orders: 'Secret Orders',
-        resolution: 'Resolution',
-        cleanup: 'Cleanup',
-        scoring: 'Final Scoring',
-      };
-      if (state.gameOver?.type === 'fall') {
-        phaseEl.textContent = 'Empire Fallen';
-        phaseEl.className = 'phase-badge phase-empire-fallen';
-      } else {
-        phaseEl.textContent = phaseNames[state.phase] || state.phase;
-        phaseEl.className = `phase-badge phase-${state.phase}`;
-      }
-    }
-    this.renderEmpireFallenBanner();
-
-    if (invasionEl) {
-      invasionEl.textContent = '';
-      invasionEl.style.display = 'none';
-    }
-  }
-
-  renderEmpireFallenBanner() {
-    const topBar = document.getElementById('topBar');
-    if (!topBar) return;
-    let banner = document.getElementById('empireFallenBanner');
-
-    if (this.state.gameOver?.type !== 'fall') {
-      banner?.remove();
-      return;
-    }
-
-    if (!banner) {
-      banner = document.createElement('span');
-      banner.id = 'empireFallenBanner';
-      banner.className = 'empire-fallen-banner';
-      const invasionEl = document.getElementById('invasionDisplay');
-      topBar.insertBefore(banner, invasionEl || null);
-    }
-
-    banner.innerHTML = '<strong>Empire Fallen</strong><span>Final state, last turn, and history remain available.</span>';
+    renderTopBar(this.state);
   }
 
   renderPlayerTabs() {
-    const tabBar = document.getElementById('playerTabBar');
-    if (!tabBar) return;
-
-    const administration = runAdministration(this.state);
-
-    tabBar.innerHTML = this.state.players.map((player) => {
-      const economy = getPlayerTabEconomy(player, administration);
-      const youBadge = this.isSinglePlayer() && this.isHumanPlayer(player.id)
-        ? '<span class="tab-you">You</span>'
-        : '';
-      const crown = player.id === this.state.basileusId ? '<span class="tab-crown" title="Basileus">B</span>' : '';
-      return `
-        <button class="player-tab ${player.id === this.activePlayer ? 'active' : ''}"
-          data-player="${player.id}" style="${getPlayerStyleAttr(this.state, player.id)}">
-          <span class="tab-body">
-            <span class="tab-name">${player.dynasty}</span>
-            ${renderPlayerTabFinance(economy)}
-          </span>
-          <span class="tab-flags">${youBadge}${crown}</span>
-        </button>
-      `;
-    }).join('');
-
-    tabBar.querySelectorAll('.player-tab').forEach((tab) => {
-      tab.addEventListener('click', () => {
-        this.activePlayer = parseInt(tab.dataset.player, 10);
+    renderPlayerTabs({
+      state: this.state,
+      activePlayerId: this.activePlayer,
+      onSelectPlayer: (playerId) => {
+        this.activePlayer = playerId;
         this.render();
-      });
-    });
-  }
-
-  updatePlayerTabs() {
-    const tabBar = document.getElementById('playerTabBar');
-    if (!tabBar) return;
-
-    const administration = runAdministration(this.state);
-
-    tabBar.querySelectorAll('.player-tab').forEach((tab) => {
-      const playerId = parseInt(tab.dataset.player, 10);
-      const player = getPlayer(this.state, playerId);
-      const economy = getPlayerTabEconomy(player, administration);
-      tab.classList.toggle('active', playerId === this.activePlayer);
-      for (const [key, value] of Object.entries(economy)) {
-        const valueEl = tab.querySelector(`[data-tab-finance="${key}"]`);
-        if (valueEl) valueEl.textContent = value;
-      }
-      const crown = tab.querySelector('.tab-crown');
-      if (crown) crown.style.display = playerId === this.state.basileusId ? '' : 'none';
+      },
+      getBadges: (player) => this.isSinglePlayer() && this.isHumanPlayer(player.id)
+        ? ['<span class="tab-you">You</span>']
+        : [],
     });
   }
 
   renderActionPanel() {
-    const panel = document.getElementById('actionPanel');
-    if (!panel) return;
-    const panelTitleByPhase = {
-      court: 'Imperial Court',
-      orders: 'Secret Orders',
-      resolution: 'Resolution',
-      scoring: 'Final Reckoning',
-    };
-    const panelSubtitleByPhase = {
-      court: 'Appointments, land, exemptions, revocations, and army upkeep',
-      orders: 'Troop deployments, mercenaries, and the throne vote',
-      resolution: 'Reveal orders and settle the round',
-      scoring: 'Projected wealth at the end of the game',
-    };
-    const isOpen = this.isPanelOpen('action', true);
-    panel.classList.toggle('panel-collapsed', !isOpen);
-    panel.innerHTML = `
-      <div class="sidebar-panel action-shell${isOpen ? '' : ' is-collapsed'}">
-        <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="action" aria-expanded="${isOpen}">
-          <span class="sidebar-panel-head-copy">
-            <span class="sidebar-panel-kicker">Phase Panel</span>
-            <span class="sidebar-panel-title">${panelTitleByPhase[this.state.phase] || 'Action Panel'}</span>
-            <span class="sidebar-panel-subtitle">${panelSubtitleByPhase[this.state.phase] || 'Current phase controls and details'}</span>
-          </span>
-        </button>
-        ${isOpen ? '<div class="sidebar-panel-body" data-role="action-panel-body"></div>' : ''}
-      </div>
-    `;
-    if (!isOpen) return;
-    const body = panel.querySelector('[data-role="action-panel-body"]');
+    const body = renderActionShell(document.getElementById('actionPanel'), this.state, this.uiState);
     if (!body) return;
 
     switch (this.state.phase) {
       case 'court':
         if (this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer)) {
-          this.renderSpectatorPanel(body, 'This dynasty is AI-controlled during court. You can inspect its public position but not issue commands.');
+          renderSpectatorPanel(body, this.state, this.activePlayer, 'This dynasty is AI-controlled during court. You can inspect its public position but not issue commands.');
         } else {
           this.renderCourtPhase(body);
         }
@@ -437,24 +247,11 @@ export class GameController {
 
       case 'orders':
         if (this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer)) {
-          this.renderSpectatorPanel(body, 'AI orders stay hidden until resolution. Switch back to your dynasty to lock your own orders.');
+          renderSpectatorPanel(body, this.state, this.activePlayer, 'AI orders stay hidden until resolution. Switch back to your dynasty to lock your own orders.');
           break;
         }
-
         renderOrdersPanel(body, this.state, this.activePlayer, {
-          lockOrders: (orders) => {
-            const result = submitHumanOrders(this.state, this.activePlayer, orders);
-            if (!result.ok) {
-              this.render();
-              return;
-            }
-            if (this.aiMeta) {
-              this.processAiFlow();
-            } else if (allOrdersSubmitted(this.state)) {
-              phaseResolution(this.state);
-            }
-            this.render();
-          },
+          lockOrders: (orders) => this.lockOrders(orders),
         }, {
           uiState: this.uiState,
         });
@@ -467,47 +264,40 @@ export class GameController {
         body.querySelector('[data-action="continue"]')?.addEventListener('click', () => {
           const reassignment = this.tryResolveTitleReassignment(body);
           if (!reassignment.ok) return;
-
-          this.pendingAiTitleAssignment = null;
-          phaseCleanup(this.state);
-          advanceToNextInteractivePhase(this.state);
-          this.invalidateAiPlans();
-          this.orderRevealed = false;
-          if (!this.isSinglePlayer() || this.state.phase !== 'court') {
-            this.processAiFlow();
-          }
+          const continuation = continueAfterResolution(this.state, this.aiMeta, null);
+          this.pendingAiTitleAssignment = continuation.pendingAiTitleAssignment;
+          if (!this.isSinglePlayer() || this.state.phase !== 'court') this.processAiFlow();
           this.render();
         });
         break;
 
       case 'scoring':
-        this.renderScoring(body);
+        body.innerHTML = renderScoringHtml(this.state, { includeNewGame: true });
         break;
 
       default:
-        body.innerHTML = `<div class="panel-empty"><p>Processing...</p></div>`;
+        body.innerHTML = '<div class="panel-empty"><p>Processing...</p></div>';
         break;
     }
   }
 
-  renderSpectatorPanel(panel, message) {
-    const player = getPlayer(this.state, this.activePlayer);
-    panel.innerHTML = `
-      <div class="panel-empty spectator-panel">
-        <h3>${player ? renderPlayerRoleName(this.state, player) : 'Dynasty View'}</h3>
-        <p>${message}</p>
-      </div>
-    `;
+  lockOrders(orders) {
+    const result = submitHumanOrders(this.state, this.activePlayer, orders);
+    if (!result.ok) {
+      this.render();
+      return;
+    }
+    if (this.aiMeta) {
+      this.processAiFlow();
+    } else if (allOrdersSubmitted(this.state)) {
+      phaseResolution(this.state);
+    }
+    this.render();
   }
 
   tryResolveTitleReassignment(panel) {
     if (this.pendingAiTitleAssignment && this.aiMeta) {
-      applyPlannedAiTitleAssignment(
-        this.state,
-        this.aiMeta,
-        this.pendingAiTitleAssignment,
-        this.state.nextBasileusId
-      );
+      this.pendingAiTitleAssignment = applyPendingAiTitleAssignment(this.state, this.aiMeta, this.pendingAiTitleAssignment);
       return { ok: true };
     }
 
@@ -572,41 +362,10 @@ export class GameController {
   }
 
   renderScoring(panel) {
-    const state = this.state;
-    const adminResult = runAdministration(state);
-
-    const scores = state.players.map((player) => {
-      const projected = adminResult.income[player.id] || 0;
-      const wealth = computeFullWealth(state, player.id, projected);
-      return { player, wealth, gold: player.gold, projected };
-    }).sort((left, right) => right.wealth - left.wealth);
-
-    panel.innerHTML = `
-      <div class="scoring-panel">
-        <h3>Final Reckoning</h3>
-        <div class="score-list">
-          ${scores.map((score, index) => `
-            <div class="score-row ${index === 0 ? 'winner' : ''}" style="--player-color: ${score.player.color}">
-              <span class="score-rank">${index === 0 ? '1' : index + 1}</span>
-              <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
-              <span class="score-breakdown">${score.gold}g + ${score.projected} projected</span>
-              <span class="score-total">${score.wealth}</span>
-            </div>
-          `).join('')}
-        </div>
-        <button class="btn-new-game" onclick="location.reload()">New Game</button>
-      </div>
-    `;
+    panel.innerHTML = renderScoringHtml(this.state, { includeNewGame: true });
   }
 
   renderGameOver() {
-    const overlay = document.getElementById('gameOverOverlay');
-    if (!overlay) return;
-
-    if (this.state.gameOver?.type === 'fall') {
-      overlay.innerHTML = '';
-      overlay.style.display = 'none';
-      return;
-    }
+    if (this.state.gameOver?.type === 'fall') renderHiddenGameOverOverlay();
   }
 }
