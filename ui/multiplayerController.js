@@ -622,7 +622,7 @@ export class MultiplayerController {
     const body = panel.querySelector('[data-role="action-panel-body"]');
     if (!body) return;
 
-    if (!controlledSeatId && this.state.phase !== 'scoring') {
+    if (controlledSeatId == null && this.state.phase !== 'scoring') {
       body.innerHTML = `<div class="panel-empty spectator-panel"><p>Claim a human seat in the lobby to control a dynasty.</p></div>`;
       return;
     }
@@ -816,8 +816,8 @@ export class MultiplayerController {
               <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}">
                 <div class="multiplayer-seat-copy">
                   <strong>Seat ${seat.seatId + 1}</strong>
-                  <span>${seat.dynasty || (seat.kind === 'ai' ? 'AI seat' : 'Awaiting dynasty')}</span>
-                  <span class="setup-hint">${seat.playerName || (seat.kind === 'ai' ? 'AI-controlled' : 'Open human seat')} - ${seat.status}</span>
+                  <span>${seat.dynasty || (seat.kind === 'ai' ? 'AI seat' : (seat.claimed ? 'Human dynasty claimed' : 'Awaiting dynasty'))}</span>
+                  <span class="setup-hint">${seat.isViewerSeat ? 'You' : (seat.playerName || (seat.kind === 'ai' ? 'AI-controlled' : 'Open human seat'))} - ${seat.status}</span>
                 </div>
                 <div class="multiplayer-seat-actions">
                   ${seat.kind === 'human' && !seat.claimed ? `
