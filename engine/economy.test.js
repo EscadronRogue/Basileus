@@ -5,7 +5,18 @@ import { PROVINCES } from '../data/provinces.js';
 import { createGameState, makeRng, rollInvasionStrength } from './state.js';
 import { runAdministration } from './cascade.js';
 import { phaseAdministration, phaseInvasion, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
-import { buyTheme, canRecruitProfessional, grantTaxExemption, hireMercenaries, recruitProfessional } from './actions.js';
+import {
+  appointStrategos,
+  buyTheme,
+  canRecruitProfessional,
+  grantTaxExemption,
+  hireMercenaries,
+  payMaintenance,
+  recruitProfessional,
+  restoreSuspendedProfessionals,
+  revokeMajorTitle,
+  revokeTheme,
+} from './actions.js';
 import {
   getMercenaryOrderCost,
   getNormalOwnerIncome,
@@ -13,6 +24,7 @@ import {
   getTaxExemptionCost,
   getThemeLandPrice,
 } from './rules.js';
+import { getAppointmentCost } from './turnCounters.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -48,7 +60,7 @@ function makeState(themes, playerOverrides = {}) {
     minorTitles: [],
     professionalArmies: {},
     orders: null,
-    appointmentCooldown: {},
+    mercenaryArmy: 0,
     ...(playerOverrides[id] || {}),
   }));
 
@@ -60,6 +72,8 @@ function makeState(themes, playerOverrides = {}) {
     chiefEunuchs: null,
     players,
     themes: Object.fromEntries(themes.map((theme) => [theme.id, theme])),
+    currentLevies: {},
+    suspendedProfessionals: {},
     log: [],
     historyEnabled: false,
     history: null,
@@ -315,6 +329,104 @@ test('mercenary costs ramp within a turn and reset on the next turn', () => {
   const third = hireMercenaries(state, 1, 'DOM_EAST', 1);
   assert.equal(third.cost, 1);
   assert.equal(state.players[1].gold, 13);
+});
+
+test('appointments use per-title turn counters and altruistic appointments discount self costs', () => {
+  const state = makeState(
+    [
+      makeTheme('OPS', { region: 'east' }),
+      makeTheme('ANT', { region: 'east' }),
+      makeTheme('KYP', { region: 'east' }),
+      makeTheme('AEG', { region: 'east' }),
+    ],
+    {
+      1: { majorTitles: ['DOM_EAST'] },
+    },
+  );
+  state.currentLevies.DOM_EAST = 10;
+
+  const selfFirst = appointStrategos(state, 1, 'OPS', 1);
+  assert.equal(selfFirst.ok, true);
+  assert.equal(selfFirst.cost, 1);
+
+  const otherFirst = appointStrategos(state, 1, 'ANT', 2);
+  assert.equal(otherFirst.ok, true);
+  assert.equal(otherFirst.cost, 0);
+
+  const selfSecond = appointStrategos(state, 1, 'KYP', 1);
+  assert.equal(selfSecond.ok, true);
+  assert.equal(selfSecond.cost, 1);
+
+  const otherSecondSameTarget = appointStrategos(state, 1, 'AEG', 2);
+  assert.equal(otherSecondSameTarget.ok, true);
+  assert.equal(otherSecondSameTarget.cost, 1);
+  assert.equal(state.currentLevies.DOM_EAST, 7);
+});
+
+test('appointment counters transfer to a replacement major title during same-turn revocation swaps', () => {
+  const state = makeState(
+    [makeTheme('OPS', { region: 'east' })],
+    {
+      1: { majorTitles: ['DOM_EAST'] },
+      2: { majorTitles: ['DOM_WEST'] },
+    },
+  );
+  state.currentLevies.DOM_EAST = 4;
+  state.currentLevies.BASILEUS = 4;
+
+  assert.equal(appointStrategos(state, 1, 'OPS', 1).cost, 1);
+  const revocation = revokeMajorTitle(state, 1, 'DOM_EAST', 2);
+
+  assert.equal(revocation.ok, true);
+  assert.deepEqual(state.players[1].majorTitles, ['DOM_WEST']);
+  assert.equal(getAppointmentCost(state, 1, 'DOM_WEST', 1), 2);
+});
+
+test('self revocations are free and discount later non-self revocations without making them free', () => {
+  const state = makeState(
+    [
+      makeTheme('OPS', { owner: 0 }),
+      makeTheme('ANT', { owner: 1 }),
+      makeTheme('KYP', { owner: 2 }),
+    ],
+  );
+  state.currentLevies.BASILEUS = 5;
+
+  const own = revokeTheme(state, 'OPS');
+  assert.equal(own.ok, true);
+  assert.equal(own.cost, 0);
+
+  const firstOther = revokeTheme(state, 'ANT');
+  assert.equal(firstOther.ok, true);
+  assert.equal(firstOther.cost, 1);
+
+  const secondOther = revokeTheme(state, 'KYP');
+  assert.equal(secondOther.ok, true);
+  assert.equal(secondOther.cost, 1);
+});
+
+test('professional troops spent on appointments stay owed for maintenance and return afterward', () => {
+  const state = makeState(
+    [makeTheme('OPS', { region: 'east' })],
+    {
+      1: { gold: 5, majorTitles: ['DOM_EAST'], professionalArmies: { DOM_EAST: 2 } },
+    },
+  );
+  state.currentLevies.DOM_EAST = 0;
+
+  const appointment = appointStrategos(state, 1, 'OPS', 1);
+  assert.equal(appointment.ok, true);
+  assert.equal(appointment.cost, 1);
+  assert.equal(state.players[1].professionalArmies.DOM_EAST, 1);
+  assert.equal(state.suspendedProfessionals[1].DOM_EAST, 1);
+
+  const maintenance = payMaintenance(state, 1);
+  assert.equal(maintenance.cost, 3);
+  assert.equal(state.players[1].gold, 2);
+
+  restoreSuspendedProfessionals(state);
+  assert.equal(state.players[1].professionalArmies.DOM_EAST, 2);
+  assert.equal(state.players[1].professionalArmies.STRAT_OPS, 1);
 });
 
 test('the Basileus cannot buy tax exemption for his own estate', () => {

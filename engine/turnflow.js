@@ -4,9 +4,10 @@
 
 import { runAdministration } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
-import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './actions.js';
+import { resolveCoup, payMaintenance, restoreSuspendedProfessionals, disbandMercenaries } from './actions.js';
 import { recordHistoryEvent } from './history.js';
 import { rollInvasionStrength, getPlayer, formatPlayerLabel } from './state.js';
+import { resetTurnCounters } from './turnCounters.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
 export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
@@ -37,7 +38,6 @@ function officeName(state, officeKey) {
 
 function buildPlayerResolutionContribution(state, player, orders) {
   const officeKeys = new Set(Object.keys(player.professionalArmies || {}));
-  const mercenaryMap = new Map((orders.mercenaries || []).map(entry => [entry.officeKey, entry.count]));
 
   if (state.currentLevies) {
     for (const officeKey of Object.keys(state.currentLevies)) {
@@ -47,10 +47,6 @@ function buildPlayerResolutionContribution(state, player, orders) {
     }
   }
 
-  for (const officeKey of mercenaryMap.keys()) {
-    officeKeys.add(officeKey);
-  }
-
   const offices = [];
   let capitalTroops = 0;
   let frontierTroops = 0;
@@ -58,8 +54,7 @@ function buildPlayerResolutionContribution(state, player, orders) {
   for (const officeKey of officeKeys) {
     const professionalTroops = player.professionalArmies?.[officeKey] || 0;
     const levyTroops = getOfficeHolder(state, officeKey) === player.id ? (state.currentLevies?.[officeKey] || 0) : 0;
-    const mercenaryTroops = mercenaryMap.get(officeKey) || 0;
-    const totalTroops = professionalTroops + levyTroops + mercenaryTroops;
+    const totalTroops = professionalTroops + levyTroops;
     if (totalTroops <= 0) continue;
 
     // Court titles that grant capital-locked levies cannot send their troops to the
@@ -75,8 +70,25 @@ function buildPlayerResolutionContribution(state, player, orders) {
       officeName: officeName(state, officeKey),
       professionalTroops,
       levyTroops,
-      mercenaryTroops,
       totalTroops,
+      destination,
+    });
+  }
+
+  // The mercenary army is a single pool, not tied to an office. The player
+  // chooses one destination for the whole army during the orders phase.
+  const mercenaryTroops = Math.max(0, Number(player.mercenaryArmy) || 0);
+  if (mercenaryTroops > 0) {
+    const destination = orders.mercenaryDeployment === 'capital' ? 'capital' : 'frontier';
+    if (destination === 'capital') capitalTroops += mercenaryTroops;
+    else frontierTroops += mercenaryTroops;
+    offices.push({
+      officeKey: 'MERCENARY_ARMY',
+      officeName: 'Mercenary Army',
+      professionalTroops: 0,
+      levyTroops: 0,
+      mercenaryTroops,
+      totalTroops: mercenaryTroops,
       destination,
     });
   }
@@ -89,11 +101,8 @@ function buildPlayerResolutionContribution(state, player, orders) {
     capitalTroops,
     frontierTroops,
     offices,
-    mercenaries: (orders.mercenaries || []).map(entry => ({
-      officeKey: entry.officeKey,
-      officeName: officeName(state, entry.officeKey),
-      count: entry.count,
-    })),
+    mercenaryArmy: mercenaryTroops,
+    mercenaryDeployment: orders.mercenaryDeployment === 'capital' ? 'capital' : 'frontier',
     debug: orders.debug || null,
   };
 }
@@ -174,42 +183,36 @@ export function phaseAdministration(state) {
 
 // ─── Phase: Court (requires player input) ───
 // This phase doesn't auto-resolve — the UI drives it.
-// Players perform actions: appointments, purchases, gifts, negotiations, revocations.
-// When all mandatory appointments are done and players confirm, advance.
+// Players perform actions: appointments, purchases, gifts, mercenary hiring,
+// negotiations, revocations. The phase ends when every player confirms.
+// Appointments are no longer mandatory: cost-gated multiple appointments
+// replace the old "exactly one mandatory appointment" requirement.
 export function phaseCourt(state) {
   state.phase = 'court';
-  // Reset tracking for mandatory appointments this round
-  state.courtActions = {
-    basileusAppointed: false,
-    domesticEastAppointed: false,
-    domesticWestAppointed: false,
-    admiralAppointed: false,
-    patriarchAppointed: false,
-    // Number of revocations the Basileus has performed this round. Each costs more
-    // troops than the last (1 troop for the first, 2 for the second, ...).
-    basileusRevocationsUsed: 0,
-    playerConfirmed: new Set(),
-  };
+  resetTurnCounters(state);
+  state.mercenariesHiredThisRound = {};
+  for (const player of state.players) {
+    player.mercenaryArmy = 0;
+  }
+  state.courtActions = { playerConfirmed: new Set() };
 }
 
 export function isCourtComplete(state) {
   const ca = state.courtActions;
-  return ca.basileusAppointed && ca.domesticEastAppointed &&
-    ca.domesticWestAppointed && ca.admiralAppointed && ca.patriarchAppointed &&
-    ca.playerConfirmed.size === state.players.length;
+  return ca?.playerConfirmed?.size === state.players.length;
 }
 
 // ─── Phase: Orders (secret, simultaneous — requires player input) ───
 export function phaseOrders(state) {
   state.phase = 'orders';
   state.allOrders = {};
-  state.mercenariesHiredThisRound = {};
-  // Each player must submit: deployments, mercenaries, candidate
-  // UI handles this — each player fills in their orders simultaneously
+  // Each player submits: deployments (per-office capital/frontier), the
+  // mercenary army's destination, and a Basileus candidate. Mercenary hiring
+  // already happened in the court phase.
 }
 
 export function submitOrders(state, playerId, orders) {
-  // orders: { deployments: { officeKey: 'capital'|'frontier' }, mercenaries: [{officeKey, count}], candidate: playerId }
+  // orders: { deployments: { officeKey: 'capital'|'frontier' }, mercenaryDeployment: 'capital'|'frontier', candidate: playerId }
   state.allOrders[playerId] = orders;
   recordHistoryEvent(state, {
     category: 'orders',
@@ -219,6 +222,7 @@ export function submitOrders(state, playerId, orders) {
     details: {
       candidateId: orders.candidate,
       candidateName: playerName(state, orders.candidate),
+      mercenaryDeployment: orders.mercenaryDeployment === 'capital' ? 'capital' : 'frontier',
     },
   });
 }
@@ -268,7 +272,8 @@ export function phaseResolution(state) {
         capitalTroops: breakdown.capitalTroops,
         frontierTroops: breakdown.frontierTroops,
         offices: breakdown.offices,
-        mercenaries: breakdown.mercenaries,
+        mercenaryArmy: breakdown.mercenaryArmy,
+        mercenaryDeployment: breakdown.mercenaryDeployment,
       },
       decision: breakdown.debug?.decision || null,
     });
@@ -357,13 +362,13 @@ export function phaseCleanup(state) {
     payMaintenance(state, player.id);
   }
 
-  // Professional troops the Basileus spent on revocations were "deleted" for this
-  // round only — restore them now (after maintenance) so they're available next round
-  // without paying maintenance for the round they were suspended.
+  // Professional troops suspended this round (spent on appointments or
+  // revocations) rejoin their offices now that maintenance is paid.
   restoreSuspendedProfessionals(state);
 
-  // 2. Levies expire, mercenaries disband (just clear the references)
+  // 2. Levies and mercenaries expire at the end of every round.
   state.currentLevies = {};
+  disbandMercenaries(state);
 
   // 3. New Basileus takes office (if coup succeeded)
   if (state.nextBasileusId !== state.basileusId) {
@@ -397,6 +402,10 @@ export function phaseCleanup(state) {
   // 5. Clear orders
   state.allOrders = {};
   state.mercenariesHiredThisRound = {};
+  state.turnCounters = { revocation: { self: 0, others: 0 } };
+  for (const player of state.players) {
+    player.turnCounters = { appointments: {} };
+  }
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;

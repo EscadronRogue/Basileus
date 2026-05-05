@@ -300,7 +300,7 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
   await hostSocket.close();
 });
 
-test('multiplayer snapshots redact sealed orders and hidden mercenary spend', async (t) => {
+test('multiplayer snapshots redact sealed orders', async (t) => {
   const harness = await createStartedThreePlayerRoom(t);
   const { room, host, guest } = harness;
 
@@ -328,9 +328,7 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
       deployments: {
         [actorOffice]: 'capital',
       },
-      mercenaries: [
-        { officeKey: actorOffice, count: 1 },
-      ],
+      mercenaryDeployment: 'capital',
       candidate: viewerSeatId,
     },
   });
@@ -342,7 +340,7 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
 
   const actorGoldVisible = actorGame.state.players.find((player) => player.id === actorSeatId).gold;
   const viewerGoldVisible = viewerGame.state.players.find((player) => player.id === actorSeatId).gold;
-  assert.equal(actorGoldVisible, actorGoldBefore - 1);
+  assert.equal(actorGoldVisible, actorGoldBefore);
   assert.equal(viewerGoldVisible, actorGoldBefore);
 
   const historyEntry = viewerGame.state.history.find((entry) => entry.type === 'orders_submitted' && entry.actorId === actorSeatId);

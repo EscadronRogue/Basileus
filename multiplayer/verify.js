@@ -336,9 +336,7 @@ async function verifyOrderRedaction() {
           deployments: {
             [actorOffice]: 'capital',
           },
-          mercenaries: [
-            { officeKey: actorOffice, count: 1 },
-          ],
+          mercenaryDeployment: 'capital',
           candidate: viewerSeatId,
         },
       });
@@ -349,7 +347,7 @@ async function verifyOrderRedaction() {
 
       const actorGoldVisible = actorGame.state.players.find((player) => player.id === actorSeatId).gold;
       const viewerGoldVisible = viewerGame.state.players.find((player) => player.id === actorSeatId).gold;
-      assert.equal(actorGoldVisible, actorGoldBefore - 1);
+      assert.equal(actorGoldVisible, actorGoldBefore);
       assert.equal(viewerGoldVisible, actorGoldBefore);
 
       const historyEntry = viewerGame.state.history.find((entry) => entry.type === 'orders_submitted' && entry.actorId === actorSeatId);

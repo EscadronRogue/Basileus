@@ -1,9 +1,16 @@
 // ui/panels.js — Interactive UI panels: Court, Orders, player dashboard
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 import { runAdministration } from '../engine/cascade.js';
-import { canGrantTaxExemption, canRecruitProfessional, suggestMajorTitleAssignments } from '../engine/actions.js';
 import {
-  getMercenaryOrderCost,
+  canGrantTaxExemption,
+  canRecruitProfessional,
+  canPayRevocationCostFor,
+  getNextRevocationCostFor,
+  getPlayerAvailableTroops,
+  suggestMajorTitleAssignments,
+} from '../engine/actions.js';
+import {
+  getMercenaryHireCost,
   getNormalOwnerIncome,
   getNormalTaxIncome,
   getTaxExemptOwnerIncome,
@@ -11,6 +18,7 @@ import {
   getThemeOwnerIncome,
   isThemeThreatened,
 } from '../engine/rules.js';
+import { getAppointmentCost } from '../engine/turnCounters.js';
 import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel } from '../engine/state.js';
 import {
   getPlayerStyleAttr,
@@ -246,42 +254,11 @@ function countMinorTitles(state, playerId) {
   return count;
 }
 
-function selfAppointmentOnCooldown(state, appointerId) {
-  if (appointerId == null) return false;
-  const appointer = getPlayer(state, appointerId);
-  if (!appointer) return false;
-  return appointer.appointmentCooldown?.__SELF_ANY === state.round - 1;
-}
-
-function getSelectablePlayers(state, selectedId, options = {}) {
-  const excludeId = options.excludeId;
-  const players = state.players.filter((player) => excludeId == null || player.id !== excludeId);
-  const fallbackId = players[0]?.id ?? '';
-  const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : fallbackId;
-  return { players, selectedId: normalizedSelectedId };
-}
-
-function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
-  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
-  if (!players.length) return `<input type="hidden" id="${inputId || ''}" class="appt-player-select" value="">`;
-  const inputIdAttr = inputId ? ` id="${inputId}"` : '';
-  return `
-    <div class="player-choice-grid" data-player-choice-group>
-      ${players.map((player) => `
-        <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
-          ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}
-        </button>
-      `).join('')}
-      <input type="hidden"${inputIdAttr} class="appt-player-select" value="${normalizedSelectedId}">
-    </div>`;
-}
-
-function selfAppointmentNotice(state, appointerId) {
-  if (!selfAppointmentOnCooldown(state, appointerId)) return '';
-  return `<div class="self-appoint-lockout" title="You appointed yourself last round.">
-    <span class="self-appoint-lockout-icon">⊘</span>
-    <span>You cannot appoint yourself this round (you self-appointed last round).</span>
-  </div>`;
+function renderAppointmentCostLine(state, appointerId, appointingTitleKey) {
+  const selfCost = getAppointmentCost(state, appointerId, appointingTitleKey, appointerId);
+  const troops = getPlayerAvailableTroops(state, appointerId, appointingTitleKey);
+  const affordClass = troops.total >= selfCost ? '' : ' over-budget';
+  return `<p class="section-hint appointment-cost${affordClass}">Self appointment costs <strong>${selfCost}</strong> troop${selfCost === 1 ? '' : 's'} now. Appointing another dynasty starts free per target and discounts later self-appointments this turn. Available: ${troops.total} troop${troops.total === 1 ? '' : 's'}.</p>`;
 }
 
 function renderAppointmentColumn(label, bodyHtml) {
@@ -1006,12 +983,12 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
 
   courtHtml += renderFoldSection(
     'court:army',
-    'Professional Army',
+    'Armies',
     renderArmyManagement(state, activePlayerId),
     uiSectionState,
     {
       defaultOpen: true,
-      summary: 'Recruit +1 per office, dismiss any number',
+      summary: 'Levies, professional troops, mercenary army',
     }
   );
 
@@ -1102,6 +1079,14 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
     });
   });
 
+  container.querySelectorAll('[data-action="hire-mercs"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = container.querySelector('.merc-hire-count');
+      const count = input ? parseInt(input.value, 10) : 0;
+      callbacks['hire-mercs']?.(null, { count });
+    });
+  });
+
   const basileusTypeSelect = container.querySelector('#basileusApptType');
   const basileusThemeChoiceGroup = container.querySelector('#basileusApptThemeChoices');
   const basileusThemeButtons = basileusThemeChoiceGroup?.querySelector('[data-role="theme-choice-buttons"]');
@@ -1189,28 +1174,20 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
 
 // ─── Basileus appointment: can appoint ANY minor title to ANY player ───
 function renderBasileusAppointments(state, selectedProvinceId) {
-  const already = state.courtActions?.basileusAppointed;
-  if (already) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">✓ Basileus appointment made this round</span>
-    </div>`;
-  }
-
   const titleTypes = getOpenBasileusMinorTitleTypes(state);
   if (!titleTypes.length) {
     return `<div class="appointment-block done">
-      <span class="appt-label">✓ No eligible Basileus appointments remain</span>
+      <span class="appt-label">No eligible Basileus appointments remain</span>
     </div>`;
   }
 
   const selectableThemes = [...getOpenStrategosThemes(state), ...getOpenBishopThemes(state)];
   const defaultThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId);
   const appointerId = state.basileusId;
-  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
 
-  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
-    <span class="appt-label">Basileus appoints 1 minor title:</span>
-    ${selfAppointmentNotice(state, appointerId)}
+  return `<div class="appointment-block">
+    <span class="appt-label">Basileus appoints a minor title:</span>
+    ${renderAppointmentCostLine(state, appointerId, 'BASILEUS')}
     <div class="appt-form">
       ${renderAppointmentGrid(
         `<select id="basileusApptType" class="appt-select">
@@ -1221,7 +1198,7 @@ function renderBasileusAppointments(state, selectedProvinceId) {
           <div data-role="theme-choice-buttons"></div>
           <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
         </div>`,
-        renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: onCooldown ? appointerId : undefined })
+        renderPlayerChoiceControl(state, 'basileusApptPlayer')
       )}
       <button class="appt-btn" data-action="commit-basileus-appt">Appoint</button>
     </div>
@@ -1236,28 +1213,19 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
   const themes = getOpenStrategosThemes(state, region);
   const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId);
 
-  const already = state.courtActions?.[`${titleKey}_appointed`];
-  if (already) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">✓ ${title.name} — Strategos appointed</span>
-    </div>`;
-  }
-
   if (!themes.length) {
     return `<div class="appointment-block done">
       <span class="appt-label">No unappointed Strategos slots remain for ${title.name}</span>
     </div>`;
   }
 
-  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
-
-  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
+  return `<div class="appointment-block">
     <span class="appt-label">${title.name} → appoint Strategos:</span>
-    ${selfAppointmentNotice(state, appointerId)}
+    ${renderAppointmentCostLine(state, appointerId, titleKey)}
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })
+        renderPlayerChoiceControl(state, null)
       )}
       <button class="appt-btn strategos-commit" data-titlekey="${titleKey}">Appoint</button>
     </div>
@@ -1269,28 +1237,19 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
   const themes = getOpenBishopThemes(state);
   const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId);
 
-  const already = state.courtActions?.patriarchAppointed;
-  if (already) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">✓ Patriarch — Bishop appointed</span>
-    </div>`;
-  }
-
   if (!themes.length) {
     return `<div class="appointment-block done">
       <span class="appt-label">No unappointed Bishop slots remain for the Patriarch</span>
     </div>`;
   }
 
-  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
-
-  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
+  return `<div class="appointment-block">
     <span class="appt-label">Patriarch → appoint Bishop:</span>
-    ${selfAppointmentNotice(state, appointerId)}
+    ${renderAppointmentCostLine(state, appointerId, 'PATRIARCH')}
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })
+        renderPlayerChoiceControl(state, null)
       )}
       <button class="appt-btn bishop-commit">Appoint</button>
     </div>
@@ -1300,29 +1259,24 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
 // ─── Revocation: cartouche grid (same grammar as appointment) ───
 function renderRevocationOptions(state) {
   const groups = collectRevocationGroups(state);
-
-  const used = state.courtActions?.basileusRevocationsUsed || 0;
-  const nextCost = used + 1;
-  const available = getBasileusAvailableTroopCount(state);
-  const canAfford = available >= nextCost;
-  const costLine = used === 0
-    ? `Each revocation costs troops: 1 for the first, 2 for the second, 3 for the third, and so on. Levies are spent before professional troops; professional troops return next round.`
-    : `${used} revocation${used === 1 ? '' : 's'} used so far this round.`;
-  const costStatus = canAfford
-    ? `Next revocation costs <strong>${nextCost}</strong> troop${nextCost === 1 ? '' : 's'} (Basileus has ${available}).`
-    : `Next revocation would cost ${nextCost} troop${nextCost === 1 ? '' : 's'}, but the Basileus only has ${available}. <em>Cannot revoke further this round.</em>`;
-
+  const available = getPlayerAvailableTroops(state, state.basileusId, 'BASILEUS').total;
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0);
+
   const body = totalItems
     ? groups.filter((g) => g.items.length).map((group) => `
         <div class="revocation-group">
           <div class="revocation-group-label">${group.label}</div>
           <div class="revocation-choice-grid">
-            ${group.items.map((item) => `
-              <button type="button" class="revocation-choice-btn" data-revoke-value="${item.value}" ${canAfford ? '' : 'disabled'}>
-                ${item.body}
-              </button>
-            `).join('')}
+            ${group.items.map((item) => {
+              const cost = getNextRevocationCostFor(state, item.targetPlayerId);
+              const canAfford = available >= cost;
+              const label = cost === 0 ? 'free' : `${cost} troop${cost === 1 ? '' : 's'}`;
+              return `
+                <button type="button" class="revocation-choice-btn" data-revoke-value="${item.value}" ${canAfford ? '' : 'disabled'}>
+                  ${item.body}
+                  <span class="market-cost">${label}</span>
+                </button>`;
+            }).join('')}
           </div>
         </div>
       `).join('')
@@ -1330,13 +1284,12 @@ function renderRevocationOptions(state) {
 
   return `<div class="court-section revocation">
     <h4>Imperial Revocation</h4>
-    <p class="section-hint">${costLine}</p>
-    <p class="section-hint revocation-cost">${costStatus}</p>
+    <p class="section-hint">Self-revocations are free and discount later revocations this turn. Other revocations never drop below 1 troop. Available: ${available} troop${available === 1 ? '' : 's'}.</p>
     <div class="revocation-shell" data-revocation-group>
       ${body}
       <input type="hidden" class="revoke-select" value="">
     </div>
-    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${canAfford && totalItems ? '' : 'disabled'}>Revoke (${nextCost} troop${nextCost === 1 ? '' : 's'})</button>
+    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${totalItems ? '' : 'disabled'}>Revoke selected</button>
   </div>`;
 }
 
@@ -1350,6 +1303,7 @@ function collectRevocationGroups(state) {
     for (const titleKey of player.majorTitles) {
       major.push({
         value: `major:${player.id}:${titleKey}`,
+        targetPlayerId: player.id,
         body: renderTitleBadge(state, titleKey, { holderId: player.id, compact: true }),
       });
     }
@@ -1361,12 +1315,14 @@ function collectRevocationGroups(state) {
     if (t.strategos !== null) {
       minor.push({
         value: `minor:${t.id}:strategos`,
+        targetPlayerId: t.strategos,
         body: renderThemeOfficeBadge(state, 'STRATEGOS', t.id),
       });
     }
     if (t.bishop !== null) {
       minor.push({
         value: `minor:${t.id}:bishop`,
+        targetPlayerId: t.bishop,
         body: renderThemeOfficeBadge(state, 'BISHOP', t.id),
       });
     }
@@ -1374,12 +1330,14 @@ function collectRevocationGroups(state) {
   if (state.empress !== null) {
     minor.push({
       value: 'court:EMPRESS',
+      targetPlayerId: state.empress,
       body: renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true }),
     });
   }
   if (state.chiefEunuchs !== null) {
     minor.push({
       value: 'court:CHIEF_EUNUCHS',
+      targetPlayerId: state.chiefEunuchs,
       body: renderTitleBadge(state, 'CHIEF_EUNUCHS', { holderId: state.chiefEunuchs, compact: true }),
     });
   }
@@ -1388,6 +1346,7 @@ function collectRevocationGroups(state) {
     .filter((t) => t.taxExempt)
     .map((t) => ({
       value: `exempt:${t.id}`,
+      targetPlayerId: t.owner,
       body: renderProvinceBadge(state, t, { compact: true }),
     }));
 
@@ -1395,6 +1354,7 @@ function collectRevocationGroups(state) {
     .filter((t) => t.owner !== null && t.owner !== 'church' && !t.occupied)
     .map((t) => ({
       value: `theme:${t.id}`,
+      targetPlayerId: t.owner,
       body: renderProvinceBadge(state, t, { compact: true }),
     }));
 
@@ -1407,51 +1367,57 @@ function collectRevocationGroups(state) {
 }
 
 function getBasileusAvailableTroopCount(state) {
-  const basileusId = state.basileusId;
-  const basileus = state.players?.find(p => p.id === basileusId);
-  if (!basileus) return 0;
-  const officeKeys = new Set(['BASILEUS']);
-  if (state.empress === basileusId) officeKeys.add('EMPRESS');
-  if (state.chiefEunuchs === basileusId) officeKeys.add('CHIEF_EUNUCHS');
-  for (const titleKey of basileus.majorTitles || []) officeKeys.add(titleKey);
-  let total = 0;
-  for (const key of officeKeys) {
-    total += state.currentLevies?.[key] || 0;
-    total += basileus.professionalArmies?.[key] || 0;
-  }
-  return total;
+  return getPlayerAvailableTroops(state, state.basileusId, 'BASILEUS').total;
+}
+
+// ─── Army Management with recruitment limit ───
+function formatTroops(count) {
+  return `${count} troop${count === 1 ? '' : 's'}`;
 }
 
 // ─── Army Management with recruitment limit ───
 function renderArmyManagement(state, playerId) {
   const player = getPlayer(state, playerId);
   const offices = getPlayerOffices(state, playerId);
+  const hiredSoFar = player.mercenaryArmy || 0;
+  const nextMercCost = getMercenaryHireCost(hiredSoFar, 1);
+  const canHireMerc = player.gold >= nextMercCost;
+
   return `
-    <p class="section-hint">Recruit +1 per office per round. Troops stay raised between rounds; dismiss any number now to reduce upkeep.</p>
+    <p class="section-hint">Levies are current-turn troops. Professional troops stay raised and cost upkeep. Mercenaries are hired here as one temporary army and deployed during secret orders.</p>
     <div class="army-grid">
       ${offices.map((office) => {
-        const count = player.professionalArmies[office.key] || 0;
+        const proCount = player.professionalArmies[office.key] || 0;
+        const levyCount = state.currentLevies?.[office.key] || 0;
         const recruitCheck = canRecruitProfessional(state, playerId, office.key);
         const canRecruit = recruitCheck.ok;
         const recruitLabel = canRecruit ? '+1 recruit' : (recruitCheck.reason?.includes('cannot hold') ? 'No professionals' : 'recruited');
         return `<div class="army-row">
           <div class="army-office">
             <span>${office.label}</span>
-            <span class="army-count">${count} troops</span>
+            <span class="army-count">${formatTroops(levyCount)} levy · ${formatTroops(proCount)} professional</span>
           </div>
           <div class="army-controls">
             <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${office.key}" ${canRecruit ? '' : 'disabled'}>
               ${recruitLabel}
             </button>
             <div class="army-dismiss">
-              <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, count)}" value="${count > 0 ? 1 : 0}" ${count > 0 ? '' : 'disabled'}>
-              <button class="btn-dismiss ${count > 0 ? '' : 'disabled'}" data-action="dismiss" data-office="${office.key}" ${count > 0 ? '' : 'disabled'}>
-                Dismiss
-              </button>
+              <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, proCount)}" value="${proCount > 0 ? 1 : 0}" ${proCount > 0 ? '' : 'disabled'}>
+              <button class="btn-dismiss ${proCount > 0 ? '' : 'disabled'}" data-action="dismiss" data-office="${office.key}" ${proCount > 0 ? '' : 'disabled'}>Dismiss</button>
             </div>
           </div>
         </div>`;
       }).join('')}
+      <div class="army-row mercenary-army-row">
+        <div class="army-office">
+          <span>Mercenary Army</span>
+          <span class="army-count">${formatTroops(player.mercenaryArmy || 0)} hired this round · next costs ${nextMercCost}g</span>
+        </div>
+        <div class="army-controls">
+          <input class="merc-hire-count" type="number" min="1" value="1" ${canHireMerc ? '' : 'disabled'}>
+          <button class="btn-recruit ${canHireMerc ? '' : 'disabled'}" data-action="hire-mercs" ${canHireMerc ? '' : 'disabled'}>Hire</button>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -1467,7 +1433,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
   let html = `<div class="orders-panel">
     <div class="phase-header">
       <h3>Secret Orders</h3>
-      <p class="phase-hint">${alreadyLocked ? 'Orders locked. Waiting for other players...' : 'Deploy troops, hire mercenaries, name your candidate'}</p>
+      <p class="phase-hint">${alreadyLocked ? 'Orders locked. Waiting for other players...' : 'Deploy troops and name your candidate'}</p>
     </div>`;
 
   if (alreadyLocked) {
@@ -1512,25 +1478,20 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
 
   html += `</div></div>`;
 
-  // ── Hire Mercenaries ──
-  const mercOffices = offices.filter(o => !(o.capitalLocked || isCapitalLockedOfficeKey(o.key)));
-  html += `<div class="orders-section">
-    <h4>Hire Mercenaries</h4>
-    <p class="section-hint">Costs reset every round: 1g for the first mercenary, 2g for the second, 3g for the third, and so on.</p>
-    <div class="merc-hiring">
-      ${mercOffices.map(o => `
-        <div class="merc-row">
-          <span>${o.label}</span>
-          <div class="merc-controls">
-            <button class="merc-btn" data-action="merc-dec" data-office="${o.key}">−</button>
-            <span class="merc-count" data-office="${o.key}">0</span>
-            <button class="merc-btn" data-action="merc-inc" data-office="${o.key}">+</button>
-          </div>
+  if ((player.mercenaryArmy || 0) > 0) {
+    html += `<div class="orders-section">
+      <h4>Mercenary Army</h4>
+      <p class="section-hint">Deploy all ${player.mercenaryArmy} mercenary troop${player.mercenaryArmy === 1 ? '' : 's'} to one destination.</p>
+      <div class="deploy-row">
+        <span class="office-name">Mercenary Army</span>
+        <span class="troop-count">${player.mercenaryArmy} troops</span>
+        <div class="deploy-toggle" data-mercenary-deployment="true">
+          <button class="toggle-btn active" data-dest="frontier">⚔ Frontier</button>
+          <button class="toggle-btn" data-dest="capital">👑 Capital</button>
         </div>
-      `).join('')}
-      <div class="merc-total">Total cost: <span id="mercTotalCost">0</span>⬡ (you have ${player.gold}⬡)</div>
-    </div>
-  </div>`;
+      </div>
+    </div>`;
+  }
 
   // ── Coup Vote ──
   html += `<div class="orders-section">
@@ -1573,20 +1534,6 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
     });
   });
 
-  // Merc buttons
-  container.querySelectorAll('.merc-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const office = btn.dataset.office;
-      const countEl = container.querySelector(`.merc-count[data-office="${office}"]`);
-      let val = parseInt(countEl.textContent) || 0;
-      if (btn.dataset.action === 'merc-inc') val++;
-      if (btn.dataset.action === 'merc-dec' && val > 0) val--;
-      countEl.textContent = val;
-      updateMercTotal(container, player.gold);
-    });
-  });
-
-  updateMercTotal(container, player.gold);
 
   // Lock orders
   container.querySelector('[data-action="lock-orders"]')?.addEventListener('click', () => {
@@ -1603,38 +1550,14 @@ function collectOrders(container, offices, playerId) {
     deployments[officeKey] = active?.dataset.dest || 'frontier';
   });
 
-  const mercenaries = [];
-  container.querySelectorAll('.merc-count').forEach(el => {
-    const count = parseInt(el.textContent) || 0;
-    if (count > 0) {
-      mercenaries.push({ officeKey: el.dataset.office, count });
-    }
-  });
+  const mercenaryRow = container.querySelector('[data-mercenary-deployment]');
+  const mercenaryDeployment = mercenaryRow?.querySelector('.toggle-btn.active')?.dataset.dest || 'frontier';
 
   const candidateBtn = container.querySelector('.candidate-btn.selected');
   // Default to self if no candidate selected
   const candidate = candidateBtn ? parseInt(candidateBtn.dataset.candidate) : playerId;
 
-  return { deployments, mercenaries, candidate };
-}
-
-function updateMercTotal(container, gold) {
-  const mercenaries = [];
-  container.querySelectorAll('.merc-count').forEach(el => {
-    const count = parseInt(el.textContent) || 0;
-    if (count > 0) mercenaries.push({ count });
-  });
-  const total = getMercenaryOrderCost(mercenaries);
-  const costEl = container.querySelector('#mercTotalCost');
-  if (costEl) {
-    costEl.textContent = total;
-    costEl.classList.toggle('over-budget', total > gold);
-  }
-
-  const lockButton = container.querySelector('[data-action="lock-orders"]');
-  if (lockButton) {
-    lockButton.disabled = total > gold;
-  }
+  return { deployments, mercenaryDeployment, candidate };
 }
 
 function renderMajorTitleReassignmentSection(state) {
