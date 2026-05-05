@@ -254,6 +254,33 @@ function countMinorTitles(state, playerId) {
   return count;
 }
 
+
+function getSelectablePlayers(state, selectedId, options = {}) {
+  const excludeId = options.excludeId;
+  const players = state.players.filter((player) => excludeId == null || player.id !== excludeId);
+  const fallbackId = players[0]?.id ?? '';
+  const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : fallbackId;
+  return { players, selectedId: normalizedSelectedId };
+}
+
+function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
+  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
+  const inputIdAttr = inputId ? ` id="${inputId}"` : '';
+  if (!players.length) {
+    return `<input type="hidden"${inputIdAttr} class="appt-player-select" value="">`;
+  }
+
+  return `
+    <div class="player-choice-grid" data-player-choice-group>
+      ${players.map((player) => `
+        <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
+          ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}
+        </button>
+      `).join('')}
+      <input type="hidden"${inputIdAttr} class="appt-player-select" value="${normalizedSelectedId}">
+    </div>`;
+}
+
 function renderAppointmentCostLine(state, appointerId, appointingTitleKey) {
   const selfCost = getAppointmentCost(state, appointerId, appointingTitleKey, appointerId);
   const troops = getPlayerAvailableTroops(state, appointerId, appointingTitleKey);
