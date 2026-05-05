@@ -475,6 +475,7 @@ export class MultiplayerController {
       exempt: (themeId) => this.send('court_action', { action: 'exempt', themeId }),
       recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),
       dismiss: (_, data) => this.send('court_action', { action: 'dismiss', office: data.office, count: data.count }),
+      hireMercenaries: (mercenaries) => this.send('court_action', { action: 'hire-mercenaries', mercenaries }),
       'confirm-court': () => this.send('confirm_court'),
       'basileus-appoint': (titleType, appointeeId, themeId) => this.send('court_action', {
         action: 'basileus-appoint',

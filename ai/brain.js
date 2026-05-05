@@ -28,6 +28,7 @@ import {
   getThemeOwnerIncome,
 } from '../engine/rules.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { formatGold } from '../engine/format.js';
 import {
   DEFAULT_META_PARAMS,
   DEFAULT_MIXED_DECK_SIZES,
@@ -760,11 +761,11 @@ function buildLandPurchaseDecision(state, meta, playerId, action) {
   return {
     title: 'AI reasoning',
     factors: [
-      factor('Income horizon', `${theme.name} is P${theme.P} T${theme.T} L${theme.L}, yielding ${ownerIncome}g to the owner each round under normal taxation.`, 'for', action.score),
+      factor('Income horizon', `${theme.name} is P${theme.P} T${theme.T} L${theme.L}, yielding ${formatGold(ownerIncome)} to the owner each round under normal taxation.`, 'for', action.score),
       factor('Catch-up pressure', leaderThemeCount > ownedThemeCount
         ? `${publicActor(state, playerId)} was behind the land leader and needed to close the gap.`
         : `${publicActor(state, playerId)} still valued land growth even without trailing in estates.`, leaderThemeCount > ownedThemeCount ? 'for' : 'neutral'),
-      factor('Reserve after purchase', `${goldAfter}g would remain after paying ${cost}g.`, goldAfter < 2 ? 'against' : 'neutral', goldAfter),
+      factor('Reserve after purchase', `${formatGold(goldAfter)} would remain after paying ${formatGold(cost)}.`, goldAfter < 2 ? 'against' : 'neutral', goldAfter),
       factor('Route risk', `${theme.name} sits at route risk ${roundTo(routeRisk, 2)} while empire danger is ${roundTo(empireDanger, 2)}.`, routeRisk > 0.55 && empireDanger > 1 ? 'against' : 'neutral', routeRisk),
       factor('Estate scarcity', ownedThemeCount === 0
         ? 'Owning no land made the first purchase especially urgent.'
@@ -807,7 +808,7 @@ function buildRecruitmentDecision(state, meta, playerId, action, candidateId, co
       factor('Standings pressure', standing.rank > 1
         ? `${publicActor(state, playerId)} trailed the leader by ${roundTo(standing.gapToLeader, 2)} score and wanted more leverage.`
         : `${publicActor(state, playerId)} still valued military flexibility from the lead.`, standing.rank > 1 ? 'for' : 'neutral'),
-      factor('Gold position', `${player.gold}g remained before maintenance.`, player.gold <= 1 ? 'against' : 'neutral', player.gold),
+      factor('Gold position', `${formatGold(player.gold)} remained before maintenance.`, player.gold <= 1 ? 'against' : 'neutral', player.gold),
     ],
   };
 }
@@ -819,7 +820,7 @@ function buildDismissalDecision(state, meta, playerId, action) {
   return {
     title: 'AI reasoning',
     factors: [
-      factor('Upkeep pressure', `${publicActor(state, playerId)} was carrying ${action.maintenanceBefore} upkeep against ${player.gold}g on hand.`, 'for', action.score),
+      factor('Upkeep pressure', `${publicActor(state, playerId)} was carrying ${action.maintenanceBefore} upkeep against ${formatGold(player.gold)} on hand.`, 'for', action.score),
       factor('Office priority', `${action.office.label} had the weakest marginal military value among available armies.`, 'for'),
       factor('Survival reserve', `The dismissal kept a safer treasury buffer while ${standing.rank === 1 ? 'protecting the lead' : 'avoiding a forced collapse later'}.`, 'for'),
       factor('Scale', `${action.count} troop${action.count === 1 ? '' : 's'} were dismissed from this office.`, 'neutral', action.count),
@@ -883,7 +884,7 @@ function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePla
         : `More threatened land belonged to rivals, so frontier caution was weaker.`, ownStake >= rivalStake ? 'for' : 'neutral'),
       factor('Troop split', `${capitalTroops} capital troop${capitalTroops === 1 ? '' : 's'} and ${frontierTroops} frontier troop${frontierTroops === 1 ? '' : 's'}; key calls: ${keyDeployments || 'no major offices'}.`, 'neutral'),
       factor('Mercenary spend', mercCount > 0
-        ? `Spent ${mercCost}g on mercenaries where marginal troop value was highest.`
+        ? `Spent ${formatGold(mercCost)} on mercenaries where marginal troop value was highest.`
         : 'Held gold back because mercenary value stayed below the spending threshold.', mercCount > 0 ? 'for' : 'neutral', mercCount),
       factor('Empire danger', `Overall empire danger was ${roundTo(empireDanger, 2)}.`, empireDanger > 1.1 ? 'for' : 'neutral', empireDanger),
     ],
@@ -905,7 +906,7 @@ function buildMercenaryDecision(ordersDebug, mercenary, cost) {
         : ordersDebug?.pactKind === 'self'
           ? 'The AI was pressing its own throne bid with extra force.'
           : 'The AI was reinforcing a coalition challenge with extra force.', 'for'),
-      factor('Gold spend', `${cost}g was committed to this office.`, 'neutral', cost),
+      factor('Gold spend', `${formatGold(cost)} was committed to this office.`, 'neutral', cost),
     ],
   };
 }
@@ -1847,7 +1848,7 @@ function runLandStrategy(state, meta, playerId, plannedAction = null) {
   meta.players[playerId].stats.landBuys++;
   meta.totals.landBuys++;
   applyDecisionToResult(state, result, buildLandPurchaseDecision(state, meta, playerId, action));
-  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${action.theme.id} for ${getThemeLandPrice(action.theme)}g (score ${roundTo(action.score, 2)}).`);
+  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${action.theme.id} for ${formatGold(getThemeLandPrice(action.theme))} (score ${roundTo(action.score, 2)}).`);
   logPublic(meta, `${publicActor(state, playerId)} buys ${action.theme.id}.`);
   return true;
 }
