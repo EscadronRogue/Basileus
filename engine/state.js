@@ -181,9 +181,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     // Orders (filled during orders phase)
     // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, mercenaries: [{officeKey, count}], candidate: playerId }
     allOrders: {},
-    // Mercenary cost ladder and paid mercenary troops for the current round.
     mercenariesHiredThisRound: {},
-    mercenaryForcesThisRound: {},
 
     // Resolution results (for animation/display)
     lastCoupResult: null,

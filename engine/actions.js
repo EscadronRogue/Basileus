@@ -8,7 +8,6 @@ import {
   getThemeLandPrice,
 } from './rules.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
-import { formatGold, formatTroops } from './format.js';
 
 const PROFESSIONAL_BANNED_OFFICES = new Set(['PATRIARCH', 'EMPRESS', 'CHIEF_EUNUCHS']);
 
@@ -95,7 +94,7 @@ export function canBuyTheme(state, playerId, themeId) {
   if (theme.id === 'CPL') return { ok: false, reason: 'Cannot buy Constantinople' };
   const cost = getThemeLandPrice(theme);
   const player = getPlayer(state, playerId);
-  if (player.gold < cost) return { ok: false, reason: `Need ${formatGold(cost)}, have ${formatGold(player.gold)}` };
+  if (player.gold < cost) return { ok: false, reason: `Need ${cost}g, have ${player.gold}g` };
   return { ok: true, cost };
 }
 
@@ -115,7 +114,7 @@ export function buyTheme(state, playerId, themeId) {
     category: 'court',
     type: 'buy_theme',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} buys ${themeName(state, themeId)} for ${formatGold(check.cost)}.`,
+    summary: `${playerName(state, playerId)} buys ${themeName(state, themeId)} for ${check.cost}g.`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
@@ -163,7 +162,7 @@ export function canGrantTaxExemption(state, playerId, themeId) {
   const cost = getTaxExemptionCost(theme);
   const owner = getPlayer(state, playerId);
   if (owner.gold < cost) {
-    return { ok: false, reason: `Need ${formatGold(cost)}, have ${formatGold(owner.gold)}` };
+    return { ok: false, reason: `Need ${cost}g, have ${owner.gold}g` };
   }
   return { ok: true, cost };
 }
@@ -183,7 +182,7 @@ export function grantTaxExemption(state, playerId, themeId) {
     category: 'court',
     type: 'grant_tax_exemption',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} buys tax exemption for ${themeName(state, themeId)} for ${formatGold(check.cost)}.`,
+    summary: `${playerName(state, playerId)} buys tax exemption for ${themeName(state, themeId)} for ${check.cost}g.`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
@@ -751,25 +750,20 @@ export function hireMercenaries(state, playerId, officeKey, count) {
   const player = getPlayer(state, playerId);
   const normalizedCount = Number(count);
   if (!Number.isInteger(normalizedCount) || normalizedCount <= 0) {
-    return { ok: false, reason: 'Choose at least one mercenary troop.' };
+    return { ok: false, reason: 'Choose at least one mercenary troop' };
   }
   if (!state.mercenariesHiredThisRound) state.mercenariesHiredThisRound = {};
   const hiredSoFar = state.mercenariesHiredThisRound[playerId] || 0;
   const cost = getMercenaryHireCost(hiredSoFar, normalizedCount);
-  if (player.gold < cost) return { ok: false, reason: `Need ${formatGold(cost)}, have ${formatGold(player.gold)}` };
+  if (player.gold < cost) return { ok: false, reason: `Need ${cost}g, have ${player.gold}g` };
   player.gold -= cost;
   state.mercenariesHiredThisRound[playerId] = hiredSoFar + normalizedCount;
-  if (!state.mercenaryForcesThisRound) state.mercenaryForcesThisRound = {};
-  if (!Array.isArray(state.mercenaryForcesThisRound[playerId])) state.mercenaryForcesThisRound[playerId] = [];
-  const existing = state.mercenaryForcesThisRound[playerId].find(entry => entry.officeKey === officeKey);
-  if (existing) existing.count += normalizedCount;
-  else state.mercenaryForcesThisRound[playerId].push({ officeKey, count: normalizedCount });
   state.log.push({ type: 'hire_mercs', player: playerId, office: officeKey, count: normalizedCount, cost, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
-    category: state.phase === 'orders' ? 'orders' : 'court',
+    category: 'orders',
     type: 'hire_mercenaries',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} hires ${formatTroops(normalizedCount, 'mercenary troop')} for ${officeName(state, officeKey)} (${formatGold(cost)}).`,
+    summary: `${playerName(state, playerId)} hires ${normalizedCount} mercenary troop${normalizedCount === 1 ? '' : 's'} for ${officeName(state, officeKey)}.`,
     details: {
       officeKey,
       officeName: officeName(state, officeKey),
@@ -778,13 +772,6 @@ export function hireMercenaries(state, playerId, officeKey, count) {
     },
   });
   return { ok: true, count: normalizedCount, cost, historyId: historyEvent?.id || null };
-}
-
-export function getPlayerMercenaryAssignments(state, playerId) {
-  const rows = state?.mercenaryForcesThisRound?.[playerId] || [];
-  return rows
-    .map(entry => ({ officeKey: entry.officeKey, count: Number(entry.count) || 0 }))
-    .filter(entry => entry.officeKey && entry.count > 0);
 }
 
 // ─── Professional Army ───

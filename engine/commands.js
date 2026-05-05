@@ -17,7 +17,6 @@ import {
   giftToChurch,
   grantTaxExemption,
   hireMercenaries,
-  getPlayerMercenaryAssignments,
   recruitProfessional,
   revokeCourtTitle,
   revokeMajorTitle,
@@ -26,9 +25,7 @@ import {
   revokeTheme,
   validateMajorTitleAssignments,
 } from './actions.js';
-import { getPlayerOrderOfficeKeys, isCapitalLockedOfficeKey, normalizeHumanOrders, normalizeMercenaryOrders } from './orders.js';
-import { getMercenaryHireCost } from './rules.js';
-import { formatGold } from './format.js';
+import { normalizeHumanOrders } from './orders.js';
 import { observeCourtAction } from '../ai/brain.js';
 
 function fail(reason) {
@@ -62,33 +59,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
   if (action === 'exempt') {
     const result = grantTaxExemption(state, playerId, payload.themeId);
     if (!result?.ok) return fail(result?.reason || 'Could not buy that tax exemption.');
-    return { ok: true };
-  }
-
-  if (action === 'hire-mercenaries') {
-    const mercenaries = normalizeMercenaryOrders(payload.mercenaries || []);
-    if (!mercenaries.length) return fail('Choose at least one mercenary troop.');
-
-    const officeKeys = new Set(getPlayerOrderOfficeKeys(state, playerId));
-    for (const mercenary of mercenaries) {
-      if (!officeKeys.has(mercenary.officeKey)) {
-        return fail('Mercenaries can only be assigned to your offices.');
-      }
-      if (isCapitalLockedOfficeKey(mercenary.officeKey)) {
-        return fail('Mercenaries cannot be assigned to court-only offices.');
-      }
-    }
-
-    const player = getPlayer(state, playerId);
-    const hiredSoFar = state.mercenariesHiredThisRound?.[playerId] || 0;
-    const plannedCount = mercenaries.reduce((total, mercenary) => total + mercenary.count, 0);
-    const totalCost = getMercenaryHireCost(hiredSoFar, plannedCount);
-    if (player.gold < totalCost) return fail(`Need ${formatGold(totalCost)}, have ${formatGold(player.gold)}.`);
-
-    for (const mercenary of mercenaries) {
-      const result = hireMercenaries(state, playerId, mercenary.officeKey, mercenary.count);
-      if (!result?.ok) return fail(result?.reason || 'Could not hire those mercenaries.');
-    }
     return { ok: true };
   }
 
@@ -242,32 +212,11 @@ export function confirmCourt(state, playerId) {
 }
 
 // ─── Order submission ──────────────────────────────────────────────────────
-// Single source of truth for human order locking. Mercenaries are normally
-// bought during administration/court and carried into orders; legacy order
-// payloads can still hire them here for compatibility.
+// Single source of truth for human order locking: hires mercenaries (records
+// hire_mercenaries history events and deducts gold) and seals the orders.
 export function submitHumanOrders(state, playerId, orders) {
   if (state.phase !== 'orders') return fail('Orders cannot be submitted right now.');
   if (state.allOrders?.[playerId]) return fail('Orders are already locked for this seat.');
-
-  const prepaidMercenaries = getPlayerMercenaryAssignments(state, playerId);
-  if (prepaidMercenaries.length) {
-    const base = normalizeHumanOrders(state, playerId, { ...orders, mercenaries: [] });
-    if (!base.ok) return fail(base.reason || 'Invalid orders.');
-
-    const officeKeys = new Set(getPlayerOrderOfficeKeys(state, playerId));
-    for (const mercenary of prepaidMercenaries) {
-      if (!officeKeys.has(mercenary.officeKey)) {
-        return fail('Mercenaries can only be assigned to your offices.');
-      }
-      if (isCapitalLockedOfficeKey(mercenary.officeKey)) {
-        return fail('Mercenaries cannot be assigned to court-only offices.');
-      }
-    }
-
-    const finalOrders = { ...base.orders, mercenaries: prepaidMercenaries };
-    submitOrders(state, playerId, finalOrders);
-    return { ok: true, orders: finalOrders, totalCost: 0 };
-  }
 
   const normalized = normalizeHumanOrders(state, playerId, orders);
   if (!normalized.ok) return fail(normalized.reason || 'Invalid orders.');

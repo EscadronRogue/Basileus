@@ -3,7 +3,7 @@ import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 import { runAdministration } from '../engine/cascade.js';
 import { canGrantTaxExemption, canRecruitProfessional, suggestMajorTitleAssignments } from '../engine/actions.js';
 import {
-  getMercenaryHireCost,
+  getMercenaryOrderCost,
   getNormalOwnerIncome,
   getNormalTaxIncome,
   getTaxExemptOwnerIncome,
@@ -11,7 +11,6 @@ import {
   getThemeOwnerIncome,
   isThemeThreatened,
 } from '../engine/rules.js';
-import { formatGold, formatLevy, formatTroops } from '../engine/format.js';
 import { getFreeThemes, getPlayerThemes, getPlayer, formatPlayerLabel } from '../engine/state.js';
 import {
   getPlayerStyleAttr,
@@ -104,35 +103,6 @@ function sectionIsOpen(uiState, key, fallback = true) {
 function formatSigned(value) {
   const rounded = Math.round(value * 100) / 100;
   return rounded > 0 ? `+${rounded}` : `${rounded}`;
-}
-
-function renderRuleNote(title, bodyHtml) {
-  return `<div class="rule-note">
-    <strong>${title}</strong>
-    <span>${bodyHtml}</span>
-  </div>`;
-}
-
-function renderActionPattern(steps) {
-  return `<div class="action-pattern">${steps.map((step) => `<span>${step}</span>`).join('<b>→</b>')}</div>`;
-}
-
-function getPlayerMercenaryAssignments(state, playerId) {
-  const rows = state?.mercenaryForcesThisRound?.[playerId] || [];
-  return rows
-    .map((entry) => ({ officeKey: entry.officeKey, count: Number(entry.count) || 0 }))
-    .filter((entry) => entry.officeKey && entry.count > 0);
-}
-
-function getPlayerMercenaryCount(state, playerId, officeKey) {
-  return getPlayerMercenaryAssignments(state, playerId)
-    .filter((entry) => entry.officeKey === officeKey)
-    .reduce((total, entry) => total + entry.count, 0);
-}
-
-function getPlayerMercenaryTotal(state, playerId) {
-  return getPlayerMercenaryAssignments(state, playerId)
-    .reduce((total, entry) => total + entry.count, 0);
 }
 
 function getPrivateIncomeProjection(state, playerId) {
@@ -449,10 +419,10 @@ function renderOfficeBreakdown(offices = []) {
       ${offices.map((office) => `
         <div class="history-breakdown-row">
           <span>${office.officeName}</span>
-          <span>${formatTroops(office.totalTroops)} to ${office.destination}</span>
+          <span>${office.totalTroops} to ${office.destination}</span>
         </div>
         <div class="history-breakdown-note">
-          ${formatTroops(office.professionalTroops, 'professional troop')} · ${formatLevy(office.levyTroops)} · ${formatTroops(office.mercenaryTroops, 'mercenary troop')}
+          ${office.professionalTroops} pro, ${office.levyTroops} levy, ${office.mercenaryTroops} merc
         </div>
       `).join('')}
     </div>
@@ -486,7 +456,7 @@ function renderCoupContributionGroups(state, votes = [], contributions = []) {
           <div class="history-breakdown-block">
             <div class="history-breakdown-head">
               <span>For ${candidate.candidateName}</span>
-              <span>${formatTroops(candidate.troops)}</span>
+              <span>${candidate.troops} troops</span>
             </div>
             ${supporters.length ? supporters.map((supporter) => `
               <div class="history-breakdown-row">
@@ -511,7 +481,7 @@ function renderWarContributionBreakdown(contributions = []) {
         .map((entry) => `
           <div class="history-breakdown-row">
             <span>${entry.playerName}</span>
-            <span>${formatTroops(entry.troops, 'frontier troop')}</span>
+            <span>${entry.troops} frontier troops</span>
           </div>
         `).join('')}
     </div>
@@ -543,7 +513,7 @@ function renderHistoryDetails(state, event) {
         ${event.details.income.map((entry) => `
           <div class="history-breakdown-row">
             <span>${entry.playerName}</span>
-            <span>${formatGold(entry.amount, { signed: true })}</span>
+            <span>+${entry.amount}g</span>
           </div>
         `).join('')}
       </div>
@@ -568,11 +538,11 @@ function renderHistoryDetails(state, event) {
         </div>
         <div class="history-breakdown-row">
           <span>Capital</span>
-          <span>${formatTroops(event.details.capitalTroops)}</span>
+          <span>${event.details.capitalTroops} troops</span>
         </div>
         <div class="history-breakdown-row">
           <span>Frontier</span>
-          <span>${formatTroops(event.details.frontierTroops)}</span>
+          <span>${event.details.frontierTroops} troops</span>
         </div>
       </div>
       ${renderOfficeBreakdown(event.details.offices)}
@@ -710,29 +680,29 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       <div class="finance-grid">
         <div class="finance-card">
           <span class="finance-label">Current gold</span>
-          <strong>${formatGold(player.gold)}</strong>
+          <strong>${player.gold}g</strong>
         </div>
         <div class="finance-card">
           <span class="finance-label">Next income</span>
-          <strong>${formatGold(finance.projectedIncome, { signed: true })}</strong>
+          <strong>+${finance.projectedIncome}g</strong>
         </div>
         <div class="finance-card">
           <span class="finance-label">Army upkeep</span>
-          <strong>${formatGold(-finance.maintenance, { signed: true })}</strong>
+          <strong>-${finance.maintenance}g</strong>
         </div>
         <div class="finance-card">
           <span class="finance-label">Projected treasury</span>
-          <strong>${formatGold(finance.nextTreasury)}</strong>
+          <strong>${finance.nextTreasury}g</strong>
         </div>
       </div>
       <div class="dashboard-list compact">
         <div class="dashboard-list-row">
           <span>Estate income</span>
-          <span class="dashboard-list-value">${formatGold(finance.privateIncome, { signed: true })}</span>
+          <span class="dashboard-list-value">+${finance.privateIncome}g</span>
         </div>
         <div class="dashboard-list-row">
           <span>Office and court income</span>
-          <span class="dashboard-list-value">${formatGold(finance.officeIncome, { signed: true })}</span>
+          <span class="dashboard-list-value">${finance.officeIncome >= 0 ? '+' : ''}${finance.officeIncome}g</span>
         </div>
         <div class="dashboard-list-row">
           <span>Projected levy pull next administration</span>
@@ -743,7 +713,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     options.uiState,
     {
       defaultOpen: true,
-      badge: formatGold(player.gold),
+      badge: `${player.gold}g`,
       summary: 'Gold, upkeep, and next-round projections',
     }
   );
@@ -757,9 +727,9 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <div class="dashboard-list-row">
             <div>
               <div class="dashboard-list-title">${renderProvinceBadge(state, theme, { showValues: true })}</div>
-              <div class="dashboard-list-note">${theme.taxExempt ? 'tax-exempt | ' : ''}${isThemeThreatened(state, theme.id) ? 'threatened | ' : ''}owner income ${formatGold(getNormalOwnerIncome(theme))}, tax ${formatGold(getNormalTaxIncome(theme))}, exempt ${formatGold(getTaxExemptOwnerIncome(theme))}</div>
+              <div class="dashboard-list-note">${theme.taxExempt ? 'tax-exempt | ' : ''}${isThemeThreatened(state, theme.id) ? 'threatened | ' : ''}profit ${getNormalOwnerIncome(theme)}g, tax ${getNormalTaxIncome(theme)}g, exempt ${getTaxExemptOwnerIncome(theme)}g</div>
             </div>
-            <span class="dashboard-list-value">${formatGold(getThemeLandPrice(theme))}</span>
+            <span class="dashboard-list-value">${getThemeLandPrice(theme)}g</span>
           </div>
         `).join('')}
       </div>
@@ -831,13 +801,13 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         <div class="dashboard-province-head">
           ${renderProvinceBadge(state, selectedProvince.id, { showValues: true })}
         </div>
-        <div class="dashboard-province-meta">price ${formatGold(selectedProvince.landPrice)}${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
+        <div class="dashboard-province-meta">price ${selectedProvince.landPrice}g${selectedProvince.taxExempt ? ' | tax-exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
         <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
-        <div class="dashboard-province-detail">Normal split: owner income ${formatGold(selectedProvince.normalOwnerIncome)}, tax ${formatGold(selectedProvince.normalTaxIncome)}</div>
-        <div class="dashboard-province-detail">Tax-exempt income: ${formatGold(selectedProvince.taxExemptIncome)}</div>
-        <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos} (${formatGold(selectedProvince.strategosTaxIncome)} tax + ${formatLevy(selectedProvince.strategosLevyIncome)} from this theme only)</div>
+        <div class="dashboard-province-detail">Normal split: owner profit ${selectedProvince.normalOwnerIncome}g, tax ${selectedProvince.normalTaxIncome}g</div>
+        <div class="dashboard-province-detail">Tax-exempt income: ${selectedProvince.taxExemptIncome}g</div>
+        <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos} (${selectedProvince.strategosTaxIncome}g tax + ${selectedProvince.strategosLevyIncome} ${selectedProvince.strategosLevyIncome === 1 ? 'levy' : 'levies'} from this theme only)</div>
         <div class="dashboard-province-detail">Bishop: ${selectedProvince.bishop}</div>
-        <div class="dashboard-province-detail">Church gift: Church receives ${formatGold(selectedProvince.tax)} tax; levies continue through the regional pool</div>
+        <div class="dashboard-province-detail">Church gift: Church receives ${selectedProvince.tax}g tax; levy continues through the regional pool</div>
       </div>
     `,
     options.uiState,
@@ -882,7 +852,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <span class="sidebar-panel-title">${renderPlayerRoleName(state, player)}</span>
           <span class="sidebar-panel-subtitle">${isBasileus ? 'Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'Untitled dynasty')}</span>
         </span>
-        <span class="sidebar-panel-badge">${formatGold(player.gold)} | ${formatGold(finance.projectedIncome, { signed: true })} / ${formatGold(-finance.maintenance, { signed: true })}</span>
+        <span class="sidebar-panel-badge">${player.gold}g | +${finance.projectedIncome} / -${finance.maintenance}</span>
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body">
@@ -921,77 +891,6 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
 
 }
 
-
-function renderEstateAdministration(state, playerId, selectedProvinceId) {
-  const player = getPlayer(state, playerId);
-  const availableThemes = getFreeThemes(state);
-  const playerOwnedThemes = getPlayerThemes(state, playerId);
-  const taxExemptionThemes = getTaxExemptionCandidates(state, playerId);
-  const chunks = [];
-
-  chunks.push(renderRuleNote(
-    'How estates work',
-    'Buying land creates private income. During Administration, owner income goes to the estate owner; tax is routed through offices unless the land is tax-exempt or gifted to the Church.'
-  ));
-  chunks.push(renderActionPattern(['Choose target', 'Read cost and effect', 'Commit action']));
-
-  if (availableThemes.length > 0) {
-    chunks.push(`<div class="action-subsection">
-      <h4>Buy Land</h4>
-      <p class="section-hint">Pay the listed price once. The estate then pays private income every Administration. Buying private land reduces its levy value by 1 once.</p>
-      <div class="theme-market action-list">
-        ${availableThemes.map((theme) => {
-          const cost = getThemeLandPrice(theme);
-          const canAfford = player.gold >= cost;
-          return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}"
-            data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
-            <span class="market-name">${renderProvinceBadge(state, theme, { showValues: true })}</span>
-            <span class="market-detail">Owner income ${formatGold(getNormalOwnerIncome(theme))}; tax ${formatGold(getNormalTaxIncome(theme))}</span>
-            <span class="market-cost">${formatGold(cost)}</span>
-          </button>`;
-        }).join('')}
-      </div>
-    </div>`);
-  }
-
-  if (taxExemptionThemes.length > 0) {
-    chunks.push(`<div class="action-subsection">
-      <h4>Buy Tax Exemption</h4>
-      <p class="section-hint">Pay the Basileus 2 × T. The estate owner keeps the tax share from this land in later Administration phases.</p>
-      <div class="gift-options action-list">
-        ${taxExemptionThemes.map((theme) => {
-          const check = canGrantTaxExemption(state, playerId, theme.id);
-          return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="exempt" data-theme="${theme.id}">
-            ${renderProvinceBadge(state, theme, { showValues: true })}
-            <span>${formatGold(check.cost)} → owner income ${formatGold(getTaxExemptOwnerIncome(theme))}</span>
-          </button>`;
-        }).join('')}
-      </div>
-    </div>`);
-  }
-
-  if (playerOwnedThemes.length > 0) {
-    chunks.push(`<div class="action-subsection">
-      <h4>Gift To Church</h4>
-      <p class="section-hint">Give up private ownership. The donor becomes protected Bishop there; tax enters the Church pool, while levies still enter the regional levy pool.</p>
-      <div class="gift-options action-list">
-        ${playerOwnedThemes.map((theme) => `
-          <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
-            ${renderProvinceBadge(state, theme, { showValues: true })}
-            <span>Church tax ${formatGold(getNormalTaxIncome(theme))}</span>
-          </button>
-        `).join('')}
-      </div>
-    </div>`);
-  }
-
-  if (chunks.length <= 2) {
-    chunks.push('<div class="dashboard-empty">No estate actions are available to this dynasty right now.</div>');
-  }
-
-  return chunks.join('');
-}
-
 // ─── Court Phase Panel ───
 export function renderCourtPanel(container, state, activePlayerId, callbacks, options = {}) {
   const player = getPlayer(state, activePlayerId);
@@ -1011,20 +910,21 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     }
   }
 
+  const availableThemes = getFreeThemes(state);
+  const playerOwnedThemes = getPlayerThemes(state, activePlayerId);
+  const taxExemptionThemes = getTaxExemptionCandidates(state, activePlayerId);
   const courtAlreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
 
   let courtHtml = `<div class="court-panel">
     <div class="phase-header">
-      <h3>Imperial Administration</h3>
-      <p class="phase-hint">Resolve offices, estates, taxes, and armies before secret orders.</p>
+      <h3>Imperial Court</h3>
+      <p class="phase-hint">Appointments, purchases, negotiations</p>
     </div>`;
 
   courtHtml += renderFoldSection(
     'court:appointments',
     'Appointments',
-    `${renderRuleNote('How appointments work', 'Offices decide who controls income, levies, and army commands. Use the same pattern everywhere: choose the title or land, choose the appointee, then commit.')}
-     ${renderActionPattern(['Choose title or land', 'Choose appointee', 'Commit appointment'])}
-     ${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no remaining appointments right now.</div>'}`,
+    appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no remaining appointments right now.</div>',
     uiSectionState,
     {
       defaultOpen: true,
@@ -1032,16 +932,73 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     }
   );
 
-  courtHtml += renderFoldSection(
-    'court:estates',
-    'Estates & Tax',
-    renderEstateAdministration(state, activePlayerId, selectedProvinceId),
-    uiSectionState,
-    {
-      defaultOpen: false,
-      summary: 'Land, exemptions, and Church gifts',
-    }
-  );
+  if (availableThemes.length > 0) {
+    courtHtml += renderFoldSection(
+      'court:land',
+      'Buy Land',
+      `
+        <div class="theme-market">
+          ${availableThemes.map((theme) => {
+            const cost = getThemeLandPrice(theme);
+            const canAfford = player.gold >= cost;
+            return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}"
+              data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
+              <span class="market-name">${renderProvinceBadge(state, theme, { showValues: true })}</span>
+              <span class="market-cost">${cost}g</span>
+            </button>`;
+          }).join('')}
+        </div>
+      `,
+      uiSectionState,
+      {
+        defaultOpen: false,
+        summary: 'Acquire private estates',
+      }
+    );
+  }
+
+  if (taxExemptionThemes.length > 0) {
+    courtHtml += renderFoldSection(
+      'court:exemptions',
+      'Buy Tax Exemption',
+      `
+        <div class="gift-options">
+          ${taxExemptionThemes.map((theme) => {
+            const check = canGrantTaxExemption(state, activePlayerId, theme.id);
+            return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="exempt" data-theme="${theme.id}">
+              ${renderProvinceBadge(state, theme, { showValues: true })} for ${check.cost}g -> ${getTaxExemptOwnerIncome(theme)}g income
+            </button>`;
+          }).join('')}
+        </div>
+      `,
+      uiSectionState,
+      {
+        defaultOpen: false,
+        summary: 'Pay 2 x T to keep provincial tax',
+      }
+    );
+  }
+
+  if (playerOwnedThemes.length > 0) {
+    courtHtml += renderFoldSection(
+      'court:church',
+      'Gift To Church',
+      `
+        <div class="gift-options">
+          ${playerOwnedThemes.map((theme) => `
+            <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
+              ${renderProvinceBadge(state, theme, { showValues: true })} to Church -> ${getNormalTaxIncome(theme)}g church tax
+            </button>
+          `).join('')}
+        </div>
+      `,
+      uiSectionState,
+      {
+        defaultOpen: false,
+        summary: 'Convert private land into church leverage',
+      }
+    );
+  }
 
   if (isBasileus) {
     courtHtml += renderRevocationOptions(state);
@@ -1049,12 +1006,12 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
 
   courtHtml += renderFoldSection(
     'court:army',
-    'Armies',
+    'Professional Army',
     renderArmyManagement(state, activePlayerId),
     uiSectionState,
     {
       defaultOpen: true,
-      summary: 'Levies, professional troops, and mercenaries',
+      summary: 'Recruit +1 per office, dismiss any number',
     }
   );
 
@@ -1142,26 +1099,6 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       const countInput = block?.querySelector('.army-dismiss-count');
       const count = countInput ? parseInt(countInput.value, 10) : 0;
       callbacks.dismiss?.(null, { office: btn.dataset.office, count });
-    });
-  });
-
-  container.querySelectorAll('.merc-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const office = btn.dataset.office;
-      const countEl = container.querySelector(`.merc-count[data-office="${office}"]`);
-      let val = parseInt(countEl?.textContent || '0', 10) || 0;
-      if (btn.dataset.action === 'merc-inc') val += 1;
-      if (btn.dataset.action === 'merc-dec' && val > 0) val -= 1;
-      if (countEl) countEl.textContent = val;
-      updateMercTotal(container);
-    });
-  });
-  updateMercTotal(container);
-
-  container.querySelectorAll('[data-action="hire-mercenaries"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const mercenaries = collectMercenaryPlan(container);
-      callbacks.hireMercenaries?.(mercenaries);
     });
   });
 
@@ -1489,52 +1426,33 @@ function getBasileusAvailableTroopCount(state) {
 function renderArmyManagement(state, playerId) {
   const player = getPlayer(state, playerId);
   const offices = getPlayerOffices(state, playerId);
-  const hiredSoFar = state.mercenariesHiredThisRound?.[playerId] || 0;
-  const mercTotal = getPlayerMercenaryTotal(state, playerId);
-  const hasMercenaryOffice = offices.some((office) => !(office.capitalLocked || isCapitalLockedOfficeKey(office.key)));
-
   return `
-    ${renderRuleNote(
-      'How armies work',
-      'Levies are temporary troops created during Administration and expire after resolution. Professional troops stay with their office and cost 1 gold each during cleanup. Mercenaries are hired here, fight this round only, and leave after resolution.'
-    )}
-    ${renderActionPattern(['Review office', 'Choose recruitment or hire amount', 'Commit action'])}
-    <div class="army-grid" data-mercenary-planner data-merc-hired-so-far="${hiredSoFar}" data-player-gold="${player.gold}">
+    <p class="section-hint">Recruit +1 per office per round. Troops stay raised between rounds; dismiss any number now to reduce upkeep.</p>
+    <div class="army-grid">
       ${offices.map((office) => {
-        const professionals = player.professionalArmies[office.key] || 0;
-        const levies = state.currentLevies?.[office.key] || 0;
-        const mercenaries = getPlayerMercenaryCount(state, playerId, office.key);
-        const total = professionals + levies + mercenaries;
+        const count = player.professionalArmies[office.key] || 0;
         const recruitCheck = canRecruitProfessional(state, playerId, office.key);
         const canRecruit = recruitCheck.ok;
-        const recruitLabel = canRecruit ? '+1 professional' : (recruitCheck.reason?.includes('cannot hold') ? 'No professionals' : 'Already recruited');
-        const canHireMercenary = !(office.capitalLocked || isCapitalLockedOfficeKey(office.key));
+        const recruitLabel = canRecruit ? '+1 recruit' : (recruitCheck.reason?.includes('cannot hold') ? 'No professionals' : 'recruited');
         return `<div class="army-row">
           <div class="army-office">
             <span>${office.label}</span>
-            <span class="army-count">${formatLevy(levies)} · ${formatTroops(professionals, 'professional troop')} · ${formatTroops(mercenaries, 'mercenary troop')} · ${formatTroops(total)} total</span>
+            <span class="army-count">${count} troops</span>
           </div>
           <div class="army-controls">
             <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${office.key}" ${canRecruit ? '' : 'disabled'}>
               ${recruitLabel}
             </button>
             <div class="army-dismiss">
-              <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, professionals)}" value="${professionals > 0 ? 1 : 0}" ${professionals > 0 ? '' : 'disabled'}>
-              <button class="btn-dismiss ${professionals > 0 ? '' : 'disabled'}" data-action="dismiss" data-office="${office.key}" ${professionals > 0 ? '' : 'disabled'}>
+              <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, count)}" value="${count > 0 ? 1 : 0}" ${count > 0 ? '' : 'disabled'}>
+              <button class="btn-dismiss ${count > 0 ? '' : 'disabled'}" data-action="dismiss" data-office="${office.key}" ${count > 0 ? '' : 'disabled'}>
                 Dismiss
               </button>
             </div>
-            ${canHireMercenary ? `<div class="merc-controls" title="Hire mercenaries for this office this round.">
-              <button type="button" class="merc-btn" data-action="merc-dec" data-office="${office.key}">−</button>
-              <span class="merc-count" data-office="${office.key}">0</span>
-              <button type="button" class="merc-btn" data-action="merc-inc" data-office="${office.key}">+</button>
-            </div>` : '<span class="army-locked-note">No mercenaries</span>'}
           </div>
         </div>`;
       }).join('')}
     </div>
-    <div class="merc-total">Mercenaries already hired: ${formatTroops(mercTotal, 'mercenary troop')}. New hire cost: <span id="mercTotalCost">${formatGold(0)}</span> <span class="merc-budget">(treasury: ${formatGold(player.gold)})</span></div>
-    <button class="appt-btn" data-action="hire-mercenaries" ${hasMercenaryOffice ? '' : 'disabled'}>Hire Selected Mercenaries</button>
   `;
 }
 
@@ -1542,7 +1460,6 @@ function renderArmyManagement(state, playerId) {
 export function renderOrdersPanel(container, state, playerId, callbacks) {
   const player = getPlayer(state, playerId);
   const offices = getPlayerOffices(state, playerId);
-  const roundMercenaries = getPlayerMercenaryAssignments(state, playerId);
 
   // Check if this player already locked orders
   const alreadyLocked = state.allOrders?.[playerId] != null;
@@ -1550,7 +1467,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
   let html = `<div class="orders-panel">
     <div class="phase-header">
       <h3>Secret Orders</h3>
-      <p class="phase-hint">${alreadyLocked ? 'Orders locked. Waiting for other players...' : 'Deploy each office and name your candidate.'}</p>
+      <p class="phase-hint">${alreadyLocked ? 'Orders locked. Waiting for other players...' : 'Deploy troops, hire mercenaries, name your candidate'}</p>
     </div>`;
 
   if (alreadyLocked) {
@@ -1562,22 +1479,20 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
   // ── Troop Deployment ──
   html += `<div class="orders-section">
     <h4>Deploy Troops</h4>
-    ${renderRuleNote('How orders work', 'Each office moves as one group. Capital troops back your chosen candidate for the throne; frontier troops fight the invasion. Mercenaries hired during Administration are already attached to their offices.') }
-    ${renderActionPattern(['Choose destination', 'Choose candidate', 'Lock orders'])}
+    <p class="section-hint">Each office sends ALL its troops to Capital or Frontier</p>
     <div class="deploy-grid">`;
 
   for (const office of offices) {
     const proCount = player.professionalArmies[office.key] || 0;
     const levyCount = state.currentLevies?.[office.key] || 0;
-    const mercCount = getPlayerMercenaryCount(state, playerId, office.key);
-    const total = proCount + levyCount + mercCount;
+    const total = proCount + levyCount;
     const capitalLocked = office.capitalLocked || isCapitalLockedOfficeKey(office.key);
 
     if (capitalLocked) {
       html += `
         <div class="deploy-row deploy-row-locked">
           <span class="office-name">${office.label}</span>
-          <span class="troop-count">${formatTroops(total)} · ${formatTroops(proCount, 'professional troop')} · ${formatLevy(levyCount)} · ${formatTroops(mercCount, 'mercenary troop')}</span>
+          <span class="troop-count">${total} troops</span>
           <div class="deploy-toggle deploy-toggle-locked" data-office="${office.key}" data-locked="capital">
             <button class="toggle-btn active" data-dest="capital" disabled>👑 Capital (locked)</button>
           </div>
@@ -1586,7 +1501,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
       html += `
         <div class="deploy-row">
           <span class="office-name">${office.label}</span>
-          <span class="troop-count">${formatTroops(total)} · ${formatTroops(proCount, 'professional troop')} · ${formatLevy(levyCount)} · ${formatTroops(mercCount, 'mercenary troop')}</span>
+          <span class="troop-count">${total} troops</span>
           <div class="deploy-toggle" data-office="${office.key}">
             <button class="toggle-btn active" data-dest="frontier">⚔ Frontier</button>
             <button class="toggle-btn" data-dest="capital">👑 Capital</button>
@@ -1596,6 +1511,26 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
   }
 
   html += `</div></div>`;
+
+  // ── Hire Mercenaries ──
+  const mercOffices = offices.filter(o => !(o.capitalLocked || isCapitalLockedOfficeKey(o.key)));
+  html += `<div class="orders-section">
+    <h4>Hire Mercenaries</h4>
+    <p class="section-hint">Costs reset every round: 1g for the first mercenary, 2g for the second, 3g for the third, and so on.</p>
+    <div class="merc-hiring">
+      ${mercOffices.map(o => `
+        <div class="merc-row">
+          <span>${o.label}</span>
+          <div class="merc-controls">
+            <button class="merc-btn" data-action="merc-dec" data-office="${o.key}">−</button>
+            <span class="merc-count" data-office="${o.key}">0</span>
+            <button class="merc-btn" data-action="merc-inc" data-office="${o.key}">+</button>
+          </div>
+        </div>
+      `).join('')}
+      <div class="merc-total">Total cost: <span id="mercTotalCost">0</span>⬡ (you have ${player.gold}⬡)</div>
+    </div>
+  </div>`;
 
   // ── Coup Vote ──
   html += `<div class="orders-section">
@@ -1638,15 +1573,29 @@ export function renderOrdersPanel(container, state, playerId, callbacks) {
     });
   });
 
+  // Merc buttons
+  container.querySelectorAll('.merc-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const office = btn.dataset.office;
+      const countEl = container.querySelector(`.merc-count[data-office="${office}"]`);
+      let val = parseInt(countEl.textContent) || 0;
+      if (btn.dataset.action === 'merc-inc') val++;
+      if (btn.dataset.action === 'merc-dec' && val > 0) val--;
+      countEl.textContent = val;
+      updateMercTotal(container, player.gold);
+    });
+  });
+
+  updateMercTotal(container, player.gold);
 
   // Lock orders
   container.querySelector('[data-action="lock-orders"]')?.addEventListener('click', () => {
-    const orders = collectOrders(container, offices, playerId, roundMercenaries);
+    const orders = collectOrders(container, offices, playerId);
     callbacks.lockOrders?.(orders);
   });
 }
 
-function collectOrders(container, offices, playerId, fixedMercenaries = []) {
+function collectOrders(container, offices, playerId) {
   const deployments = {};
   container.querySelectorAll('.deploy-toggle').forEach(row => {
     const officeKey = row.dataset.office;
@@ -1654,9 +1603,13 @@ function collectOrders(container, offices, playerId, fixedMercenaries = []) {
     deployments[officeKey] = active?.dataset.dest || 'frontier';
   });
 
-  const mercenaries = fixedMercenaries
-    .map((entry) => ({ officeKey: entry.officeKey, count: Number(entry.count) || 0 }))
-    .filter((entry) => entry.officeKey && entry.count > 0);
+  const mercenaries = [];
+  container.querySelectorAll('.merc-count').forEach(el => {
+    const count = parseInt(el.textContent) || 0;
+    if (count > 0) {
+      mercenaries.push({ officeKey: el.dataset.office, count });
+    }
+  });
 
   const candidateBtn = container.querySelector('.candidate-btn.selected');
   // Default to self if no candidate selected
@@ -1665,36 +1618,22 @@ function collectOrders(container, offices, playerId, fixedMercenaries = []) {
   return { deployments, mercenaries, candidate };
 }
 
-function collectMercenaryPlan(container) {
+function updateMercTotal(container, gold) {
   const mercenaries = [];
   container.querySelectorAll('.merc-count').forEach(el => {
-    const count = parseInt(el.textContent || '0', 10) || 0;
-    if (count > 0) mercenaries.push({ officeKey: el.dataset.office, count });
+    const count = parseInt(el.textContent) || 0;
+    if (count > 0) mercenaries.push({ count });
   });
-  return mercenaries;
-}
-
-function updateMercTotal(container, fallbackGold = null) {
-  const mercenaries = collectMercenaryPlan(container);
-  const plannedCount = mercenaries.reduce((total, entry) => total + entry.count, 0);
-  const planner = container.querySelector('[data-mercenary-planner]');
-  const hiredSoFar = Number(planner?.dataset.mercHiredSoFar || 0);
-  const availableGold = Number(planner?.dataset.playerGold ?? fallbackGold ?? 0);
-  const total = getMercenaryHireCost(hiredSoFar, plannedCount);
+  const total = getMercenaryOrderCost(mercenaries);
   const costEl = container.querySelector('#mercTotalCost');
   if (costEl) {
-    costEl.textContent = formatGold(total);
-    costEl.classList.toggle('over-budget', total > availableGold);
-  }
-
-  const hireButton = container.querySelector('[data-action="hire-mercenaries"]');
-  if (hireButton) {
-    hireButton.disabled = plannedCount <= 0 || total > availableGold;
+    costEl.textContent = total;
+    costEl.classList.toggle('over-budget', total > gold);
   }
 
   const lockButton = container.querySelector('[data-action="lock-orders"]');
   if (lockButton) {
-    lockButton.disabled = total > availableGold;
+    lockButton.disabled = total > gold;
   }
 }
 

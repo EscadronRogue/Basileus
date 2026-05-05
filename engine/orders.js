@@ -1,6 +1,5 @@
 import { getPlayer } from './state.js';
 import { getMercenaryOrderCost } from './rules.js';
-import { formatGold } from './format.js';
 
 function toInt(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -74,7 +73,7 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
   }
 
   const totalCost = getMercenaryOrderCost(mercenaries);
-  if (player.gold < totalCost) return orderFailure(`Need ${formatGold(totalCost)}, have ${formatGold(player.gold)}.`);
+  if (player.gold < totalCost) return orderFailure(`Need ${totalCost}g, have ${player.gold}g.`);
 
   return {
     ok: true,

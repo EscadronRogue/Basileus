@@ -178,8 +178,6 @@ export function phaseAdministration(state) {
 // When all mandatory appointments are done and players confirm, advance.
 export function phaseCourt(state) {
   state.phase = 'court';
-  state.mercenariesHiredThisRound = {};
-  state.mercenaryForcesThisRound = {};
   // Reset tracking for mandatory appointments this round
   state.courtActions = {
     basileusAppointed: false,
@@ -205,9 +203,8 @@ export function isCourtComplete(state) {
 export function phaseOrders(state) {
   state.phase = 'orders';
   state.allOrders = {};
-  if (!state.mercenariesHiredThisRound) state.mercenariesHiredThisRound = {};
-  if (!state.mercenaryForcesThisRound) state.mercenaryForcesThisRound = {};
-  // Each player must submit: deployments and candidate; mercenaries are bought during administration/court.
+  state.mercenariesHiredThisRound = {};
+  // Each player must submit: deployments, mercenaries, candidate
   // UI handles this — each player fills in their orders simultaneously
 }
 
@@ -400,7 +397,6 @@ export function phaseCleanup(state) {
   // 5. Clear orders
   state.allOrders = {};
   state.mercenariesHiredThisRound = {};
-  state.mercenaryForcesThisRound = {};
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;

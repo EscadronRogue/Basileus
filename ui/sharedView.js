@@ -10,7 +10,6 @@ import {
   renderResolutionPanelDetailed,
 } from './panels.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
-import { formatGold } from '../engine/format.js';
 
 export function createDefaultUiState() {
   return {
@@ -20,7 +19,7 @@ export function createDefaultUiState() {
       action: true,
     },
     sections: {
-      'court:estates': true,
+      'court:land': true,
     },
     dashboardFocus: null,
   };
@@ -83,15 +82,15 @@ export const PHASE_NAMES = {
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
-  court: 'Imperial Administration',
+  court: 'Imperial Court',
   orders: 'Secret Orders',
   resolution: 'Resolution',
   scoring: 'Final Reckoning',
 };
 
 export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
-  court: 'Appointments, estates, taxes, revocations, and armies',
-  orders: 'Troop deployments and the throne vote',
+  court: 'Appointments, land, exemptions, revocations, and army upkeep',
+  orders: 'Troop deployments, mercenaries, and the throne vote',
   resolution: 'Reveal orders and settle the round',
   scoring: 'Projected wealth at the end of the game',
 };
@@ -146,12 +145,17 @@ function getPlayerMaintenance(player) {
   return Object.values(player?.professionalArmies || {}).reduce((total, count) => total + count, 0);
 }
 
+function formatSignedGold(value, { expense = false } = {}) {
+  const amount = Math.max(0, Number(value) || 0);
+  if (expense) return amount > 0 ? `-${amount}` : '0';
+  return amount > 0 ? `+${amount}` : '0';
+}
 
 export function getPlayerTabEconomy(player, administration) {
   return {
-    reserve: formatGold(player.gold),
-    income: formatGold(administration?.income?.[player.id] || 0, { signed: true }),
-    expense: formatGold(-getPlayerMaintenance(player), { signed: true }),
+    reserve: `${player.gold}g`,
+    income: formatSignedGold(administration?.income?.[player.id] || 0),
+    expense: formatSignedGold(getPlayerMaintenance(player), { expense: true }),
   };
 }
 
@@ -249,7 +253,7 @@ export function renderScoringHtml(state, options = {}) {
           <div class="score-row ${index === 0 ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
             <span class="score-rank">${index === 0 ? '1' : index + 1}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
-            <span class="score-breakdown">${formatGold(score.gold)} + ${formatGold(score.projected)} projected</span>
+            <span class="score-breakdown">${score.gold}g + ${score.projected} projected</span>
             <span class="score-total">${score.wealth}</span>
           </div>
         `).join('')}
