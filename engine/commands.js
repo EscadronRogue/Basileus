@@ -12,7 +12,7 @@ import {
   appointCourtTitle,
   appointStrategos,
   buyTheme,
-  canPayRevocationCostFor,
+  canPayRevocationCost,
   dismissProfessional,
   giftToChurch,
   grantTaxExemption,
@@ -74,16 +74,9 @@ export function applyCourtAction(state, playerId, payload = {}) {
     return { ok: true };
   }
 
-  if (action === 'hire-mercs') {
-    const count = Math.max(0, Number(payload.count) || 0);
-    if (count <= 0) return fail('Choose at least one mercenary.');
-    const result = hireMercenaries(state, playerId, count);
-    if (!result?.ok) return fail(result?.reason || 'Could not hire those mercenaries.');
-    return { ok: true };
-  }
-
   if (action === 'basileus-appoint') {
     if (playerId !== state.basileusId) return fail('Only the Basileus can use this appointment.');
+    if (state.courtActions?.basileusAppointed) return fail('The Basileus already made the mandatory appointment.');
 
     const titleType = payload.titleType;
     const appointeeId = Number(payload.appointeeId);
@@ -105,6 +98,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     }
 
     if (!result?.ok) return fail(result?.reason || 'Could not complete that appointment.');
+    state.courtActions.basileusAppointed = true;
     return {
       ok: true,
       observation: {
@@ -129,6 +123,10 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const result = appointStrategos(state, playerId, themeId, appointeeId);
     if (!result?.ok) return fail(result?.reason || 'Could not appoint that strategos.');
 
+    state.courtActions[`${titleKey}_appointed`] = true;
+    if (titleKey === 'DOM_EAST') state.courtActions.domesticEastAppointed = true;
+    if (titleKey === 'DOM_WEST') state.courtActions.domesticWestAppointed = true;
+    if (titleKey === 'ADMIRAL') state.courtActions.admiralAppointed = true;
     return {
       ok: true,
       observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId, value: 0.95 },
@@ -142,6 +140,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const result = appointBishop(state, playerId, themeId, appointeeId);
     if (!result?.ok) return fail(result?.reason || 'Could not appoint that bishop.');
 
+    state.courtActions.patriarchAppointed = true;
     return {
       ok: true,
       observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId, value: 1.0 },
@@ -150,30 +149,13 @@ export function applyCourtAction(state, playerId, payload = {}) {
 
   if (action === 'revoke') {
     if (playerId !== state.basileusId) return fail('Only the Basileus can revoke titles or land.');
-
+    const costCheck = canPayRevocationCost(state);
+    if (!costCheck.ok) {
+      return fail(`The Basileus needs ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (has ${costCheck.available || 0}).`);
+    }
     const value = String(payload.value || '').trim();
     const parts = value.split(':');
     let observation = { type: 'revocation', actorId: state.basileusId };
-
-    // Compute target player up front so the cost check honors the self/other
-    // rule (self-revoke is free).
-    const resolveTargetPlayerId = () => {
-      if (parts[0] === 'major') return Number(parts[1]);
-      if (parts[0] === 'minor') {
-        const theme = state.themes[parts[1]];
-        return parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
-      }
-      if (parts[0] === 'court') return parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-      if (parts[0] === 'exempt') return state.themes[parts[1]]?.owner ?? null;
-      if (parts[0] === 'theme') return state.themes[parts[1]]?.owner ?? null;
-      return null;
-    };
-    const targetPlayerId = resolveTargetPlayerId();
-    const costCheck = canPayRevocationCostFor(state, targetPlayerId);
-    if (!costCheck.ok) {
-      const need = costCheck.cost;
-      return fail(`The Basileus needs ${need} troop${need === 1 ? '' : 's'} to revoke (has ${costCheck.available || 0}).`);
-    }
 
     if (parts[0] === 'major') {
       const revokedPlayerId = Number(parts[1]);
@@ -187,10 +169,13 @@ export function applyCourtAction(state, playerId, payload = {}) {
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that major title.');
       observation = { ...observation, targetPlayerId: revokedPlayerId, newHolderId };
     } else if (parts[0] === 'minor') {
+      const theme = state.themes[parts[1]];
+      const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
       const result = revokeMinorTitle(state, parts[1], parts[2]);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
       observation = { ...observation, targetPlayerId };
     } else if (parts[0] === 'court') {
+      const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
       const result = revokeCourtTitle(state, parts[1]);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that court title.');
       observation = { ...observation, targetPlayerId };
@@ -198,6 +183,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
       const result = revokeTaxExemption(state, parts[1]);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that tax exemption.');
     } else if (parts[0] === 'theme') {
+      const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
       const result = revokeTheme(state, parts[1]);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that estate.');
       observation = { ...observation, targetPlayerId };
@@ -226,8 +212,8 @@ export function confirmCourt(state, playerId) {
 }
 
 // ─── Order submission ──────────────────────────────────────────────────────
-// Single source of truth for human order locking. Mercenaries are hired during
-// court; order submission only seals deployments and the throne vote.
+// Single source of truth for human order locking: hires mercenaries (records
+// hire_mercenaries history events and deducts gold) and seals the orders.
 export function submitHumanOrders(state, playerId, orders) {
   if (state.phase !== 'orders') return fail('Orders cannot be submitted right now.');
   if (state.allOrders?.[playerId]) return fail('Orders are already locked for this seat.');
@@ -235,6 +221,9 @@ export function submitHumanOrders(state, playerId, orders) {
   const normalized = normalizeHumanOrders(state, playerId, orders);
   if (!normalized.ok) return fail(normalized.reason || 'Invalid orders.');
 
+  for (const mercenary of normalized.orders.mercenaries) {
+    hireMercenaries(state, playerId, mercenary.officeKey, mercenary.count);
+  }
   submitOrders(state, playerId, normalized.orders);
   return { ok: true, orders: normalized.orders, totalCost: normalized.totalCost };
 }

@@ -22,6 +22,7 @@ import {
 } from '../engine/actions.js';
 import {
   getMercenaryHireCost,
+  getMercenaryOrderCost,
   getNormalOwnerIncome,
   getThemeLandPrice,
   getThemeOwnerIncome,
@@ -850,7 +851,7 @@ function buildRevocationDecision(state, meta, basileusId, best) {
   };
 }
 
-function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePlans, mercenaryPlan, capitalTroops, frontierTroops, context) {
+function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePlans, mercenaries, capitalTroops, frontierTroops, context) {
   const standing = getStandingSnapshot(state, meta, playerId);
   const empireDanger = getEmpireDanger(state, meta);
   const ownStake = getPlayerThreatenedLandValue(state, playerId, meta);
@@ -867,7 +868,8 @@ function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePla
     .slice(0, 2)
     .map(plan => `${plan.office.label} -> ${plan.destination}`)
     .join(', ');
-  const mercCount = mercenaryPlan?.troopCount || 0;
+  const mercCount = sum(mercenaries.map(entry => entry.count));
+  const mercCost = getMercenaryOrderCost(mercenaries);
 
   return {
     title: 'AI reasoning',
@@ -880,24 +882,30 @@ function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePla
         ? `Its own threatened estates made frontier defense expensive to ignore.`
         : `More threatened land belonged to rivals, so frontier caution was weaker.`, ownStake >= rivalStake ? 'for' : 'neutral'),
       factor('Troop split', `${capitalTroops} capital troop${capitalTroops === 1 ? '' : 's'} and ${frontierTroops} frontier troop${frontierTroops === 1 ? '' : 's'}; key calls: ${keyDeployments || 'no major offices'}.`, 'neutral'),
-      factor('Mercenary army', mercCount > 0
-        ? `The mercenary army adds ${mercCount} troop${mercCount === 1 ? '' : 's'} to the ${mercenaryPlan.destination} line.`
-        : 'No mercenary army was available for this order.', mercCount > 0 ? 'for' : 'neutral', mercCount),
+      factor('Mercenary spend', mercCount > 0
+        ? `Spent ${mercCost}g on mercenaries where marginal troop value was highest.`
+        : 'Held gold back because mercenary value stayed below the spending threshold.', mercCount > 0 ? 'for' : 'neutral', mercCount),
       factor('Empire danger', `Overall empire danger was ${roundTo(empireDanger, 2)}.`, empireDanger > 1.1 ? 'for' : 'neutral', empireDanger),
     ],
   };
 }
 
-function buildMercenaryDecision(state, meta, playerId, action, result) {
-  const threat = getThreatLevel(state, meta);
-  const profile = getPersonalityProfile(meta, playerId);
+function buildMercenaryDecision(ordersDebug, mercenary, cost) {
+  const officePlan = ordersDebug?.officePlans?.find(plan => plan.officeKey === mercenary.officeKey);
+  const topScore = officePlan ? Math.max(officePlan.capitalScore, officePlan.frontierScore) : null;
+
   return {
     title: 'AI reasoning',
     factors: [
-      factor('Temporary army', `${publicActor(state, playerId)} added to a single mercenary army that will be deployed during secret orders.`, 'for', result?.mercenaryArmy || 0),
-      factor('Imperial danger', `Current invasion pressure was ${roundTo(threat, 2)}.`, threat > 0.85 ? 'for' : 'neutral', threat),
-      factor('Mercenary preference', `The dynasty's mercenary weight made the next ${action.cost}g hire acceptable.`, 'for', profile.weights.mercenary),
-      factor('Gold spend', `${action.cost}g was committed in court.`, 'neutral', action.cost),
+      factor('Marginal troop value', officePlan
+        ? `${officePlan.officeLabel} had the best remaining value on the ${officePlan.destination} line.`
+        : 'This office still had strong marginal value for extra troops.', 'for', topScore),
+      factor('Strategic plan', ordersDebug?.pactKind === 'defense'
+        ? 'The AI was reinforcing a defensive plan around the current Basileus.'
+        : ordersDebug?.pactKind === 'self'
+          ? 'The AI was pressing its own throne bid with extra force.'
+          : 'The AI was reinforcing a coalition challenge with extra force.', 'for'),
+      factor('Gold spend', `${cost}g was committed to this office.`, 'neutral', cost),
     ],
   };
 }
@@ -1114,7 +1122,8 @@ function estimateCandidateRewardPotential(state, meta, candidateId, beneficiaryI
   let value = 0.35 + (candidateOwesBeneficiary * 0.8);
   if (candidateId === state.basileusId) {
     value += 0.95;
-    const revocationsUsed = state.turnCounters?.revocation?.others || 0;
+    if (!state.courtActions?.basileusAppointed) value += 0.55;
+    const revocationsUsed = state.courtActions?.basileusRevocationsUsed || 0;
     if (revocationsUsed === 0) value += 0.2;
   } else {
     value += beneficiaryTitleNeed * 0.75;
@@ -1396,6 +1405,12 @@ function markCourtMandatoryActionPassed(state, meta, flagKey, label) {
 }
 
 function finalizeCourtAutomation(state, meta, aiOrder) {
+  markCourtMandatoryActionPassed(state, meta, 'basileusAppointed', 'The Basileus appointment');
+  markCourtMandatoryActionPassed(state, meta, 'domesticEastAppointed', 'The Domestic of the East appointment');
+  markCourtMandatoryActionPassed(state, meta, 'domesticWestAppointed', 'The Domestic of the West appointment');
+  markCourtMandatoryActionPassed(state, meta, 'admiralAppointed', 'The Admiral appointment');
+  markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch appointment');
+
   for (const playerId of aiOrder) {
     if (!state.courtActions.playerConfirmed.has(playerId)) {
       recordHistoryEvent(state, {
@@ -1465,19 +1480,17 @@ function handleBasileusAppointment(state, meta) {
   const options = [];
 
   for (const appointee of state.players) {
-    if (state.empress == null) options.push({ type: 'EMPRESS', appointeeId: appointee.id });
-    if (state.chiefEunuchs == null) options.push({ type: 'CHIEF_EUNUCHS', appointeeId: appointee.id });
+    options.push({ type: 'EMPRESS', appointeeId: appointee.id });
+    options.push({ type: 'CHIEF_EUNUCHS', appointeeId: appointee.id });
     for (const theme of themes) {
-      if (theme.owner !== 'church' && theme.strategos == null) {
+      if (theme.owner !== 'church') {
         options.push({ type: 'STRATEGOS', themeId: theme.id, appointeeId: appointee.id });
       }
-      if (!theme.bishopIsDonor && theme.bishop == null) {
+      if (!theme.bishopIsDonor) {
         options.push({ type: 'BISHOP', themeId: theme.id, appointeeId: appointee.id });
       }
     }
   }
-
-  if (!options.length) return false;
 
   const ranked = options
     .map(option => ({
@@ -1491,7 +1504,7 @@ function handleBasileusAppointment(state, meta) {
   // into greedy argmax forever.
   const temperature = getMetaForPlayer(meta, actorId, 'courtTemperature');
   const candidates = ranked.slice(0, 6);
-  const orderedAttempts = [softmaxPick(candidates, temperature, state.rng), ...ranked].filter(Boolean);
+  const orderedAttempts = [softmaxPick(candidates, temperature, state.rng), ...candidates].filter(Boolean);
   const seen = new Set();
   for (const option of orderedAttempts) {
     const key = `${option.type}:${option.themeId || ''}:${option.appointeeId}`;
@@ -1507,6 +1520,7 @@ function handleBasileusAppointment(state, meta) {
     }
     if (!result?.ok) continue;
 
+    state.courtActions.basileusAppointed = true;
     invalidateRoundContext(meta);
     registerFavor(meta, actorId, option.appointeeId, option.type === 'EMPRESS' || option.type === 'CHIEF_EUNUCHS' ? 1.2 : 1.0);
     applyDecisionToResult(state, result, buildMinorAppointmentDecision(state, meta, actorId, option));
@@ -1515,20 +1529,26 @@ function handleBasileusAppointment(state, meta) {
     return true;
   }
 
-  return false;
+  state.courtActions.basileusAppointed = true;
+  invalidateRoundContext(meta);
+  return true;
 }
 
 function handleRegionalStrategosAppointment(state, meta, titleKey) {
   const actorId = state.players.find(player => player.majorTitles.includes(titleKey))?.id ?? null;
-  if (actorId == null) return false;
+  if (actorId == null) {
+    if (titleKey === 'DOM_EAST') return markCourtMandatoryActionPassed(state, meta, 'domesticEastAppointed', 'The Domestic of the East');
+    if (titleKey === 'DOM_WEST') return markCourtMandatoryActionPassed(state, meta, 'domesticWestAppointed', 'The Domestic of the West');
+    if (titleKey === 'ADMIRAL') return markCourtMandatoryActionPassed(state, meta, 'admiralAppointed', 'The Admiral');
+    return true;
+  }
 
   const region = MAJOR_TITLES[titleKey].region;
   const themes = Object.values(state.themes).filter(theme =>
     theme.region === region &&
     !theme.occupied &&
     theme.id !== 'CPL' &&
-    theme.owner !== 'church' &&
-    theme.strategos == null
+    theme.owner !== 'church'
   );
   const options = [];
   for (const theme of themes) {
@@ -1537,7 +1557,14 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
     }
   }
 
-  if (!options.length) return false;
+  if (!options.length) {
+    state.courtActions[`${titleKey}_appointed`] = true;
+    if (titleKey === 'DOM_EAST') state.courtActions.domesticEastAppointed = true;
+    if (titleKey === 'DOM_WEST') state.courtActions.domesticWestAppointed = true;
+    if (titleKey === 'ADMIRAL') state.courtActions.admiralAppointed = true;
+    invalidateRoundContext(meta);
+    return true;
+  }
 
   const ranked = options
     .map(option => ({
@@ -1551,6 +1578,11 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
     const result = appointStrategos(state, actorId, option.themeId, option.appointeeId);
     if (!result?.ok) continue;
 
+    state.courtActions[`${titleKey}_appointed`] = true;
+    if (titleKey === 'DOM_EAST') state.courtActions.domesticEastAppointed = true;
+    if (titleKey === 'DOM_WEST') state.courtActions.domesticWestAppointed = true;
+    if (titleKey === 'ADMIRAL') state.courtActions.admiralAppointed = true;
+
     invalidateRoundContext(meta);
     registerFavor(meta, actorId, option.appointeeId, 0.95);
     if (previousHolder != null && previousHolder !== option.appointeeId) {
@@ -1563,14 +1595,17 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
     return true;
   }
 
-  return false;
+  if (titleKey === 'DOM_EAST') return markCourtMandatoryActionPassed(state, meta, 'domesticEastAppointed', 'The Domestic of the East');
+  if (titleKey === 'DOM_WEST') return markCourtMandatoryActionPassed(state, meta, 'domesticWestAppointed', 'The Domestic of the West');
+  if (titleKey === 'ADMIRAL') return markCourtMandatoryActionPassed(state, meta, 'admiralAppointed', 'The Admiral');
+  return true;
 }
 
 function handlePatriarchAppointment(state, meta) {
   const actorId = state.players.find(player => player.majorTitles.includes('PATRIARCH'))?.id ?? null;
-  if (actorId == null) return false;
+  if (actorId == null) return markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch');
 
-  const themes = Object.values(state.themes).filter(theme => !theme.occupied && theme.id !== 'CPL' && !theme.bishopIsDonor && theme.bishop == null);
+  const themes = Object.values(state.themes).filter(theme => !theme.occupied && theme.id !== 'CPL' && !theme.bishopIsDonor);
   const options = [];
   for (const theme of themes) {
     for (const appointee of state.players) {
@@ -1578,7 +1613,11 @@ function handlePatriarchAppointment(state, meta) {
     }
   }
 
-  if (!options.length) return false;
+  if (!options.length) {
+    state.courtActions.patriarchAppointed = true;
+    invalidateRoundContext(meta);
+    return true;
+  }
 
   const ranked = options
     .map(option => ({
@@ -1592,6 +1631,7 @@ function handlePatriarchAppointment(state, meta) {
     const result = appointBishop(state, actorId, option.themeId, option.appointeeId);
     if (!result?.ok) continue;
 
+    state.courtActions.patriarchAppointed = true;
     invalidateRoundContext(meta);
     registerFavor(meta, actorId, option.appointeeId, 1.0);
     if (previousHolder != null && previousHolder !== option.appointeeId) {
@@ -1604,7 +1644,7 @@ function handlePatriarchAppointment(state, meta) {
     return true;
   }
 
-  return false;
+  return markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch');
 }
 
 function scoreLandPurchase(state, meta, playerId, theme) {
@@ -1847,46 +1887,11 @@ function runChurchGiftStrategy(state, meta, playerId, plannedAction = null) {
   return true;
 }
 
-function findBestMercenaryHireAction(state, meta, playerId) {
-  const player = getPlayer(state, playerId);
-  if (!player || player.gold <= 0) return null;
-  const profile = getPersonalityProfile(meta, playerId);
-  const context = ensureRoundContext(state, meta, 'court');
-  const pact = context.pactByPlayer[playerId];
-  const threat = getThreatLevel(state, meta);
-  const remainingRounds = getRemainingRounds(state);
-  const hiredSoFar = state.mercenariesHiredThisRound?.[playerId] || 0;
-  const nextCost = getMercenaryHireCost(hiredSoFar, 1);
-  if (player.gold < nextCost) return null;
-
-  const crisisDemand = threat + (pact?.capitalBias || 0) + (pact?.frontierBias || 0);
-  const saveGoldValue = profile.weights.wealth * (1.05 + ((remainingRounds / Math.max(1, state.maxRounds)) * 0.75));
-  const score = (profile.weights.mercenary * 1.25) + (crisisDemand * 0.85) - saveGoldValue - (hiredSoFar * 0.55);
-  if (score <= 0.15) return null;
-  return { kind: 'hire-mercs', count: 1, cost: nextCost, score };
-}
-
-function runMercenaryHireStrategy(state, meta, playerId, plannedAction = null) {
-  const action = plannedAction || findBestMercenaryHireAction(state, meta, playerId);
-  if (!action) return false;
-  const result = hireMercenaries(state, playerId, action.count);
-  if (!result?.ok) return false;
-  meta.players[playerId].stats.mercsHired += action.count;
-  meta.players[playerId].stats.mercSpend += result.cost || 0;
-  meta.totals.mercSpend += result.cost || 0;
-  invalidateRoundContext(meta);
-  applyDecisionToResult(state, result, buildMercenaryDecision(state, meta, playerId, action, result));
-  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} hires ${action.count} troop${action.count === 1 ? '' : 's'} for the mercenary army.`);
-  logPublic(meta, `${publicActor(state, playerId)} hires ${action.count} mercenary troop${action.count === 1 ? '' : 's'}.`);
-  return true;
-}
-
 function takeOneStrategicCourtAction(state, meta, playerId) {
   const options = [
     findBestRecruitmentAction(state, meta, playerId),
     findBestLandPurchaseAction(state, meta, playerId),
     findBestChurchGiftAction(state, meta, playerId),
-    findBestMercenaryHireAction(state, meta, playerId),
     findBestDismissalAction(state, meta, playerId),
   ].filter(Boolean).sort((left, right) => right.score - left.score);
 
@@ -1895,7 +1900,6 @@ function takeOneStrategicCourtAction(state, meta, playerId) {
   if (best.kind === 'recruit') return runRecruitmentStrategy(state, meta, playerId, best);
   if (best.kind === 'buy') return runLandStrategy(state, meta, playerId, best);
   if (best.kind === 'gift') return runChurchGiftStrategy(state, meta, playerId, best);
-  if (best.kind === 'hire-mercs') return runMercenaryHireStrategy(state, meta, playerId, best);
   if (best.kind === 'dismiss') return runDismissalStrategy(state, meta, playerId, best);
   return false;
 }
@@ -2130,6 +2134,47 @@ function scoreOfficeDestination(state, meta, playerId, office, troopCount, desti
   return score;
 }
 
+function planMercenaries(state, meta, playerId, officePlans, pact) {
+  const profile = getPersonalityProfile(meta, playerId);
+  const remainingRounds = getRemainingRounds(state);
+  const goldOpportunity = profile.weights.wealth * (1.05 + ((remainingRounds / Math.max(1, state.maxRounds)) * 0.75));
+  const threat = getThreatLevel(state, meta);
+  let availableGold = getPlayer(state, playerId).gold;
+  let totalPlannedMercenaries = 0;
+  const mercenaries = [];
+
+  const rankedOffices = officePlans
+    .filter(plan => !plan.capitalLocked)
+    .map(plan => ({ ...plan, baseValue: Math.max(plan.frontierScore, plan.capitalScore) }))
+    .sort((left, right) => right.baseValue - left.baseValue);
+
+  for (const office of rankedOffices) {
+    const maxMercsForOffice = Math.max(1, Math.min(5, Math.ceil(profile.weights.mercenary + ((pact?.capitalBias || 0) * 0.35))));
+    let hiredForOffice = 0;
+
+    while (hiredForOffice < maxMercsForOffice) {
+      const nextCost = getMercenaryHireCost(totalPlannedMercenaries, 1);
+      if (availableGold < nextCost) break;
+      const crisisDemand = (pact?.capitalBias || 0) + (pact?.frontierBias || 0) + threat;
+      const marginalValue = (office.baseValue * (0.4 + (profile.weights.mercenary * 0.24) + (crisisDemand * 0.1))) - goldOpportunity - (hiredForOffice * 0.72);
+      if (marginalValue <= 0.18) break;
+      availableGold -= nextCost;
+      hiredForOffice++;
+      totalPlannedMercenaries++;
+    }
+
+    if (hiredForOffice > 0) {
+      mercenaries.push({ officeKey: office.office.key, count: hiredForOffice });
+    }
+  }
+
+  return mercenaries;
+}
+
+function getMercCount(mercenaries, officeKey) {
+  return mercenaries.find(entry => entry.officeKey === officeKey)?.count || 0;
+}
+
 export function buildAIOrders(state, meta, playerId) {
   const player = getPlayer(state, playerId);
   const offices = getOfficeList(state, playerId);
@@ -2169,24 +2214,14 @@ export function buildAIOrders(state, meta, playerId) {
     });
   }
 
+  const mercenaries = planMercenaries(state, meta, playerId, officePlans, pact);
+
   let frontierTroops = 0;
   let capitalTroops = 0;
   for (const plan of officePlans) {
-    if (plan.destination === 'frontier') frontierTroops += plan.troopCount;
-    else capitalTroops += plan.troopCount;
-  }
-
-  const mercenaryTroops = Math.max(0, Number(player.mercenaryArmy) || 0);
-  let mercenaryPlan = null;
-  let mercenaryDeployment = 'frontier';
-  if (mercenaryTroops > 0) {
-    const mercOffice = { key: 'MERCENARY_ARMY', label: 'Mercenary Army', region: null };
-    const frontierScore = scoreOfficeDestination(state, meta, playerId, mercOffice, mercenaryTroops, 'frontier', candidateId, pact);
-    const capitalScore = scoreOfficeDestination(state, meta, playerId, mercOffice, mercenaryTroops, 'capital', candidateId, pact);
-    mercenaryDeployment = capitalScore > frontierScore ? 'capital' : 'frontier';
-    if (mercenaryDeployment === 'capital') capitalTroops += mercenaryTroops;
-    else frontierTroops += mercenaryTroops;
-    mercenaryPlan = { troopCount: mercenaryTroops, destination: mercenaryDeployment, frontierScore, capitalScore };
+    const totalTroops = plan.troopCount + getMercCount(mercenaries, plan.office.key);
+    if (plan.destination === 'frontier') frontierTroops += totalTroops;
+    else capitalTroops += totalTroops;
   }
 
   meta.players[playerId].stats.frontierTroops += frontierTroops;
@@ -2207,20 +2242,23 @@ export function buildAIOrders(state, meta, playerId) {
       capitalScore: roundTo(plan.capitalScore, 2),
       destination: plan.destination,
     })),
-    mercenaryPlan: mercenaryPlan ? {
-      troopCount: mercenaryPlan.troopCount,
-      destination: mercenaryPlan.destination,
-      frontierScore: roundTo(mercenaryPlan.frontierScore, 2),
-      capitalScore: roundTo(mercenaryPlan.capitalScore, 2),
-    } : null,
-    decision: buildOrdersDecision(state, meta, playerId, candidateId, pact, officePlans, mercenaryPlan, capitalTroops, frontierTroops, context),
+    decision: buildOrdersDecision(state, meta, playerId, candidateId, pact, officePlans, mercenaries, capitalTroops, frontierTroops, context),
   };
 
-  return { deployments, mercenaryDeployment, candidate: candidateId, debug };
+  return { deployments, mercenaries, candidate: candidateId, debug };
 }
 
 export function applyAIOrderCosts(state, meta, playerId, orders) {
-  return;
+  for (const mercenary of orders.mercenaries) {
+    const result = hireMercenaries(state, playerId, mercenary.officeKey, mercenary.count);
+    if (!result?.ok) continue;
+    meta.players[playerId].stats.mercsHired += mercenary.count;
+    meta.players[playerId].stats.mercSpend += result.cost || 0;
+    meta.totals.mercSpend += result.cost || 0;
+    applyDecisionToResult(state, result, buildMercenaryDecision(orders.debug, mercenary, result.cost || 0));
+    logDecision(meta, `Round ${state.round} orders: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troops for ${mercenary.officeKey}.`);
+    logPublic(meta, `${publicActor(state, playerId)} hires ${mercenary.count} mercenary troops for ${mercenary.officeKey}.`);
+  }
 }
 
 function computeOrderTotals(state, playerId, orders) {
@@ -2231,15 +2269,10 @@ function computeOrderTotals(state, playerId, orders) {
   for (const office of getOfficeList(state, playerId)) {
     const professionalTroops = player.professionalArmies[office.key] || 0;
     const levyTroops = state.currentLevies?.[office.key] || 0;
-    const totalTroops = professionalTroops + levyTroops;
+    const mercenaryTroops = getMercCount(orders.mercenaries || [], office.key);
+    const totalTroops = professionalTroops + levyTroops + mercenaryTroops;
     if ((orders.deployments?.[office.key] || 'frontier') === 'capital') capital += totalTroops;
     else frontier += totalTroops;
-  }
-
-  const mercenaryTroops = Math.max(0, Number(player.mercenaryArmy) || 0);
-  if (mercenaryTroops > 0) {
-    if ((orders.mercenaryDeployment || 'frontier') === 'capital') capital += mercenaryTroops;
-    else frontier += mercenaryTroops;
   }
 
   return { capital, frontier };
@@ -2261,7 +2294,7 @@ function updatePostResolutionRelations(state, meta) {
       const totals = computeOrderTotals(state, target.id, targetOrders);
       const totalTroops = totals.capital + totals.frontier;
       const frontierShare = totalTroops > 0 ? totals.frontier / totalTroops : 0.5;
-      const mercSpend = state.mercenariesHiredThisRound?.[target.id] || Math.max(0, Number(target.mercenaryArmy) || 0);
+      const mercSpend = (targetOrders.mercenaries || []).reduce((s, m) => s + (m.count || 0), 0);
       const mercNorm = clamp(mercSpend / 5, 0, 1);
       const throneAgainst = targetOrders.candidate != null && targetOrders.candidate !== incumbentId ? 1 : 0;
       updateOpponentPosterior(meta, observer.id, target.id, {
@@ -2379,20 +2412,21 @@ function takeOneAiCourtAction(state, meta, playerId) {
   const player = getPlayer(state, playerId);
   if (!player) return false;
 
-  if (playerId === state.basileusId && handleBasileusAppointment(state, meta)) {
-    return true;
+  if (playerId === state.basileusId && !state.courtActions.basileusAppointed) {
+    return handleBasileusAppointment(state, meta);
   }
-  if (player.majorTitles.includes('DOM_EAST') && handleRegionalStrategosAppointment(state, meta, 'DOM_EAST')) {
-    return true;
+
+  if (player.majorTitles.includes('DOM_EAST') && !state.courtActions.domesticEastAppointed) {
+    return handleRegionalStrategosAppointment(state, meta, 'DOM_EAST');
   }
-  if (player.majorTitles.includes('DOM_WEST') && handleRegionalStrategosAppointment(state, meta, 'DOM_WEST')) {
-    return true;
+  if (player.majorTitles.includes('DOM_WEST') && !state.courtActions.domesticWestAppointed) {
+    return handleRegionalStrategosAppointment(state, meta, 'DOM_WEST');
   }
-  if (player.majorTitles.includes('ADMIRAL') && handleRegionalStrategosAppointment(state, meta, 'ADMIRAL')) {
-    return true;
+  if (player.majorTitles.includes('ADMIRAL') && !state.courtActions.admiralAppointed) {
+    return handleRegionalStrategosAppointment(state, meta, 'ADMIRAL');
   }
-  if (player.majorTitles.includes('PATRIARCH') && handlePatriarchAppointment(state, meta)) {
-    return true;
+  if (player.majorTitles.includes('PATRIARCH') && !state.courtActions.patriarchAppointed) {
+    return handlePatriarchAppointment(state, meta);
   }
 
   if (playerId === state.basileusId && handleBasileusRevocation(state, meta)) {

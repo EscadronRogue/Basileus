@@ -48,10 +48,53 @@ function writePending(context, result) {
   return result;
 }
 
-// Appointments are optional and repeatable now; this hook remains for adapters
-// that still call it, but it no longer mutates court action flags.
+// Auto-resolves mandatory court appointments that cannot be filled — e.g. when
+// no eligible target exists for a Strategos slot the player holds. It is always
+// scoped to the acting human player. Multiplayer must not sweep every human seat
+// here, because singleplayer only resolves the currently controlled dynasty.
 export function autoResolveUnavailableHumanAppointments(state, playerId) {
-  return;
+  if (!state || state.phase !== 'court') return;
+  const player = getPlayer(state, playerId);
+  if (!player) return;
+
+  const hasOpenStrategos = (region = null) => Object.values(state.themes).some((theme) =>
+    !theme.occupied
+    && theme.id !== 'CPL'
+    && theme.owner !== 'church'
+    && theme.strategos === null
+    && (region == null || theme.region === region)
+  );
+  const hasOpenBishop = () => Object.values(state.themes).some((theme) =>
+    !theme.occupied
+    && theme.id !== 'CPL'
+    && !theme.bishopIsDonor
+    && theme.bishop === null
+  );
+
+  if (playerId === state.basileusId && !state.courtActions?.basileusAppointed) {
+    const canAppointMinor =
+      state.empress === null
+      || state.chiefEunuchs === null
+      || hasOpenStrategos()
+      || hasOpenBishop();
+    if (!canAppointMinor) state.courtActions.basileusAppointed = true;
+  }
+
+  if (player.majorTitles.includes('DOM_EAST') && !state.courtActions?.domesticEastAppointed && !hasOpenStrategos('east')) {
+    state.courtActions.domesticEastAppointed = true;
+    state.courtActions.DOM_EAST_appointed = true;
+  }
+  if (player.majorTitles.includes('DOM_WEST') && !state.courtActions?.domesticWestAppointed && !hasOpenStrategos('west')) {
+    state.courtActions.domesticWestAppointed = true;
+    state.courtActions.DOM_WEST_appointed = true;
+  }
+  if (player.majorTitles.includes('ADMIRAL') && !state.courtActions?.admiralAppointed && !hasOpenStrategos('sea')) {
+    state.courtActions.admiralAppointed = true;
+    state.courtActions.ADMIRAL_appointed = true;
+  }
+  if (player.majorTitles.includes('PATRIARCH') && !state.courtActions?.patriarchAppointed && !hasOpenBishop()) {
+    state.courtActions.patriarchAppointed = true;
+  }
 }
 
 export function maybeAdvanceCourt(state, aiMeta = null) {

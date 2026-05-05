@@ -85,11 +85,8 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
       professionalArmies: {},
       // Secret orders (filled during Orders phase)
       orders: null,
-      // Mercenary army (lump count, hired during court, lapses at cleanup)
-      mercenaryArmy: 0,
-      // Per-turn appointment ledger keyed by major title:
-      //   turnCounters.appointments[titleKey] = { self, others, otherPerPlayer }
-      turnCounters: { appointments: {} },
+      // Track self-appointment cooldown: { slotKey: lastRoundAppointed }
+      appointmentCooldown: {},
     });
   }
 
@@ -181,18 +178,10 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     currentInvasion: null,
     invasionStrength: 0,
 
-    // Orders (filled during orders phase). Mercenaries are hired in court now,
-    // so orders carry deployments + the throne vote only.
-    // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, candidate: playerId }
+    // Orders (filled during orders phase)
+    // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, mercenaries: [{officeKey, count}], candidate: playerId }
     allOrders: {},
     mercenariesHiredThisRound: {},
-
-    // Per-turn cost ledger for revocations (basileus-only). Reset at the start
-    // of each court phase via resetTurnCounters().
-    turnCounters: { revocation: { self: 0, others: 0 } },
-    // Suspended professional troops — spent on appointments/revocations this
-    // round. They still pay maintenance and rejoin the office at cleanup.
-    suspendedProfessionals: {},
 
     // Resolution results (for animation/display)
     lastCoupResult: null,
