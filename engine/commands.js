@@ -4,7 +4,11 @@
 // (multiplayer). Observations feed AI relations (observeCourtAction).
 
 import { recordHistoryEvent } from './history.js';
-import { getPlayer, formatPlayerLabel } from './state.js';
+import {
+  getPlayer,
+  formatPlayerLabel,
+  getOfficeMercenaryCount,
+} from './state.js';
 import { submitOrders } from './turnflow.js';
 import {
   applyCoupTitleReassignment,
@@ -25,7 +29,7 @@ import {
   revokeTheme,
   validateMajorTitleAssignments,
 } from './actions.js';
-import { normalizeHumanOrders } from './orders.js';
+import { getPlayerOrderOfficeKeys, isCapitalLockedOfficeKey, normalizeHumanOrders } from './orders.js';
 import { observeCourtAction } from '../ai/brain.js';
 
 function fail(reason) {
@@ -46,13 +50,13 @@ export function applyCourtAction(state, playerId, payload = {}) {
 
   if (action === 'buy') {
     const result = buyTheme(state, playerId, payload.themeId);
-    if (!result?.ok) return fail(result?.reason || 'Could not buy that theme.');
+    if (!result?.ok) return fail(result?.reason || 'Could not buy that estate.');
     return { ok: true };
   }
 
   if (action === 'gift') {
     const result = giftToChurch(state, playerId, payload.themeId);
-    if (!result?.ok) return fail(result?.reason || 'Could not gift that theme.');
+    if (!result?.ok) return fail(result?.reason || 'Could not gift that estate.');
     return { ok: true };
   }
 
@@ -72,6 +76,26 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const result = dismissProfessional(state, playerId, payload.office, Number(payload.count));
     if (!result?.ok) return fail(result?.reason || 'Could not dismiss those troops.');
     return { ok: true };
+  }
+
+  if (action === 'hire-mercenaries') {
+    const officeKey = String(payload.office || '').trim();
+    const count = Number(payload.count) || 1;
+    const ownedOffices = new Set(getPlayerOrderOfficeKeys(state, playerId));
+    if (!ownedOffices.has(officeKey)) return fail('Mercenaries can only be hired for one of your offices.');
+    if (isCapitalLockedOfficeKey(officeKey)) return fail('Mercenaries cannot be hired for court-only offices.');
+    const result = hireMercenaries(state, playerId, officeKey, count);
+    if (!result?.ok) return fail(result?.reason || 'Could not hire mercenaries for that office.');
+    return {
+      ok: true,
+      observation: {
+        type: 'mercenaries',
+        actorId: playerId,
+        officeKey,
+        count,
+        totalForOffice: getOfficeMercenaryCount(state, playerId, officeKey),
+      },
+    };
   }
 
   if (action === 'basileus-appoint') {
@@ -117,7 +141,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const appointeeId = Number(payload.appointeeId);
     const region = { DOM_EAST: 'east', DOM_WEST: 'west', ADMIRAL: 'sea' }[titleKey];
     const theme = state.themes[themeId];
-    if (!theme || theme.region !== region) return fail('Choose a valid strategos theme.');
+    if (!theme || theme.region !== region) return fail('Choose a valid strategos province.');
 
     const previousHolderId = theme.strategos;
     const result = appointStrategos(state, playerId, themeId, appointeeId);
@@ -212,18 +236,14 @@ export function confirmCourt(state, playerId) {
 }
 
 // ─── Order submission ──────────────────────────────────────────────────────
-// Single source of truth for human order locking: hires mercenaries (records
-// hire_mercenaries history events and deducts gold) and seals the orders.
+// Single source of truth for human order locking: validates the deployment plan
+// and candidate, then seals the orders.
 export function submitHumanOrders(state, playerId, orders) {
   if (state.phase !== 'orders') return fail('Orders cannot be submitted right now.');
   if (state.allOrders?.[playerId]) return fail('Orders are already locked for this seat.');
 
   const normalized = normalizeHumanOrders(state, playerId, orders);
   if (!normalized.ok) return fail(normalized.reason || 'Invalid orders.');
-
-  for (const mercenary of normalized.orders.mercenaries) {
-    hireMercenaries(state, playerId, mercenary.officeKey, mercenary.count);
-  }
   submitOrders(state, playerId, normalized.orders);
   return { ok: true, orders: normalized.orders, totalCost: normalized.totalCost };
 }

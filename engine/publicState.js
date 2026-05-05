@@ -1,11 +1,8 @@
-import { getMercenaryOrderCost } from './rules.js';
-
 const NON_PUBLIC_STATE_KEYS = [
   'rng',
   'adjacency',
   'invasionDeck',
   'log',
-  'mercenariesHiredThisRound',
 ];
 
 export function clonePlain(value) {
@@ -40,28 +37,14 @@ export function serializeCurrentInvasion(invasion) {
 }
 
 export function serializePlayersForViewer(state, viewerSeatId) {
-  return state.players.map((player) => {
-    const hiddenSpend = state.phase === 'orders' && viewerSeatId !== player.id
-      ? getMercenaryOrderCost(state.allOrders?.[player.id]?.mercenaries || [])
-      : 0;
-    return {
-      ...clonePlain(player),
-      gold: player.gold + hiddenSpend,
-    };
-  });
+  return state.players.map((player) => clonePlain(player));
 }
 
 export function sanitizePublicHistory(state) {
   const history = Array.isArray(state.history) ? state.history : [];
-  const currentRound = state.round;
-  const inHiddenOrdersWindow = state.phase === 'orders';
   const sanitized = [];
 
   for (const event of history) {
-    if (event?.type === 'hire_mercenaries' && inHiddenOrdersWindow && event.round === currentRound) {
-      continue;
-    }
-
     const nextEvent = {
       ...clonePlain(event),
       decision: null,
@@ -112,6 +95,9 @@ export function hydratePublicState(rawState = {}) {
     players: Array.isArray(rawState.players) ? rawState.players : [],
     themes: rawState.themes && typeof rawState.themes === 'object' ? rawState.themes : {},
     currentLevies: rawState.currentLevies && typeof rawState.currentLevies === 'object' ? rawState.currentLevies : {},
+    currentMercenaryHires: rawState.currentMercenaryHires && typeof rawState.currentMercenaryHires === 'object'
+      ? rawState.currentMercenaryHires
+      : {},
     allOrders: rawState.allOrders && typeof rawState.allOrders === 'object' ? rawState.allOrders : {},
     recruitedThisRound: rawState.recruitedThisRound && typeof rawState.recruitedThisRound === 'object'
       ? rawState.recruitedThisRound

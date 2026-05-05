@@ -300,15 +300,9 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
   await hostSocket.close();
 });
 
-test('multiplayer snapshots redact sealed orders and hidden mercenary spend', async (t) => {
+test('multiplayer snapshots show public court mercenaries and redact sealed orders', async (t) => {
   const harness = await createStartedThreePlayerRoom(t);
   const { room, host, guest } = harness;
-
-  room.gameState.phase = 'orders';
-  room.gameState.currentLevies = {};
-  room.broadcastGameSnapshots({ previousPhase: 'court' });
-  await host.socket.waitFor((message) => message.type === 'phase_changed' && message.phase === 'orders');
-  await guest.socket.waitFor((message) => message.type === 'phase_changed' && message.phase === 'orders');
 
   const actorSeatId = room.gameState.players.find((player) => {
     if (![0, 1].includes(player.id) || player.gold < 1) return false;
@@ -317,13 +311,41 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
   const viewerSeatId = actorSeatId === 0 ? 1 : 0;
   const actorSocket = actorSeatId === 0 ? host.socket : guest.socket;
   const viewerSocket = viewerSeatId === 0 ? host.socket : guest.socket;
-  const actorRequestId = 'submit-secret-orders';
   const actorOffice = firstPlayableOffice(room, actorSeatId);
   const actorGoldBefore = room.gameState.players.find((player) => player.id === actorSeatId).gold;
 
   actorSocket.send({
+    type: 'court_action',
+    requestId: 'hire-public-mercenaries',
+    action: 'hire-mercenaries',
+    office: actorOffice,
+    count: 1,
+  });
+
+  await actorSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'hire-public-mercenaries');
+  const mercenaryVisible = (message) =>
+    message.type === 'game_snapshot'
+    && message.state.phase === 'court'
+    && message.state.currentMercenaryHires?.[String(actorSeatId)]?.[actorOffice] === 1;
+  const actorCourtGame = await actorSocket.waitFor(mercenaryVisible);
+  const viewerCourtGame = await viewerSocket.waitFor(mercenaryVisible);
+
+  const actorGoldVisible = actorCourtGame.state.players.find((player) => player.id === actorSeatId).gold;
+  const viewerGoldVisible = viewerCourtGame.state.players.find((player) => player.id === actorSeatId).gold;
+  assert.equal(actorGoldVisible, actorGoldBefore - 1);
+  assert.equal(viewerGoldVisible, actorGoldBefore - 1);
+  assert.equal(viewerCourtGame.state.currentMercenaryHires[String(actorSeatId)][actorOffice], 1);
+  assert.equal(viewerCourtGame.state.history.some((entry) => entry.type === 'hire_mercenaries' && entry.actorId === actorSeatId), true);
+
+  room.gameState.phase = 'orders';
+  room.gameState.currentLevies = {};
+  room.broadcastGameSnapshots({ previousPhase: 'court' });
+  await host.socket.waitFor((message) => message.type === 'phase_changed' && message.phase === 'orders');
+  await guest.socket.waitFor((message) => message.type === 'phase_changed' && message.phase === 'orders');
+
+  actorSocket.send({
     type: 'submit_orders',
-    requestId: actorRequestId,
+    requestId: 'submit-invalid-secret-orders',
     orders: {
       deployments: {
         [actorOffice]: 'capital',
@@ -335,20 +357,28 @@ test('multiplayer snapshots redact sealed orders and hidden mercenary spend', as
     },
   });
 
-  await actorSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === actorRequestId);
+  const invalidReject = await actorSocket.waitFor((message) => message.type === 'action_rejected' && message.requestId === 'submit-invalid-secret-orders');
+  assert.match(invalidReject.reason, /Court/i);
+
+  actorSocket.send({
+    type: 'submit_orders',
+    requestId: 'submit-secret-orders',
+    orders: {
+      deployments: {
+        [actorOffice]: 'capital',
+      },
+      candidate: viewerSeatId,
+    },
+  });
+
+  await actorSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'submit-secret-orders');
   const hasSubmittedActorOrder = (message) => message.type === 'game_snapshot' && Boolean(message.state?.allOrders?.[String(actorSeatId)]);
   const actorGame = await actorSocket.waitFor(hasSubmittedActorOrder);
   const viewerGame = await viewerSocket.waitFor(hasSubmittedActorOrder);
 
-  const actorGoldVisible = actorGame.state.players.find((player) => player.id === actorSeatId).gold;
-  const viewerGoldVisible = viewerGame.state.players.find((player) => player.id === actorSeatId).gold;
-  assert.equal(actorGoldVisible, actorGoldBefore - 1);
-  assert.equal(viewerGoldVisible, actorGoldBefore);
-
   const historyEntry = viewerGame.state.history.find((entry) => entry.type === 'orders_submitted' && entry.actorId === actorSeatId);
   assert.ok(historyEntry);
   assert.equal(historyEntry.details, null);
-  assert.equal(viewerGame.state.history.some((entry) => entry.type === 'hire_mercenaries'), false);
   assert.equal(viewerGame.state.allOrders[String(actorSeatId)], true);
 });
 

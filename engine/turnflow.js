@@ -6,8 +6,14 @@ import { runAdministration } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './actions.js';
 import { recordHistoryEvent } from './history.js';
-import { rollInvasionStrength, getPlayer, formatPlayerLabel } from './state.js';
+import {
+  rollInvasionStrength,
+  getPlayer,
+  formatPlayerLabel,
+  getPlayerMercenaryAssignments,
+} from './state.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { formatTroops } from './presentation.js';
 
 export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
 export const STARTING_ADMINISTRATION_GOLD = 4;
@@ -37,7 +43,8 @@ function officeName(state, officeKey) {
 
 function buildPlayerResolutionContribution(state, player, orders) {
   const officeKeys = new Set(Object.keys(player.professionalArmies || {}));
-  const mercenaryMap = new Map((orders.mercenaries || []).map(entry => [entry.officeKey, entry.count]));
+  const mercenaryEntries = getPlayerMercenaryAssignments(state, player.id);
+  const mercenaryMap = new Map(mercenaryEntries.map(entry => [entry.officeKey, entry.count]));
 
   if (state.currentLevies) {
     for (const officeKey of Object.keys(state.currentLevies)) {
@@ -89,7 +96,7 @@ function buildPlayerResolutionContribution(state, player, orders) {
     capitalTroops,
     frontierTroops,
     offices,
-    mercenaries: (orders.mercenaries || []).map(entry => ({
+    mercenaries: mercenaryEntries.map(entry => ({
       officeKey: entry.officeKey,
       officeName: officeName(state, entry.officeKey),
       count: entry.count,
@@ -203,13 +210,12 @@ export function isCourtComplete(state) {
 export function phaseOrders(state) {
   state.phase = 'orders';
   state.allOrders = {};
-  state.mercenariesHiredThisRound = {};
-  // Each player must submit: deployments, mercenaries, candidate
+  // Each player must submit: deployments, candidate
   // UI handles this — each player fills in their orders simultaneously
 }
 
 export function submitOrders(state, playerId, orders) {
-  // orders: { deployments: { officeKey: 'capital'|'frontier' }, mercenaries: [{officeKey, count}], candidate: playerId }
+  // orders: { deployments: { officeKey: 'capital'|'frontier' }, candidate: playerId }
   state.allOrders[playerId] = orders;
   recordHistoryEvent(state, {
     category: 'orders',
@@ -261,7 +267,7 @@ export function phaseResolution(state) {
       type: 'orders_revealed',
       actorId: breakdown.playerId,
       actorAi: Boolean(breakdown.debug?.decision),
-      summary: `${breakdown.playerName} reveals orders: ${breakdown.capitalTroops} capital troop${breakdown.capitalTroops === 1 ? '' : 's'} for ${breakdown.candidateName}, ${breakdown.frontierTroops} frontier troop${breakdown.frontierTroops === 1 ? '' : 's'} for the empire.`,
+      summary: `${breakdown.playerName} reveals orders: ${formatTroops(breakdown.capitalTroops)} support ${breakdown.candidateName} in the capital, and ${formatTroops(breakdown.frontierTroops)} go to the frontier.`,
       details: {
         candidateId: breakdown.candidateId,
         candidateName: breakdown.candidateName,
@@ -396,7 +402,7 @@ export function phaseCleanup(state) {
 
   // 5. Clear orders
   state.allOrders = {};
-  state.mercenariesHiredThisRound = {};
+  state.currentMercenaryHires = {};
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;

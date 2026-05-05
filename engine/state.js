@@ -179,9 +179,9 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     invasionStrength: 0,
 
     // Orders (filled during orders phase)
-    // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, mercenaries: [{officeKey, count}], candidate: playerId }
+    // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, candidate: playerId }
     allOrders: {},
-    mercenariesHiredThisRound: {},
+    currentMercenaryHires: {},
 
     // Resolution results (for animation/display)
     lastCoupResult: null,
@@ -231,6 +231,21 @@ export function getThemesInRegion(state, region) {
 
 export function getPlayerThemes(state, playerId) {
   return Object.values(state.themes).filter(t => t.owner === playerId);
+}
+
+export function getPlayerMercenaryAssignments(state, playerId) {
+  return Object.entries(state.currentMercenaryHires?.[playerId] || {})
+    .map(([officeKey, count]) => ({ officeKey, count: Math.max(0, Number(count) || 0) }))
+    .filter((entry) => entry.count > 0);
+}
+
+export function getOfficeMercenaryCount(state, playerId, officeKey) {
+  return Math.max(0, Number(state.currentMercenaryHires?.[playerId]?.[officeKey]) || 0);
+}
+
+export function getPlayerMercenaryTotal(state, playerId) {
+  return getPlayerMercenaryAssignments(state, playerId)
+    .reduce((total, entry) => total + entry.count, 0);
 }
 
 export function getChurchThemes(state) {

@@ -1,5 +1,4 @@
 import { getPlayer } from './state.js';
-import { getMercenaryOrderCost } from './rules.js';
 
 function toInt(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -47,7 +46,6 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
   if (!player) return orderFailure('Player not found.');
 
   const officeKeys = getPlayerOrderOfficeKeys(state, playerId);
-  const officeKeySet = new Set(officeKeys);
   const deployments = {};
 
   for (const officeKey of officeKeys) {
@@ -58,13 +56,8 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
   }
 
   const mercenaries = normalizeMercenaryOrders(rawOrders?.mercenaries);
-  for (const mercenary of mercenaries) {
-    if (!officeKeySet.has(mercenary.officeKey)) {
-      return orderFailure('Mercenaries can only be assigned to your offices.');
-    }
-    if (isCapitalLockedOfficeKey(mercenary.officeKey)) {
-      return orderFailure('Mercenaries cannot be assigned to court-only offices.');
-    }
+  if (mercenaries.length > 0) {
+    return orderFailure('Mercenaries are hired during Court, not Secret Orders.');
   }
 
   const candidate = toInt(rawOrders?.candidate, playerId);
@@ -72,12 +65,9 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
     return orderFailure('Choose a valid Basileus candidate.');
   }
 
-  const totalCost = getMercenaryOrderCost(mercenaries);
-  if (player.gold < totalCost) return orderFailure(`Need ${totalCost}g, have ${player.gold}g.`);
-
   return {
     ok: true,
-    orders: { deployments, mercenaries, candidate },
-    totalCost,
+    orders: { deployments, candidate },
+    totalCost: 0,
   };
 }

@@ -20,7 +20,6 @@ import {
   submitHumanOrders,
 } from './commands.js';
 import {
-  applyAIOrderCosts,
   applyPlannedAiTitleAssignment,
   buildAIOrders,
   handlePostResolutionAI,
@@ -133,7 +132,6 @@ export function processAiFlow(state, aiMeta, options = {}) {
         if (!isAIPlayer(aiMeta, player.id)) continue;
         if (state.allOrders[player.id]) continue;
         const orders = buildAIOrders(state, aiMeta, player.id);
-        applyAIOrderCosts(state, aiMeta, player.id, orders);
         submitOrders(state, player.id, orders);
       }
 

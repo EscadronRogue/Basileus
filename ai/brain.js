@@ -1,4 +1,12 @@
-import { getFreeThemes, getPlayer, getPlayerThemes, shuffle, formatPlayerLabel } from '../engine/state.js';
+import {
+  getFreeThemes,
+  getPlayer,
+  getPlayerThemes,
+  shuffle,
+  formatPlayerLabel,
+  getPlayerMercenaryAssignments,
+  getPlayerMercenaryTotal,
+} from '../engine/state.js';
 import { recordHistoryEvent, updateHistoryEvent } from '../engine/history.js';
 import {
   appointBishop,
@@ -22,7 +30,6 @@ import {
 } from '../engine/actions.js';
 import {
   getMercenaryHireCost,
-  getMercenaryOrderCost,
   getNormalOwnerIncome,
   getThemeLandPrice,
   getThemeOwnerIncome,
@@ -869,7 +876,7 @@ function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePla
     .map(plan => `${plan.office.label} -> ${plan.destination}`)
     .join(', ');
   const mercCount = sum(mercenaries.map(entry => entry.count));
-  const mercCost = getMercenaryOrderCost(mercenaries);
+  const mercCost = getMercenaryHireCost(0, mercCount);
 
   return {
     title: 'AI reasoning',
@@ -1410,6 +1417,10 @@ function finalizeCourtAutomation(state, meta, aiOrder) {
   markCourtMandatoryActionPassed(state, meta, 'domesticWestAppointed', 'The Domestic of the West appointment');
   markCourtMandatoryActionPassed(state, meta, 'admiralAppointed', 'The Admiral appointment');
   markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch appointment');
+
+  for (const playerId of aiOrder) {
+    runMercenaryStrategy(state, meta, playerId);
+  }
 
   for (const playerId of aiOrder) {
     if (!state.courtActions.playerConfirmed.has(playerId)) {
@@ -2139,8 +2150,9 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
   const remainingRounds = getRemainingRounds(state);
   const goldOpportunity = profile.weights.wealth * (1.05 + ((remainingRounds / Math.max(1, state.maxRounds)) * 0.75));
   const threat = getThreatLevel(state, meta);
+  const currentMercenaries = Object.fromEntries(getPlayerMercenaryAssignments(state, playerId).map((entry) => [entry.officeKey, entry.count]));
   let availableGold = getPlayer(state, playerId).gold;
-  let totalPlannedMercenaries = 0;
+  let totalPlannedMercenaries = getPlayerMercenaryTotal(state, playerId);
   const mercenaries = [];
 
   const rankedOffices = officePlans
@@ -2150,21 +2162,22 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
 
   for (const office of rankedOffices) {
     const maxMercsForOffice = Math.max(1, Math.min(5, Math.ceil(profile.weights.mercenary + ((pact?.capitalBias || 0) * 0.35))));
-    let hiredForOffice = 0;
+    const alreadyForOffice = currentMercenaries[office.office.key] || 0;
+    let additionalForOffice = 0;
 
-    while (hiredForOffice < maxMercsForOffice) {
+    while ((alreadyForOffice + additionalForOffice) < maxMercsForOffice) {
       const nextCost = getMercenaryHireCost(totalPlannedMercenaries, 1);
       if (availableGold < nextCost) break;
       const crisisDemand = (pact?.capitalBias || 0) + (pact?.frontierBias || 0) + threat;
-      const marginalValue = (office.baseValue * (0.4 + (profile.weights.mercenary * 0.24) + (crisisDemand * 0.1))) - goldOpportunity - (hiredForOffice * 0.72);
+      const marginalValue = (office.baseValue * (0.4 + (profile.weights.mercenary * 0.24) + (crisisDemand * 0.1))) - goldOpportunity - ((alreadyForOffice + additionalForOffice) * 0.72);
       if (marginalValue <= 0.18) break;
       availableGold -= nextCost;
-      hiredForOffice++;
+      additionalForOffice++;
       totalPlannedMercenaries++;
     }
 
-    if (hiredForOffice > 0) {
-      mercenaries.push({ officeKey: office.office.key, count: hiredForOffice });
+    if (additionalForOffice > 0) {
+      mercenaries.push({ officeKey: office.office.key, count: additionalForOffice });
     }
   }
 
@@ -2175,12 +2188,9 @@ function getMercCount(mercenaries, officeKey) {
   return mercenaries.find(entry => entry.officeKey === officeKey)?.count || 0;
 }
 
-export function buildAIOrders(state, meta, playerId) {
+function planOfficeDeployments(state, meta, playerId, candidateId, pact) {
   const player = getPlayer(state, playerId);
   const offices = getOfficeList(state, playerId);
-  const context = ensureRoundContext(state, meta, 'orders');
-  const pact = context.pactByPlayer[playerId];
-  const candidateId = pact?.candidateId ?? state.basileusId;
   const deployments = {};
   const officePlans = [];
 
@@ -2214,7 +2224,15 @@ export function buildAIOrders(state, meta, playerId) {
     });
   }
 
-  const mercenaries = planMercenaries(state, meta, playerId, officePlans, pact);
+  return { player, deployments, officePlans };
+}
+
+export function buildAIOrders(state, meta, playerId) {
+  const context = ensureRoundContext(state, meta, 'orders');
+  const pact = context.pactByPlayer[playerId];
+  const candidateId = pact?.candidateId ?? state.basileusId;
+  const { deployments, officePlans } = planOfficeDeployments(state, meta, playerId, candidateId, pact);
+  const mercenaries = getPlayerMercenaryAssignments(state, playerId);
 
   let frontierTroops = 0;
   let capitalTroops = 0;
@@ -2245,31 +2263,58 @@ export function buildAIOrders(state, meta, playerId) {
     decision: buildOrdersDecision(state, meta, playerId, candidateId, pact, officePlans, mercenaries, capitalTroops, frontierTroops, context),
   };
 
-  return { deployments, mercenaries, candidate: candidateId, debug };
+  return { deployments, candidate: candidateId, debug };
 }
 
-export function applyAIOrderCosts(state, meta, playerId, orders) {
-  for (const mercenary of orders.mercenaries) {
+function runMercenaryStrategy(state, meta, playerId) {
+  const context = ensureRoundContext(state, meta, 'court');
+  const pact = context.pactByPlayer[playerId];
+  const candidateId = pact?.candidateId ?? state.basileusId;
+  const { officePlans } = planOfficeDeployments(state, meta, playerId, candidateId, pact);
+  const mercenaryPlan = planMercenaries(state, meta, playerId, officePlans, pact);
+  if (!mercenaryPlan.length) return false;
+
+  const debug = {
+    pactKind: pact?.kind || 'defense',
+    candidateId,
+    candidateName: publicActor(state, candidateId),
+    officePlans: officePlans.map(plan => ({
+      officeKey: plan.officeKey,
+      officeLabel: plan.officeLabel,
+      troopCount: plan.troopCount,
+      frontierScore: roundTo(plan.frontierScore, 2),
+      capitalScore: roundTo(plan.capitalScore, 2),
+      destination: plan.destination,
+    })),
+  };
+
+  let hiredAny = false;
+  for (const mercenary of mercenaryPlan) {
     const result = hireMercenaries(state, playerId, mercenary.officeKey, mercenary.count);
     if (!result?.ok) continue;
     meta.players[playerId].stats.mercsHired += mercenary.count;
     meta.players[playerId].stats.mercSpend += result.cost || 0;
     meta.totals.mercSpend += result.cost || 0;
-    applyDecisionToResult(state, result, buildMercenaryDecision(orders.debug, mercenary, result.cost || 0));
-    logDecision(meta, `Round ${state.round} orders: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troops for ${mercenary.officeKey}.`);
-    logPublic(meta, `${publicActor(state, playerId)} hires ${mercenary.count} mercenary troops for ${mercenary.officeKey}.`);
+    applyDecisionToResult(state, result, buildMercenaryDecision(debug, mercenary, result.cost || 0));
+    logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${mercenary.officeKey}.`);
+    logPublic(meta, `${publicActor(state, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${mercenary.officeKey}.`);
+    hiredAny = true;
   }
+
+  if (hiredAny) invalidateRoundContext(meta);
+  return hiredAny;
 }
 
 function computeOrderTotals(state, playerId, orders) {
   const player = getPlayer(state, playerId);
+  const mercenaries = getPlayerMercenaryAssignments(state, playerId);
   let capital = 0;
   let frontier = 0;
 
   for (const office of getOfficeList(state, playerId)) {
     const professionalTroops = player.professionalArmies[office.key] || 0;
     const levyTroops = state.currentLevies?.[office.key] || 0;
-    const mercenaryTroops = getMercCount(orders.mercenaries || [], office.key);
+    const mercenaryTroops = getMercCount(mercenaries, office.key);
     const totalTroops = professionalTroops + levyTroops + mercenaryTroops;
     if ((orders.deployments?.[office.key] || 'frontier') === 'capital') capital += totalTroops;
     else frontier += totalTroops;
@@ -2294,7 +2339,7 @@ function updatePostResolutionRelations(state, meta) {
       const totals = computeOrderTotals(state, target.id, targetOrders);
       const totalTroops = totals.capital + totals.frontier;
       const frontierShare = totalTroops > 0 ? totals.frontier / totalTroops : 0.5;
-      const mercSpend = (targetOrders.mercenaries || []).reduce((s, m) => s + (m.count || 0), 0);
+      const mercSpend = getPlayerMercenaryTotal(state, target.id);
       const mercNorm = clamp(mercSpend / 5, 0, 1);
       const throneAgainst = targetOrders.candidate != null && targetOrders.candidate !== incumbentId ? 1 : 0;
       updateOpponentPosterior(meta, observer.id, target.id, {
@@ -2521,6 +2566,15 @@ export function observeCourtAction(state, meta, action) {
       if (observer.id === action.actorId) continue;
       if (!isAIPlayer(meta, observer.id)) continue;
       updateOpponentPosterior(meta, observer.id, action.actorId, { recruit: 1.0 });
+    }
+  }
+
+  if (action.type === 'mercenaries') {
+    const mercNorm = clamp((Number(action.count) || 0) / 5, 0, 1);
+    for (const observer of state.players) {
+      if (observer.id === action.actorId) continue;
+      if (!isAIPlayer(meta, observer.id)) continue;
+      updateOpponentPosterior(meta, observer.id, action.actorId, { mercenarySpend: mercNorm });
     }
   }
 }

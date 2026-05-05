@@ -183,6 +183,7 @@ export class GameController {
       gift: (themeId) => dispatch({ action: 'gift', themeId }),
       exempt: (themeId) => dispatch({ action: 'exempt', themeId }),
       recruit: (_, data) => dispatch({ action: 'recruit', office: data.office }),
+      hireMercenaries: (_, data) => dispatch({ action: 'hire-mercenaries', office: data.office, count: data.count }),
       dismiss: (_, data) => dispatch({ action: 'dismiss', office: data.office, count: data.count }),
       'confirm-court': () => {
         const result = handleHumanCourtConfirmation(this.state, this.aiMeta, this, playerId);

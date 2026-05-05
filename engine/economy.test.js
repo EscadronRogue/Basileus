@@ -4,15 +4,16 @@ import assert from 'node:assert/strict';
 import { PROVINCES } from '../data/provinces.js';
 import { createGameState, makeRng, rollInvasionStrength } from './state.js';
 import { runAdministration } from './cascade.js';
-import { phaseAdministration, phaseInvasion, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
+import { phaseAdministration, phaseCleanup, phaseInvasion, phaseResolution, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
 import { buyTheme, canRecruitProfessional, grantTaxExemption, hireMercenaries, recruitProfessional } from './actions.js';
 import {
-  getMercenaryOrderCost,
+  getMercenaryHireCost,
   getNormalOwnerIncome,
   getNormalTaxIncome,
   getTaxExemptionCost,
   getThemeLandPrice,
 } from './rules.js';
+import { normalizeHumanOrders } from './orders.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -56,13 +57,25 @@ function makeState(themes, playerOverrides = {}) {
     round: 1,
     phase: 'court',
     basileusId: 0,
+    nextBasileusId: 0,
     empress: null,
     chiefEunuchs: null,
     players,
     themes: Object.fromEntries(themes.map((theme) => [theme.id, theme])),
+    currentLevies: {},
+    currentMercenaryHires: {},
+    allOrders: {},
+    currentInvasion: null,
+    invasionDeck: [{ id: 'test-invasion' }],
+    maxRounds: 9,
+    recruitedThisRound: {},
+    pendingTitleReassignment: false,
+    lastCoupResult: null,
+    lastWarResult: null,
+    gameOver: null,
     log: [],
     historyEnabled: false,
-    history: null,
+    history: [],
   };
 }
 
@@ -307,14 +320,70 @@ test('mercenary costs ramp within a turn and reset on the next turn', () => {
   const second = hireMercenaries(state, 1, 'DOM_EAST', 2);
   assert.equal(second.cost, 5);
   assert.equal(state.players[1].gold, 14);
-  assert.equal(getMercenaryOrderCost([{ officeKey: 'DOM_EAST', count: 3 }]), 6);
+  assert.equal(getMercenaryHireCost(0, 3), 6);
 
   state.round += 1;
-  state.mercenariesHiredThisRound = {};
+  state.currentMercenaryHires = {};
 
   const third = hireMercenaries(state, 1, 'DOM_EAST', 1);
   assert.equal(third.cost, 1);
   assert.equal(state.players[1].gold, 13);
+});
+
+test('secret orders reject mercenary payloads because mercenaries are hired in court', () => {
+  const state = makeState([], {
+    1: {
+      majorTitles: ['DOM_EAST'],
+      professionalArmies: { DOM_EAST: 2 },
+    },
+  });
+  state.phase = 'orders';
+
+  const result = normalizeHumanOrders(state, 1, {
+    deployments: { DOM_EAST: 'frontier' },
+    mercenaries: [{ officeKey: 'DOM_EAST', count: 1 }],
+    candidate: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /Court/i);
+});
+
+test('resolution totals include public mercenary hires and cleanup removes them', () => {
+  const state = makeState([], {
+    1: {
+      majorTitles: ['DOM_EAST'],
+      professionalArmies: { DOM_EAST: 2 },
+    },
+  });
+  state.phase = 'orders';
+  state.historyEnabled = true;
+  state.currentLevies.DOM_EAST = 3;
+  state.currentMercenaryHires[1] = { DOM_EAST: 1 };
+  state.allOrders[1] = {
+    deployments: { DOM_EAST: 'capital' },
+    candidate: 1,
+  };
+
+  phaseResolution(state);
+
+  const reveal = state.history.find((entry) => entry.type === 'orders_revealed' && entry.actorId === 1);
+  assert.ok(reveal, 'Orders should be revealed during resolution.');
+  const office = reveal.details.offices.find((entry) => entry.officeKey === 'DOM_EAST');
+  assert.deepEqual(office, {
+    officeKey: 'DOM_EAST',
+    officeName: 'Domestic of the East',
+    professionalTroops: 2,
+    levyTroops: 3,
+    mercenaryTroops: 1,
+    totalTroops: 6,
+    destination: 'capital',
+  });
+  assert.equal(reveal.details.capitalTroops, 6);
+  assert.equal(reveal.details.frontierTroops, 0);
+
+  phaseCleanup(state);
+  assert.deepEqual(state.currentMercenaryHires, {});
 });
 
 test('the Basileus cannot buy tax exemption for his own estate', () => {

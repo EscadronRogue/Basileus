@@ -2,6 +2,7 @@ import { computeFullWealth } from '../engine/actions.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { runAdministration } from '../engine/cascade.js';
 import { getPlayer } from '../engine/state.js';
+import { formatGold } from '../engine/presentation.js';
 import {
   renderCourtPanel,
   renderHistoryPanel,
@@ -19,7 +20,7 @@ export function createDefaultUiState() {
       action: true,
     },
     sections: {
-      'court:land': true,
+      'court:guide': true,
     },
     dashboardFocus: null,
   };
@@ -89,8 +90,8 @@ export const ACTION_PANEL_TITLE_BY_PHASE = {
 };
 
 export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
-  court: 'Appointments, land, exemptions, revocations, and army upkeep',
-  orders: 'Troop deployments, mercenaries, and the throne vote',
+  court: 'Public appointments, estates, privileges, and army preparation',
+  orders: 'Secret troop deployments and the throne vote',
   resolution: 'Reveal orders and settle the round',
   scoring: 'Projected wealth at the end of the game',
 };
@@ -145,23 +146,17 @@ function getPlayerMaintenance(player) {
   return Object.values(player?.professionalArmies || {}).reduce((total, count) => total + count, 0);
 }
 
-function formatSignedGold(value, { expense = false } = {}) {
-  const amount = Math.max(0, Number(value) || 0);
-  if (expense) return amount > 0 ? `-${amount}` : '0';
-  return amount > 0 ? `+${amount}` : '0';
-}
-
 export function getPlayerTabEconomy(player, administration) {
   return {
-    reserve: `${player.gold}g`,
-    income: formatSignedGold(administration?.income?.[player.id] || 0),
-    expense: formatSignedGold(getPlayerMaintenance(player), { expense: true }),
+    reserve: formatGold(player.gold),
+    income: formatGold(administration?.income?.[player.id] || 0, { signed: true }),
+    expense: formatGold(-getPlayerMaintenance(player)),
   };
 }
 
 export function renderPlayerTabFinance(economy) {
   return `
-    <span class="tab-finance" aria-label="Gold reserve, expected income, expected expenditure" title="Gold reserve / expected income / expected expenditure">
+    <span class="tab-finance" aria-label="Current gold, expected income, and upkeep" title="Current gold / expected income / upkeep">
       <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
       <span class="tab-finance-separator" aria-hidden="true">/</span>
       <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
@@ -253,7 +248,7 @@ export function renderScoringHtml(state, options = {}) {
           <div class="score-row ${index === 0 ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
             <span class="score-rank">${index === 0 ? '1' : index + 1}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
-            <span class="score-breakdown">${score.gold}g + ${score.projected} projected</span>
+            <span class="score-breakdown">${formatGold(score.gold)} on hand + ${formatGold(score.projected, { signed: true })} next income</span>
             <span class="score-total">${score.wealth}</span>
           </div>
         `).join('')}
