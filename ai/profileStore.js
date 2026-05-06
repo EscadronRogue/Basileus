@@ -13,10 +13,6 @@ const EXPORTED_PROFILE_INDEX_ENDPOINTS = [
   'api/personalities/exported',
 ];
 
-const EXPORTED_PROFILE_MANIFEST_PATHS = [
-  'trained-personalities/latest/manifest.json',
-];
-
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -133,34 +129,6 @@ async function fetchJsonMaybe(path) {
   }
 }
 
-function resolveManifestBaseDir(manifestPath) {
-  return manifestPath.replace(/[^/]+$/, '');
-}
-
-function canUseExportedProfileIndexApi() {
-  if (typeof window === 'undefined') return false;
-  const host = window.location?.hostname || '';
-  return ['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(host) || host.endsWith('.localhost');
-}
-
-async function loadProfilesFromManifest(manifestPath) {
-  const manifest = await fetchJsonMaybe(manifestPath);
-  if (!manifest || !Array.isArray(manifest.files) || !manifest.files.length) return [];
-
-  const baseDir = resolveManifestBaseDir(manifestPath, manifest);
-  const loadedProfiles = await Promise.all(
-    manifest.files
-      .map(entry => entry?.file)
-      .filter(Boolean)
-      .map(fileName => fetchJsonMaybe(`${baseDir}${fileName}`))
-  );
-
-  return loadedProfiles
-    .map(profile => normalizeAiProfile(profile))
-    .filter(Boolean)
-    .map(profile => ({ ...profile, librarySource: 'exported' }));
-}
-
 async function loadProfilesFromIndexApi(endpointPath) {
   const payload = await fetchJsonMaybe(endpointPath);
   const rawProfiles = Array.isArray(payload?.profiles) ? payload.profiles : [];
@@ -172,20 +140,10 @@ async function loadProfilesFromIndexApi(endpointPath) {
 }
 async function readExportedProfiles() {
   const merged = new Map();
-  const manifestProfiles = await Promise.all(
-    EXPORTED_PROFILE_MANIFEST_PATHS.map(path => loadProfilesFromManifest(path))
-  );
-
-  for (const profile of manifestProfiles.flat()) {
-    if (!merged.has(profile.id)) {
-      merged.set(profile.id, profile);
-    }
-  }
-  if (merged.size > 0 || !canUseExportedProfileIndexApi()) return [...merged.values()];
-
   const indexProfiles = await Promise.all(
     EXPORTED_PROFILE_INDEX_ENDPOINTS.map(path => loadProfilesFromIndexApi(path))
   );
+
   for (const profile of indexProfiles.flat()) {
     if (!merged.has(profile.id)) {
       merged.set(profile.id, profile);

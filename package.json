@@ -37,7 +37,8 @@
     "test:evolution": "node simulation/evolution.test.js",
     "smoke:simulation": "node simulation/smoke-test.js",
     "test:multiplayer": "node multiplayer/verify.js",
-    "test": "npm run test:economy && npm run test:ui && npm run test:ai && npm run test:evolution && npm run smoke:simulation && npm run test:multiplayer",
-    "test:ui": "node ui/gameController.test.js"
+    "test": "npm run test:economy && npm run test:ui && npm run test:ai && npm run test:evolution && npm run test:personalities && npm run smoke:simulation && npm run test:multiplayer",
+    "test:ui": "node ui/gameController.test.js",
+    "test:personalities": "node simulation/personality-files.test.js"
   }
 }

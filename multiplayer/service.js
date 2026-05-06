@@ -45,15 +45,11 @@ function normalizePlayerName(rawName) {
 export class MultiplayerRoomManager {
   constructor() {
     this.rooms = new Map();
-    this.aiProfilesPromise = null;
   }
 
   async getAvailableAiProfiles() {
-    if (!this.aiProfilesPromise) {
-      const exportRoot = resolve(process.cwd(), 'trained-personalities');
-      this.aiProfilesPromise = readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false }).catch(() => []);
-    }
-    return this.aiProfilesPromise;
+    const exportRoot = resolve(process.cwd(), 'trained-personalities');
+    return readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false }).catch(() => []);
   }
 
   createSessionToken() {

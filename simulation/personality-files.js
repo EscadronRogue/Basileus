@@ -8,9 +8,10 @@ const EXCLUDED_JSON_FILES = new Set([
   'package.json',
 ]);
 
-const DEFAULT_EXCLUDED_DIRS = new Set([
+const EXCLUDED_DIRS = new Set([
   '.git',
   'node_modules',
+  'latest',
 ]);
 
 function isProfileJsonFile(fileName) {
@@ -19,10 +20,9 @@ function isProfileJsonFile(fileName) {
 }
 
 function shouldSkipDirectory(dirName, includeRuns = false) {
-  if (DEFAULT_EXCLUDED_DIRS.has(dirName)) return true;
+  if (EXCLUDED_DIRS.has(dirName)) return true;
   if (includeRuns) return false;
-  if (dirName === 'runs') return true;
-  return /^\d{4}-\d{2}-\d{2}T.*_seed-/.test(dirName);
+  return true;
 }
 
 async function pathExists(path) {
@@ -46,7 +46,7 @@ async function walkJsonFiles(rootDir, options = {}, currentDir = rootDir, output
   for (const entry of entries) {
     const path = join(currentDir, entry.name);
     if (entry.isDirectory()) {
-      if (!shouldSkipDirectory(entry.name, includeRuns)) {
+      if (includeRuns && !shouldSkipDirectory(entry.name, includeRuns)) {
         await walkJsonFiles(rootDir, options, path, output);
       }
       continue;

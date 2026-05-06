@@ -572,12 +572,11 @@ function renderTrainingResult(result) {
     <section class="results-section">
       <div class="section-head">
         <h2>Exported Personality Files</h2>
-        <p>Individual Greek-named champion JSON files were written automatically by the Node trainer. The local game server scans this folder directly, so moving valid personality JSON files in or out changes the usable roster without editing a manifest.</p>
+        <p>Individual Greek-named champion JSON files were written automatically by the Node trainer. The local game server loads direct JSON files from the trained-personalities folder, so moving valid personality JSON files in or out changes the usable roster.</p>
       </div>
       <ul class="training-list">
-        <li>Latest folder: <code>${escapeHtml(result.personalityExport.latestDir || '')}</code></li>
+        <li>Live roster folder: <code>${escapeHtml(result.personalityExport.exportRoot || '')}</code></li>
         <li>Archived run folder: <code>${escapeHtml(result.personalityExport.runDir || '')}</code></li>
-        <li>Compatibility manifest: <code>${escapeHtml(result.personalityExport.manifestFile || '')}</code></li>
       </ul>
     </section>
   `
@@ -789,7 +788,7 @@ async function finishLocalTrainingJob(jobId) {
   state.lastDownload = { filename: `basileus-training-${Date.now()}.json`, data: result };
   renderTrainingResult(result);
   setProgress(result.overview.totalMatches, result.overview.totalMatches);
-  const exportText = result.personalityExport?.latestDir ? ` Exported to ${result.personalityExport.latestDir}.` : '';
+  const exportText = result.personalityExport?.exportRoot ? ` Exported to ${result.personalityExport.exportRoot}.` : '';
   setStatus(`Node training completed in ${formatNumber(result.runtimeMs / 1000, 2)}s. ${result.champions.length} champion${result.champions.length === 1 ? '' : 's'} ready.${exportText}`, 'done');
   closeLocalTrainerStream();
   state.localTrainer.jobId = null;
@@ -813,7 +812,7 @@ function handleLocalTrainerEvent(message) {
   }
 
   if (message.event === 'personalities-exported') {
-    setStatus(`Node trainer exported ${message.files || 0} personality file${message.files === 1 ? '' : 's'} to ${message.latestDir || message.exportRoot || 'trained-personalities'}.`, 'running');
+    setStatus(`Node trainer exported ${message.files || 0} personality file${message.files === 1 ? '' : 's'} to ${message.exportRoot || 'trained-personalities'}.`, 'running');
     return;
   }
 
