@@ -80,6 +80,17 @@ export const PHASE_NAMES = {
   scoring: 'Final Scoring',
 };
 
+export const PHASE_TOOLTIPS = {
+  setup: 'Provinces, titles and starting gold are dealt out.',
+  invasion: 'A new invasion is drawn. Its route shows which provinces are at risk.',
+  administration: 'Provinces pay out gold and raise levies automatically.',
+  court: 'Buy estates, appoint officers, recruit troops, then confirm.',
+  orders: 'Each player privately sends every troop to the Capital (coup) or Frontier (war), and picks who to back for the throne.',
+  resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
+  cleanup: 'Pay 1 gold per professional troop. Levies and mercenaries disband.',
+  scoring: 'Highest gold (current + projected next income) wins.',
+};
+
 export const ACTION_PANEL_TITLE_BY_PHASE = {
   court: 'Imperial Court',
   orders: 'Secret Orders',
@@ -100,14 +111,19 @@ export function renderTopBar(state) {
   const phaseEl = document.getElementById('phaseDisplay');
   const invasionEl = document.getElementById('invasionDisplay');
 
-  if (roundEl) roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
+  if (roundEl) {
+    roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
+    roundEl.title = `Game ends after ${state.maxRounds} invasions, or sooner if Constantinople falls. Highest gold (on hand + projected next income) wins.`;
+  }
   if (phaseEl) {
     if (state.gameOver?.type === 'fall') {
       phaseEl.textContent = 'Empire Fallen';
       phaseEl.className = 'phase-badge phase-empire-fallen';
+      phaseEl.title = 'Constantinople has fallen. The game ends.';
     } else {
       phaseEl.textContent = PHASE_NAMES[state.phase] || state.phase;
       phaseEl.className = `phase-badge phase-${state.phase}`;
+      phaseEl.title = PHASE_TOOLTIPS[state.phase] || '';
     }
   }
 
@@ -137,7 +153,7 @@ export function renderEmpireFallenBanner(state) {
     topBar.insertBefore(banner, invasionEl || null);
   }
 
-  banner.innerHTML = '<strong>Empire Fallen</strong><span>Final state, last turn, and history remain available.</span>';
+  banner.innerHTML = '<strong>Empire Fallen</strong><span>Constantinople has been sacked. The game ends now &mdash; the richest dynasty wins.</span>';
 }
 
 function getPlayerMaintenance(player) {
@@ -252,6 +268,7 @@ export function renderScoringHtml(state, options = {}) {
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
+      <p class="section-hint">Highest total wins. Total = current gold on hand + the income you would receive at the next Administration phase.</p>
       <div class="score-list">
         ${scores.map((score, index) => `
           <div class="score-row ${index === 0 ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">

@@ -2597,6 +2597,59 @@ body::before {
   line-height: 1.45;
 }
 
+.rules-card {
+  margin: 0 0 var(--sp-4);
+  border: 1px solid var(--parch-2);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.55);
+}
+.rules-card > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.rules-card > summary::-webkit-details-marker { display: none; }
+.rules-card-title {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+}
+.rules-card-toggle {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--umber-2);
+  font-style: italic;
+}
+.rules-card[open] > summary .rules-card-toggle::after { content: ' (close)'; }
+.rules-card-body {
+  padding: 0 14px 12px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--umber-1);
+  line-height: 1.5;
+}
+.rules-card-body h3 {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+  margin: 12px 0 4px;
+}
+.rules-card-body p { margin: 0 0 6px; }
+.rules-card-body ul,
+.rules-card-body ol { margin: 0 0 6px; padding-left: 18px; }
+.rules-card-body li { margin: 2px 0; }
+.rules-card-body strong { color: var(--umber-0); }
+
 .setup-ai-roster { display: grid; gap: var(--sp-2); }
 .setup-ai-seat { display: grid; gap: 4px; }
 .setup-ai-seat span { font-size: 12px; color: var(--umber-2); }

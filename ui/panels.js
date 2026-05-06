@@ -715,38 +715,39 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     'dashboard:finance',
     'Finances',
     `
+      <p class="section-hint">Gold on hand at game-end (plus your final projected income) decides the winner. Estate income comes from provinces you own; office income comes from titles via the tax cascade.</p>
       <div class="finance-grid">
-        <div class="finance-card">
+        <div class="finance-card" title="Gold currently in your treasury.">
           <span class="finance-label">Current gold</span>
           <strong>${formatGold(player.gold)}</strong>
         </div>
-        <div class="finance-card">
+        <div class="finance-card" title="Gold you will receive at the next Administration phase.">
           <span class="finance-label">Next income</span>
           <strong>${formatGold(finance.projectedIncome, { signed: true })}</strong>
         </div>
-        <div class="finance-card">
+        <div class="finance-card" title="1 gold per professional troop, paid each Cleanup.">
           <span class="finance-label">Army upkeep</span>
           <strong>${formatGold(-finance.maintenance)}</strong>
         </div>
-        <div class="finance-card">
+        <div class="finance-card" title="Treasury after next income and upkeep.">
           <span class="finance-label">Projected treasury</span>
           <strong>${formatGold(finance.nextTreasury)}</strong>
         </div>
       </div>
       <div class="dashboard-list compact">
-        <div class="dashboard-list-row">
+        <div class="dashboard-list-row" title="Profit (P) from each owned province; P+T if tax-exempt.">
           <span>Estate income this round</span>
           <span class="dashboard-list-value">${formatGold(finance.privateIncome, { signed: true })}</span>
         </div>
-        <div class="dashboard-list-row">
+        <div class="dashboard-list-row" title="Tax cascade from offices you hold (Basileus, Domestic, Admiral, Strategos, Bishop, Patriarch, Empress, Chief of Eunuchs).">
           <span>Office income this round</span>
           <span class="dashboard-list-value">${formatGold(finance.officeIncome, { signed: true })}</span>
         </div>
-        <div class="dashboard-list-row">
+        <div class="dashboard-list-row" title="Levies your offices will raise next Administration. They disband at end of round.">
           <span>Levies next Administration</span>
           <span class="dashboard-list-value">${formatLevies(finance.levyProjection)}</span>
         </div>
-        <div class="dashboard-list-row">
+        <div class="dashboard-list-row" title="1 gold per professional troop. Mercenaries cost nothing in upkeep but disband each round.">
           <span>Professional upkeep next Cleanup</span>
           <span class="dashboard-list-value">${formatGold(-finance.maintenance)}</span>
         </div>
@@ -763,6 +764,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     'dashboard:themes',
     'Estates',
     themes.length ? `
+      <p class="section-hint">P / T / L = profit (yours), tax (cascade), levies (raised by region or Strategos). Threatened estates are on the current invasion route. Sale price below = 2&times;P.</p>
       <div class="dashboard-list">
         ${themes.map((theme) => `
           <div class="dashboard-list-row">
@@ -787,6 +789,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     'dashboard:army',
     'Army',
     armyEntries.length ? `
+      <p class="section-hint">Troops are split per office. Each office orders its troops to the Capital or the Frontier separately during Secret Orders.</p>
       <div class="dashboard-list">
         ${armyEntries.map((entry) => `
           <div class="dashboard-list-row">
@@ -811,6 +814,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     'dashboard:titles',
     'Titles',
     titleEntries.length ? `
+      <p class="section-hint">Each title carries an income share and the right to act in Court. A successful coup forces redistribution of the four major titles.</p>
       <div class="dashboard-list">
         ${titleEntries.map((entry) => `
           <div class="dashboard-list-row">
@@ -946,6 +950,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   const taxExemptionThemes = getTaxExemptionCandidates(state, activePlayerId);
   const courtAlreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
   const estatesBody = `
+    <p class="section-hint">Buy a free province for 2&times;P (its profit). The owner collects P each Administration and the province raises one fewer levy.</p>
     ${availableThemes.length ? `
       <div class="theme-market">
         ${availableThemes.map((theme) => {
@@ -966,6 +971,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     privilegeParts.push(`
       <div class="court-section">
         <h4>Tax Exemptions</h4>
+        <p class="section-hint">Pay 2&times;T to the Basileus. The province then pays no tax to the empire and you keep P+T instead of P. The Basileus cannot exempt his own land.</p>
         <div class="gift-options">
           ${taxExemptionThemes.map((theme) => {
             const check = canGrantTaxExemption(state, activePlayerId, theme.id);
@@ -982,6 +988,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     privilegeParts.push(`
       <div class="court-section">
         <h4>Church Gifts</h4>
+        <p class="section-hint">You lose ownership of the land but become its Bishop for life &mdash; this bishopric cannot be revoked. Church tax goes 2 to the Patriarch, then 1 to each Bishop in turn.</p>
         <div class="gift-options">
           ${playerOwnedThemes.map((theme) => `
             <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
@@ -1000,12 +1007,13 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   let courtHtml = `<div class="court-panel">
     <div class="phase-header">
       <h3>Imperial Court</h3>
+      <p class="section-hint">Take any actions you can afford, in any order. Confirm at the bottom when done. The next round begins once every player has confirmed.</p>
     </div>`;
 
   courtHtml += renderFoldSection(
     'court:appointments',
     'Appointments',
-    appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>',
+    `<p class="section-hint">The Basileus appoints one minor title (Empress, Chief of Eunuchs, a Strategos or a Bishop). Each Domestic / Admiral appoints one Strategos in their region. The Patriarch appoints one Bishop. You cannot appoint yourself two rounds in a row.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
     uiSectionState,
     {
       defaultOpen: true,
@@ -1035,7 +1043,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += renderFoldSection(
     'court:armies',
     'Armies',
-    renderArmyManagement(state, activePlayerId),
+    `<p class="section-hint">Professional troops are permanent (max 1 recruit per office per round, 1 gold upkeep per troop each Cleanup). Mercenaries last only this round and cost 1, +2, +3... per additional troop. The Patriarch, Empress and Chief of Eunuchs cannot hold professional troops.</p>${renderArmyManagement(state, activePlayerId)}`,
     uiSectionState,
     {
       defaultOpen: true,
@@ -1046,6 +1054,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     'court:confirm',
     'Confirm',
     `
+      <p class="section-hint">Confirming locks in your Court actions. Once every player has confirmed, the Secret Orders phase begins.</p>
       <div class="court-actions">
         <button class="btn-confirm ${courtAlreadyConfirmed ? 'disabled' : ''}" data-action="confirm-court" ${courtAlreadyConfirmed ? 'disabled' : ''}>
           ${courtAlreadyConfirmed ? 'Court Confirmed' : 'Confirm Court Phase'}
@@ -1367,6 +1376,7 @@ function renderRevocationOptions(state) {
 
   return `<div class="court-section revocation">
     <h4>Imperial Revocation</h4>
+    <p class="section-hint">Only the Basileus can revoke. Each revocation this round costs more troops from imperial offices: 1 for the first, 2 for the second, 3 for the third... Levies are spent before professionals; suspended professionals return next round. Bishoprics granted by church gift cannot be revoked.</p>
     <div class="revocation-shell" data-revocation-group>
       ${body}
       <input type="hidden" class="revoke-select" value="">
@@ -1518,6 +1528,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
   let html = `<div class="orders-panel">
     <div class="phase-header">
       <h3>Secret Orders</h3>
+      <p class="section-hint">Send each office's troops to the Capital (vote in this round's coup) or the Frontier (fight the invader), then pick the candidate you back for the throne. Orders are locked in simultaneously and revealed at Resolution. The Empress, Patriarch and Chief of Eunuchs can only defend the Capital.</p>
     </div>`;
 
   if (!alreadyLocked) {
@@ -1558,7 +1569,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
     html += renderFoldSection(
       'orders:deployments',
       'Deploy Troops',
-      `<div class="deploy-grid">${deploymentRows}</div>`,
+      `<p class="section-hint">Each office decides where its troops go. Frontier troops fight the invader (you need more total than the invader's strength to win). Capital troops vote in the coup for whichever claimant you pick below.</p><div class="deploy-grid">${deploymentRows}</div>`,
       uiSectionState,
       {
         defaultOpen: true,
@@ -1569,6 +1580,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       'orders:claimant',
       'Choose Your Claimant',
       `
+        <p class="section-hint">All your Capital troops back this candidate. Most votes wins the throne; ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles among the other players.</p>
         <div class="candidate-grid">
           ${state.players.map((candidatePlayer) => `
             <button class="candidate-btn ${candidatePlayer.id === state.basileusId ? 'current-bas' : ''} ${candidatePlayer.id === playerId ? 'selected' : ''}" data-candidate="${candidatePlayer.id}" style="${getPlayerStyleAttr(state, candidatePlayer.id)}">
@@ -1591,11 +1603,13 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
     'Confirm',
     alreadyLocked
       ? `
+        <p class="section-hint">Your orders are locked. They will be revealed once every player has submitted.</p>
         <div class="orders-actions">
           <button class="btn-lock-orders disabled" data-action="lock-orders" disabled>Secret Orders Locked</button>
         </div>
       `
       : `
+        <p class="section-hint">Once locked, your orders cannot be changed this round.</p>
         <div class="orders-actions">
           <button class="btn-lock-orders" data-action="lock-orders">Lock Secret Orders</button>
         </div>
@@ -1655,6 +1669,7 @@ function renderMajorTitleReassignmentSection(state) {
 
   return `<div class="resolution-section title-reassignment">
     <h4>Redistribute Major Titles</h4>
+    <p class="section-hint">The new Basileus assigns the four major titles to the other players. The Basileus cannot keep any major title. Distribution must follow the per-player-count quota for the game to proceed.</p>
     <div class="title-reassignment-grid">
       ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => `
         <label class="title-reassignment-row">
@@ -1679,6 +1694,7 @@ export function renderResolutionPanel(container, state, options = {}) {
   let html = `<div class="resolution-panel">
     <div class="phase-header">
       <h3>Resolution</h3>
+      <p class="section-hint">Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.</p>
     </div>`;
 
   // Coup result
@@ -1686,6 +1702,7 @@ export function renderResolutionPanel(container, state, options = {}) {
     const winner = getPlayer(state, coup.winner);
     html += `<div class="resolution-section">
       <h4>Coup</h4>
+      <p class="section-hint">Most Capital troops backing one candidate wins. Ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles.</p>
       <div class="coup-result">
         <span class="coup-winner">
           ${renderPlayerRoleName(state, winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
@@ -1713,6 +1730,7 @@ export function renderResolutionPanel(container, state, options = {}) {
   if (war) {
     const inv = state.currentInvasion;
     html += `<div class="resolution-section">
+      <p class="section-hint">Frontier troops &gt; invader = victory (reconquer along the route, cost 1, +1, +1...). Frontier troops &lt; invader = defeat (invader takes provinces along the route at the same cost). Equal = stalemate.</p>
       <h4>âš” ${inv?.name || 'Invasion'}</h4>
       <div class="war-result ${war.outcome}">
         <div class="war-numbers">
@@ -1749,6 +1767,7 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
   let html = `<div class="resolution-panel">
     <div class="phase-header">
       <h3>Resolution</h3>
+      <p class="section-hint">Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.</p>
     </div>`;
 
   if (coup) {
@@ -1766,6 +1785,7 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
 
     html += `<div class="resolution-section">
       <h4>Coup</h4>
+      <p class="section-hint">Most Capital troops backing one candidate wins. Ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles.</p>
       <div class="coup-result">
         <span class="coup-winner">
           ${renderPlayerRoleName(state, winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
@@ -1787,6 +1807,7 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
 
     html += `<div class="resolution-section">
       <h4>${invasionName}</h4>
+      <p class="section-hint">Frontier troops &gt; invader = victory (reconquer along the route, cost 1, +1, +1...). Frontier troops &lt; invader = defeat (invader takes provinces along the route at the same cost). Equal = stalemate.</p>
       <div class="war-result ${war.outcome}">
         <div class="war-numbers">
           <span class="empire-force">Empire: ${war.frontierTroops}</span>

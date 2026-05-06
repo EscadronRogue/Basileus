@@ -50,6 +50,59 @@
       <h1>BASILEUS</h1>
       <p class="setup-subtitle">A game of dynastic profiteering inside the Byzantine Empire</p>
 
+      <details class="rules-card">
+        <summary><span class="rules-card-title">How to Play</span><span class="rules-card-toggle">Rules</span></summary>
+        <div class="rules-card-body">
+          <h3>Goal</h3>
+          <p>Be the richest dynasty when the invasion deck runs out. Gold on hand plus your next round of income decides the winner. If invaders sack Constantinople, the empire falls and the game ends immediately.</p>
+
+          <h3>A Round, Step By Step</h3>
+          <ol>
+            <li><strong>Invasion drawn.</strong> A new threat appears with a route through the provinces.</li>
+            <li><strong>Administration.</strong> Provinces pay out gold and raise levies automatically.</li>
+            <li><strong>Court.</strong> Buy estates, appoint officers, gift land to the church, recruit troops, hire mercenaries. Confirm when done.</li>
+            <li><strong>Secret orders.</strong> Each player privately sends every troop to either the Capital (vote in the coup) or the Frontier (fight the invasion), and picks who to back for the throne.</li>
+            <li><strong>Resolution.</strong> Coup is decided first, then the war. Lost provinces become occupied; reconquered ones go vacant.</li>
+            <li><strong>Cleanup.</strong> Pay 1 gold per professional troop in upkeep. Levies and mercenaries disband.</li>
+          </ol>
+
+          <h3>Provinces &amp; Money</h3>
+          <p>Each province has three numbers: <strong>P</strong> (profit to its private owner), <strong>T</strong> (tax to the empire), <strong>L</strong> (levies it raises).</p>
+          <ul>
+            <li><strong>Buying land</strong> costs 2&times;P. The owner collects P every Administration. Privately owned land also raises one fewer levy.</li>
+            <li><strong>Tax exemption</strong> costs 2&times;T (paid to the Basileus). The owner then keeps P+T instead of P, and the province pays no tax to the empire.</li>
+            <li><strong>Tax cascade</strong> on regional tax: the first coin goes to the Basileus, the second to the regional Domestic or Admiral, the third to the Church, then the cycle repeats. Constantinople tax cycles Basileus &rarr; Empress &rarr; Chief of Eunuchs.</li>
+            <li><strong>Strategos shortcut.</strong> A province with an appointed Strategos sends all its tax and levies straight to that Strategos, bypassing the cascade.</li>
+            <li><strong>Church gift.</strong> Donating your land to the church makes you its Bishop for life (no Patriarch can revoke it). Church tax goes 2 to the Patriarch, then 1 to each Bishop in turn.</li>
+          </ul>
+
+          <h3>Titles &amp; Appointments</h3>
+          <ul>
+            <li><strong>Basileus</strong> (the emperor) appoints exactly one minor title each round: Empress, Chief of Eunuchs, a Strategos, or a Bishop.</li>
+            <li><strong>Domestic of the East / West</strong> and the <strong>Admiral</strong> each appoint one Strategos in their region.</li>
+            <li><strong>Patriarch</strong> appoints one Bishop.</li>
+            <li>You cannot appoint yourself two rounds in a row.</li>
+          </ul>
+
+          <h3>Armies</h3>
+          <ul>
+            <li><strong>Levies</strong> appear during Administration and disband at end of round. They are tied to the office that raised them.</li>
+            <li><strong>Professional troops</strong> are permanent: at most 1 recruit per office per round, and each costs 1 gold of upkeep every Cleanup.</li>
+            <li><strong>Mercenaries</strong> are hired in Court and disband at end of round. The cost rises triangularly: 1, then +2, then +3, etc. The whole company deploys to one place.</li>
+            <li><strong>Capital-locked offices</strong> (Empress, Patriarch, Chief of Eunuchs) cannot send their troops to the frontier &mdash; they always defend the throne.</li>
+          </ul>
+
+          <h3>Coup &amp; War</h3>
+          <ul>
+            <li><strong>Coup.</strong> Add up the Capital troops backing each candidate. Most votes wins. Ties favour the sitting Basileus. A new Basileus redistributes all four major titles among the other players.</li>
+            <li><strong>War.</strong> Frontier troops minus invader strength. Win &rarr; reconquer occupied provinces along the route (cost 1, then +1, +1...). Lose &rarr; invader advances along the route capturing provinces (same triangular cost). If the invader reaches Constantinople, the empire falls.</li>
+          </ul>
+
+          <h3>Imperial Revocation</h3>
+          <p>The Basileus can revoke titles, tax exemptions, or estates by spending the troops attached to imperial offices. The first revocation per round costs 1 troop, the second 2, the third 3, etc. Levies are spent before professionals; suspended professionals return next round.</p>
+        </div>
+      </details>
+
       <div class="setup-field">
         <label>Number of Players</label>
         <select id="setupPlayers">
