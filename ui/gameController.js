@@ -139,8 +139,8 @@ export class GameController {
     }
 
     const spectatorMessage = state.phase === 'orders'
-      ? 'AI orders stay hidden until resolution. Switch back to your dynasty to lock your own orders.'
-      : 'This dynasty is AI-controlled during court. You can inspect its public position but not issue commands.';
+      ? 'Switch back to your dynasty to continue.'
+      : 'This dynasty is AI-controlled.';
 
     renderGameActionPanel({
       panel: document.getElementById('actionPanel'),

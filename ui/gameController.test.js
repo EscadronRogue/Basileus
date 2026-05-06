@@ -40,7 +40,7 @@ test('court panel groups army information and mercenary hiring under Armies', ()
   const container = makePanelContainer();
   renderCourtPanel(container, state, playerId, {}, { uiState: null });
 
-  assert.match(container.innerHTML, /Phase Guide/);
+  assert.doesNotMatch(container.innerHTML, /Phase Guide/);
   assert.match(container.innerHTML, /Appointments/);
   assert.match(container.innerHTML, /Estates/);
   assert.match(container.innerHTML, /Privileges And Church/);
@@ -62,14 +62,14 @@ test('orders panel contains only deployments, claimant choice, and order locking
   const container = makePanelContainer();
   renderOrdersPanel(container, state, playerId, {}, { uiState: null });
 
-  assert.match(container.innerHTML, /Phase Guide/);
+  assert.doesNotMatch(container.innerHTML, /Phase Guide/);
   assert.match(container.innerHTML, /Deploy Troops/);
   assert.match(container.innerHTML, /Choose Your Claimant/);
   assert.match(container.innerHTML, /Confirm/);
   assert.match(container.innerHTML, /Lock Secret Orders/);
   assert.match(container.innerHTML, /Professional troops 2 \| 2 levies \| 0 mercenaries/);
   assert.match(container.innerHTML, /Mercenary Company/);
-  assert.match(container.innerHTML, /1 mercenary \| Disbands in Cleanup/);
+  assert.match(container.innerHTML, /1 mercenary \| No levies \| No professional troops/);
   assert.doesNotMatch(container.innerHTML, /Hire Mercenaries/);
   assert.doesNotMatch(container.innerHTML, /mercTotalCost/);
 });

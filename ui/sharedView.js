@@ -19,9 +19,7 @@ export function createDefaultUiState() {
       history: false,
       action: true,
     },
-    sections: {
-      'court:guide': true,
-    },
+    sections: {},
     dashboardFocus: null,
   };
 }
@@ -90,10 +88,10 @@ export const ACTION_PANEL_TITLE_BY_PHASE = {
 };
 
 export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
-  court: 'Public appointments, estates, privileges, and army preparation',
-  orders: 'Secret troop deployments and the throne vote',
-  resolution: 'Reveal orders and settle the round',
-  scoring: 'Projected wealth at the end of the game',
+  court: '',
+  orders: '',
+  resolution: '',
+  scoring: '',
 };
 
 export function renderTopBar(state) {
@@ -217,7 +215,7 @@ export function renderActionShell(panel, state, uiState) {
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Phase Panel</span>
           <span class="sidebar-panel-title">${ACTION_PANEL_TITLE_BY_PHASE[state.phase] || 'Action Panel'}</span>
-          <span class="sidebar-panel-subtitle">${ACTION_PANEL_SUBTITLE_BY_PHASE[state.phase] || 'Current phase controls and details'}</span>
+          ${ACTION_PANEL_SUBTITLE_BY_PHASE[state.phase] ? `<span class="sidebar-panel-subtitle">${ACTION_PANEL_SUBTITLE_BY_PHASE[state.phase]}</span>` : ''}
         </span>
       </button>
       ${isOpen ? '<div class="sidebar-panel-body" data-role="action-panel-body"></div>' : ''}
