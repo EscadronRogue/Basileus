@@ -15,10 +15,12 @@ import {
   getFreeThemes,
   getPlayerThemes,
   getPlayer,
+  getPlayerMercenaryTroops,
   formatPlayerLabel,
   getOfficeMercenaryCount,
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
+  MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
 import {
   formatGold,
@@ -73,7 +75,7 @@ function isCapitalLockedOfficeKey(officeKey) {
 // `label` is HTML â€” for major/minor offices it's a single title cartouche,
 // and for theme commands it's a "<title-cartouche> of <land-cartouche>" pair.
 // `plain` is a fallback string for non-HTML contexts (e.g. log copy).
-function getPlayerOffices(state, playerId) {
+function getPlayerOffices(state, playerId, options = {}) {
   const offices = [];
   const titleBadge = (kind, opts) => renderTitleBadge(state, kind, { holderId: playerId, compact: true, ...opts });
   if (playerId === state.basileusId) {
@@ -97,6 +99,14 @@ function getPlayerOffices(state, playerId) {
         plain: `Strategos of ${theme.name}`,
       });
     }
+  }
+  if (options.includeMercenaryCompany) {
+    offices.push({
+      key: MERCENARY_COMPANY_KEY,
+      label: 'Mercenary Company',
+      plain: 'Mercenary Company',
+      mercenaryOnly: true,
+    });
   }
   return offices;
 }
@@ -126,19 +136,19 @@ function formatSigned(value) {
 
 const PHASE_GUIDES = {
   court: {
-    title: 'Public management phase',
+    title: 'Court',
     points: [
-      'Administration has already paid out gold and assigned levies for this round.',
-      'Everything you do here is public: appointments, estates, privileges, troop changes, and mercenary hiring.',
-      'Use Court to shape your economy and army before Secret Orders decides where those troops go.',
+      'What happens now: Administration already paid your gold and raised this round\'s levies.',
+      'What you choose now: Appoint offices, buy or gift estates, change privileges, recruit professional troops, and hire mercenaries.',
+      'What stays public: Every Court action is visible to every dynasty.',
     ],
   },
   orders: {
-    title: 'Secret orders phase',
+    title: 'Secret Orders',
     points: [
-      'Mercenaries are already hired. Secret Orders only decide where each office sends its troops and who it backs for the throne.',
-      'These choices stay hidden until Resolution.',
-      'Capital troops support your chosen claimant. Frontier troops defend the empire against the invasion.',
+      'What happens now: You decide where each army goes and which claimant your capital troops support.',
+      'What you choose now: Send each army to the capital or the frontier, then choose one claimant for the throne vote.',
+      'What stays secret: Troop destinations and claimant support stay hidden until Resolution.',
     ],
   },
 };
@@ -156,6 +166,20 @@ function renderPhaseGuide(phase) {
 
 function renderSectionIntro(text) {
   return text ? `<p class="section-hint">${text}</p>` : '';
+}
+
+function renderArmySummaryLine(entry) {
+  if (entry.officeKey === MERCENARY_COMPANY_KEY) {
+    return `${formatMercenaries(entry.mercenaries)} | No levies | No professional troops`;
+  }
+  return `Professional troops ${entry.professionalTroops} | ${formatLevies(entry.levies)} | ${formatMercenaries(entry.mercenaries)}`;
+}
+
+function renderArmyTimingLine(entry) {
+  if (entry.officeKey === MERCENARY_COMPANY_KEY) {
+    return 'Mercenaries cost more with each hire this round and disband in Cleanup.';
+  }
+  return 'Levies last for this round only. Professional troops stay until dismissed and cost upkeep in Cleanup.';
 }
 
 function getPrivateIncomeProjection(state, playerId) {
@@ -217,14 +241,14 @@ function getPlayerTitleEntries(state, playerId) {
   return titles;
 }
 
-function getPlayerArmyEntries(state, playerId, includeEmpty = false) {
-  return getPlayerOffices(state, playerId)
+function getPlayerArmyEntries(state, playerId, includeEmpty = false, options = {}) {
+  return getPlayerOffices(state, playerId, { includeMercenaryCompany: Boolean(options.includeMercenaryCompany) })
     .map((office) => ({
       officeKey: office.key,
       label: office.label,
-      professionalTroops: getPlayer(state, playerId).professionalArmies[office.key] || 0,
-      levies: state.currentLevies?.[office.key] || 0,
-      mercenaries: getOfficeMercenaryCount(state, playerId, office.key),
+      professionalTroops: office.mercenaryOnly ? 0 : (getPlayer(state, playerId).professionalArmies[office.key] || 0),
+      levies: office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0),
+      mercenaries: office.mercenaryOnly ? getPlayerMercenaryTroops(state, playerId) : getOfficeMercenaryCount(state, playerId, office.key),
     }))
     .map((entry) => ({
       ...entry,
@@ -723,7 +747,9 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
   const themes = getPlayerThemes(state, playerId);
   const selectedProvince = getProvinceSummary(state, selectedProvinceId);
   const titleEntries = getPlayerTitleEntries(state, playerId);
-  const armyEntries = getPlayerArmyEntries(state, playerId);
+  const armyEntries = getPlayerArmyEntries(state, playerId, false, {
+    includeMercenaryCompany: getPlayerMercenaryTroops(state, playerId) > 0,
+  });
   const finance = getProjectedFinance(state, playerId);
   const opinionRows = getPlayerOpinionRows(state, options.aiMeta || null, playerId);
   const isOpen = panelIsOpen(options.uiState, 'dashboard', true);
@@ -755,26 +781,38 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
       </div>
       <div class="dashboard-list compact">
         <div class="dashboard-list-row">
-          <span>How money arrives</span>
-          <span class="dashboard-list-value">Administration pays it before Court begins</span>
+          <span>How do I get gold?</span>
+          <span class="dashboard-list-value">Administration pays estate profit and office income before Court starts.</span>
+        </div>
+        <div class="dashboard-list-row">
+          <span>Who gets province tax?</span>
+          <span class="dashboard-list-value">Province tax goes to the office or church unless the province is tax exempt.</span>
+        </div>
+        <div class="dashboard-list-row">
+          <span>What changes with tax exemption?</span>
+          <span class="dashboard-list-value">The estate owner keeps the province tax and that province pays no tax this round.</span>
+        </div>
+        <div class="dashboard-list-row">
+          <span>What leaves play in Cleanup?</span>
+          <span class="dashboard-list-value">Levies and mercenaries leave play. Professional troops stay and pay upkeep.</span>
         </div>
       </div>
       <div class="dashboard-list compact">
         <div class="dashboard-list-row">
-          <span>Estate income</span>
+          <span>Estate income this round</span>
           <span class="dashboard-list-value">${formatGold(finance.privateIncome, { signed: true })}</span>
         </div>
         <div class="dashboard-list-row">
-          <span>Office income and court cascades</span>
+          <span>Office income this round</span>
           <span class="dashboard-list-value">${formatGold(finance.officeIncome, { signed: true })}</span>
         </div>
         <div class="dashboard-list-row">
-          <span>Projected levies next Administration</span>
+          <span>Levies next Administration</span>
           <span class="dashboard-list-value">${formatLevies(finance.levyProjection)}</span>
         </div>
         <div class="dashboard-list-row">
-          <span>Upkeep timing</span>
-          <span class="dashboard-list-value">Professional troops cost gold during Cleanup</span>
+          <span>Professional upkeep next Cleanup</span>
+          <span class="dashboard-list-value">${formatGold(-finance.maintenance)}</span>
         </div>
       </div>
     `,
@@ -795,7 +833,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <div class="dashboard-list-row">
             <div>
               <div class="dashboard-list-title">${renderProvinceBadge(state, theme, { showValues: true })}</div>
-              <div class="dashboard-list-note">${theme.taxExempt ? 'tax exempt | ' : ''}${isThemeThreatened(state, theme.id) ? 'threatened | ' : ''}${formatProvinceYield(theme)} | exempt income ${formatGold(getTaxExemptOwnerIncome(theme))}</div>
+              <div class="dashboard-list-note">${formatProvinceYield(theme)}${theme.taxExempt ? ' | tax exempt' : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''} | tax-exempt income ${formatGold(getTaxExemptOwnerIncome(theme))}</div>
             </div>
             <span class="dashboard-list-value">${formatGold(getThemeLandPrice(theme))}</span>
           </div>
@@ -815,12 +853,31 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     'dashboard:army',
     'Army',
     armyEntries.length ? `
+      <div class="dashboard-list compact">
+        <div class="dashboard-list-row">
+          <span>What are levies?</span>
+          <span class="dashboard-list-value">Levies are raised automatically in Administration and leave play in Cleanup.</span>
+        </div>
+        <div class="dashboard-list-row">
+          <span>What are professional troops?</span>
+          <span class="dashboard-list-value">You recruit them in Court. They stay until dismissed and each one costs upkeep in Cleanup.</span>
+        </div>
+        <div class="dashboard-list-row">
+          <span>What are mercenaries?</span>
+          <span class="dashboard-list-value">You hire them in Court through the Mercenary Company. They last one round and then disband.</span>
+        </div>
+        <div class="dashboard-list-row">
+          <span>Why send troops to capital or frontier?</span>
+          <span class="dashboard-list-value">Capital troops vote for Basileus. Frontier troops fight the invasion.</span>
+        </div>
+      </div>
       <div class="dashboard-list">
         ${armyEntries.map((entry) => `
           <div class="dashboard-list-row">
             <div>
               <div class="dashboard-list-title">${entry.label}</div>
-              <div class="dashboard-list-note">Professional troops ${entry.professionalTroops} | ${formatLevies(entry.levies)} | ${formatMercenaries(entry.mercenaries)}</div>
+              <div class="dashboard-list-note">${renderArmySummaryLine(entry)}</div>
+              <div class="dashboard-list-note">${renderArmyTimingLine(entry)}</div>
             </div>
             <span class="dashboard-list-value">${formatTroops(entry.total)}</span>
           </div>
@@ -871,12 +928,13 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         </div>
         <div class="dashboard-province-meta">Price ${formatGold(selectedProvince.landPrice)}${selectedProvince.taxExempt ? ' | tax exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
         <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
-        <div class="dashboard-province-detail">Yield legend: ${formatProvinceYield(selectedProvince)}</div>
-        <div class="dashboard-province-detail">Normal split: owner keeps ${formatGold(selectedProvince.normalOwnerIncome)} and the province tax sends ${formatGold(selectedProvince.normalTaxIncome)} into office or church distribution.</div>
-        <div class="dashboard-province-detail">Tax exempt: the estate owner keeps ${formatGold(selectedProvince.taxExemptIncome)} and the province stops paying tax this round.</div>
-        <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos} (${formatGold(selectedProvince.strategosTaxIncome)} tax + ${formatLevies(selectedProvince.strategosLevyIncome)} from this province only)</div>
+        <div class="dashboard-province-detail">Profit / Tax / Levies: ${formatProvinceYield(selectedProvince)}</div>
+        <div class="dashboard-province-detail">Normal income: the estate owner keeps ${formatGold(selectedProvince.normalOwnerIncome)} and the province pays ${formatGold(selectedProvince.normalTaxIncome)} in tax.</div>
+        <div class="dashboard-province-detail">Tax exempt: the estate owner keeps ${formatGold(selectedProvince.taxExemptIncome)} and the province pays no tax this round.</div>
+        <div class="dashboard-province-detail">Levies: this province adds ${formatLevies(selectedProvince.levies)} to its office pool when Administration resolves.</div>
+        <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos} (${formatGold(selectedProvince.strategosTaxIncome)} tax and ${formatLevies(selectedProvince.strategosLevyIncome)} from this province when it is not tax exempt or church-owned)</div>
         <div class="dashboard-province-detail">Bishop: ${selectedProvince.bishop}</div>
-        <div class="dashboard-province-detail">Church gift: the church receives ${formatGold(selectedProvince.tax)} in province tax, and the levies continue through the regional pool.</div>
+        <div class="dashboard-province-detail">Church gift: the church receives ${formatGold(selectedProvince.tax)} in tax. Levies still come from the regional pool.</div>
       </div>
     `,
     options.uiState,
@@ -984,7 +1042,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   const taxExemptionThemes = getTaxExemptionCandidates(state, activePlayerId);
   const courtAlreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
   const estatesBody = `
-    ${renderSectionIntro('Province badges show Profit / Tax / Levies. Buying an estate gives you its profit every Administration and reduces its future levy by 1.')}
+    ${renderSectionIntro('Each province badge shows Profit / Tax / Levies. Buying an estate gives you its profit each Administration and reduces that province\'s levies by 1.')}
     ${availableThemes.length ? `
       <div class="theme-market">
         ${availableThemes.map((theme) => {
@@ -1005,7 +1063,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     privilegeParts.push(`
       <div class="court-section">
         <h4>Tax Exemptions</h4>
-        ${renderSectionIntro('A tax exemption costs 2 x province tax. The estate owner keeps that tax income, and the Basileus receives the payment immediately.')}
+        ${renderSectionIntro('Pay 2 x province tax now. The estate owner keeps that province tax, and the Basileus receives the payment immediately.')}
         <div class="gift-options">
           ${taxExemptionThemes.map((theme) => {
             const check = canGrantTaxExemption(state, activePlayerId, theme.id);
@@ -1022,7 +1080,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     privilegeParts.push(`
       <div class="court-section">
         <h4>Church Gifts</h4>
-        ${renderSectionIntro('Gifting an estate to the church removes your ownership. The church receives that province tax, and levies keep flowing through the regional pool.')}
+        ${renderSectionIntro('Give up the estate. The church receives that province tax, and levies still come from the regional pool.')}
         <div class="gift-options">
           ${playerOwnedThemes.map((theme) => `
             <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
@@ -1041,7 +1099,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   let courtHtml = `<div class="court-panel">
     <div class="phase-header">
       <h3>Imperial Court</h3>
-      <p class="phase-hint">Public appointments, estates, privileges, and army preparation before Secret Orders.</p>
+      <p class="phase-hint">Make your public appointments, estate decisions, and army changes before Secret Orders.</p>
     </div>`;
 
   courtHtml += renderFoldSection(
@@ -1058,11 +1116,11 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += renderFoldSection(
     'court:appointments',
     'Appointments',
-    `${renderSectionIntro('Historical titles stay in the game, but this section simply answers: which office can appoint, and who receives the office this round?')}${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no remaining appointments right now.</div>'}`,
+    `${renderSectionIntro('Choose who receives each open office or province command this round. That holder receives the office benefits when Administration resolves next round.')}${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
     uiSectionState,
     {
       defaultOpen: true,
-      summary: 'Court and regional offices',
+      summary: 'Assign open offices and province commands',
     }
   );
 
@@ -1073,7 +1131,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     uiSectionState,
     {
       defaultOpen: false,
-      summary: 'Buy private estates and review province yields',
+      summary: 'Buy private estates and review province income',
     }
   );
 
@@ -1084,7 +1142,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     uiSectionState,
     {
       defaultOpen: false,
-      summary: 'Tax exemptions, church gifts, and imperial revocation',
+      summary: 'Tax exemptions, church gifts, and revocations',
     }
   );
 
@@ -1103,7 +1161,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     'court:confirm',
     'Confirm',
     `
-      ${renderSectionIntro('Confirm when your public management is finished. After every dynasty confirms Court, the game moves to Secret Orders.')}
+      ${renderSectionIntro('Confirm when you are done with public actions. After every dynasty confirms Court, the game moves to Secret Orders.')}
       <div class="court-actions">
         <button class="btn-confirm ${courtAlreadyConfirmed ? 'disabled' : ''}" data-action="confirm-court" ${courtAlreadyConfirmed ? 'disabled' : ''}>
           ${courtAlreadyConfirmed ? 'Court Confirmed' : 'Confirm Court Phase'}
@@ -1294,14 +1352,14 @@ function renderBasileusAppointments(state, selectedProvinceId) {
   const already = state.courtActions?.basileusAppointed;
   if (already) {
     return `<div class="appointment-block done">
-      <span class="appt-label">âœ“ Basileus appointment made this round</span>
+      <span class="appt-label">Done: the Basileus made this round's appointment.</span>
     </div>`;
   }
 
   const titleTypes = getOpenBasileusMinorTitleTypes(state);
   if (!titleTypes.length) {
     return `<div class="appointment-block done">
-      <span class="appt-label">âœ“ No eligible Basileus appointments remain</span>
+      <span class="appt-label">No Basileus appointment is available right now.</span>
     </div>`;
   }
 
@@ -1311,7 +1369,7 @@ function renderBasileusAppointments(state, selectedProvinceId) {
   const onCooldown = selfAppointmentOnCooldown(state, appointerId);
 
   return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
-    <span class="appt-label">Basileus appoints 1 minor title:</span>
+    <span class="appt-label">Basileus: choose one court title or province office to appoint.</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       ${renderAppointmentGrid(
@@ -1341,20 +1399,20 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
   const already = state.courtActions?.[`${titleKey}_appointed`];
   if (already) {
     return `<div class="appointment-block done">
-      <span class="appt-label">âœ“ ${title.name} â€” Strategos appointed</span>
+      <span class="appt-label">Done: ${title.name} appointed a Strategos this round.</span>
     </div>`;
   }
 
   if (!themes.length) {
     return `<div class="appointment-block done">
-      <span class="appt-label">No unappointed Strategos slots remain for ${title.name}</span>
+      <span class="appt-label">No open Strategos post remains for ${title.name}.</span>
     </div>`;
   }
 
   const onCooldown = selfAppointmentOnCooldown(state, appointerId);
 
   return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
-    <span class="appt-label">${title.name} â†’ appoint Strategos:</span>
+    <span class="appt-label">${title.name}: choose a province and appoint its Strategos.</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       ${renderAppointmentGrid(
@@ -1374,20 +1432,20 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
   const already = state.courtActions?.patriarchAppointed;
   if (already) {
     return `<div class="appointment-block done">
-      <span class="appt-label">âœ“ Patriarch â€” Bishop appointed</span>
+      <span class="appt-label">Done: the Patriarch appointed a Bishop this round.</span>
     </div>`;
   }
 
   if (!themes.length) {
     return `<div class="appointment-block done">
-      <span class="appt-label">No unappointed Bishop slots remain for the Patriarch</span>
+      <span class="appt-label">No open Bishop post remains for the Patriarch.</span>
     </div>`;
   }
 
   const onCooldown = selfAppointmentOnCooldown(state, appointerId);
 
   return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
-    <span class="appt-label">Patriarch â†’ appoint Bishop:</span>
+    <span class="appt-label">Patriarch: choose a province and appoint its Bishop.</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       ${renderAppointmentGrid(
@@ -1527,44 +1585,45 @@ function getBasileusAvailableTroopCount(state) {
 // â”€â”€â”€ Army Management with recruitment limit â”€â”€â”€
 function renderArmyManagement(state, playerId) {
   const player = getPlayer(state, playerId);
-  const offices = getPlayerOffices(state, playerId);
+  const offices = getPlayerOffices(state, playerId, { includeMercenaryCompany: true });
   const nextMercCost = getNextMercenaryCost(state, playerId);
   return `
-    ${renderSectionIntro('Levies were assigned automatically during Administration. Professional troops stay raised until dismissed, cost upkeep during Cleanup, and mercenaries are public hires that vanish after the round ends.')}
-    <p class="section-hint">Recruit +1 professional troop per office each round. Mercenary costs ramp across the whole round: 1 gold for the first, 2 gold for the second, 3 gold for the third, and so on.</p>
+    ${renderSectionIntro('Levies are already raised for this round. Use each office row to add professional troops, and use the Mercenary Company row to buy mercenaries for this round only.')}
+    <p class="section-hint">Professional troops stay until dismissed and cost upkeep in Cleanup. Each extra mercenary you hire this round costs 1 more gold than the last.</p>
     <div class="army-grid">
       ${offices.map((office) => {
-        const professionalTroops = player.professionalArmies[office.key] || 0;
-        const levies = state.currentLevies?.[office.key] || 0;
-        const mercenaries = getOfficeMercenaryCount(state, playerId, office.key);
+        const professionalTroops = office.mercenaryOnly ? 0 : (player.professionalArmies[office.key] || 0);
+        const levies = office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0);
+        const mercenaries = office.mercenaryOnly ? getPlayerMercenaryTroops(state, playerId) : 0;
         const totalTroops = professionalTroops + levies + mercenaries;
-        const recruitCheck = canRecruitProfessional(state, playerId, office.key);
+        const recruitCheck = office.mercenaryOnly ? { ok: false, reason: 'Mercenary row' } : canRecruitProfessional(state, playerId, office.key);
         const canRecruit = recruitCheck.ok;
-        const recruitLabel = canRecruit ? 'Recruit +1 professional' : (recruitCheck.reason?.includes('cannot hold') ? 'No professionals here' : 'Already recruited');
-        const canHireMercenaries = !(office.capitalLocked || isCapitalLockedOfficeKey(office.key));
+        const recruitLabel = canRecruit ? 'Recruit +1 professional troop' : (recruitCheck.reason?.includes('cannot hold') ? 'No professional troops here' : 'Already recruited this round');
         const canAffordMercenary = player.gold >= nextMercCost;
-        const hireLabel = canHireMercenaries
-          ? `Hire 1 mercenary (${formatGold(nextMercCost)})`
-          : 'Mercenaries unavailable';
+        const hireLabel = `Hire 1 mercenary (${formatGold(nextMercCost)})`;
         return `<div class="army-row">
           <div class="army-office">
             <span>${office.label}</span>
             <span class="army-count">${formatTroops(totalTroops)}</span>
-            <span class="army-count">Professional ${professionalTroops} | ${formatLevies(levies)} | ${formatMercenaries(mercenaries)}</span>
+            <span class="army-count">${renderArmySummaryLine({ officeKey: office.key, professionalTroops, levies, mercenaries })}</span>
+            <span class="section-hint">${renderArmyTimingLine({ officeKey: office.key, professionalTroops, levies, mercenaries })}</span>
           </div>
           <div class="army-controls">
-            <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${office.key}" ${canRecruit ? '' : 'disabled'}>
-              ${recruitLabel}
-            </button>
-            <button class="btn-recruit ${canHireMercenaries && canAffordMercenary ? '' : 'disabled'}" data-action="hire-mercenaries" data-office="${office.key}" ${canHireMercenaries && canAffordMercenary ? '' : 'disabled'}>
-              ${hireLabel}
-            </button>
-            <div class="army-dismiss">
-              <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, professionalTroops)}" value="${professionalTroops > 0 ? 1 : 0}" ${professionalTroops > 0 ? '' : 'disabled'}>
-              <button class="btn-dismiss ${professionalTroops > 0 ? '' : 'disabled'}" data-action="dismiss" data-office="${office.key}" ${professionalTroops > 0 ? '' : 'disabled'}>
-                Dismiss professionals
+            ${office.mercenaryOnly ? `
+              <button class="btn-recruit ${canAffordMercenary ? '' : 'disabled'}" data-action="hire-mercenaries" data-office="${office.key}" ${canAffordMercenary ? '' : 'disabled'}>
+                ${hireLabel}
               </button>
-            </div>
+            ` : `
+              <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${office.key}" ${canRecruit ? '' : 'disabled'}>
+                ${recruitLabel}
+              </button>
+              <div class="army-dismiss">
+                <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, professionalTroops)}" value="${professionalTroops > 0 ? 1 : 0}" ${professionalTroops > 0 ? '' : 'disabled'}>
+                <button class="btn-dismiss ${professionalTroops > 0 ? '' : 'disabled'}" data-action="dismiss" data-office="${office.key}" ${professionalTroops > 0 ? '' : 'disabled'}>
+                  Dismiss professional troops
+                </button>
+              </div>
+            `}
           </div>
         </div>`;
       }).join('')}
@@ -1575,7 +1634,9 @@ function renderArmyManagement(state, playerId) {
 // â”€â”€â”€ Orders Phase Panel (Secret, per-player) â”€â”€â”€
 export function renderOrdersPanel(container, state, playerId, callbacks, options = {}) {
   const player = getPlayer(state, playerId);
-  const offices = getPlayerOffices(state, playerId);
+  const offices = getPlayerOffices(state, playerId, {
+    includeMercenaryCompany: getPlayerMercenaryTroops(state, playerId) > 0,
+  });
   const mercenaryAssignments = Object.fromEntries(
     getPlayerMercenaryAssignments(state, playerId).map((entry) => [entry.officeKey, entry.count])
   );
@@ -1585,7 +1646,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
   let html = `<div class="orders-panel">
     <div class="phase-header">
       <h3>Secret Orders</h3>
-      <p class="phase-hint">${alreadyLocked ? 'Orders locked. Waiting for the other dynasties to reveal.' : 'Choose troop destinations and the claimant you support for the throne.'}</p>
+      <p class="phase-hint">${alreadyLocked ? 'Orders locked. Waiting for the other dynasties to reveal.' : 'Choose where each army goes and who your capital troops support.'}</p>
     </div>`;
 
   html += renderFoldSection(
@@ -1601,18 +1662,21 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
 
   if (!alreadyLocked) {
     const deploymentRows = offices.map((office) => {
-      const proCount = player.professionalArmies[office.key] || 0;
-      const levyCount = state.currentLevies?.[office.key] || 0;
+      const proCount = office.mercenaryOnly ? 0 : (player.professionalArmies[office.key] || 0);
+      const levyCount = office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0);
       const mercCount = mercenaryAssignments[office.key] || 0;
       const total = proCount + levyCount + mercCount;
       const capitalLocked = office.capitalLocked || isCapitalLockedOfficeKey(office.key);
+      const troopLine = office.mercenaryOnly
+        ? `${formatMercenaries(mercCount)} | Disbands in Cleanup`
+        : `Professional troops ${proCount} | ${formatLevies(levyCount)} | ${formatMercenaries(mercCount)}`;
 
       if (capitalLocked) {
         return `
           <div class="deploy-row deploy-row-locked">
             <span class="office-name">${office.label}</span>
             <span class="troop-count">${formatTroops(total)}</span>
-            <span class="section-hint">Professional ${proCount} | ${formatLevies(levyCount)} | ${formatMercenaries(mercCount)}</span>
+            <span class="section-hint">${troopLine}</span>
             <div class="deploy-toggle deploy-toggle-locked" data-office="${office.key}" data-locked="capital">
               <button class="toggle-btn active" data-dest="capital" disabled>Capital (locked)</button>
             </div>
@@ -1623,7 +1687,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
         <div class="deploy-row">
           <span class="office-name">${office.label}</span>
           <span class="troop-count">${formatTroops(total)}</span>
-          <span class="section-hint">Professional ${proCount} | ${formatLevies(levyCount)} | ${formatMercenaries(mercCount)}</span>
+          <span class="section-hint">${troopLine}</span>
           <div class="deploy-toggle" data-office="${office.key}">
             <button class="toggle-btn active" data-dest="frontier">Frontier</button>
             <button class="toggle-btn" data-dest="capital">Capital</button>
@@ -1635,7 +1699,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       'orders:deployments',
       'Deploy Troops',
       `
-        ${renderSectionIntro('Each office sends all of its troops to either the capital or the frontier. Totals already include the mercenaries hired publicly during Court.')}
+        ${renderSectionIntro('Each army goes to the capital or the frontier. Capital troops join the throne vote, and frontier troops fight the invasion.')}
         <div class="deploy-grid">${deploymentRows}</div>
       `,
       uiSectionState,
@@ -1649,7 +1713,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       'orders:claimant',
       'Choose Your Claimant',
       `
-        ${renderSectionIntro('Capital troops support this claimant when the throne vote is revealed. Frontier troops never vote.')}
+        ${renderSectionIntro('Choose who your capital troops support. Frontier troops do not vote for the throne.')}
         <div class="candidate-grid">
           ${state.players.map((candidatePlayer) => `
             <button class="candidate-btn ${candidatePlayer.id === state.basileusId ? 'current-bas' : ''} ${candidatePlayer.id === playerId ? 'selected' : ''}" data-candidate="${candidatePlayer.id}" style="${getPlayerStyleAttr(state, candidatePlayer.id)}">
@@ -1673,13 +1737,13 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
     'Confirm',
     alreadyLocked
       ? `
-        ${renderSectionIntro('Your hidden choices are sealed. You are now waiting for the other dynasties to finish Secret Orders.')}
+        ${renderSectionIntro('Your hidden choices are sealed. Wait for the other dynasties to finish Secret Orders.')}
         <div class="orders-actions">
           <button class="btn-lock-orders disabled" data-action="lock-orders" disabled>Secret Orders Locked</button>
         </div>
       `
       : `
-        ${renderSectionIntro('Lock your hidden choices when you are ready. They will stay secret until Resolution.')}
+        ${renderSectionIntro('Lock these hidden choices when you are ready. They reveal in Resolution after every dynasty submits orders.')}
         <div class="orders-actions">
           <button class="btn-lock-orders" data-action="lock-orders">Lock Secret Orders</button>
         </div>

@@ -146,19 +146,30 @@ function getPlayerMaintenance(player) {
   return Object.values(player?.professionalArmies || {}).reduce((total, count) => total + count, 0);
 }
 
+function formatCompactValue(value, mode = 'plain') {
+  const numeric = Number(value) || 0;
+  const normalized = Number.isInteger(numeric) ? numeric : Math.round(numeric * 100) / 100;
+  const magnitude = Math.abs(normalized);
+  if (mode === 'plus') return `+${magnitude}`;
+  if (mode === 'minus') return `-${magnitude}`;
+  return `${normalized}`;
+}
+
 export function getPlayerTabEconomy(player, administration) {
+  const income = administration?.income?.[player.id] || 0;
+  const upkeep = getPlayerMaintenance(player);
   return {
-    reserve: formatGold(player.gold),
-    income: formatGold(administration?.income?.[player.id] || 0, { signed: true }),
-    expense: formatGold(-getPlayerMaintenance(player)),
+    reserve: formatCompactValue(player.gold),
+    income: formatCompactValue(income, 'plus'),
+    expense: formatCompactValue(upkeep, 'minus'),
   };
 }
 
 export function renderPlayerTabFinance(economy) {
   return `
-    <span class="tab-finance" aria-label="Current gold, expected income, and upkeep" title="Current gold / expected income / upkeep">
+    <span class="tab-finance" aria-label="Reserve, income, and upkeep" title="Reserve | income / upkeep">
       <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
-      <span class="tab-finance-separator" aria-hidden="true">/</span>
+      <span class="tab-finance-separator" aria-hidden="true">|</span>
       <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
       <span class="tab-finance-separator" aria-hidden="true">/</span>
       <span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span>

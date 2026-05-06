@@ -7,12 +7,14 @@ import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './actions.js';
 import { recordHistoryEvent } from './history.js';
 import {
-  rollInvasionStrength,
+  getOfficeDisplayName,
   getPlayer,
-  formatPlayerLabel,
   getPlayerMercenaryAssignments,
+  formatPlayerLabel,
+  isMercenaryCompanyOfficeKey,
+  MERCENARY_COMPANY_KEY,
+  rollInvasionStrength,
 } from './state.js';
-import { MAJOR_TITLES } from '../data/titles.js';
 import { formatTroops } from './presentation.js';
 
 export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
@@ -32,13 +34,7 @@ function playerName(state, playerId) {
 }
 
 function officeName(state, officeKey) {
-  if (officeKey === 'BASILEUS') return 'Basileus';
-  if (MAJOR_TITLES[officeKey]) return MAJOR_TITLES[officeKey].name;
-  if (officeKey.startsWith('STRAT_')) {
-    const themeId = officeKey.replace('STRAT_', '');
-    return `Strategos of ${state.themes[themeId]?.name || themeId}`;
-  }
-  return officeKey;
+  return getOfficeDisplayName(state, officeKey);
 }
 
 function buildPlayerResolutionContribution(state, player, orders) {
@@ -64,7 +60,9 @@ function buildPlayerResolutionContribution(state, player, orders) {
 
   for (const officeKey of officeKeys) {
     const professionalTroops = player.professionalArmies?.[officeKey] || 0;
-    const levyTroops = getOfficeHolder(state, officeKey) === player.id ? (state.currentLevies?.[officeKey] || 0) : 0;
+    const levyTroops = isMercenaryCompanyOfficeKey(officeKey)
+      ? 0
+      : (getOfficeHolder(state, officeKey) === player.id ? (state.currentLevies?.[officeKey] || 0) : 0);
     const mercenaryTroops = mercenaryMap.get(officeKey) || 0;
     const totalTroops = professionalTroops + levyTroops + mercenaryTroops;
     if (totalTroops <= 0) continue;
@@ -162,7 +160,7 @@ export function phaseAdministration(state) {
   recordHistoryEvent(state, {
     category: 'system',
     type: 'administration',
-    summary: `Administration resolves for round ${state.round}.`,
+    summary: `Administration pays income and raises levies for round ${state.round}.`,
     details: {
       income: Object.entries(result.income).map(([playerId, amount]) => ({
         playerId: Number(playerId),
@@ -221,7 +219,7 @@ export function submitOrders(state, playerId, orders) {
     category: 'orders',
     type: 'orders_submitted',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} seals secret orders.`,
+    summary: `${playerName(state, playerId)} locks secret orders.`,
     details: {
       candidateId: orders.candidate,
       candidateName: playerName(state, orders.candidate),
@@ -402,7 +400,7 @@ export function phaseCleanup(state) {
 
   // 5. Clear orders
   state.allOrders = {};
-  state.currentMercenaryHires = {};
+  state.currentMercenaryTroops = {};
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;
@@ -410,6 +408,7 @@ export function phaseCleanup(state) {
 
 // ─── Helper: who holds an office ───
 function getOfficeHolder(state, officeKey) {
+  if (officeKey === MERCENARY_COMPANY_KEY) return null;
   if (officeKey === 'BASILEUS') return state.basileusId;
   if (officeKey === 'DOM_EAST' || officeKey === 'DOM_WEST' || officeKey === 'ADMIRAL' || officeKey === 'PATRIARCH') {
     for (const p of state.players) {

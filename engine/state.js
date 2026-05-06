@@ -3,6 +3,8 @@ import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../dat
 import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE, INVASION_ESTIMATE_INTERVAL } from '../data/invasions.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
+export const MERCENARY_COMPANY_KEY = 'MERCENARY_COMPANY';
+
 // ─── Seeded RNG ───
 export function makeRng(seed = Date.now()) {
   let s = seed >>> 0;
@@ -62,6 +64,21 @@ export function rollInvasionStrength(invasion, rng) {
 
 function countAvailableThemes(themes, predicate = () => true) {
   return Object.values(themes).filter((theme) => !theme.occupied && theme.id !== 'CPL' && predicate(theme)).length;
+}
+
+export function isMercenaryCompanyOfficeKey(officeKey) {
+  return officeKey === MERCENARY_COMPANY_KEY;
+}
+
+export function getOfficeDisplayName(state, officeKey) {
+  if (officeKey === MERCENARY_COMPANY_KEY) return 'Mercenary Company';
+  if (officeKey === 'BASILEUS') return 'Basileus';
+  if (MAJOR_TITLES[officeKey]) return MAJOR_TITLES[officeKey].name;
+  if (String(officeKey).startsWith('STRAT_')) {
+    const themeId = String(officeKey).replace('STRAT_', '');
+    return `Strategos of ${state?.themes?.[themeId]?.name || themeId}`;
+  }
+  return officeKey;
 }
 
 // ─── Initial State Factory ───
@@ -181,7 +198,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     // Orders (filled during orders phase)
     // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, candidate: playerId }
     allOrders: {},
-    currentMercenaryHires: {},
+    currentMercenaryTroops: {},
 
     // Resolution results (for animation/display)
     lastCoupResult: null,
@@ -233,19 +250,21 @@ export function getPlayerThemes(state, playerId) {
   return Object.values(state.themes).filter(t => t.owner === playerId);
 }
 
+export function getPlayerMercenaryTroops(state, playerId) {
+  return Math.max(0, Number(state.currentMercenaryTroops?.[playerId]) || 0);
+}
+
 export function getPlayerMercenaryAssignments(state, playerId) {
-  return Object.entries(state.currentMercenaryHires?.[playerId] || {})
-    .map(([officeKey, count]) => ({ officeKey, count: Math.max(0, Number(count) || 0) }))
-    .filter((entry) => entry.count > 0);
+  const count = getPlayerMercenaryTroops(state, playerId);
+  return count > 0 ? [{ officeKey: MERCENARY_COMPANY_KEY, count }] : [];
 }
 
 export function getOfficeMercenaryCount(state, playerId, officeKey) {
-  return Math.max(0, Number(state.currentMercenaryHires?.[playerId]?.[officeKey]) || 0);
+  return isMercenaryCompanyOfficeKey(officeKey) ? getPlayerMercenaryTroops(state, playerId) : 0;
 }
 
 export function getPlayerMercenaryTotal(state, playerId) {
-  return getPlayerMercenaryAssignments(state, playerId)
-    .reduce((total, entry) => total + entry.count, 0);
+  return getPlayerMercenaryTroops(state, playerId);
 }
 
 export function getChurchThemes(state) {

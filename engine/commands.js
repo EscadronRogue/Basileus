@@ -7,7 +7,8 @@ import { recordHistoryEvent } from './history.js';
 import {
   getPlayer,
   formatPlayerLabel,
-  getOfficeMercenaryCount,
+  getPlayerMercenaryTroops,
+  MERCENARY_COMPANY_KEY,
 } from './state.js';
 import { submitOrders } from './turnflow.js';
 import {
@@ -29,7 +30,7 @@ import {
   revokeTheme,
   validateMajorTitleAssignments,
 } from './actions.js';
-import { getPlayerOrderOfficeKeys, isCapitalLockedOfficeKey, normalizeHumanOrders } from './orders.js';
+import { normalizeHumanOrders } from './orders.js';
 import { observeCourtAction } from '../ai/brain.js';
 
 function fail(reason) {
@@ -79,21 +80,17 @@ export function applyCourtAction(state, playerId, payload = {}) {
   }
 
   if (action === 'hire-mercenaries') {
-    const officeKey = String(payload.office || '').trim();
     const count = Number(payload.count) || 1;
-    const ownedOffices = new Set(getPlayerOrderOfficeKeys(state, playerId));
-    if (!ownedOffices.has(officeKey)) return fail('Mercenaries can only be hired for one of your offices.');
-    if (isCapitalLockedOfficeKey(officeKey)) return fail('Mercenaries cannot be hired for court-only offices.');
-    const result = hireMercenaries(state, playerId, officeKey, count);
-    if (!result?.ok) return fail(result?.reason || 'Could not hire mercenaries for that office.');
+    const result = hireMercenaries(state, playerId, MERCENARY_COMPANY_KEY, count);
+    if (!result?.ok) return fail(result?.reason || 'Could not hire mercenaries.');
     return {
       ok: true,
       observation: {
         type: 'mercenaries',
         actorId: playerId,
-        officeKey,
+        officeKey: MERCENARY_COMPANY_KEY,
         count,
-        totalForOffice: getOfficeMercenaryCount(state, playerId, officeKey),
+        totalMercenaryTroops: getPlayerMercenaryTroops(state, playerId),
       },
     };
   }

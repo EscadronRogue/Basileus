@@ -4,8 +4,10 @@ import {
   getPlayer,
   findTitleHolder,
   formatPlayerLabel,
-  getOfficeMercenaryCount,
+  getOfficeDisplayName,
   getPlayerMercenaryTotal,
+  getPlayerMercenaryTroops,
+  MERCENARY_COMPANY_KEY,
 } from './state.js';
 import { recordHistoryEvent } from './history.js';
 import {
@@ -59,12 +61,7 @@ function courtTitleName(titleType) {
 }
 
 function officeName(state, officeKey) {
-  if (officeKey === 'BASILEUS') return 'Basileus';
-  if (MAJOR_TITLES[officeKey]) return MAJOR_TITLES[officeKey].name;
-  if (officeKey.startsWith('STRAT_')) {
-    return `Strategos of ${themeName(state, officeKey.replace('STRAT_', ''))}`;
-  }
-  return officeKey;
+  return getOfficeDisplayName(state, officeKey);
 }
 
 function extractOfficeArmy(state, officeKey) {
@@ -759,25 +756,24 @@ export function hireMercenaries(state, playerId, officeKey, count) {
   if (!Number.isInteger(normalizedCount) || normalizedCount <= 0) {
     return { ok: false, reason: 'Choose at least one mercenary troop.' };
   }
-  if (!state.currentMercenaryHires) state.currentMercenaryHires = {};
-  if (!state.currentMercenaryHires[playerId]) state.currentMercenaryHires[playerId] = {};
+  if (!state.currentMercenaryTroops) state.currentMercenaryTroops = {};
   const hiredSoFar = getPlayerMercenaryTotal(state, playerId);
   const cost = getMercenaryHireCost(hiredSoFar, normalizedCount);
   if (player.gold < cost) return { ok: false, reason: `Need ${formatGold(cost)}, have ${formatGold(player.gold)}.` };
   player.gold -= cost;
-  state.currentMercenaryHires[playerId][officeKey] = getOfficeMercenaryCount(state, playerId, officeKey) + normalizedCount;
-  state.log.push({ type: 'hire_mercs', player: playerId, office: officeKey, count: normalizedCount, cost, round: state.round });
+  state.currentMercenaryTroops[playerId] = getPlayerMercenaryTroops(state, playerId) + normalizedCount;
+  state.log.push({ type: 'hire_mercs', player: playerId, office: MERCENARY_COMPANY_KEY, count: normalizedCount, cost, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'hire_mercenaries',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} hires ${formatMercenaries(normalizedCount)} for ${officeName(state, officeKey)}.`,
+    summary: `${playerName(state, playerId)} hires ${formatMercenaries(normalizedCount)} for the Mercenary Company.`,
     details: {
-      officeKey,
-      officeName: officeName(state, officeKey),
+      officeKey: MERCENARY_COMPANY_KEY,
+      officeName: officeName(state, MERCENARY_COMPANY_KEY),
       count: normalizedCount,
       cost,
-      totalForOffice: getOfficeMercenaryCount(state, playerId, officeKey),
+      totalMercenaryTroops: getPlayerMercenaryTroops(state, playerId),
     },
   });
   return { ok: true, count: normalizedCount, cost, historyId: historyEvent?.id || null };

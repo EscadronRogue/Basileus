@@ -1,4 +1,4 @@
-import { getPlayer } from './state.js';
+import { getPlayer, getPlayerMercenaryTroops, MERCENARY_COMPANY_KEY } from './state.js';
 
 function toInt(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -26,6 +26,9 @@ export function getPlayerOrderOfficeKeys(state, playerId) {
     if (theme.strategos === playerId && !theme.occupied) {
       officeKeys.push(`STRAT_${theme.id}`);
     }
+  }
+  if (getPlayerMercenaryTroops(state, playerId) > 0) {
+    officeKeys.push(MERCENARY_COMPANY_KEY);
   }
   return [...new Set(officeKeys)];
 }
@@ -57,7 +60,7 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
 
   const mercenaries = normalizeMercenaryOrders(rawOrders?.mercenaries);
   if (mercenaries.length > 0) {
-    return orderFailure('Mercenaries are hired during Court, not Secret Orders.');
+    return orderFailure('Hire mercenaries in Court. Secret Orders only choose troop destinations and your claimant.');
   }
 
   const candidate = toInt(rawOrders?.candidate, playerId);

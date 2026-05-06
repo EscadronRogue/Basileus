@@ -326,7 +326,7 @@ test('multiplayer snapshots show public court mercenaries and redact sealed orde
   const mercenaryVisible = (message) =>
     message.type === 'game_snapshot'
     && message.state.phase === 'court'
-    && message.state.currentMercenaryHires?.[String(actorSeatId)]?.[actorOffice] === 1;
+    && message.state.currentMercenaryTroops?.[String(actorSeatId)] === 1;
   const actorCourtGame = await actorSocket.waitFor(mercenaryVisible);
   const viewerCourtGame = await viewerSocket.waitFor(mercenaryVisible);
 
@@ -334,7 +334,7 @@ test('multiplayer snapshots show public court mercenaries and redact sealed orde
   const viewerGoldVisible = viewerCourtGame.state.players.find((player) => player.id === actorSeatId).gold;
   assert.equal(actorGoldVisible, actorGoldBefore - 1);
   assert.equal(viewerGoldVisible, actorGoldBefore - 1);
-  assert.equal(viewerCourtGame.state.currentMercenaryHires[String(actorSeatId)][actorOffice], 1);
+  assert.equal(viewerCourtGame.state.currentMercenaryTroops[String(actorSeatId)], 1);
   assert.equal(viewerCourtGame.state.history.some((entry) => entry.type === 'hire_mercenaries' && entry.actorId === actorSeatId), true);
 
   room.gameState.phase = 'orders';

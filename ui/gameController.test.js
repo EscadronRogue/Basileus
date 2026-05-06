@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createGameState } from '../engine/state.js';
 import { GameController } from './gameController.js';
 import { renderCourtPanel, renderOrdersPanel } from './panels.js';
+import { getPlayerTabEconomy, renderPlayerTabFinance } from './sharedView.js';
 
 function makePanelContainer() {
   return {
@@ -34,7 +35,7 @@ test('court panel groups army information and mercenary hiring under Armies', ()
   state.phase = 'court';
   state.players[playerId].gold = 10;
   state.currentLevies = { BASILEUS: 3 };
-  state.currentMercenaryHires = { [playerId]: { BASILEUS: 1 } };
+  state.currentMercenaryTroops = { [playerId]: 1 };
 
   const container = makePanelContainer();
   renderCourtPanel(container, state, playerId, {}, { uiState: null });
@@ -45,7 +46,9 @@ test('court panel groups army information and mercenary hiring under Armies', ()
   assert.match(container.innerHTML, /Privileges And Church/);
   assert.match(container.innerHTML, /Armies/);
   assert.match(container.innerHTML, /Confirm/);
-  assert.match(container.innerHTML, /Professional 2 \| 3 levies \| 1 mercenary/);
+  assert.match(container.innerHTML, /Mercenary Company/);
+  assert.match(container.innerHTML, /Professional troops 2 \| 3 levies \| 0 mercenaries/);
+  assert.match(container.innerHTML, /1 mercenary \| No levies \| No professional troops/);
   assert.match(container.innerHTML, /Hire 1 mercenary \(2 gold\)/);
 });
 
@@ -54,7 +57,7 @@ test('orders panel contains only deployments, claimant choice, and order locking
   const playerId = state.basileusId;
   state.phase = 'orders';
   state.currentLevies = { BASILEUS: 2 };
-  state.currentMercenaryHires = { [playerId]: { BASILEUS: 1 } };
+  state.currentMercenaryTroops = { [playerId]: 1 };
 
   const container = makePanelContainer();
   renderOrdersPanel(container, state, playerId, {}, { uiState: null });
@@ -64,7 +67,25 @@ test('orders panel contains only deployments, claimant choice, and order locking
   assert.match(container.innerHTML, /Choose Your Claimant/);
   assert.match(container.innerHTML, /Confirm/);
   assert.match(container.innerHTML, /Lock Secret Orders/);
-  assert.match(container.innerHTML, /Professional 2 \| 2 levies \| 1 mercenary/);
+  assert.match(container.innerHTML, /Professional troops 2 \| 2 levies \| 0 mercenaries/);
+  assert.match(container.innerHTML, /Mercenary Company/);
+  assert.match(container.innerHTML, /1 mercenary \| Disbands in Cleanup/);
   assert.doesNotMatch(container.innerHTML, /Hire Mercenaries/);
   assert.doesNotMatch(container.innerHTML, /mercTotalCost/);
+});
+
+test('player tabs use compact reserve, income, and upkeep formatting', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  const player = state.players[state.basileusId];
+  player.gold = 4;
+  player.professionalArmies.BASILEUS = 3;
+
+  const economy = getPlayerTabEconomy(player, { income: { [player.id]: 7 } });
+  const html = renderPlayerTabFinance(economy);
+
+  assert.match(html, />4</);
+  assert.match(html, />\|</);
+  assert.match(html, />\+7</);
+  assert.match(html, />-3</);
+  assert.doesNotMatch(html, /gold/i);
 });

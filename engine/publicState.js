@@ -88,16 +88,25 @@ export function serializePublicGameState(state, viewerSeatId = null) {
 }
 
 export function hydratePublicState(rawState = {}) {
+  const { currentMercenaryHires, ...rest } = rawState;
+  const hydratedMercenaries = rawState.currentMercenaryTroops && typeof rawState.currentMercenaryTroops === 'object'
+    ? rawState.currentMercenaryTroops
+    : (currentMercenaryHires && typeof currentMercenaryHires === 'object'
+      ? Object.fromEntries(
+        Object.entries(currentMercenaryHires).map(([playerId, officeMap]) => [
+          playerId,
+          Object.values(officeMap || {}).reduce((total, count) => total + (Math.max(0, Number(count) || 0)), 0),
+        ])
+      )
+      : {});
   return {
-    ...rawState,
+    ...rest,
     historyEnabled: true,
     history: Array.isArray(rawState.history) ? rawState.history : [],
     players: Array.isArray(rawState.players) ? rawState.players : [],
     themes: rawState.themes && typeof rawState.themes === 'object' ? rawState.themes : {},
     currentLevies: rawState.currentLevies && typeof rawState.currentLevies === 'object' ? rawState.currentLevies : {},
-    currentMercenaryHires: rawState.currentMercenaryHires && typeof rawState.currentMercenaryHires === 'object'
-      ? rawState.currentMercenaryHires
-      : {},
+    currentMercenaryTroops: hydratedMercenaries,
     allOrders: rawState.allOrders && typeof rawState.allOrders === 'object' ? rawState.allOrders : {},
     recruitedThisRound: rawState.recruitedThisRound && typeof rawState.recruitedThisRound === 'object'
       ? rawState.recruitedThisRound

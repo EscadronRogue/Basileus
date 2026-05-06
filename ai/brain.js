@@ -1,11 +1,13 @@
 import {
   getFreeThemes,
+  getOfficeDisplayName,
   getPlayer,
   getPlayerThemes,
   shuffle,
   formatPlayerLabel,
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
+  MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
 import { recordHistoryEvent, updateHistoryEvent } from '../engine/history.js';
 import {
@@ -670,7 +672,7 @@ function courtTitleName(titleType) {
   }[titleType] || titleType;
 }
 
-function getOfficeList(state, playerId) {
+function getOfficeList(state, playerId, options = {}) {
   const offices = [];
   if (playerId === state.basileusId) {
     offices.push({ key: 'BASILEUS', label: 'Basileus', region: 'cpl' });
@@ -710,6 +712,14 @@ function getOfficeList(state, playerId) {
         themeId: theme.id,
       });
     }
+  }
+
+  if (options.includeMercenaryCompany && getPlayerMercenaryTotal(state, playerId) > 0) {
+    offices.push({
+      key: MERCENARY_COMPANY_KEY,
+      label: 'Mercenary Company',
+      region: null,
+    });
   }
 
   return offices;
@@ -898,7 +908,7 @@ function buildOrdersDecision(state, meta, playerId, candidateId, pact, officePla
 }
 
 function buildMercenaryDecision(ordersDebug, mercenary, cost) {
-  const officePlan = ordersDebug?.officePlans?.find(plan => plan.officeKey === mercenary.officeKey);
+  const officePlan = ordersDebug?.officePlans?.find(plan => plan.officeKey === mercenary.anchorOfficeKey);
   const topScore = officePlan ? Math.max(officePlan.capitalScore, officePlan.frontierScore) : null;
 
   return {
@@ -906,13 +916,13 @@ function buildMercenaryDecision(ordersDebug, mercenary, cost) {
     factors: [
       factor('Marginal troop value', officePlan
         ? `${officePlan.officeLabel} had the best remaining value on the ${officePlan.destination} line.`
-        : 'This office still had strong marginal value for extra troops.', 'for', topScore),
+        : 'The mercenary company still had strong value on the best line.', 'for', topScore),
       factor('Strategic plan', ordersDebug?.pactKind === 'defense'
         ? 'The AI was reinforcing a defensive plan around the current Basileus.'
         : ordersDebug?.pactKind === 'self'
           ? 'The AI was pressing its own throne bid with extra force.'
           : 'The AI was reinforcing a coalition challenge with extra force.', 'for'),
-      factor('Gold spend', `${cost}g was committed to this office.`, 'neutral', cost),
+      factor('Gold spend', `${cost}g was committed to the mercenary company.`, 'neutral', cost),
     ],
   };
 }
@@ -2150,38 +2160,36 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
   const remainingRounds = getRemainingRounds(state);
   const goldOpportunity = profile.weights.wealth * (1.05 + ((remainingRounds / Math.max(1, state.maxRounds)) * 0.75));
   const threat = getThreatLevel(state, meta);
-  const currentMercenaries = Object.fromEntries(getPlayerMercenaryAssignments(state, playerId).map((entry) => [entry.officeKey, entry.count]));
   let availableGold = getPlayer(state, playerId).gold;
   let totalPlannedMercenaries = getPlayerMercenaryTotal(state, playerId);
-  const mercenaries = [];
 
   const rankedOffices = officePlans
     .filter(plan => !plan.capitalLocked)
     .map(plan => ({ ...plan, baseValue: Math.max(plan.frontierScore, plan.capitalScore) }))
     .sort((left, right) => right.baseValue - left.baseValue);
 
-  for (const office of rankedOffices) {
-    const maxMercsForOffice = Math.max(1, Math.min(5, Math.ceil(profile.weights.mercenary + ((pact?.capitalBias || 0) * 0.35))));
-    const alreadyForOffice = currentMercenaries[office.office.key] || 0;
-    let additionalForOffice = 0;
+  const bestOffice = rankedOffices[0];
+  if (!bestOffice) return [];
 
-    while ((alreadyForOffice + additionalForOffice) < maxMercsForOffice) {
-      const nextCost = getMercenaryHireCost(totalPlannedMercenaries, 1);
-      if (availableGold < nextCost) break;
-      const crisisDemand = (pact?.capitalBias || 0) + (pact?.frontierBias || 0) + threat;
-      const marginalValue = (office.baseValue * (0.4 + (profile.weights.mercenary * 0.24) + (crisisDemand * 0.1))) - goldOpportunity - ((alreadyForOffice + additionalForOffice) * 0.72);
-      if (marginalValue <= 0.18) break;
-      availableGold -= nextCost;
-      additionalForOffice++;
-      totalPlannedMercenaries++;
-    }
+  const maxMercenaries = Math.max(1, Math.min(5, Math.ceil(profile.weights.mercenary + ((pact?.capitalBias || 0) * 0.35))));
+  let count = 0;
 
-    if (additionalForOffice > 0) {
-      mercenaries.push({ officeKey: office.office.key, count: additionalForOffice });
-    }
+  while (count < maxMercenaries) {
+    const nextCost = getMercenaryHireCost(totalPlannedMercenaries, 1);
+    if (availableGold < nextCost) break;
+    const crisisDemand = (pact?.capitalBias || 0) + (pact?.frontierBias || 0) + threat;
+    const marginalValue = (bestOffice.baseValue * (0.4 + (profile.weights.mercenary * 0.24) + (crisisDemand * 0.1))) - goldOpportunity - (count * 0.72);
+    if (marginalValue <= 0.18) break;
+    availableGold -= nextCost;
+    count++;
+    totalPlannedMercenaries++;
   }
 
-  return mercenaries;
+  return count > 0 ? [{
+    officeKey: MERCENARY_COMPANY_KEY,
+    count,
+    anchorOfficeKey: bestOffice.office.key,
+  }] : [];
 }
 
 function getMercCount(mercenaries, officeKey) {
@@ -2190,14 +2198,15 @@ function getMercCount(mercenaries, officeKey) {
 
 function planOfficeDeployments(state, meta, playerId, candidateId, pact) {
   const player = getPlayer(state, playerId);
-  const offices = getOfficeList(state, playerId);
+  const offices = getOfficeList(state, playerId, { includeMercenaryCompany: getPlayerMercenaryTotal(state, playerId) > 0 });
   const deployments = {};
   const officePlans = [];
 
   for (const office of offices) {
-    const professionalTroops = player.professionalArmies[office.key] || 0;
-    const levyTroops = state.currentLevies?.[office.key] || 0;
-    const troopCount = professionalTroops + levyTroops;
+    const professionalTroops = office.key === MERCENARY_COMPANY_KEY ? 0 : (player.professionalArmies[office.key] || 0);
+    const levyTroops = office.key === MERCENARY_COMPANY_KEY ? 0 : (state.currentLevies?.[office.key] || 0);
+    const mercenaryTroops = office.key === MERCENARY_COMPANY_KEY ? getPlayerMercenaryTotal(state, playerId) : 0;
+    const troopCount = professionalTroops + levyTroops + mercenaryTroops;
     const capitalLocked = office.capitalLocked || CAPITAL_LOCKED_OFFICE_KEYS.has(office.key);
     let frontierScore;
     let capitalScore;
@@ -2296,8 +2305,9 @@ function runMercenaryStrategy(state, meta, playerId) {
     meta.players[playerId].stats.mercSpend += result.cost || 0;
     meta.totals.mercSpend += result.cost || 0;
     applyDecisionToResult(state, result, buildMercenaryDecision(debug, mercenary, result.cost || 0));
-    logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${mercenary.officeKey}.`);
-    logPublic(meta, `${publicActor(state, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${mercenary.officeKey}.`);
+    const officeLabel = getOfficeDisplayName(state, mercenary.officeKey);
+    logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${officeLabel}.`);
+    logPublic(meta, `${publicActor(state, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${officeLabel}.`);
     hiredAny = true;
   }
 
@@ -2311,9 +2321,9 @@ function computeOrderTotals(state, playerId, orders) {
   let capital = 0;
   let frontier = 0;
 
-  for (const office of getOfficeList(state, playerId)) {
-    const professionalTroops = player.professionalArmies[office.key] || 0;
-    const levyTroops = state.currentLevies?.[office.key] || 0;
+  for (const office of getOfficeList(state, playerId, { includeMercenaryCompany: getPlayerMercenaryTotal(state, playerId) > 0 })) {
+    const professionalTroops = office.key === MERCENARY_COMPANY_KEY ? 0 : (player.professionalArmies[office.key] || 0);
+    const levyTroops = office.key === MERCENARY_COMPANY_KEY ? 0 : (state.currentLevies?.[office.key] || 0);
     const mercenaryTroops = getMercCount(mercenaries, office.key);
     const totalTroops = professionalTroops + levyTroops + mercenaryTroops;
     if ((orders.deployments?.[office.key] || 'frontier') === 'capital') capital += totalTroops;
