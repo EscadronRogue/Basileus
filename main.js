@@ -2,7 +2,6 @@ import { listAvailableAiProfiles } from './ai/profileStore.js';
 import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup.js';
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
-import { getSetupPrimerSections } from './ui/rulesContent.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 const AI_SELECTION_TRAINED_RANDOM = '__trained_random__';
@@ -24,7 +23,6 @@ const setupRoomCode = document.getElementById('setupRoomCode');
 const setupMultiplayerError = document.getElementById('setupMultiplayerError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
-const setupPrimer = document.getElementById('setupPrimer');
 
 const aiSeatSelections = new Map();
 let availableAiProfiles = [];
@@ -36,16 +34,6 @@ function escapeHtml(value) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
-}
-
-function renderSetupPrimer() {
-  if (!setupPrimer) return;
-  setupPrimer.innerHTML = getSetupPrimerSections().map((section) => `
-    <section class="setup-primer-section" aria-labelledby="${section.id}">
-      <h2 id="${section.id}">${escapeHtml(section.title)}</h2>
-      ${section.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('')}
-    </section>
-  `).join('');
 }
 
 function cloneProfile(profile) {
@@ -209,8 +197,6 @@ async function refreshAvailableAiProfiles() {
   renderAiRoster();
   return availableAiProfiles;
 }
-
-renderSetupPrimer();
 
 async function launchMultiplayerFlow(intent) {
   if (multiplayerLaunchInFlight) return;
