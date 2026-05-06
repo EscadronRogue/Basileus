@@ -515,8 +515,8 @@ function renderTrainingResult(result) {
     ['Validation matches', formatInteger(result.config.validationMatchesPerCandidate ?? 0)],
     ['Holdout matches', formatInteger(result.config.holdoutMatchesPerChampion ?? 0)],
     ['Training scope', result.config.scenarioMode === 'focused' ? 'Focused' : 'Generalist'],
-    ['Selection', result.overview.selectionMethod || 'survival-gated-pareto'],
-    ['Safety gate', result.overview.safetyMode || 'safe-only'],
+    ['Selection', result.overview.selectionMethod || 'win-rate-first-pareto'],
+    ['Selection mode', result.overview.safetyMode || 'win-rate-first'],
   ];
 
   const overviewCards = [
@@ -564,7 +564,7 @@ function renderTrainingResult(result) {
     `).join('');
 
   const generationLines = result.generationHistory.map(entry => `
-    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} in ${escapeHtml(entry.safetyMode || 'safe-only')} mode, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, validation score ${formatNumber(entry.validationFinalScoreMean || 0, 2)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
+    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} in ${escapeHtml(entry.safetyMode || 'win-rate-first')} mode, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, validation score ${formatNumber(entry.validationFinalScoreMean || 0, 2)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
   `).join('');
 
   const exportInfo = result.personalityExport

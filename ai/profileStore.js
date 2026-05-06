@@ -406,7 +406,7 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     bestMatchup: rawTraining.bestMatchup ? String(rawTraining.bestMatchup) : '',
     worstMatchup: rawTraining.worstMatchup ? String(rawTraining.worstMatchup) : '',
     mainBehavior: rawTraining.mainBehavior ? String(rawTraining.mainBehavior) : '',
-    safetyMode: rawTraining.safetyMode ? String(rawTraining.safetyMode) : 'safe-only',
+    safetyMode: rawTraining.safetyMode ? String(rawTraining.safetyMode) : 'win-rate-first',
     behaviorProfile: {
       frontierTroopShare: roundTo(clamp(safeNumber(behaviorProfile.frontierTroopShare, 0), 0, 1), 4),
       capitalTroopShare: roundTo(clamp(safeNumber(behaviorProfile.capitalTroopShare, 0), 0, 1), 4),

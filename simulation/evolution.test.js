@@ -61,7 +61,7 @@ function makeCandidate(id = 'test-candidate') {
   };
 }
 
-test('survival-gated ranking keeps safe candidates ahead of unsafe ones', () => {
+test('win-rate-first ranking treats empire fall as a loss, not a veto', () => {
   const safeWeak = buildSelectionEntry(
     { id: 'safe-weak' },
     1,
@@ -76,46 +76,45 @@ test('survival-gated ranking keeps safe candidates ahead of unsafe ones', () => 
     makeSummary({ winShare: 0.34, finalScoreMean: 13, finalScoreAdvantage: 2.2 }),
     0.1
   );
-  const unsafeHighScore = buildSelectionEntry(
-    { id: 'unsafe-high-score' },
+  const higherWinWithFalls = buildSelectionEntry(
+    { id: 'higher-win-with-falls' },
     1,
     makeSummary({ winShare: 0.6, finalScoreMean: 20, finalScoreAdvantage: 6, empireFallRate: 0.25, unsafeRate: 0.25 }),
     makeSummary({ winShare: 0.6, finalScoreMean: 20, finalScoreAdvantage: 6, empireFallRate: 0.25, unsafeRate: 0.25 }),
     0.9
   );
 
-  const { rankedEntries, safetyMode } = rankSelectionEntries([unsafeHighScore, safeWeak, safeStrong]);
-  assert.equal(safetyMode, 'safe-only');
-  assert.deepEqual(rankedEntries.slice(0, 2).map(entry => entry.candidate.id), ['safe-strong', 'safe-weak']);
-  assert.equal(rankedEntries[2].candidate.id, 'unsafe-high-score');
+  const { rankedEntries, safetyMode } = rankSelectionEntries([higherWinWithFalls, safeWeak, safeStrong]);
+  assert.equal(safetyMode, 'win-rate-first');
+  assert.deepEqual(rankedEntries.map(entry => entry.candidate.id), ['higher-win-with-falls', 'safe-strong', 'safe-weak']);
 });
 
-test('minimum-risk fallback prefers lower guard rate before fall rate', () => {
-  const riskyA = buildSelectionEntry(
-    { id: 'risky-a' },
+test('win-rate ties prefer lower guard and fall risk', () => {
+  const sameWinHighGuard = buildSelectionEntry(
+    { id: 'same-win-high-guard' },
     1,
-    makeSummary({ guardRate: 0.2, empireFallRate: 0.05, unsafeRate: 0.25, finalScoreMean: 14 }),
-    makeSummary({ guardRate: 0.2, empireFallRate: 0.05, unsafeRate: 0.25, finalScoreMean: 14 }),
+    makeSummary({ winShare: 0.4, guardRate: 0.2, empireFallRate: 0.05, unsafeRate: 0.25, finalScoreMean: 14 }),
+    makeSummary({ winShare: 0.4, guardRate: 0.2, empireFallRate: 0.05, unsafeRate: 0.25, finalScoreMean: 14 }),
     0.1
   );
-  const riskyB = buildSelectionEntry(
-    { id: 'risky-b' },
+  const sameWinHighFall = buildSelectionEntry(
+    { id: 'same-win-high-fall' },
     1,
-    makeSummary({ guardRate: 0.05, empireFallRate: 0.15, unsafeRate: 0.2, finalScoreMean: 11 }),
-    makeSummary({ guardRate: 0.05, empireFallRate: 0.15, unsafeRate: 0.2, finalScoreMean: 11 }),
+    makeSummary({ winShare: 0.4, guardRate: 0.05, empireFallRate: 0.15, unsafeRate: 0.2, finalScoreMean: 11 }),
+    makeSummary({ winShare: 0.4, guardRate: 0.05, empireFallRate: 0.15, unsafeRate: 0.2, finalScoreMean: 11 }),
     0.1
   );
-  const riskyC = buildSelectionEntry(
-    { id: 'risky-c' },
+  const sameWinLowRisk = buildSelectionEntry(
+    { id: 'same-win-low-risk' },
     1,
-    makeSummary({ guardRate: 0.05, empireFallRate: 0.05, unsafeRate: 0.1, finalScoreMean: 10 }),
-    makeSummary({ guardRate: 0.05, empireFallRate: 0.05, unsafeRate: 0.1, finalScoreMean: 10 }),
+    makeSummary({ winShare: 0.4, guardRate: 0.05, empireFallRate: 0.05, unsafeRate: 0.1, finalScoreMean: 10 }),
+    makeSummary({ winShare: 0.4, guardRate: 0.05, empireFallRate: 0.05, unsafeRate: 0.1, finalScoreMean: 10 }),
     0.1
   );
 
-  const { rankedEntries, safetyMode } = rankSelectionEntries([riskyA, riskyB, riskyC]);
-  assert.equal(safetyMode, 'minimum-risk');
-  assert.equal(rankedEntries[0].candidate.id, 'risky-c');
+  const { rankedEntries, safetyMode } = rankSelectionEntries([sameWinHighGuard, sameWinHighFall, sameWinLowRisk]);
+  assert.equal(safetyMode, 'win-rate-first');
+  assert.deepEqual(rankedEntries.map(entry => entry.candidate.id), ['same-win-low-risk', 'same-win-high-fall', 'same-win-high-guard']);
 });
 
 test('generalist suite cycles uniformly across the scenario matrix', () => {

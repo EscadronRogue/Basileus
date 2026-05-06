@@ -1246,57 +1246,33 @@ function computeNoveltyScore(vector, archiveVectors, peerVectors) {
 
 function computeTrainingScore(summary) {
   return roundTo(
-    (summary.winShare * 8) +
-    (summary.finalScorePlacement * 4) +
-    (summary.finalScoreAdvantage * 1.1) +
-    ((summary.survivingFinalScoreMean || summary.finalScoreMean) * 0.45) +
-    (getClassWinRate(summary, 'scripted') * 3) +
-    (getClassWinRate(summary, 'hof') * 3) +
-    (getClassWinRate(summary, 'emergent') * 2) -
+    (summary.winShare * 100) +
+    (summary.finalScorePlacement * 8) +
+    (summary.finalScoreAdvantage * 2) +
+    ((summary.survivingFinalScoreMean || 0) * 0.35) +
+    (getClassWinRate(summary, 'scripted') * 4) +
+    (getClassWinRate(summary, 'hof') * 4) +
+    (getClassWinRate(summary, 'emergent') * 3) -
+    ((summary.empireFallRate || 0) * 5) -
+    ((summary.guardRate || 0) * 20) -
     (Math.sqrt(summary.opponentVariance) * 2.2) -
     (Math.sqrt(summary.seatVariance) * 1.3),
     4
   );
 }
 
-function isSafeSummary(summary) {
-  return (summary.guardRate || 0) <= 1e-9 && (summary.empireFallRate || 0) <= 1e-9;
-}
-
-function compareRiskSummary(leftSummary, rightSummary) {
+function compareOutcomeSummary(leftSummary, rightSummary) {
   return (
+    ((rightSummary.winShare || 0) - (leftSummary.winShare || 0)) ||
     ((leftSummary.guardRate || 0) - (rightSummary.guardRate || 0)) ||
     ((leftSummary.empireFallRate || 0) - (rightSummary.empireFallRate || 0)) ||
-    ((leftSummary.unsafeRate || 0) - (rightSummary.unsafeRate || 0))
+    ((leftSummary.unsafeRate || 0) - (rightSummary.unsafeRate || 0)) ||
+    ((rightSummary.finalScoreAdvantage || 0) - (leftSummary.finalScoreAdvantage || 0)) ||
+    ((rightSummary.finalScorePlacement || 0) - (leftSummary.finalScorePlacement || 0)) ||
+    ((rightSummary.survivingFinalScoreMean || 0) - (leftSummary.survivingFinalScoreMean || 0)) ||
+    ((leftSummary.opponentVariance || 0) - (rightSummary.opponentVariance || 0)) ||
+    ((leftSummary.seatVariance || 0) - (rightSummary.seatVariance || 0))
   );
-}
-
-function findViableRiskPool(entries, summarySelector = entry => entry.validationSummary) {
-  const safeEntries = entries.filter(entry => isSafeSummary(summarySelector(entry)));
-  if (safeEntries.length) {
-    return {
-      entries: safeEntries,
-      safetyMode: 'safe-only',
-    };
-  }
-
-  let bestGuardRate = Number.POSITIVE_INFINITY;
-  for (const entry of entries) {
-    bestGuardRate = Math.min(bestGuardRate, summarySelector(entry).guardRate || 0);
-  }
-  const guardPool = entries.filter(entry => Math.abs((summarySelector(entry).guardRate || 0) - bestGuardRate) <= 1e-9);
-
-  let bestFallRate = Number.POSITIVE_INFINITY;
-  for (const entry of guardPool) {
-    bestFallRate = Math.min(bestFallRate, summarySelector(entry).empireFallRate || 0);
-  }
-
-  return {
-    entries: guardPool.filter(entry => Math.abs((summarySelector(entry).empireFallRate || 0) - bestFallRate) <= 1e-9),
-    safetyMode: 'minimum-risk',
-    bestGuardRate,
-    bestFallRate,
-  };
 }
 
 function buildObjectivesFromSummary(summary) {
@@ -1366,12 +1342,11 @@ function assignCrowdingDistance(front) {
 
 function compareSelectionEntries(left, right) {
   return (
-    compareRiskSummary(left.selectionSummary || left.validationSummary, right.selectionSummary || right.validationSummary) ||
+    compareOutcomeSummary(left.selectionSummary || left.validationSummary, right.selectionSummary || right.validationSummary) ||
     (left.paretoRank - right.paretoRank) ||
     ((right.crowdingDistance || 0) - (left.crowdingDistance || 0)) ||
     (right.championScore - left.championScore) ||
     (right.noveltyScore - left.noveltyScore) ||
-    ((right.selectionSummary?.winShare || right.validationSummary.winShare) - (left.selectionSummary?.winShare || left.validationSummary.winShare)) ||
     left.candidate.id.localeCompare(right.candidate.id)
   );
 }
@@ -1424,21 +1399,12 @@ function sortByPareto(entries, summarySelector = entry => entry.validationSummar
 
 export function rankSelectionEntries(entries, summarySelector = entry => entry.validationSummary) {
   if (!entries.length) return { rankedEntries: [], safetyMode: 'none' };
-  const viablePool = findViableRiskPool(entries, summarySelector);
-  const viableSet = new Set(viablePool.entries);
-  const rankedViable = sortByPareto(viablePool.entries, summarySelector);
-  const rankedRemainder = entries
-    .filter(entry => !viableSet.has(entry))
-    .sort((left, right) => (
-      compareRiskSummary(summarySelector(left), summarySelector(right)) ||
-      (right.championScore - left.championScore) ||
-      (right.noveltyScore - left.noveltyScore) ||
-      left.candidate.id.localeCompare(right.candidate.id)
-    ));
-
+  for (const entry of entries) {
+    entry.selectionSummary = summarySelector(entry);
+  }
   return {
-    rankedEntries: [...rankedViable, ...rankedRemainder],
-    safetyMode: viablePool.safetyMode,
+    rankedEntries: sortByPareto(entries, summarySelector),
+    safetyMode: 'win-rate-first',
   };
 }
 
@@ -1777,7 +1743,7 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       crowdingDistance: roundTo(entry.crowdingDistance, 4),
       noveltyScore: entry.noveltyScore,
       noveltyPercentile,
-      safetyMode: entry.safetyMode || 'safe-only',
+      safetyMode: entry.safetyMode || 'win-rate-first',
       seatBias: holdoutSummary.startingBasileusSeatBias,
       bestMatchup: holdoutSummary.bestMatchup?.tag || '',
       worstMatchup: holdoutSummary.worstMatchup?.tag || '',
@@ -2013,7 +1979,7 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       scenarioMode: config.scenarioMode,
       playerCounts: config.playerCounts,
       deckSizes: config.deckSizes,
-      selectionMethod: 'survival-gated-pareto',
+      selectionMethod: 'win-rate-first-pareto',
       safetyMode: finalSafetyMode,
       bestFitness: finalChampions[0]?.championScore || 0,
       bestFinalScore: finalChampions[0]?.holdoutSummary?.finalScoreMean || 0,
