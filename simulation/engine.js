@@ -246,26 +246,24 @@ function buildFinalScores(state, meta) {
   const projectedAdministration = runAdministration(state);
   const scores = state.players.map(player => {
     const projectedIncome = projectedAdministration.income[player.id] || 0;
-    const finalScore = computeFullWealth(state, player.id, projectedIncome);
     return {
       playerId: player.id,
       dynasty: player.dynasty,
       personalityId: meta.players[player.id].personalityId,
       gold: player.gold,
       projectedIncome,
-      finalScore,
-      wealth: finalScore,
+      wealth: computeFullWealth(state, player.id, projectedIncome),
       themes: getPlayerThemes(state, player.id).length,
       majorTitles: player.majorTitles.slice(),
       minorTitles: getMinorTitleCount(state, player.id),
       professionalTroops: getPlayerProfessionalCount(player),
       basileus: state.basileusId === player.id,
     };
-  }).sort((left, right) => right.finalScore - left.finalScore);
+  }).sort((left, right) => right.wealth - left.wealth);
 
-  const topFinalScore = scores[0]?.finalScore ?? 0;
-  const winners = scores.filter(score => score.finalScore === topFinalScore);
-  return { scores, winners, topWealth: topFinalScore, topFinalScore };
+  const topWealth = scores[0]?.wealth ?? 0;
+  const winners = scores.filter(score => score.wealth === topWealth);
+  return { scores, winners, topWealth };
 }
 
 function buildSampleGame(state, meta, scenario, seed, finalScores) {
@@ -388,8 +386,7 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
     startingBasileusId: meta.startingBasileusId,
     winners: state.gameOver ? [] : finalScores.winners,
     scores: finalScores.scores,
-    topWealth: finalScores.topFinalScore,
-    topFinalScore: finalScores.topFinalScore,
+    topWealth: finalScores.topWealth,
     frontierTroops,
     capitalTroops,
     totalLandBuys: meta.totals.landBuys,
@@ -419,8 +416,7 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
       throneCaptures: meta.players[player.id].stats.throneCaptures,
       supportIncumbentVotes: meta.players[player.id].stats.supportIncumbentVotes,
       supportSelfVotes: meta.players[player.id].stats.supportSelfVotes,
-      finalScore: finalScores.scores.find(score => score.playerId === player.id)?.finalScore || 0,
-      finalWealth: finalScores.scores.find(score => score.playerId === player.id)?.finalScore || 0,
+      finalWealth: finalScores.scores.find(score => score.playerId === player.id)?.wealth || 0,
       finalThemes: getPlayerThemes(state, player.id).length,
       finalTitles: player.majorTitles.length + getMinorTitleCount(state, player.id),
       finalGold: player.gold,
@@ -461,7 +457,7 @@ function createBucket(key, label) {
     empireFalls: 0,
     guardAborts: 0,
     roundsTotal: 0,
-    winnerFinalScoreTotal: 0,
+    winnerWealthTotal: 0,
     scoringGames: 0,
     ties: 0,
     throneChangesTotal: 0,
@@ -492,7 +488,7 @@ function applyGameToBucket(bucket, game) {
   bucket.occupiedThemesTotal += game.occupiedThemesEnd;
   if (!game.empireFall && !game.guardTriggered) {
     bucket.scoringGames++;
-    bucket.winnerFinalScoreTotal += game.topFinalScore;
+    bucket.winnerWealthTotal += game.topWealth;
     if (game.winners.length > 1) bucket.ties++;
   }
 }
@@ -506,8 +502,7 @@ function finalizeBucket(bucket) {
     empireFallRate: bucket.games ? bucket.empireFalls / bucket.games : 0,
     guardAbortRate: bucket.games ? bucket.guardAborts / bucket.games : 0,
     averageRounds: bucket.games ? bucket.roundsTotal / bucket.games : 0,
-    averageWinnerFinalScore: bucket.scoringGames ? bucket.winnerFinalScoreTotal / bucket.scoringGames : 0,
-    averageWinnerWealth: bucket.scoringGames ? bucket.winnerFinalScoreTotal / bucket.scoringGames : 0,
+    averageWinnerWealth: bucket.scoringGames ? bucket.winnerWealthTotal / bucket.scoringGames : 0,
     tieRate: bucket.scoringGames ? bucket.ties / bucket.scoringGames : 0,
     averageThroneChanges: bucket.games ? bucket.throneChangesTotal / bucket.games : 0,
     averageMercSpend: bucket.games ? bucket.mercSpendTotal / bucket.games : 0,
@@ -527,7 +522,7 @@ function createPersonalityBucket(profileId, name, theory) {
     theory,
     seats: 0,
     weightedWins: 0,
-    finalScoreTotal: 0,
+    wealthTotal: 0,
     frontierTroopsTotal: 0,
     capitalTroopsTotal: 0,
     mercSpendTotal: 0,
@@ -550,8 +545,7 @@ function finalizePersonalityBucket(bucket) {
     theory: bucket.theory,
     seats: bucket.seats,
     winShare: bucket.seats ? bucket.weightedWins / bucket.seats : 0,
-    averageFinalScore: bucket.seats ? bucket.finalScoreTotal / bucket.seats : 0,
-    averageWealth: bucket.seats ? bucket.finalScoreTotal / bucket.seats : 0,
+    averageWealth: bucket.seats ? bucket.wealthTotal / bucket.seats : 0,
     frontierShare: totalTroops ? bucket.frontierTroopsTotal / totalTroops : 0,
     averageMercSpend: bucket.seats ? bucket.mercSpendTotal / bucket.seats : 0,
     averageLandBuys: bucket.seats ? bucket.landBuysTotal / bucket.seats : 0,
@@ -657,7 +651,7 @@ function finalizeReport(config, startedAt, completedGames, buckets, personalityB
   const byScenario = Object.values(buckets.byScenario).map(finalizeBucket).sort((left, right) => right.empireFallRate - left.empireFallRate || right.games - left.games);
   const byPlayerCount = Object.values(buckets.byPlayerCount).map(finalizeBucket).sort((left, right) => left.key.localeCompare(right.key));
   const byDeckSize = Object.values(buckets.byDeckSize).map(finalizeBucket).sort((left, right) => Number(left.key) - Number(right.key));
-  const byPersonality = Object.values(personalityBuckets).map(finalizePersonalityBucket).sort((left, right) => right.winShare - left.winShare || right.averageFinalScore - left.averageFinalScore);
+  const byPersonality = Object.values(personalityBuckets).map(finalizePersonalityBucket).sort((left, right) => right.winShare - left.winShare || right.averageWealth - left.averageWealth);
   const invasions = Object.values(invasionBuckets).map(finalizeInvasionBucket).sort((left, right) => right.cplFallRate - left.cplFallRate || right.defeatRate - left.defeatRate);
 
   const report = {
@@ -739,7 +733,7 @@ export async function runSimulationBatch(rawConfig = {}, onProgress = null) {
       const bucket = personalityBuckets[playerMetric.personalityId];
       bucket.seats++;
       bucket.weightedWins += playerMetric.isWinner ? winnerShare : 0;
-      bucket.finalScoreTotal += playerMetric.finalScore;
+      bucket.wealthTotal += playerMetric.finalWealth;
       bucket.frontierTroopsTotal += playerMetric.frontierTroops;
       bucket.capitalTroopsTotal += playerMetric.capitalTroops;
       bucket.mercSpendTotal += playerMetric.mercSpend;

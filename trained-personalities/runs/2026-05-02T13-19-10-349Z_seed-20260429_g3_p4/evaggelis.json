@@ -1,0 +1,170 @@
+{
+  "id": "evaggelis",
+  "name": "Evaggelis",
+  "shortName": "Evaggelis",
+  "theory": "Self-play champion",
+  "summary": "Self-play champion focused on retaliation and frontier defense, with holdout behavior showing moderate frontier defense, high land buying, high revocation.",
+  "source": "emergent-trained",
+  "basePersonalityId": null,
+  "weights": {
+    "wealth": 0.845,
+    "land": 2.145,
+    "frontier": 2.476,
+    "capital": 1.031,
+    "throne": 0.162,
+    "church": 0.956,
+    "loyalty": 1.606,
+    "retaliation": 2.563,
+    "selfAppointment": 2.294,
+    "mercenary": 2.247,
+    "revocation": 2.03
+  },
+  "tactics": {
+    "independence": 0.758,
+    "frontierAlarm": 1.017,
+    "churchReserve": 1.008,
+    "incumbencyGrip": 0.908
+  },
+  "meta": {
+    "affinitySlope": 0.2683,
+    "bandwagonStrength": 1.1852,
+    "independenceDamping": 0.4886,
+    "selfThroneBoost": 1.3755,
+    "incumbentGrip": 3.1119,
+    "coupGrievanceFactor": 1.5462,
+    "incomeHorizonBase": 1.2982,
+    "incomeHorizonGrowth": 0.4283,
+    "mercenaryThreshold": 0.2534,
+    "frontierAlarmDanger": 1.0613,
+    "recruitThreshold": 0.6719,
+    "landPurchaseThreshold": 1.3566,
+    "churchGiftThreshold": 2.3166,
+    "dismissalThreshold": 0.873,
+    "revocationThreshold": 3.4494,
+    "courtTemperature": 0.6756,
+    "orderTemperature": 0.8034,
+    "supportTemperature": 0.4577,
+    "opponentLearnRate": 0.21,
+    "opponentTrust": 0.78
+  },
+  "training": {
+    "generation": 3,
+    "matches": 128,
+    "wins": 7,
+    "winShare": 0.0547,
+    "championScore": 8.75,
+    "averageFitness": -2.815,
+    "averageWealth": 11.63,
+    "empireFallRate": 0.4922,
+    "fitnessVariance": 99.6052,
+    "fitnessPresetId": "custom",
+    "playerCount": 4,
+    "deckSize": 6,
+    "populationPresetId": "emergent-self-play",
+    "seed": "20260429",
+    "trainedAt": "2026-05-02T13:19:10.349Z",
+    "trainMatches": 3,
+    "validationMatches": 8,
+    "holdoutMatches": 128,
+    "trainWinShare": 0.6667,
+    "validationWinShare": 0.25,
+    "holdoutWinShare": 0.0547,
+    "trainEmpireFallRate": 0,
+    "validationEmpireFallRate": 0.125,
+    "holdoutEmpireFallRate": 0.4922,
+    "trainWealthPercentile": 0.7778,
+    "validationWealthPercentile": 0.3333,
+    "holdoutWealthPercentile": 0.5234,
+    "guardRate": 0,
+    "paretoFront": 1,
+    "crowdingDistance": 0,
+    "noveltyScore": 0.8596,
+    "noveltyPercentile": 0.75,
+    "seatBias": 0.0896,
+    "bestMatchup": "scripted:always_coup_leader",
+    "worstMatchup": "scripted:always_buy_land",
+    "mainBehavior": "moderate frontier defense, high land buying, high revocation",
+    "behaviorProfile": {
+      "frontierTroopShare": 0.5673,
+      "capitalTroopShare": 0.4327,
+      "averageLandBuys": 7.2422,
+      "averageChurchGifts": 0,
+      "averageRevocations": 5.25,
+      "averageThroneCaptures": 0.4922,
+      "incumbentSupportRate": 0.4104,
+      "selfSupportRate": 0.1527,
+      "goldHoardingRate": 0,
+      "averageMercSpend": 18.2656,
+      "recruitmentUtilization": 0.9512
+    },
+    "perOpponentTypeWinRate": {
+      "scripted:always_coup_leader": {
+        "matches": 16,
+        "winRate": 0.0833,
+        "averageFitness": -3.542
+      },
+      "hof:generation_bucket_0": {
+        "matches": 32,
+        "winRate": 0.0625,
+        "averageFitness": -2.6292
+      },
+      "emergent:cluster_3": {
+        "matches": 4.6667,
+        "winRate": 0.0714,
+        "averageFitness": -3.8585
+      },
+      "scripted:always_buy_land": {
+        "matches": 16,
+        "winRate": 0.0208,
+        "averageFitness": -4.4181
+      },
+      "emergent:cluster_2": {
+        "matches": 8.6667,
+        "winRate": 0.0769,
+        "averageFitness": 2.3229
+      },
+      "scripted:always_gift_to_church": {
+        "matches": 16,
+        "winRate": 0.0417,
+        "averageFitness": -1.7535
+      },
+      "emergent:cluster_0": {
+        "matches": 14.3333,
+        "winRate": 0.0465,
+        "averageFitness": -3.4205
+      },
+      "scripted:always_support_richest_rival": {
+        "matches": 16,
+        "winRate": 0.0417,
+        "averageFitness": -4.5887
+      },
+      "emergent:cluster_1": {
+        "matches": 4.3333,
+        "winRate": 0.0769,
+        "averageFitness": -0.0913
+      }
+    },
+    "perSeatWinRate": {
+      "0": {
+        "matches": 32,
+        "winRate": 0.125,
+        "averageFitness": 2.2519
+      },
+      "1": {
+        "matches": 32,
+        "winRate": 0.0313,
+        "averageFitness": -3.3152
+      },
+      "2": {
+        "matches": 32,
+        "winRate": 0.0313,
+        "averageFitness": -3.3708
+      },
+      "3": {
+        "matches": 32,
+        "winRate": 0.0313,
+        "averageFitness": -6.8243
+      }
+    }
+  }
+}

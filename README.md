@@ -6,7 +6,7 @@ Basileus is a 3–5 player strategy game where rival noble houses jockey for tit
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
- 
+
 **Play it online:** https://escadronrogue.github.io/Basileus/
 
 ## Highlights

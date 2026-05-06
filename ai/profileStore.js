@@ -9,8 +9,13 @@ import {
 } from './personalities.js';
 
 const STORAGE_KEY = 'basileus.savedAiProfiles.v1';
-const EXPORTED_PROFILE_INDEX_PATH = '/api/personalities/exported';
-const GITHUB_PERSONALITY_FOLDER = 'trained-personalities';
+const EXPORTED_PROFILE_INDEX_ENDPOINTS = [
+  'api/personalities/exported',
+];
+
+const EXPORTED_PROFILE_MANIFEST_PATHS = [
+  'trained-personalities/latest/manifest.json',
+];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -128,62 +133,32 @@ async function fetchJsonMaybe(path) {
   }
 }
 
-function readMetaContent(name) {
-  if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return '';
-  const value = document.querySelector(`meta[name="${name}"]`)?.getAttribute('content');
-  return typeof value === 'string' ? value.trim() : '';
+function resolveManifestBaseDir(manifestPath) {
+  return manifestPath.replace(/[^/]+$/, '');
 }
 
-function normalizeBaseUrl(value) {
-  return String(value || '').trim().replace(/\/+$/, '');
+function canUseExportedProfileIndexApi() {
+  if (typeof window === 'undefined') return false;
+  const host = window.location?.hostname || '';
+  return ['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(host) || host.endsWith('.localhost');
 }
 
-function readConfiguredPersonalityBase() {
-  const browserWindow = typeof window !== 'undefined' ? window : null;
-  return normalizeBaseUrl(
-    browserWindow?.BASILEUS_PERSONALITIES_URL
-      || browserWindow?.BASILEUS_MULTIPLAYER_URL
-      || readMetaContent('basileus-personalities-url')
-      || readMetaContent('basileus-multiplayer-url')
+async function loadProfilesFromManifest(manifestPath) {
+  const manifest = await fetchJsonMaybe(manifestPath);
+  if (!manifest || !Array.isArray(manifest.files) || !manifest.files.length) return [];
+
+  const baseDir = resolveManifestBaseDir(manifestPath, manifest);
+  const loadedProfiles = await Promise.all(
+    manifest.files
+      .map(entry => entry?.file)
+      .filter(Boolean)
+      .map(fileName => fetchJsonMaybe(`${baseDir}${fileName}`))
   );
-}
 
-function resolveGithubPagesPersonalitySource() {
-  if (typeof window === 'undefined' || !window.location) return null;
-  const { hostname, pathname } = window.location;
-  if (!String(hostname || '').endsWith('.github.io')) return null;
-
-  const owner = String(hostname).replace(/\.github\.io$/i, '').trim();
-  const repo = String(pathname || '').split('/').filter(Boolean)[0] || '';
-  if (!owner || !repo) return null;
-
-  return {
-    type: 'github-contents',
-    path: `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${GITHUB_PERSONALITY_FOLDER}?ref=main`,
-  };
-}
-
-function resolveExportedProfileSources() {
-  const configuredBase = readConfiguredPersonalityBase();
-  const sources = [];
-
-  if (configuredBase) {
-    sources.push({ type: 'api', path: `${configuredBase}${EXPORTED_PROFILE_INDEX_PATH}` });
-  }
-
-  const githubSource = resolveGithubPagesPersonalitySource();
-  if (githubSource) {
-    sources.push(githubSource);
-  } else if (!configuredBase) {
-    sources.push({ type: 'api', path: EXPORTED_PROFILE_INDEX_PATH });
-  }
-
-  return sources;
-}
-
-function isLoadableProfileFileName(fileName) {
-  const lower = String(fileName || '').toLowerCase();
-  return lower.endsWith('.json') && lower !== 'manifest.json' && lower !== 'latest-manifest.json';
+  return loadedProfiles
+    .map(profile => normalizeAiProfile(profile))
+    .filter(Boolean)
+    .map(profile => ({ ...profile, librarySource: 'exported' }));
 }
 
 async function loadProfilesFromIndexApi(endpointPath) {
@@ -195,36 +170,23 @@ async function loadProfilesFromIndexApi(endpointPath) {
     .filter(Boolean)
     .map(profile => ({ ...profile, librarySource: 'exported' }));
 }
-
-async function loadProfilesFromGithubContentsApi(endpointPath) {
-  const entries = await fetchJsonMaybe(endpointPath);
-  if (!Array.isArray(entries) || !entries.length) return [];
-
-  const files = entries
-    .filter(entry => entry?.type === 'file' && isLoadableProfileFileName(entry.name) && entry.download_url)
-    .sort((left, right) => String(left.name).localeCompare(String(right.name)));
-
-  const profiles = await Promise.all(files.map(async (entry) => {
-    const rawProfile = await fetchJsonMaybe(entry.download_url);
-    const profile = normalizeAiProfile(rawProfile);
-    return profile ? { ...profile, librarySource: 'exported', file: entry.name } : null;
-  }));
-
-  return profiles.filter(Boolean);
-}
-
-async function loadProfilesFromSource(source) {
-  if (source.type === 'github-contents') return loadProfilesFromGithubContentsApi(source.path);
-  return loadProfilesFromIndexApi(source.path);
-}
-
 async function readExportedProfiles() {
   const merged = new Map();
-  const exportedProfiles = await Promise.all(
-    resolveExportedProfileSources().map(source => loadProfilesFromSource(source))
+  const manifestProfiles = await Promise.all(
+    EXPORTED_PROFILE_MANIFEST_PATHS.map(path => loadProfilesFromManifest(path))
   );
 
-  for (const profile of exportedProfiles.flat()) {
+  for (const profile of manifestProfiles.flat()) {
+    if (!merged.has(profile.id)) {
+      merged.set(profile.id, profile);
+    }
+  }
+  if (merged.size > 0 || !canUseExportedProfileIndexApi()) return [...merged.values()];
+
+  const indexProfiles = await Promise.all(
+    EXPORTED_PROFILE_INDEX_ENDPOINTS.map(path => loadProfilesFromIndexApi(path))
+  );
+  for (const profile of indexProfiles.flat()) {
     if (!merged.has(profile.id)) {
       merged.set(profile.id, profile);
     }
@@ -243,10 +205,6 @@ function safeInteger(value, fallback) {
 
 function safeRecord(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function safeArray(value) {
-  return Array.isArray(value) ? value : [];
 }
 
 function dominantWeightLabels(weights) {
@@ -326,32 +284,11 @@ function normalizeTrainingMetadata(rawTraining = {}) {
   const winShare = clamp(safeNumber(rawTraining.winShare, matches ? wins / matches : 0), 0, 1);
   const averageFitness = safeNumber(rawTraining.averageFitness, 0);
   const championScore = safeNumber(rawTraining.championScore, rawTraining.rankingScore ?? averageFitness);
-  const finalScoreMean = safeNumber(rawTraining.finalScoreMean, rawTraining.averageFinalScore ?? rawTraining.averageWealth);
-  const finalScoreAdvantage = safeNumber(rawTraining.finalScoreAdvantage, 0);
-  const finalScorePlacement = clamp(safeNumber(rawTraining.finalScorePlacement, rawTraining.holdoutWealthPercentile ?? rawTraining.wealthPercentile), 0, 1);
-  const survivingFinalScoreMean = safeNumber(rawTraining.survivingFinalScoreMean, rawTraining.holdoutSurvivingFinalScoreMean ?? finalScoreMean);
-  const unsafeRate = clamp(safeNumber(rawTraining.unsafeRate, safeNumber(rawTraining.empireFallRate, 0) + safeNumber(rawTraining.guardRate, 0)), 0, 1);
-  const averageWealth = finalScoreMean;
+  const averageWealth = safeNumber(rawTraining.averageWealth, 0);
   const empireFallRate = clamp(safeNumber(rawTraining.empireFallRate, 0), 0, 1);
-  const mirroredSeatEquity = clamp(safeNumber(rawTraining.mirroredSeatEquity, 1), 0, 1);
-  const mirroredSeatVariance = Math.max(0, safeNumber(rawTraining.mirroredSeatVariance, 0));
   const fitnessVariance = Math.max(0, safeNumber(rawTraining.fitnessVariance, 0));
   const trainedAt = rawTraining.trainedAt ? String(rawTraining.trainedAt) : new Date().toISOString();
   const behaviorProfile = safeRecord(rawTraining.behaviorProfile);
-  const perScenario = safeArray(rawTraining.perScenario).map(entry => ({
-    key: String(entry?.key || ''),
-    playerCount: safeInteger(entry?.playerCount, 4),
-    deckSize: safeInteger(entry?.deckSize, 9),
-    matches: safeInteger(entry?.matches, 0),
-    winShare: roundTo(clamp(safeNumber(entry?.winShare, 0), 0, 1), 4),
-    finalScoreMean: roundTo(safeNumber(entry?.finalScoreMean, entry?.averageWinnerWealth ?? 0), 2),
-    finalScoreAdvantage: roundTo(safeNumber(entry?.finalScoreAdvantage, 0), 4),
-    finalScorePlacement: roundTo(clamp(safeNumber(entry?.finalScorePlacement, 0), 0, 1), 4),
-    survivingFinalScoreMean: roundTo(safeNumber(entry?.survivingFinalScoreMean, 0), 2),
-    empireFallRate: roundTo(clamp(safeNumber(entry?.empireFallRate, 0), 0, 1), 4),
-    guardRate: roundTo(clamp(safeNumber(entry?.guardRate, 0), 0, 1), 4),
-    unsafeRate: roundTo(clamp(safeNumber(entry?.unsafeRate, 0), 0, 1), 4),
-  })).filter(entry => entry.key);
 
   return {
     generation,
@@ -360,23 +297,12 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     winShare: roundTo(winShare, 4),
     championScore: roundTo(championScore, 3),
     averageFitness: roundTo(averageFitness, 3),
-    finalScoreMean: roundTo(finalScoreMean, 2),
-    finalScoreAdvantage: roundTo(finalScoreAdvantage, 4),
-    finalScorePlacement: roundTo(finalScorePlacement, 4),
-    survivingFinalScoreMean: roundTo(survivingFinalScoreMean, 2),
-    unsafeRate: roundTo(unsafeRate, 4),
-    averageFinalScore: roundTo(finalScoreMean, 2),
     averageWealth: roundTo(averageWealth, 2),
     empireFallRate: roundTo(empireFallRate, 4),
-    mirroredSeatEquity: roundTo(mirroredSeatEquity, 4),
-    mirroredSeatVariance: roundTo(mirroredSeatVariance, 4),
     fitnessVariance: roundTo(fitnessVariance, 4),
     fitnessPresetId: rawTraining.fitnessPresetId ? String(rawTraining.fitnessPresetId) : 'balanced',
-    scenarioMode: rawTraining.scenarioMode === 'focused' ? 'focused' : 'generalist',
     playerCount: safeInteger(rawTraining.playerCount, 4),
     deckSize: safeInteger(rawTraining.deckSize, 9),
-    playerCounts: safeArray(rawTraining.playerCounts).map(value => safeInteger(value, 0)).filter(Boolean),
-    deckSizes: safeArray(rawTraining.deckSizes).map(value => safeInteger(value, 0)).filter(Boolean),
     populationPresetId: rawTraining.populationPresetId ? String(rawTraining.populationPresetId) : 'balanced',
     seed: rawTraining.seed == null ? '' : String(rawTraining.seed),
     trainedAt,
@@ -386,24 +312,9 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     trainWinShare: roundTo(clamp(safeNumber(rawTraining.trainWinShare, 0), 0, 1), 4),
     validationWinShare: roundTo(clamp(safeNumber(rawTraining.validationWinShare, 0), 0, 1), 4),
     holdoutWinShare: roundTo(clamp(safeNumber(rawTraining.holdoutWinShare, 0), 0, 1), 4),
-    trainFinalScoreMean: roundTo(safeNumber(rawTraining.trainFinalScoreMean, rawTraining.averageFinalScore ?? 0), 2),
-    validationFinalScoreMean: roundTo(safeNumber(rawTraining.validationFinalScoreMean, 0), 2),
-    holdoutFinalScoreMean: roundTo(safeNumber(rawTraining.holdoutFinalScoreMean, finalScoreMean), 2),
-    trainFinalScoreAdvantage: roundTo(safeNumber(rawTraining.trainFinalScoreAdvantage, 0), 4),
-    validationFinalScoreAdvantage: roundTo(safeNumber(rawTraining.validationFinalScoreAdvantage, 0), 4),
-    holdoutFinalScoreAdvantage: roundTo(safeNumber(rawTraining.holdoutFinalScoreAdvantage, finalScoreAdvantage), 4),
-    trainSurvivingFinalScoreMean: roundTo(safeNumber(rawTraining.trainSurvivingFinalScoreMean, 0), 2),
-    validationSurvivingFinalScoreMean: roundTo(safeNumber(rawTraining.validationSurvivingFinalScoreMean, 0), 2),
-    holdoutSurvivingFinalScoreMean: roundTo(safeNumber(rawTraining.holdoutSurvivingFinalScoreMean, survivingFinalScoreMean), 2),
     trainEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.trainEmpireFallRate, 0), 0, 1), 4),
     validationEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.validationEmpireFallRate, 0), 0, 1), 4),
     holdoutEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.holdoutEmpireFallRate, 0), 0, 1), 4),
-    trainMirroredSeatEquity: roundTo(clamp(safeNumber(rawTraining.trainMirroredSeatEquity, 1), 0, 1), 4),
-    validationMirroredSeatEquity: roundTo(clamp(safeNumber(rawTraining.validationMirroredSeatEquity, 1), 0, 1), 4),
-    holdoutMirroredSeatEquity: roundTo(clamp(safeNumber(rawTraining.holdoutMirroredSeatEquity, mirroredSeatEquity), 0, 1), 4),
-    trainMirroredSeatVariance: roundTo(Math.max(0, safeNumber(rawTraining.trainMirroredSeatVariance, 0)), 4),
-    validationMirroredSeatVariance: roundTo(Math.max(0, safeNumber(rawTraining.validationMirroredSeatVariance, 0)), 4),
-    holdoutMirroredSeatVariance: roundTo(Math.max(0, safeNumber(rawTraining.holdoutMirroredSeatVariance, mirroredSeatVariance)), 4),
     trainWealthPercentile: roundTo(clamp(safeNumber(rawTraining.trainWealthPercentile, 0), 0, 1), 4),
     validationWealthPercentile: roundTo(clamp(safeNumber(rawTraining.validationWealthPercentile, 0), 0, 1), 4),
     holdoutWealthPercentile: roundTo(clamp(safeNumber(rawTraining.holdoutWealthPercentile, 0), 0, 1), 4),
@@ -412,18 +323,10 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     crowdingDistance: roundTo(Math.max(0, safeNumber(rawTraining.crowdingDistance, 0)), 4),
     noveltyScore: roundTo(Math.max(0, safeNumber(rawTraining.noveltyScore, 0)), 4),
     noveltyPercentile: roundTo(clamp(safeNumber(rawTraining.noveltyPercentile, 0), 0, 1), 4),
-    requestedChampionCount: safeInteger(rawTraining.requestedChampionCount, 0),
-    selectedChampionCount: safeInteger(rawTraining.selectedChampionCount, 0),
-    diversityThresholdUsed: roundTo(Math.max(0, safeNumber(rawTraining.diversityThresholdUsed, 0.08)), 4),
-    backfillUsed: Boolean(rawTraining.backfillUsed),
     seatBias: roundTo(safeNumber(rawTraining.seatBias, 0), 4),
     bestMatchup: rawTraining.bestMatchup ? String(rawTraining.bestMatchup) : '',
     worstMatchup: rawTraining.worstMatchup ? String(rawTraining.worstMatchup) : '',
-    scriptedWorstFamilyWinRate: roundTo(clamp(safeNumber(rawTraining.scriptedWorstFamilyWinRate, 0), 0, 1), 4),
-    scriptedWorstFamilyId: rawTraining.scriptedWorstFamilyId ? String(rawTraining.scriptedWorstFamilyId) : '',
-    scriptedCoverageCount: safeInteger(rawTraining.scriptedCoverageCount, 0),
     mainBehavior: rawTraining.mainBehavior ? String(rawTraining.mainBehavior) : '',
-    safetyMode: rawTraining.safetyMode ? String(rawTraining.safetyMode) : 'pareto-score-novelty',
     behaviorProfile: {
       frontierTroopShare: roundTo(clamp(safeNumber(behaviorProfile.frontierTroopShare, 0), 0, 1), 4),
       capitalTroopShare: roundTo(clamp(safeNumber(behaviorProfile.capitalTroopShare, 0), 0, 1), 4),
@@ -438,11 +341,7 @@ function normalizeTrainingMetadata(rawTraining = {}) {
       recruitmentUtilization: roundTo(clamp(safeNumber(behaviorProfile.recruitmentUtilization, 0), 0, 1), 4),
     },
     perOpponentTypeWinRate: safeRecord(rawTraining.perOpponentTypeWinRate),
-    perOpponentClassWinRate: safeRecord(rawTraining.perOpponentClassWinRate),
-    perScriptedFamilyWinRate: safeRecord(rawTraining.perScriptedFamilyWinRate),
-    perScriptedCategoryWinRate: safeRecord(rawTraining.perScriptedCategoryWinRate),
     perSeatWinRate: safeRecord(rawTraining.perSeatWinRate),
-    perScenario,
   };
 }
 

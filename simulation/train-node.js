@@ -6,9 +6,6 @@ import { join, resolve } from 'node:path';
 import { availableParallelism } from 'node:os';
 
 function parseValue(value) {
-  if (typeof value === 'string' && value.includes(',')) {
-    return value.split(',').map(part => parseValue(part.trim())).filter(part => part !== '');
-  }
   if (value === 'true') return true;
   if (value === 'false') return false;
   if (/^-?\d+$/.test(value)) return Number.parseInt(value, 10);
@@ -70,34 +67,54 @@ async function writeJsonFile(path, payload) {
 async function exportChampionPersonalities(result, exportDir = 'trained-personalities') {
   const champions = Array.isArray(result?.champions) ? result.champions : [];
   const exportRoot = resolve(process.cwd(), exportDir || 'trained-personalities');
-  const runDir = join(exportRoot, 'runs', buildRunId(result));
+  const runsRoot = join(exportRoot, 'runs');
+  const runId = buildRunId(result);
+  const runDir = join(runsRoot, runId);
+  const latestDir = join(exportRoot, 'latest');
 
-  await mkdir(exportRoot, { recursive: true });
   await mkdir(runDir, { recursive: true });
+  await mkdir(latestDir, { recursive: true });
 
   const files = [];
   for (const [index, profile] of champions.entries()) {
     const rank = index + 1;
     const name = profile.name || `Champion ${rank}`;
     const filename = `${slugifyFileName(name, `champion-${rank}`)}.json`;
-    const activeFile = join(exportRoot, filename);
-    const runFile = join(runDir, filename);
-
-    await writeJsonFile(activeFile, profile);
-    await writeJsonFile(runFile, profile);
+    await writeJsonFile(join(runDir, filename), profile);
+    await writeJsonFile(join(latestDir, filename), profile);
     files.push({
       rank,
       id: profile.id || null,
       name,
       file: filename,
-      activeFile,
-      runFile,
+      runFile: join(runDir, filename),
+      latestFile: join(latestDir, filename),
     });
   }
+
+  const manifest = {
+    version: 2,
+    type: 'basileus-trained-personality-export',
+    exportedAt: new Date().toISOString(),
+    runId,
+    championCount: champions.length,
+    config: result?.config || {},
+    overview: result?.overview || {},
+    files,
+    loading: 'folder-scan',
+  };
+
+  await writeJsonFile(join(runDir, 'manifest.json'), manifest);
+  await writeJsonFile(join(latestDir, 'manifest.json'), manifest);
+  await writeJsonFile(join(latestDir, 'latest-manifest.json'), manifest);
 
   return {
     exportRoot,
     runDir,
+    latestDir,
+    manifestFile: join(runDir, 'manifest.json'),
+    latestManifestFile: join(latestDir, 'manifest.json'),
+    latestPointerFile: join(latestDir, 'latest-manifest.json'),
     files,
   };
 }
@@ -149,6 +166,7 @@ async function main() {
     event: 'personalities-exported',
     exportRoot: personalityExport.exportRoot,
     runDir: personalityExport.runDir,
+    latestDir: personalityExport.latestDir,
     files: personalityExport.files.length,
   }));
   console.log(JSON.stringify({

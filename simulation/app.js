@@ -170,20 +170,6 @@ function populateControls() {
   );
 
   populateCheckboxGroup(
-    'trainingPlayerCounts',
-    SUPPORTED_PLAYER_COUNTS.map(value => ({ id: String(value), value })),
-    DEFAULT_TRAINING_CONFIG.playerCounts.map(String),
-    item => `${item.value} players`
-  );
-
-  populateCheckboxGroup(
-    'trainingDeckSizes',
-    DEFAULT_MIXED_DECK_SIZES.map(value => ({ id: String(value), value })),
-    DEFAULT_TRAINING_CONFIG.deckSizes.map(String),
-    item => `${item.value} invasions`
-  );
-
-  populateCheckboxGroup(
     'personalityPool',
     state.availableProfiles,
     state.availableProfiles.map(profile => profile.id),
@@ -215,10 +201,7 @@ function populateControls() {
   byId('trainingChampions').value = DEFAULT_TRAINING_CONFIG.champions;
   byId('trainingDeckSize').value = DEFAULT_TRAINING_CONFIG.deckSize;
   byId('trainingSeed').value = DEFAULT_TRAINING_CONFIG.seed;
-  byId('trainingModeGeneralist').checked = DEFAULT_TRAINING_CONFIG.scenarioMode !== 'focused';
-  byId('trainingModeFocused').checked = DEFAULT_TRAINING_CONFIG.scenarioMode === 'focused';
   applyTrainingFitnessPreset(DEFAULT_TRAINING_CONFIG.fitnessPresetId);
-  updateTrainingModeVisibility();
 }
 
 function getCheckedValues(containerId) {
@@ -229,12 +212,6 @@ function updateModeVisibility() {
   const mixed = byId('modeMixed').checked;
   byId('mixedControls').hidden = !mixed;
   byId('focusedControls').hidden = mixed;
-}
-
-function updateTrainingModeVisibility() {
-  const generalist = byId('trainingModeGeneralist').checked;
-  byId('trainingGeneralistControls').hidden = !generalist;
-  byId('trainingFocusedControls').hidden = generalist;
 }
 
 function readConfigFromForm() {
@@ -261,11 +238,8 @@ function readConfigFromForm() {
 function readTrainingConfigFromForm() {
   return normalizeTrainingConfig({
     seed: byId('trainingSeed').value.trim(),
-    scenarioMode: byId('trainingModeFocused').checked ? 'focused' : 'generalist',
     playerCount: Number(byId('trainingPlayerCount').value),
     deckSize: Number(byId('trainingDeckSize').value),
-    playerCounts: getCheckedValues('trainingPlayerCounts').map(Number),
-    deckSizes: getCheckedValues('trainingDeckSizes').map(Number),
     fitnessPresetId: byId('trainingFitnessPreset').value,
     fitness: readTrainingFitnessFromForm(),
     populationSize: Number(byId('trainingPopulationSize').value),
@@ -511,12 +485,10 @@ function renderTrainingResult(result) {
     ['Survival bonus', formatNumber(result.config.fitness.survivalBonus, 2)],
     ['Win reward', formatNumber(result.config.fitness.winReward, 2)],
     ['Placement reward', formatNumber(result.config.fitness.placementReward, 2)],
-    ['Score advantage reward', formatNumber(result.config.fitness.scoreAdvantageReward ?? result.config.fitness.wealthReward, 2)],
+    ['Wealth reward', formatNumber(result.config.fitness.wealthReward, 2)],
     ['Validation matches', formatInteger(result.config.validationMatchesPerCandidate ?? 0)],
     ['Holdout matches', formatInteger(result.config.holdoutMatchesPerChampion ?? 0)],
-    ['Training scope', result.config.scenarioMode === 'focused' ? 'Focused' : 'Generalist'],
-    ['Selection', result.overview.selectionMethod || 'pareto-score-novelty'],
-    ['Selection mode', result.overview.safetyMode || 'pareto-score-novelty'],
+    ['Selection', result.overview.selectionMethod || 'pareto-crowding'],
   ];
 
   const overviewCards = [
@@ -524,20 +496,12 @@ function renderTrainingResult(result) {
     { label: 'Population', value: formatInteger(result.overview.populationSize) },
     { label: 'Matches', value: formatInteger(result.overview.totalMatches) },
     { label: 'Workers', value: formatInteger(result.overview.parallelWorkers || 1) },
-    { label: 'Requested Champs', value: formatInteger(result.overview.requestedChampionCount || result.champions.length) },
-    { label: 'Exported Champs', value: formatInteger(result.overview.selectedChampionCount || result.champions.length) },
     { label: 'Best Score', value: formatNumber(result.overview.bestFitness, 3) },
     { label: 'Best Holdout Win', value: formatPercent(result.overview.bestHoldoutWinShare || 0) },
-    { label: 'Best Final Score', value: formatNumber(result.overview.bestFinalScore ?? result.overview.bestAverageWealth, 2) },
-    { label: 'Best Score Edge', value: formatNumber(result.overview.bestFinalScoreAdvantage || 0, 2) },
-    { label: 'Best Surviving Score', value: formatNumber(result.overview.bestSurvivingFinalScore || 0, 2) },
-    { label: 'Worst Scripted', value: formatPercent(result.overview.bestScriptedWorstFamilyWinRate || 0) },
-    { label: 'Scripted Coverage', value: formatInteger(result.overview.bestScriptedCoverageCount || 0) },
-    { label: 'Best Seat Equity', value: formatPercent(result.overview.bestMirroredSeatEquity ?? 1) },
-    { label: 'Best Seat Variance', value: formatNumber(result.overview.bestMirroredSeatVariance || 0, 4) },
+    { label: 'Best Wealth', value: formatNumber(result.overview.bestAverageWealth, 2) },
     { label: 'Best Fall Rate', value: formatPercent(result.overview.bestEmpireFallRate) },
     { label: 'Best Guard Rate', value: formatPercent(result.overview.bestGuardRate || 0) },
-    { label: 'Best Unsafe Rate', value: formatPercent(result.overview.bestUnsafeRate || 0) },
+    { label: 'Best Variance', value: formatNumber(result.overview.bestRobustnessVariance ?? 0, 3) },
   ];
 
   const championCards = result.champions.map((profile, index) => `
@@ -553,8 +517,7 @@ function renderTrainingResult(result) {
           <span class="meta-chip">Train ${formatPercent(profile.training.trainWinShare || 0)}</span>
           <span class="meta-chip">Validation ${formatPercent(profile.training.validationWinShare || 0)}</span>
           <span class="meta-chip">Holdout ${formatPercent(profile.training.holdoutWinShare || profile.training.winShare || 0)}</span>
-          <span class="meta-chip">Final Score ${formatNumber(profile.training.finalScoreMean ?? profile.training.averageWealth, 2)}</span>
-          <span class="meta-chip">Score Edge ${formatNumber(profile.training.finalScoreAdvantage || 0, 2)}</span>
+          <span class="meta-chip">Wealth ${formatNumber(profile.training.averageWealth, 2)}</span>
           <span class="meta-chip">Fall ${formatPercent(profile.training.empireFallRate)}</span>
           <span class="meta-chip">Guard ${formatPercent(profile.training.guardRate || 0)}</span>
         </div>
@@ -562,35 +525,14 @@ function renderTrainingResult(result) {
           <span class="meta-chip">Best ${escapeHtml(profile.training.bestMatchup || 'n/a')}</span>
           <span class="meta-chip">Worst ${escapeHtml(profile.training.worstMatchup || 'n/a')}</span>
           <span class="meta-chip">Seat Bias ${formatPercent(profile.training.seatBias || 0)}</span>
-          <span class="meta-chip">Seat Equity ${formatPercent(profile.training.mirroredSeatEquity ?? 1)}</span>
-          <span class="meta-chip">Seat Variance ${formatNumber(profile.training.mirroredSeatVariance || 0, 4)}</span>
           <span class="meta-chip">Novelty ${formatPercent(profile.training.noveltyPercentile || 0)}</span>
-          <span class="meta-chip">Unsafe ${formatPercent(profile.training.unsafeRate || 0)}</span>
-        </div>
-        <div class="training-meta">
-          <span class="meta-chip">Frontier ${formatPercent(profile.training.behaviorProfile?.frontierTroopShare || 0)}</span>
-          <span class="meta-chip">Incumbent ${formatPercent(profile.training.behaviorProfile?.incumbentSupportRate || 0)}</span>
-          <span class="meta-chip">Self ${formatPercent(profile.training.behaviorProfile?.selfSupportRate || 0)}</span>
-        </div>
-        <div class="training-meta">
-          <span class="meta-chip">Scripted Base ${formatPercent(profile.training.perScriptedCategoryWinRate?.base?.winRate || 0)}</span>
-          <span class="meta-chip">Composite ${formatPercent(profile.training.perScriptedCategoryWinRate?.composite?.winRate || 0)}</span>
-          <span class="meta-chip">Alternator ${formatPercent(profile.training.perScriptedCategoryWinRate?.alternator?.winRate || 0)}</span>
-          <span class="meta-chip">Worst Family ${formatPercent(profile.training.scriptedWorstFamilyWinRate || 0)}</span>
-          <span class="meta-chip">Coverage ${formatInteger(profile.training.scriptedCoverageCount || 0)}</span>
-        </div>
-        <div class="training-meta">
-          <span class="meta-chip">Target ${formatInteger(profile.training.requestedChampionCount || result.overview.requestedChampionCount || result.champions.length)}</span>
-          <span class="meta-chip">Selected ${formatInteger(profile.training.selectedChampionCount || result.overview.selectedChampionCount || result.champions.length)}</span>
-          <span class="meta-chip">Diversity ${formatNumber(profile.training.diversityThresholdUsed || result.overview.diversityThresholdUsed || 0.08, 2)}</span>
-          <span class="meta-chip">${profile.training.backfillUsed ? 'Backfilled' : 'Pure diversity'}</span>
         </div>
         <p>${escapeHtml(profile.training.mainBehavior || '')}</p>
       </article>
     `).join('');
 
   const generationLines = result.generationHistory.map(entry => `
-    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} in ${escapeHtml(entry.safetyMode || 'pareto-score-novelty')} mode, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, validation score ${formatNumber(entry.validationFinalScoreMean || 0, 2)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
+    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} on Pareto front ${formatInteger(entry.leaderParetoFront || 0)}, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
   `).join('');
 
   const exportInfo = result.personalityExport
@@ -598,11 +540,12 @@ function renderTrainingResult(result) {
     <section class="results-section">
       <div class="section-head">
         <h2>Exported Personality Files</h2>
-        <p>Individual Greek-named champion JSON files were written automatically by the Node trainer. The local game server loads direct JSON files from the trained-personalities folder, so moving valid personality JSON files in or out changes the usable roster.</p>
+        <p>Individual Greek-named champion JSON files were written automatically by the Node trainer. The local game server scans this folder directly, so moving valid personality JSON files in or out changes the usable roster without editing a manifest.</p>
       </div>
       <ul class="training-list">
-        <li>Live roster folder: <code>${escapeHtml(result.personalityExport.exportRoot || '')}</code></li>
+        <li>Latest folder: <code>${escapeHtml(result.personalityExport.latestDir || '')}</code></li>
         <li>Archived run folder: <code>${escapeHtml(result.personalityExport.runDir || '')}</code></li>
+        <li>Compatibility manifest: <code>${escapeHtml(result.personalityExport.manifestFile || '')}</code></li>
       </ul>
     </section>
   `
@@ -677,7 +620,7 @@ function renderSavedProfileLibrary() {
             <span class="meta-chip">${escapeHtml(getFitnessPresetName(profile.training.fitnessPresetId))}</span>
             <span class="meta-chip">Score ${formatNumber(profile.training.championScore ?? profile.training.averageFitness, 3)}</span>
             <span class="meta-chip">Holdout ${formatPercent(profile.training.holdoutWinShare || profile.training.winShare || 0)}</span>
-            <span class="meta-chip">${escapeHtml(profile.training.scenarioMode === 'focused' ? `Focused ${formatInteger(profile.training.playerCount)}p/${formatInteger(profile.training.deckSize)}d` : 'Generalist')}</span>
+            <span class="meta-chip">Deck ${formatInteger(profile.training.deckSize)}</span>
             <span class="meta-chip">${escapeHtml(formatProfileSnapshot(profile))}</span>
           </div>
         </article>
@@ -814,7 +757,7 @@ async function finishLocalTrainingJob(jobId) {
   state.lastDownload = { filename: `basileus-training-${Date.now()}.json`, data: result };
   renderTrainingResult(result);
   setProgress(result.overview.totalMatches, result.overview.totalMatches);
-  const exportText = result.personalityExport?.exportRoot ? ` Exported to ${result.personalityExport.exportRoot}.` : '';
+  const exportText = result.personalityExport?.latestDir ? ` Exported to ${result.personalityExport.latestDir}.` : '';
   setStatus(`Node training completed in ${formatNumber(result.runtimeMs / 1000, 2)}s. ${result.champions.length} champion${result.champions.length === 1 ? '' : 's'} ready.${exportText}`, 'done');
   closeLocalTrainerStream();
   state.localTrainer.jobId = null;
@@ -838,7 +781,7 @@ function handleLocalTrainerEvent(message) {
   }
 
   if (message.event === 'personalities-exported') {
-    setStatus(`Node trainer exported ${message.files || 0} personality file${message.files === 1 ? '' : 's'} to ${message.exportRoot || 'trained-personalities'}.`, 'running');
+    setStatus(`Node trainer exported ${message.files || 0} personality file${message.files === 1 ? '' : 's'} to ${message.latestDir || message.exportRoot || 'trained-personalities'}.`, 'running');
     return;
   }
 
@@ -1018,15 +961,12 @@ function resetDefaults() {
   populateControls();
   byId('modeMixed').checked = true;
   updateModeVisibility();
-  updateTrainingModeVisibility();
   setStatus('Defaults restored. Ready for another sweep or training run.');
 }
 
 function bindEvents() {
   byId('modeMixed').addEventListener('change', updateModeVisibility);
   byId('modeFocused').addEventListener('change', updateModeVisibility);
-  byId('trainingModeGeneralist').addEventListener('change', updateTrainingModeVisibility);
-  byId('trainingModeFocused').addEventListener('change', updateTrainingModeVisibility);
   byId('runButton').addEventListener('click', () => startJob('run'));
   byId('trainButton').addEventListener('click', () => startJob('train'));
   byId('saveTrainingButton').addEventListener('click', saveTrainingChampions);
@@ -1068,7 +1008,6 @@ async function init() {
   populateControls();
   bindEvents();
   updateModeVisibility();
-  updateTrainingModeVisibility();
   renderSavedProfileLibrary();
   renderTrainingResult(null);
   setProgress(0, 0);

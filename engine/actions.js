@@ -611,7 +611,7 @@ export function resolveCoup(state, allOrders, capitalTroops) {
     if (tied.some(c => Number(c[0]) === state.basileusId)) {
       winner = state.basileusId;
     } else {
-      winner = Number(tied[Math.floor(state.rng() * tied.length)]?.[0] ?? tied[0][0]);
+      winner = Number(tied[0][0]);
     }
   }
 

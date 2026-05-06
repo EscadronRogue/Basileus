@@ -142,44 +142,15 @@
             <small class="field-note">0 = auto when launched through the local Node trainer.</small>
           </label>
 
-          <div class="field">
-            <span>Training Scope</span>
-            <div class="mode-switch">
-              <label class="mode-pill">
-                <input type="radio" name="trainingMode" id="trainingModeGeneralist" checked>
-                <span>Generalist</span>
-              </label>
-              <label class="mode-pill">
-                <input type="radio" name="trainingMode" id="trainingModeFocused">
-                <span>Focused</span>
-              </label>
-            </div>
-            <small class="field-note">Generalist cycles all supported player counts and deck lengths. Focused uses one exact scenario.</small>
-          </div>
-
-          <div id="trainingGeneralistControls" class="mode-panel">
-            <div class="field">
-              <span>Player Counts</span>
-              <div id="trainingPlayerCounts" class="chip-grid"></div>
-            </div>
-
-            <div class="field">
-              <span>Deck Lengths</span>
-              <div id="trainingDeckSizes" class="chip-grid"></div>
-            </div>
-          </div>
-
-          <div id="trainingFocusedControls" class="mode-panel" hidden>
-            <div class="form-grid">
-              <label class="field">
-                <span>Players</span>
-                <select id="trainingPlayerCount"></select>
-              </label>
-              <label class="field">
-                <span>Deck Size</span>
-                <input id="trainingDeckSize" type="number" min="1" max="30" step="1">
-              </label>
-            </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Players</span>
+              <select id="trainingPlayerCount"></select>
+            </label>
+            <label class="field">
+              <span>Deck Size</span>
+              <input id="trainingDeckSize" type="number" min="1" max="30" step="1">
+            </label>
           </div>
 
           <label class="field">

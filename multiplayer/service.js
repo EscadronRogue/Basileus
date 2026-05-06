@@ -45,11 +45,15 @@ function normalizePlayerName(rawName) {
 export class MultiplayerRoomManager {
   constructor() {
     this.rooms = new Map();
+    this.aiProfilesPromise = null;
   }
 
   async getAvailableAiProfiles() {
-    const exportRoot = resolve(process.cwd(), 'trained-personalities');
-    return readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false }).catch(() => []);
+    if (!this.aiProfilesPromise) {
+      const exportRoot = resolve(process.cwd(), 'trained-personalities');
+      this.aiProfilesPromise = readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false }).catch(() => []);
+    }
+    return this.aiProfilesPromise;
   }
 
   createSessionToken() {
@@ -109,19 +113,6 @@ export class MultiplayerRoomManager {
 }
 
 export async function handleMultiplayerApiRequest(manager, req, url) {
-  if (req.method === 'GET' && url.pathname === '/api/personalities/exported') {
-    const profiles = await manager.getAvailableAiProfiles();
-    return {
-      statusCode: 200,
-      payload: {
-        version: 1,
-        loading: 'folder-scan',
-        profileCount: profiles.length,
-        profiles,
-      },
-    };
-  }
-
   if (req.method === 'POST' && url.pathname === '/api/rooms') {
     const body = await parseMultiplayerRequestJson(req);
     const result = manager.createRoom({
