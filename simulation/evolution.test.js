@@ -10,8 +10,10 @@ import {
   evaluateCandidateOnSuite,
   normalizeTrainingConfig,
   rankSelectionEntries,
+  selectChampionEntriesForExport,
 } from './evolution.js';
 import { runSingleSimulationGame } from './engine.js';
+import { SCRIPTED_ADVERSARY_FAMILY_IDS_BY_CATEGORY } from './scripted-adversaries.js';
 
 function makeSummary(overrides = {}) {
   return {
@@ -35,6 +37,12 @@ function makeSummary(overrides = {}) {
       hof: { winRate: 0.25 },
       emergent: { winRate: 0.25 },
     },
+    perScriptedCategoryWinRate: {
+      base: { winRate: 0.25 },
+      composite: { winRate: 0.25 },
+      alternator: { winRate: 0.25 },
+    },
+    scriptedWorstFamilyWinRate: 0.25,
     behaviorVector: Array(11).fill(0.5),
     ...overrides,
   };
@@ -155,6 +163,49 @@ test('generalist suite cycles uniformly across the scenario matrix', () => {
   assert.deepEqual(suite.slice(0, 4).map(entry => entry.scenarioKey), ['3p-6d', '3p-12d', '5p-6d', '5p-12d']);
 });
 
+test('training suites use a stable 7/2/1 ecology to exploit mix', () => {
+  const config = normalizeTrainingConfig({
+    scenarioMode: 'focused',
+    playerCount: 4,
+    deckSize: 6,
+    matchesPerCandidate: 10,
+  });
+  const suite = buildEvaluationSuite(config, 'training', 2, 10, 'mid');
+  const matchKinds = suite.map(match => match.matchKind);
+  assert.equal(matchKinds.filter(kind => kind === 'normal').length, 7);
+  assert.equal(matchKinds.filter(kind => kind === 'single-exploit').length, 2);
+  assert.equal(matchKinds.filter(kind => kind === 'clustered-exploit').length, 1);
+
+  const singleExploit = suite.filter(match => match.matchKind === 'single-exploit');
+  const clusteredExploit = suite.find(match => match.matchKind === 'clustered-exploit');
+  singleExploit.forEach(match => {
+    assert.equal(match.descriptors.filter(descriptor => descriptor.controller === 'scripted').length, 1);
+  });
+  assert.ok(clusteredExploit);
+  assert.equal(clusteredExploit.descriptors.filter(descriptor => descriptor.controller === 'scripted').length, 2);
+});
+
+test('clustered exploit tables keep scripted families distinct and round-robin across categories', () => {
+  const config = normalizeTrainingConfig({
+    scenarioMode: 'focused',
+    playerCount: 5,
+    deckSize: 6,
+    matchesPerCandidate: 10,
+  });
+  const suite = buildEvaluationSuite(config, 'training', 2, 10, 'late');
+  const scriptedDescriptors = suite.flatMap(match => match.descriptors.filter(descriptor => descriptor.controller === 'scripted'));
+  const categoriesSeen = new Set(scriptedDescriptors.map(descriptor => descriptor.scriptedCategory));
+  const clusteredExploit = suite.find(match => match.matchKind === 'clustered-exploit');
+  const clusteredFamilies = clusteredExploit.descriptors
+    .filter(descriptor => descriptor.controller === 'scripted')
+    .map(descriptor => descriptor.scriptedFamilyId);
+
+  assert.deepEqual([...categoriesSeen].sort(), ['alternator', 'base', 'composite']);
+  assert.equal(new Set(clusteredFamilies).size, 3);
+  assert.ok(clusteredFamilies.every(Boolean));
+  assert.ok(SCRIPTED_ADVERSARY_FAMILY_IDS_BY_CATEGORY.base.length > 0);
+});
+
 test('evaluation summaries include per-scenario final-score metrics', () => {
   const config = normalizeTrainingConfig({
     seed: 12345,
@@ -203,6 +254,49 @@ test('mirrored validation summaries include seat-equity diagnostics', () => {
   assert.ok(summary.mirroredSeatEquity >= 0 && summary.mirroredSeatEquity <= 1);
   assert.ok(summary.mirroredSeatVariance >= 0);
   assert.equal(Object.keys(summary.perSeatWinRate).length, 4);
+});
+
+test('validation summaries expose scripted family and category win rates', () => {
+  const config = normalizeTrainingConfig({
+    seed: 13579,
+    scenarioMode: 'focused',
+    playerCount: 4,
+    deckSize: 6,
+    validationMatchesPerCandidate: 10,
+  });
+  const suite = buildEvaluationSuite(config, 'validation', 1, 10, 'late');
+  const candidate = makeCandidate('scripted-coverage');
+  const summary = evaluateCandidateOnSuite(candidate, suite, {
+    config,
+    generation: 1,
+    scope: 'validation',
+    population: [candidate],
+    hallOfFame: [],
+  }, DEFAULT_FITNESS_WEIGHTS);
+
+  assert.ok(summary.scriptedCoverageCount > 0);
+  assert.ok(summary.scriptedWorstFamilyWinRate >= 0 && summary.scriptedWorstFamilyWinRate <= 1);
+  assert.ok(summary.scriptedWorstFamilyId);
+  assert.ok(summary.perScriptedCategoryWinRate.base);
+  assert.ok(summary.perScriptedCategoryWinRate.composite);
+  assert.ok(summary.perScriptedCategoryWinRate.alternator);
+  assert.ok(Object.keys(summary.perScriptedFamilyWinRate).length >= summary.scriptedCoverageCount);
+});
+
+test('champion export backfills to the requested count instead of silently collapsing to one profile', () => {
+  const entries = Array.from({ length: 4 }, (_, index) => ({
+    candidate: { id: `cand-${index}` },
+    holdoutSummary: { behaviorVector: Array(11).fill(0.5) },
+    validationSummary: { behaviorVector: Array(11).fill(0.5) },
+    trainSummary: { behaviorVector: Array(11).fill(0.5) },
+  }));
+  const selection = selectChampionEntriesForExport(entries, 4, [0.08, 0.06, 0.04, 0.02]);
+
+  assert.equal(selection.requestedChampionCount, 4);
+  assert.equal(selection.selectedChampionCount, 4);
+  assert.equal(selection.selectedEntries.length, 4);
+  assert.equal(selection.backfillUsed, true);
+  assert.equal(selection.diversityThresholdUsed, 0.02);
 });
 
 test('symmetric self-play stays within seat-fairness bounds over 400 games', { timeout: 120000 }, () => {

@@ -524,11 +524,15 @@ function renderTrainingResult(result) {
     { label: 'Population', value: formatInteger(result.overview.populationSize) },
     { label: 'Matches', value: formatInteger(result.overview.totalMatches) },
     { label: 'Workers', value: formatInteger(result.overview.parallelWorkers || 1) },
+    { label: 'Requested Champs', value: formatInteger(result.overview.requestedChampionCount || result.champions.length) },
+    { label: 'Exported Champs', value: formatInteger(result.overview.selectedChampionCount || result.champions.length) },
     { label: 'Best Score', value: formatNumber(result.overview.bestFitness, 3) },
     { label: 'Best Holdout Win', value: formatPercent(result.overview.bestHoldoutWinShare || 0) },
     { label: 'Best Final Score', value: formatNumber(result.overview.bestFinalScore ?? result.overview.bestAverageWealth, 2) },
     { label: 'Best Score Edge', value: formatNumber(result.overview.bestFinalScoreAdvantage || 0, 2) },
     { label: 'Best Surviving Score', value: formatNumber(result.overview.bestSurvivingFinalScore || 0, 2) },
+    { label: 'Worst Scripted', value: formatPercent(result.overview.bestScriptedWorstFamilyWinRate || 0) },
+    { label: 'Scripted Coverage', value: formatInteger(result.overview.bestScriptedCoverageCount || 0) },
     { label: 'Best Seat Equity', value: formatPercent(result.overview.bestMirroredSeatEquity ?? 1) },
     { label: 'Best Seat Variance', value: formatNumber(result.overview.bestMirroredSeatVariance || 0, 4) },
     { label: 'Best Fall Rate', value: formatPercent(result.overview.bestEmpireFallRate) },
@@ -567,6 +571,19 @@ function renderTrainingResult(result) {
           <span class="meta-chip">Frontier ${formatPercent(profile.training.behaviorProfile?.frontierTroopShare || 0)}</span>
           <span class="meta-chip">Incumbent ${formatPercent(profile.training.behaviorProfile?.incumbentSupportRate || 0)}</span>
           <span class="meta-chip">Self ${formatPercent(profile.training.behaviorProfile?.selfSupportRate || 0)}</span>
+        </div>
+        <div class="training-meta">
+          <span class="meta-chip">Scripted Base ${formatPercent(profile.training.perScriptedCategoryWinRate?.base?.winRate || 0)}</span>
+          <span class="meta-chip">Composite ${formatPercent(profile.training.perScriptedCategoryWinRate?.composite?.winRate || 0)}</span>
+          <span class="meta-chip">Alternator ${formatPercent(profile.training.perScriptedCategoryWinRate?.alternator?.winRate || 0)}</span>
+          <span class="meta-chip">Worst Family ${formatPercent(profile.training.scriptedWorstFamilyWinRate || 0)}</span>
+          <span class="meta-chip">Coverage ${formatInteger(profile.training.scriptedCoverageCount || 0)}</span>
+        </div>
+        <div class="training-meta">
+          <span class="meta-chip">Target ${formatInteger(profile.training.requestedChampionCount || result.overview.requestedChampionCount || result.champions.length)}</span>
+          <span class="meta-chip">Selected ${formatInteger(profile.training.selectedChampionCount || result.overview.selectedChampionCount || result.champions.length)}</span>
+          <span class="meta-chip">Diversity ${formatNumber(profile.training.diversityThresholdUsed || result.overview.diversityThresholdUsed || 0.08, 2)}</span>
+          <span class="meta-chip">${profile.training.backfillUsed ? 'Backfilled' : 'Pure diversity'}</span>
         </div>
         <p>${escapeHtml(profile.training.mainBehavior || '')}</p>
       </article>

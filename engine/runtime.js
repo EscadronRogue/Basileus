@@ -20,14 +20,18 @@ import {
   submitHumanOrders,
 } from './commands.js';
 import {
-  applyPlannedAiTitleAssignment,
-  buildAIOrders,
-  handlePostResolutionAI,
   invalidateRoundContext,
   isAIPlayer,
   observeCourtAction,
   runAICourtAutomation,
 } from '../ai/brain.js';
+import {
+  applyPlannedControllerTitleAssignment,
+  buildControllerOrders,
+  handleControllerPostResolution,
+  hasScriptedControllers,
+  runControllerCourtAutomation,
+} from '../simulation/scripted-adversaries.js';
 
 function fail(reason, extra = {}) {
   return { ok: false, reason, ...extra };
@@ -110,6 +114,7 @@ export function processAiFlow(state, aiMeta, options = {}) {
   if (!aiMeta || !state) return { pendingAiTitleAssignment: options.pendingAiTitleAssignment ?? null };
   const courtMode = options.courtMode || 'finish';
   let pendingAiTitleAssignment = options.pendingAiTitleAssignment ?? null;
+  const usingScriptedControllers = hasScriptedControllers(aiMeta);
 
   let safety = 0;
   while (safety < 20) {
@@ -118,7 +123,8 @@ export function processAiFlow(state, aiMeta, options = {}) {
     if (state.gameOver || state.phase === 'scoring' || state.phase === 'resolution') break;
 
     if (state.phase === 'court') {
-      runAICourtAutomation(state, aiMeta, { mode: courtMode });
+      if (usingScriptedControllers) runControllerCourtAutomation(state, aiMeta, { mode: courtMode });
+      else runAICourtAutomation(state, aiMeta, { mode: courtMode });
       if (courtMode === 'finish' && isCourtComplete(state)) {
         phaseOrders(state);
         invalidateRoundContext(aiMeta);
@@ -131,14 +137,14 @@ export function processAiFlow(state, aiMeta, options = {}) {
       for (const player of state.players) {
         if (!isAIPlayer(aiMeta, player.id)) continue;
         if (state.allOrders[player.id]) continue;
-        const orders = buildAIOrders(state, aiMeta, player.id);
+        const orders = buildControllerOrders(state, aiMeta, player.id);
         submitOrders(state, player.id, orders);
       }
 
       if (allOrdersSubmitted(state)) {
         const previousBasileusId = state.basileusId;
         phaseResolution(state);
-        const aftermath = handlePostResolutionAI(state, aiMeta, {
+        const aftermath = handleControllerPostResolution(state, aiMeta, {
           previousBasileusId,
           autoApplyTitleAssignments: false,
         });
@@ -162,12 +168,7 @@ export function processPostHumanAction(state, aiMeta, options = {}) {
 
 export function applyPendingAiTitleAssignment(state, aiMeta, pendingAiTitleAssignment = null) {
   if (!pendingAiTitleAssignment || !aiMeta) return null;
-  applyPlannedAiTitleAssignment(
-    state,
-    aiMeta,
-    pendingAiTitleAssignment,
-    state.nextBasileusId,
-  );
+  applyPlannedControllerTitleAssignment(state, aiMeta, pendingAiTitleAssignment);
   return null;
 }
 

@@ -1230,6 +1230,29 @@ export function isAIPlayer(meta, playerId) {
   return !meta.humanPlayerIds.has(playerId);
 }
 
+function normalizeSeatControllerConfig(rawSeatConfig) {
+  if (!rawSeatConfig || typeof rawSeatConfig !== 'object' || Array.isArray(rawSeatConfig)) {
+    return {
+      controller: 'emergent',
+      profile: normalizeAiProfile(rawSeatConfig),
+      scriptedFamilyId: '',
+      scriptedCategory: '',
+      scriptedSchedule: '',
+      policySeed: '',
+    };
+  }
+  const controller = rawSeatConfig.controller === 'scripted' ? 'scripted' : 'emergent';
+  const profile = normalizeAiProfile(rawSeatConfig.profile || rawSeatConfig);
+  return {
+    controller,
+    profile,
+    scriptedFamilyId: rawSeatConfig.scriptedFamilyId ? String(rawSeatConfig.scriptedFamilyId) : '',
+    scriptedCategory: rawSeatConfig.scriptedCategory ? String(rawSeatConfig.scriptedCategory) : '',
+    scriptedSchedule: rawSeatConfig.scriptedSchedule ? String(rawSeatConfig.scriptedSchedule) : '',
+    policySeed: rawSeatConfig.policySeed == null ? '' : String(rawSeatConfig.policySeed),
+  };
+}
+
 function buildProfileTactics(profile, rng) {
   const variation = () => 0.85 + (rng() * 0.5);
   return {
@@ -1258,7 +1281,8 @@ export function createAIMeta(state, options = {}) {
 
   const players = {};
   for (const player of state.players) {
-    const customProfile = humanPlayerIds.has(player.id) ? null : normalizeAiProfile(options.seatProfiles?.[player.id]);
+    const seatConfig = humanPlayerIds.has(player.id) ? null : normalizeSeatControllerConfig(options.seatProfiles?.[player.id]);
+    const customProfile = seatConfig?.profile || null;
     const personalityId = humanPlayerIds.has(player.id)
       ? null
       : (customProfile?.id || personalityIds[player.id] || allowedPersonalities[0] || null);
@@ -1272,6 +1296,8 @@ export function createAIMeta(state, options = {}) {
     players[player.id] = {
       personalityId,
       profile: customProfile,
+      controller: humanPlayerIds.has(player.id) ? 'human' : (seatConfig?.controller || 'emergent'),
+      controllerConfig: seatConfig,
       trust: {},
       grievance: {},
       obligations: {},
@@ -1281,6 +1307,10 @@ export function createAIMeta(state, options = {}) {
       // Tier 5: per-rival posterior over opponent type. Initialised lazily via
       // ensureOpponentModel() the first time the AI scores against a rival.
       opponentModels: {},
+      scriptedState: {
+        lastSupportedCandidate: null,
+        lastOutcome: null,
+      },
       courtBudget: {
         round: -1,
         landPurchasesRemaining: 0,
@@ -2928,7 +2958,9 @@ function takeOneAiCourtAction(state, meta, playerId) {
 export function runAICourtAutomation(state, meta, options = {}) {
   ensureRoundContext(state, meta, 'court');
   const mode = options.mode || 'finish';
-  const aiOrder = shuffle(state.players.filter(player => isAIPlayer(meta, player.id)).map(player => player.id), state.rng);
+  const aiOrder = Array.isArray(options.playerIds) && options.playerIds.length
+    ? options.playerIds.slice()
+    : shuffle(state.players.filter(player => isAIPlayer(meta, player.id)).map(player => player.id), state.rng);
   let actionsTaken = 0;
 
   const safeTakeOneAiCourtAction = (playerId) => {

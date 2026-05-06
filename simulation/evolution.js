@@ -9,6 +9,11 @@ import {
 } from '../ai/personalities.js';
 import { normalizeAiProfile } from '../ai/profileStore.js';
 import { runSingleSimulationGame } from './engine.js';
+import {
+  SCRIPTED_ADVERSARY_FAMILY_BY_ID,
+  SCRIPTED_ADVERSARY_FAMILY_IDS_BY_CATEGORY,
+  createScriptedSeatConfig,
+} from './scripted-adversaries.js';
 
 const WEIGHT_MIN = 0.15;
 const WEIGHT_MAX = 4.5;
@@ -19,7 +24,10 @@ const OBJECTIVE_KEYS = [
   'finalScorePlacement',
   'finalScoreAdvantage',
   'survivingFinalScoreMean',
-  'scriptedWinRate',
+  'scriptedBaseWinRate',
+  'scriptedCompositeWinRate',
+  'scriptedAlternatorWinRate',
+  'scriptedWorstFamilyWinRate',
   'hallOfFameWinRate',
   'emergentWinRate',
   'mirroredSeatEquity',
@@ -394,129 +402,8 @@ function buildInitialPopulation(config, rng) {
   return Array.from({ length: config.populationSize }, (_, index) => createNeutralCandidate(rng, index));
 }
 
-function createStaticProfile(id, name, summary, weightOverrides = {}, tacticOverrides = {}, metaOverrides = {}) {
-  const weights = Object.fromEntries(
-    PROFILE_WEIGHT_KEYS.map(key => [key, roundTo(clamp(weightOverrides[key] ?? 1.0, WEIGHT_MIN, WEIGHT_MAX))])
-  );
-  const tactics = {
-    independence: roundTo(clamp(tacticOverrides.independence ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
-    frontierAlarm: roundTo(clamp(tacticOverrides.frontierAlarm ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
-    churchReserve: roundTo(clamp(tacticOverrides.churchReserve ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
-    incumbencyGrip: roundTo(clamp(tacticOverrides.incumbencyGrip ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
-  };
-  const meta = {};
-  for (const [key, fallback, min, max] of META_PARAM_DEFS) {
-    meta[key] = roundTo(clamp(metaOverrides[key] ?? fallback, min, max), 4);
-  }
-  return normalizeAiProfile({
-    id,
-    name,
-    shortName: name,
-    theory: 'Adversarial evaluation bot',
-    summary,
-    source: 'scripted-evaluator',
-    basePersonalityId: null,
-    weights,
-    tactics,
-    meta,
-  });
-}
-
-const SCRIPTED_OPPONENTS = [
-  {
-    id: 'always_coup_leader',
-    bucket: 'scripted:always_coup_leader',
-    profile: createStaticProfile(
-      'scripted-always-coup-leader',
-      'Coup Leader',
-      'Pushes hard on capital leverage and throne pressure.',
-      { frontier: 0.3, capital: 4.2, throne: 4.4, loyalty: 0.2, mercenary: 4.0, retaliation: 2.6, revocation: 2.0 },
-      { independence: 1.6, frontierAlarm: 0.7, incumbencyGrip: 0.8 },
-      { supportTemperature: 0.05, orderTemperature: 0.05 }
-    ),
-  },
-  {
-    id: 'free_rider',
-    bucket: 'scripted:free_rider',
-    profile: createStaticProfile(
-      'scripted-free-rider',
-      'Free Rider',
-      'Optimizes for private gain while under-contributing to the frontier.',
-      { wealth: 3.5, land: 3.8, frontier: 0.2, capital: 2.8, throne: 2.7, loyalty: 0.2, mercenary: 2.5 },
-      { independence: 1.4, frontierAlarm: 0.55, churchReserve: 1.2 }
-    ),
-  },
-  {
-    id: 'frontier_defender',
-    bucket: 'scripted:frontier_defender',
-    profile: createStaticProfile(
-      'scripted-frontier-defender',
-      'Frontier Defender',
-      'Over-indexes on imperial defense and stabilizing the incumbent.',
-      { frontier: 4.4, loyalty: 2.8, capital: 0.6, throne: 0.5, wealth: 0.8, mercenary: 2.2 },
-      { independence: 0.8, frontierAlarm: 2.1, incumbencyGrip: 1.8 }
-    ),
-  },
-  {
-    id: 'land_buyer',
-    bucket: 'scripted:always_buy_land',
-    profile: createStaticProfile(
-      'scripted-land-buyer',
-      'Land Buyer',
-      'Treats the empire as a land rush and buys aggressively.',
-      { wealth: 2.8, land: 4.4, frontier: 0.7, capital: 1.4, throne: 1.1, loyalty: 0.8 },
-      { churchReserve: 1.6 },
-      { landPurchaseThreshold: -0.6 }
-    ),
-  },
-  {
-    id: 'church_gifter',
-    bucket: 'scripted:always_gift_to_church',
-    profile: createStaticProfile(
-      'scripted-church-gifter',
-      'Church Gifter',
-      'Converts private themes into church leverage whenever possible.',
-      { church: 4.4, loyalty: 2.0, land: 0.5, wealth: 0.8, frontier: 1.1, capital: 0.9, throne: 0.8 },
-      { churchReserve: 0.55 },
-      { churchGiftThreshold: 0.15 }
-    ),
-  },
-  {
-    id: 'punish_revocations',
-    bucket: 'scripted:always_punish_revocations',
-    profile: createStaticProfile(
-      'scripted-punish-revocations',
-      'Revocation Punisher',
-      'Treats court aggression as a threat and leans into retaliation.',
-      { retaliation: 4.2, revocation: 3.4, capital: 2.5, throne: 2.6, loyalty: 0.5, frontier: 0.8 },
-      { independence: 1.5 }
-    ),
-  },
-  {
-    id: 'support_incumbent',
-    bucket: 'scripted:always_support_incumbent',
-    profile: createStaticProfile(
-      'scripted-support-incumbent',
-      'Incumbent Supporter',
-      'Stabilizes the existing Basileus and avoids opportunistic coups.',
-      { loyalty: 3.8, frontier: 2.6, capital: 0.5, throne: 0.4, selfAppointment: 0.5, retaliation: 0.6 },
-      { independence: 0.7, incumbencyGrip: 2.2 },
-      { supportTemperature: 0.05 }
-    ),
-  },
-  {
-    id: 'support_richest_rival',
-    bucket: 'scripted:always_support_richest_rival',
-    profile: createStaticProfile(
-      'scripted-support-richest-rival',
-      'Richest Rival Supporter',
-      'Acts as a capital kingmaker behind the strongest non-incumbent challenger.',
-      { capital: 3.8, throne: 3.4, loyalty: 0.6, frontier: 0.5, wealth: 1.0, mercenary: 2.8 },
-      { independence: 1.5, frontierAlarm: 0.6 },
-      { supportTemperature: 0.05, orderTemperature: 0.05 }
-    ),
-  },
-];
+const SCRIPTED_CATEGORY_ROTATION = ['base', 'composite', 'alternator'];
+const MATCH_KIND_CYCLE = ['normal', 'single-exploit', 'normal', 'normal', 'clustered-exploit', 'normal', 'single-exploit', 'normal', 'normal', 'normal'];
 
 function buildEmergentCentroids() {
   const centroids = [];
@@ -601,12 +488,16 @@ export function buildTrainingScenarioPlan(config) {
   }];
 }
 
-function getPatternForSuite(scope, stage) {
-  if (scope === 'validation') return ['scripted', 'emergent', 'hof'];
-  if (scope === 'holdout') return ['scripted', 'hof', 'emergent', 'scripted'];
-  if (stage === 'early') return ['population', 'emergent', 'scripted'];
-  if (stage === 'mid') return ['population', 'scripted', 'emergent', 'hof'];
-  return ['population', 'hof', 'scripted', 'emergent'];
+function getNormalPatternForSuite(scope, stage) {
+  if (scope === 'validation') return ['emergent', 'hof'];
+  if (scope === 'holdout') return ['hof', 'emergent', 'hof'];
+  if (stage === 'early') return ['population', 'emergent'];
+  if (stage === 'mid') return ['population', 'emergent', 'hof'];
+  return ['population', 'hof', 'emergent'];
+}
+
+function getMatchKindForIndex(matchIndex) {
+  return MATCH_KIND_CYCLE[matchIndex % MATCH_KIND_CYCLE.length] || 'normal';
 }
 
 function shouldMirrorEvaluationScope(scope) {
@@ -623,29 +514,23 @@ function createFreshEmergentProfile(seedKey) {
   return createNeutralCandidate(rng, hashSeedString(`${seedKey}:candidate`)).profile;
 }
 
-function buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex) {
-  if (source === 'legacy') {
-    const profile = createFreshEmergentProfile(`${scope}:g${generation}:m${matchIndex}:s${slotIndex}:legacy-removed`);
-    return {
-      source: 'emergent',
-      bucket: getEmergentBucket(profile),
-      profile,
-    };
-  }
+function createScriptedFamilyRoundRobinState() {
+  return {
+    categoryIndex: 0,
+    familyIndexByCategory: {
+      base: 0,
+      composite: 0,
+      alternator: 0,
+    },
+  };
+}
 
-  if (source === 'scripted') {
-    const bot = SCRIPTED_OPPONENTS[(matchIndex + slotIndex) % SCRIPTED_OPPONENTS.length];
-    return {
-      source,
-      bucket: bot.bucket,
-      profile: bot.profile,
-    };
-  }
-
+function buildNormalSuiteDescriptor(source, scope, generation, matchIndex, slotIndex) {
   if (source === 'emergent') {
     const seedKey = `${scope}:g${generation}:m${matchIndex}:s${slotIndex}:emergent`;
     const profile = createFreshEmergentProfile(seedKey);
     return {
+      controller: 'emergent',
       source,
       bucket: getEmergentBucket(profile),
       profile,
@@ -653,29 +538,69 @@ function buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex) 
   }
 
   return {
+    controller: 'emergent',
     source,
     offset: (matchIndex * 7) + (slotIndex * 13),
   };
 }
 
+function nextScriptedFamilyDescriptor(roundRobinState, scope, generation, matchIndex, slotIndex) {
+  const category = SCRIPTED_CATEGORY_ROTATION[roundRobinState.categoryIndex % SCRIPTED_CATEGORY_ROTATION.length];
+  roundRobinState.categoryIndex++;
+  const familyIds = SCRIPTED_ADVERSARY_FAMILY_IDS_BY_CATEGORY[category] || [];
+  const familyIndex = roundRobinState.familyIndexByCategory[category] % Math.max(1, familyIds.length);
+  roundRobinState.familyIndexByCategory[category]++;
+  const familyId = familyIds[familyIndex] || null;
+  const family = familyId ? SCRIPTED_ADVERSARY_FAMILY_BY_ID[familyId] : null;
+  return {
+    controller: 'scripted',
+    source: 'scripted',
+    bucket: `scripted:${category}:${familyId || 'unknown'}`,
+    scriptedFamilyId: familyId,
+    scriptedCategory: category,
+    scriptedSchedule: family?.policy?.schedulePolicy || 'static',
+    policySeed: `${scope}:g${generation}:m${matchIndex}:s${slotIndex}:${familyId || 'fallback'}`,
+  };
+}
+
+function getScriptedSeatCountForMatch(matchKind, playerCount) {
+  const opponentCount = Math.max(0, playerCount - 1);
+  if (matchKind === 'single-exploit') return Math.min(opponentCount, 1);
+  if (matchKind === 'clustered-exploit') {
+    const clusteredCount = playerCount >= 5 ? 3 : 2;
+    return Math.min(opponentCount, clusteredCount);
+  }
+  return 0;
+}
+
 export function buildEvaluationSuite(config, scope, generation, matchCount, stage) {
-  const pattern = getPatternForSuite(scope, stage);
+  const pattern = getNormalPatternForSuite(scope, stage);
   const scenarios = buildTrainingScenarioPlan(config);
   const suite = [];
+  const scriptedRoundRobinState = createScriptedFamilyRoundRobinState();
 
   for (let matchIndex = 0; matchIndex < matchCount; matchIndex++) {
     const scenario = scenarios[matchIndex % scenarios.length];
     const opponentCount = Math.max(0, scenario.playerCount - 1);
     const focalSeat = matchIndex % scenario.playerCount;
+    const matchKind = getMatchKindForIndex(matchIndex);
+    const scriptedSeatCount = getScriptedSeatCountForMatch(matchKind, scenario.playerCount);
     const descriptors = [];
+    let normalSlotOffset = 0;
     for (let slotIndex = 0; slotIndex < opponentCount; slotIndex++) {
-      const source = pattern[(matchIndex + slotIndex) % pattern.length];
-      descriptors.push(buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex));
+      if (slotIndex < scriptedSeatCount) {
+        descriptors.push(nextScriptedFamilyDescriptor(scriptedRoundRobinState, scope, generation, matchIndex, slotIndex));
+        continue;
+      }
+      const source = pattern[(matchIndex + normalSlotOffset) % pattern.length];
+      descriptors.push(buildNormalSuiteDescriptor(source, scope, generation, matchIndex, slotIndex));
+      normalSlotOffset++;
     }
     suite.push({
       scope,
       generation,
       matchIndex,
+      matchKind,
       seed: `${config.seed}:${scope}:${scenario.key}:g${generation}:m${matchIndex}`,
       focalSeat,
       mirroredSeats: getMirroredSeatsForMatch(scope, scenario.playerCount, focalSeat),
@@ -685,7 +610,10 @@ export function buildEvaluationSuite(config, scope, generation, matchCount, stag
       playerCount: scenario.playerCount,
       deckSize: scenario.deckSize,
       scenarioKey: scenario.key,
-      descriptors,
+      descriptors: shuffle(
+        descriptors,
+        createRng(hashSeedString(`${config.seed}:${scope}:${scenario.key}:g${generation}:m${matchIndex}:descriptor-order`))
+      ),
     });
   }
 
@@ -706,6 +634,8 @@ function pickPopulationOpponent(population, focalId, offset) {
     const candidate = population[(offset + step) % population.length];
     if (candidate.id === focalId) continue;
     return {
+      controller: 'emergent',
+      bucketClass: 'emergent',
       bucket: getEmergentBucket(candidate.profile),
       profile: candidate.profile,
     };
@@ -717,14 +647,35 @@ function pickHallOfFameOpponent(hallOfFame, offset) {
   if (!hallOfFame.length) return null;
   const entry = hallOfFame[offset % hallOfFame.length];
   return {
+    controller: 'emergent',
+    bucketClass: 'hof',
     bucket: entry.bucketTag,
     profile: entry.profile,
   };
 }
 
 function materializeOpponentDescriptor(descriptor, candidate, population, hallOfFame) {
+  if (descriptor?.controller === 'scripted' || descriptor?.source === 'scripted') {
+    const seatConfig = createScriptedSeatConfig(
+      descriptor.scriptedFamilyId,
+      descriptor.policySeed ?? descriptor.bucket ?? `${descriptor.scriptedCategory || 'scripted'}:${descriptor.scriptedFamilyId || 'fallback'}`
+    );
+    return {
+      controller: 'scripted',
+      bucketClass: 'scripted',
+      bucket: descriptor.bucket || `scripted:${seatConfig.scriptedCategory}:${seatConfig.scriptedFamilyId}`,
+      profile: seatConfig,
+      scriptedFamilyId: seatConfig.scriptedFamilyId,
+      scriptedCategory: seatConfig.scriptedCategory,
+      scriptedSchedule: seatConfig.scriptedSchedule,
+      policySeed: seatConfig.policySeed,
+    };
+  }
+
   if (descriptor.profile) {
     return {
+      controller: 'emergent',
+      bucketClass: 'emergent',
       bucket: descriptor.bucket,
       profile: descriptor.profile,
     };
@@ -732,6 +683,8 @@ function materializeOpponentDescriptor(descriptor, candidate, population, hallOf
 
   if (descriptor.source === 'population') {
     return pickPopulationOpponent(population, candidate.id, descriptor.offset) || {
+      controller: 'emergent',
+      bucketClass: 'emergent',
       bucket: getEmergentBucket(NEUTRAL_PROFILE),
       profile: createFreshEmergentProfile(`population-fallback:${descriptor.offset}`),
     };
@@ -739,12 +692,16 @@ function materializeOpponentDescriptor(descriptor, candidate, population, hallOf
 
   if (descriptor.source === 'hof') {
     return pickHallOfFameOpponent(hallOfFame, descriptor.offset) || {
+      controller: 'emergent',
+      bucketClass: 'hof',
       bucket: getEmergentBucket(NEUTRAL_PROFILE),
       profile: createFreshEmergentProfile(`hof-fallback:${descriptor.offset}`),
     };
   }
 
   return {
+    controller: 'emergent',
+    bucketClass: 'emergent',
     bucket: getEmergentBucket(NEUTRAL_PROFILE),
     profile: createFreshEmergentProfile(`descriptor-fallback:${descriptor.source}:${descriptor.offset || 0}`),
   };
@@ -752,7 +709,7 @@ function materializeOpponentDescriptor(descriptor, candidate, population, hallOf
 
 function buildMatchSeatProfiles(candidate, matchSpec, population, hallOfFame, playerCount, focalSeat = matchSpec.focalSeat) {
   const seatProfiles = {};
-  const opponentBuckets = [];
+  const opponentInfos = [];
   const seatIds = Array.from({ length: playerCount }, (_, index) => index);
   const opponentSeats = seatIds.filter(seatId => seatId !== focalSeat);
 
@@ -761,13 +718,18 @@ function buildMatchSeatProfiles(candidate, matchSpec, population, hallOfFame, pl
     const seatId = opponentSeats[index];
     if (seatId == null) return;
     const opponent = materializeOpponentDescriptor(descriptor, candidate, population, hallOfFame);
-    opponentBuckets.push(opponent.bucket);
+    opponentInfos.push({
+      bucket: opponent.bucket,
+      bucketClass: opponent.bucketClass || String(opponent.bucket || '').split(':')[0] || 'emergent',
+      scriptedFamilyId: opponent.scriptedFamilyId || null,
+      scriptedCategory: opponent.scriptedCategory || null,
+    });
     seatProfiles[seatId] = opponent.profile;
   });
 
   return {
     seatProfiles,
-    opponentBuckets,
+    opponentInfos,
   };
 }
 
@@ -882,6 +844,8 @@ function createEvaluationAccumulator(candidate, generation, scope) {
     seatStats: new Map(),
     opponentTypeStats: createBucketMap(),
     opponentClassStats: createBucketMap(),
+    scriptedFamilyStats: createBucketMap(),
+    scriptedCategoryStats: createBucketMap(),
     scenarioStats: new Map(),
     behaviorTotals: {
       frontierShare: 0,
@@ -970,6 +934,15 @@ function pickMatchupExtremes(perOpponentTypeWinRate) {
   };
 }
 
+function pickWorstBucket(bucketStats) {
+  const entries = Object.entries(bucketStats).filter(([, value]) => value.matches > 0);
+  if (!entries.length) return null;
+  const [tag, stats] = entries
+    .slice()
+    .sort((left, right) => left[1].winRate - right[1].winRate || right[1].matches - left[1].matches)[0];
+  return { tag, ...stats };
+}
+
 function buildBehaviorVector(summary) {
   const behavior = summary.behaviorProfile;
   return [
@@ -1056,6 +1029,8 @@ function finalizeScenarioStats(scenarioStats) {
 function finalizeEvaluationSummary(accumulator) {
   const perOpponentTypeWinRate = finalizeBucketStats(accumulator.opponentTypeStats);
   const perOpponentClassWinRate = finalizeBucketStats(accumulator.opponentClassStats);
+  const perScriptedFamilyWinRate = finalizeBucketStats(accumulator.scriptedFamilyStats);
+  const perScriptedCategoryWinRate = finalizeBucketStats(accumulator.scriptedCategoryStats);
   const perSeatWinRate = {};
   for (const [seatId, bucket] of accumulator.seatStats.entries()) {
     perSeatWinRate[seatId] = {
@@ -1076,6 +1051,7 @@ function finalizeEvaluationSummary(accumulator) {
     : 0;
   const mirroredSeatStats = finalizeMirroredSeatStats(accumulator.mirroredSeatGroups);
   const matchupExtremes = pickMatchupExtremes(perOpponentTypeWinRate);
+  const scriptedWorstFamily = pickWorstBucket(perScriptedFamilyWinRate);
   const perScenario = finalizeScenarioStats(accumulator.scenarioStats);
 
   const summary = {
@@ -1098,6 +1074,11 @@ function finalizeEvaluationSummary(accumulator) {
     seatVariance: roundTo(seatVariance, 4),
     perOpponentTypeWinRate,
     perOpponentClassWinRate,
+    perScriptedFamilyWinRate,
+    perScriptedCategoryWinRate,
+    scriptedWorstFamilyWinRate: roundTo(scriptedWorstFamily?.winRate ?? getClassWinRate({ perOpponentClassWinRate, winShare: accumulator.weightedWins / Math.max(1, accumulator.matches) }, 'scripted'), 4),
+    scriptedWorstFamilyId: scriptedWorstFamily?.tag || '',
+    scriptedCoverageCount: Object.values(perScriptedFamilyWinRate).filter(bucket => bucket.matches > 0).length,
     perSeatWinRate,
     perScenario,
     bestMatchup: matchupExtremes.bestMatchup,
@@ -1140,7 +1121,7 @@ export function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeigh
       : [matchSpec.focalSeat];
     const mirroredGroup = ensureMirroredSeatGroup(accumulator, matchSpec);
     for (const focalSeat of mirroredSeats) {
-      const { seatProfiles, opponentBuckets } = buildMatchSeatProfiles(
+      const { seatProfiles, opponentInfos } = buildMatchSeatProfiles(
         candidate,
         matchSpec,
         context.population,
@@ -1225,14 +1206,34 @@ export function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeigh
       }
 
       const bucketCounts = new Map();
-      for (const bucket of opponentBuckets) {
-        bucketCounts.set(bucket, (bucketCounts.get(bucket) || 0) + 1);
+      const classCounts = new Map();
+      const scriptedFamilyCounts = new Map();
+      const scriptedCategoryCounts = new Map();
+      for (const info of opponentInfos) {
+        bucketCounts.set(info.bucket, (bucketCounts.get(info.bucket) || 0) + 1);
+        classCounts.set(info.bucketClass, (classCounts.get(info.bucketClass) || 0) + 1);
+        if (info.scriptedFamilyId) {
+          scriptedFamilyCounts.set(info.scriptedFamilyId, (scriptedFamilyCounts.get(info.scriptedFamilyId) || 0) + 1);
+        }
+        if (info.scriptedCategory) {
+          scriptedCategoryCounts.set(info.scriptedCategory, (scriptedCategoryCounts.get(info.scriptedCategory) || 0) + 1);
+        }
       }
       for (const [bucketKey, count] of bucketCounts.entries()) {
-        const weight = count / Math.max(1, opponentBuckets.length);
+        const weight = count / Math.max(1, opponentInfos.length);
         addWeightedBucketStats(accumulator.opponentTypeStats, bucketKey, weight, winCredit, fitness);
-        const bucketClass = String(bucketKey).split(':')[0];
+      }
+      for (const [bucketClass, count] of classCounts.entries()) {
+        const weight = count / Math.max(1, opponentInfos.length);
         addWeightedBucketStats(accumulator.opponentClassStats, bucketClass, weight, winCredit, fitness);
+      }
+      for (const [familyId, count] of scriptedFamilyCounts.entries()) {
+        const weight = count / Math.max(1, opponentInfos.length);
+        addWeightedBucketStats(accumulator.scriptedFamilyStats, familyId, weight, winCredit, fitness);
+      }
+      for (const [category, count] of scriptedCategoryCounts.entries()) {
+        const weight = count / Math.max(1, opponentInfos.length);
+        addWeightedBucketStats(accumulator.scriptedCategoryStats, category, weight, winCredit, fitness);
       }
 
       accumulator.behaviorTotals.frontierShare += frontierShare;
@@ -1315,6 +1316,13 @@ function getClassWinRate(summary, bucketClass) {
   return bucket ? bucket.winRate : summary.winShare;
 }
 
+function getScriptedCategoryWinRate(summary, category) {
+  const bucket = summary.perScriptedCategoryWinRate?.[category];
+  if (bucket) return bucket.winRate;
+  const scriptedRate = getClassWinRate(summary, 'scripted');
+  return Number.isFinite(scriptedRate) ? scriptedRate : summary.winShare;
+}
+
 function computeNoveltyScore(vector, archiveVectors, peerVectors) {
   const comparisons = [];
   for (const other of archiveVectors) {
@@ -1335,18 +1343,22 @@ function computeTrainingScore(summary) {
   const residualUnsafeRate = Math.max(0, (summary.unsafeRate || 0) - guardRate - empireFallRate);
   const mirroredSeatEquity = summary.mirroredSeatEquity ?? 1;
   const mirroredSeatVariance = summary.mirroredSeatVariance || 0;
+  const scriptedWorstFamilyWinRate = summary.scriptedWorstFamilyWinRate ?? getClassWinRate(summary, 'scripted');
   return roundTo(
     (summary.winShare * 100) +
     (summary.finalScorePlacement * 9) +
     (summary.finalScoreAdvantage * 2.4) +
     ((summary.survivingFinalScoreMean || 0) * 0.32) +
-    (getClassWinRate(summary, 'scripted') * 4.5) +
+    (getScriptedCategoryWinRate(summary, 'base') * 2.8) +
+    (getScriptedCategoryWinRate(summary, 'composite') * 3.4) +
+    (getScriptedCategoryWinRate(summary, 'alternator') * 3.2) +
+    (scriptedWorstFamilyWinRate * 5.4) +
     (getClassWinRate(summary, 'hof') * 4.5) +
     (getClassWinRate(summary, 'emergent') * 4) +
     (mirroredSeatEquity * 12) -
-    (guardRate * 28) -
-    (empireFallRate * 4.5) -
-    (residualUnsafeRate * 2.5) -
+    (guardRate * 30) -
+    (empireFallRate * 3.8) -
+    (residualUnsafeRate * 1.8) -
     (Math.sqrt(summary.opponentVariance) * 2.2) -
     (Math.sqrt(summary.seatVariance) * 0.9) -
     (Math.sqrt(mirroredSeatVariance) * 7),
@@ -1361,6 +1373,12 @@ function compareOutcomeSummary(leftSummary, rightSummary) {
     ((rightSummary.finalScorePlacement || 0) - (leftSummary.finalScorePlacement || 0)) ||
     ((rightSummary.survivingFinalScoreMean || 0) - (leftSummary.survivingFinalScoreMean || 0)) ||
     ((rightSummary.mirroredSeatEquity || 0) - (leftSummary.mirroredSeatEquity || 0)) ||
+    ((rightSummary.scriptedWorstFamilyWinRate || 0) - (leftSummary.scriptedWorstFamilyWinRate || 0)) ||
+    (getScriptedCategoryWinRate(rightSummary, 'composite') - getScriptedCategoryWinRate(leftSummary, 'composite')) ||
+    (getScriptedCategoryWinRate(rightSummary, 'alternator') - getScriptedCategoryWinRate(leftSummary, 'alternator')) ||
+    (getScriptedCategoryWinRate(rightSummary, 'base') - getScriptedCategoryWinRate(leftSummary, 'base')) ||
+    (getClassWinRate(rightSummary, 'hof') - getClassWinRate(leftSummary, 'hof')) ||
+    (getClassWinRate(rightSummary, 'emergent') - getClassWinRate(leftSummary, 'emergent')) ||
     ((leftSummary.guardRate || 0) - (rightSummary.guardRate || 0)) ||
     ((leftSummary.empireFallRate || 0) - (rightSummary.empireFallRate || 0)) ||
     ((leftSummary.unsafeRate || 0) - (rightSummary.unsafeRate || 0)) ||
@@ -1376,7 +1394,10 @@ function buildObjectivesFromSummary(summary) {
     finalScorePlacement: summary.finalScorePlacement,
     finalScoreAdvantage: summary.finalScoreAdvantage,
     survivingFinalScoreMean: summary.survivingFinalScoreMean,
-    scriptedWinRate: getClassWinRate(summary, 'scripted'),
+    scriptedBaseWinRate: getScriptedCategoryWinRate(summary, 'base'),
+    scriptedCompositeWinRate: getScriptedCategoryWinRate(summary, 'composite'),
+    scriptedAlternatorWinRate: getScriptedCategoryWinRate(summary, 'alternator'),
+    scriptedWorstFamilyWinRate: summary.scriptedWorstFamilyWinRate ?? getClassWinRate(summary, 'scripted'),
     hallOfFameWinRate: getClassWinRate(summary, 'hof'),
     emergentWinRate: getClassWinRate(summary, 'emergent'),
     mirroredSeatEquity: summary.mirroredSeatEquity ?? 1,
@@ -1567,21 +1588,53 @@ function getEntryBehaviorVector(entry) {
     || [];
 }
 
-function selectDistinctChampionEntries(entries, maxCount, minDistance = 0.08) {
+export function selectChampionEntriesForExport(entries, maxCount, thresholds = [0.08, 0.06, 0.04, 0.02]) {
   const selected = [];
-  for (const entry of entries) {
-    if (!selected.length) {
+  const selectedIds = new Set();
+  let diversityThresholdUsed = thresholds[0] ?? 0.08;
+
+  for (const threshold of thresholds) {
+    diversityThresholdUsed = threshold;
+    for (const entry of entries) {
+      if (selected.length >= maxCount) {
+        return {
+          selectedEntries: selected,
+          requestedChampionCount: maxCount,
+          selectedChampionCount: selected.length,
+          diversityThresholdUsed,
+          backfillUsed: false,
+        };
+      }
+      if (selectedIds.has(entry.candidate.id)) continue;
+      if (!selected.length) {
+        selected.push(entry);
+        selectedIds.add(entry.candidate.id);
+        continue;
+      }
+      const vector = getEntryBehaviorVector(entry);
+      const isDistinct = selected.every(other => euclideanDistance(vector, getEntryBehaviorVector(other)) > threshold);
+      if (!isDistinct) continue;
       selected.push(entry);
-      if (selected.length >= maxCount) break;
-      continue;
+      selectedIds.add(entry.candidate.id);
     }
-    const vector = getEntryBehaviorVector(entry);
-    const isDistinct = selected.every(other => euclideanDistance(vector, getEntryBehaviorVector(other)) > minDistance);
-    if (!isDistinct) continue;
-    selected.push(entry);
-    if (selected.length >= maxCount) break;
   }
-  return selected;
+
+  let backfillUsed = false;
+  for (const entry of entries) {
+    if (selected.length >= maxCount) break;
+    if (selectedIds.has(entry.candidate.id)) continue;
+    selected.push(entry);
+    selectedIds.add(entry.candidate.id);
+    backfillUsed = true;
+  }
+
+  return {
+    selectedEntries: selected,
+    requestedChampionCount: maxCount,
+    selectedChampionCount: selected.length,
+    diversityThresholdUsed,
+    backfillUsed,
+  };
 }
 
 function chunkArray(items, chunkCount) {
@@ -1795,7 +1848,7 @@ async function evaluateHoldoutPopulation({
   return holdoutEntries;
 }
 
-function materializeChampion(entry, rank, config, noveltyPercentile) {
+function materializeChampion(entry, rank, config, noveltyPercentile, selectionMetadata = {}) {
   const holdoutSummary = entry.holdoutSummary || entry.validationSummary;
   const name = buildChampionName(entry.candidate, rank);
   return normalizeAiProfile({
@@ -1828,6 +1881,12 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       mirroredSeatVariance: holdoutSummary.mirroredSeatVariance,
       fitnessVariance: holdoutSummary.fitnessVariance,
       perOpponentTypeWinRate: holdoutSummary.perOpponentTypeWinRate,
+      perOpponentClassWinRate: holdoutSummary.perOpponentClassWinRate,
+      perScriptedFamilyWinRate: holdoutSummary.perScriptedFamilyWinRate,
+      perScriptedCategoryWinRate: holdoutSummary.perScriptedCategoryWinRate,
+      scriptedWorstFamilyWinRate: holdoutSummary.scriptedWorstFamilyWinRate,
+      scriptedWorstFamilyId: holdoutSummary.scriptedWorstFamilyId,
+      scriptedCoverageCount: holdoutSummary.scriptedCoverageCount,
       perSeatWinRate: holdoutSummary.perSeatWinRate,
       perScenario: holdoutSummary.perScenario,
       fitnessPresetId: config.fitnessPresetId,
@@ -1872,6 +1931,10 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       noveltyScore: entry.noveltyScore,
       noveltyPercentile,
       safetyMode: entry.safetyMode || 'pareto-score-novelty',
+      requestedChampionCount: selectionMetadata.requestedChampionCount ?? config.champions,
+      selectedChampionCount: selectionMetadata.selectedChampionCount ?? config.champions,
+      diversityThresholdUsed: selectionMetadata.diversityThresholdUsed ?? 0.08,
+      backfillUsed: Boolean(selectionMetadata.backfillUsed),
       seatBias: holdoutSummary.startingBasileusSeatBias,
       bestMatchup: holdoutSummary.bestMatchup?.tag || '',
       worstMatchup: holdoutSummary.worstMatchup?.tag || '',
@@ -2088,12 +2151,13 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
   finalChampions.forEach(entry => {
     entry.safetyMode = finalSafetyMode;
   });
-  const exportedChampionEntries = selectDistinctChampionEntries(finalChampions, config.champions, 0.08);
+  const championSelection = selectChampionEntriesForExport(finalChampions, config.champions, [0.08, 0.06, 0.04, 0.02]);
+  const exportedChampionEntries = championSelection.selectedEntries;
   const noveltyScores = exportedChampionEntries.map(entry => entry.noveltyScore).slice().sort((left, right) => left - right);
   const champions = exportedChampionEntries.map((entry, index) => {
     const lowerCount = noveltyScores.filter(score => score <= entry.noveltyScore).length;
     const noveltyPercentile = roundTo(lowerCount / Math.max(1, noveltyScores.length), 4);
-    return materializeChampion(entry, index + 1, config, noveltyPercentile);
+    return materializeChampion(entry, index + 1, config, noveltyPercentile, championSelection);
   });
 
   return {
@@ -2113,12 +2177,18 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       deckSizes: config.deckSizes,
       selectionMethod: 'pareto-score-novelty',
       safetyMode: finalSafetyMode,
+      requestedChampionCount: championSelection.requestedChampionCount,
+      selectedChampionCount: championSelection.selectedChampionCount,
+      diversityThresholdUsed: championSelection.diversityThresholdUsed,
+      backfillUsed: championSelection.backfillUsed,
       bestFitness: finalChampions[0]?.championScore || 0,
       bestFinalScore: finalChampions[0]?.holdoutSummary?.finalScoreMean || 0,
       bestAverageWealth: finalChampions[0]?.holdoutSummary?.averageWealth || 0,
       bestFinalScoreAdvantage: finalChampions[0]?.holdoutSummary?.finalScoreAdvantage || 0,
       bestSurvivingFinalScore: finalChampions[0]?.holdoutSummary?.survivingFinalScoreMean || 0,
       bestEmpireFallRate: finalChampions[0]?.holdoutSummary?.empireFallRate || 0,
+      bestScriptedWorstFamilyWinRate: finalChampions[0]?.holdoutSummary?.scriptedWorstFamilyWinRate || 0,
+      bestScriptedCoverageCount: finalChampions[0]?.holdoutSummary?.scriptedCoverageCount || 0,
       bestMirroredSeatEquity: finalChampions[0]?.holdoutSummary?.mirroredSeatEquity ?? 1,
       bestMirroredSeatVariance: finalChampions[0]?.holdoutSummary?.mirroredSeatVariance || 0,
       bestRobustnessVariance: finalChampions[0]?.holdoutSummary?.opponentVariance || 0,
