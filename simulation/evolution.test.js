@@ -11,6 +11,7 @@ import {
   normalizeTrainingConfig,
   rankSelectionEntries,
 } from './evolution.js';
+import { runSingleSimulationGame } from './engine.js';
 
 function makeSummary(overrides = {}) {
   return {
@@ -27,6 +28,8 @@ function makeSummary(overrides = {}) {
     averageFitness: 1,
     opponentVariance: 0.01,
     seatVariance: 0.01,
+    mirroredSeatEquity: 1,
+    mirroredSeatVariance: 0,
     perOpponentClassWinRate: {
       scripted: { winRate: 0.25 },
       hof: { winRate: 0.25 },
@@ -37,8 +40,8 @@ function makeSummary(overrides = {}) {
   };
 }
 
-function makeCandidate(id = 'test-candidate') {
-  const profile = normalizeAiProfile({
+function makeProfile(id = 'test-candidate') {
+  return normalizeAiProfile({
     id,
     name: id,
     source: 'emergent-trained',
@@ -51,6 +54,10 @@ function makeCandidate(id = 'test-candidate') {
     },
     meta: { ...DEFAULT_META_PARAMS },
   });
+}
+
+function makeCandidate(id = 'test-candidate') {
+  const profile = makeProfile(id);
   return {
     id,
     name: id,
@@ -61,7 +68,7 @@ function makeCandidate(id = 'test-candidate') {
   };
 }
 
-test('win-rate-first ranking treats empire fall as a loss, not a veto', () => {
+test('pareto-first ranking still rewards stronger competitive candidates over merely safer weak ones', () => {
   const safeWeak = buildSelectionEntry(
     { id: 'safe-weak' },
     1,
@@ -85,11 +92,11 @@ test('win-rate-first ranking treats empire fall as a loss, not a veto', () => {
   );
 
   const { rankedEntries, safetyMode } = rankSelectionEntries([higherWinWithFalls, safeWeak, safeStrong]);
-  assert.equal(safetyMode, 'win-rate-first');
+  assert.equal(safetyMode, 'pareto-score-novelty');
   assert.deepEqual(rankedEntries.map(entry => entry.candidate.id), ['higher-win-with-falls', 'safe-strong', 'safe-weak']);
 });
 
-test('win-rate ties prefer lower guard and fall risk', () => {
+test('guard failures remain the strongest safety penalty among near-tied candidates', () => {
   const sameWinHighGuard = buildSelectionEntry(
     { id: 'same-win-high-guard' },
     1,
@@ -113,8 +120,24 @@ test('win-rate ties prefer lower guard and fall risk', () => {
   );
 
   const { rankedEntries, safetyMode } = rankSelectionEntries([sameWinHighGuard, sameWinHighFall, sameWinLowRisk]);
-  assert.equal(safetyMode, 'win-rate-first');
+  assert.equal(safetyMode, 'pareto-score-novelty');
   assert.deepEqual(rankedEntries.map(entry => entry.candidate.id), ['same-win-low-risk', 'same-win-high-fall', 'same-win-high-guard']);
+});
+
+test('validation suites mirror the focal candidate across every seat for the same scenario seed', () => {
+  const config = normalizeTrainingConfig({
+    scenarioMode: 'focused',
+    playerCount: 4,
+    deckSize: 6,
+    validationMatchesPerCandidate: 2,
+  });
+  const suite = buildEvaluationSuite(config, 'validation', 3, 2, 'late');
+
+  assert.equal(suite.length, 2);
+  assert.deepEqual(suite[0].mirroredSeats, [0, 1, 2, 3]);
+  assert.equal(suite[0].mirrorGroupKey, 'validation:4p-6d:g3:m0');
+  assert.equal(suite[0].seed, `${config.seed}:validation:4p-6d:g3:m0`);
+  assert.equal(suite[1].focalSeat, 1);
 });
 
 test('generalist suite cycles uniformly across the scenario matrix', () => {
@@ -155,4 +178,64 @@ test('evaluation summaries include per-scenario final-score metrics', () => {
   assert.equal(summary.perScenario.reduce((total, entry) => total + entry.matches, 0), summary.matches);
   assert.ok(Number.isFinite(summary.finalScoreMean));
   assert.ok(Number.isFinite(summary.survivingFinalScoreMean));
+});
+
+test('mirrored validation summaries include seat-equity diagnostics', () => {
+  const config = normalizeTrainingConfig({
+    seed: 2468,
+    scenarioMode: 'focused',
+    playerCount: 4,
+    deckSize: 6,
+    validationMatchesPerCandidate: 2,
+  });
+  const suite = buildEvaluationSuite(config, 'validation', 1, 2, 'late');
+  const candidate = makeCandidate('mirrored-validation');
+  const summary = evaluateCandidateOnSuite(candidate, suite, {
+    config,
+    generation: 1,
+    scope: 'validation',
+    population: [candidate],
+    hallOfFame: [],
+  }, DEFAULT_FITNESS_WEIGHTS);
+
+  assert.equal(summary.matches, 8);
+  assert.equal(summary.perScenario.reduce((total, entry) => total + entry.matches, 0), summary.matches);
+  assert.ok(summary.mirroredSeatEquity >= 0 && summary.mirroredSeatEquity <= 1);
+  assert.ok(summary.mirroredSeatVariance >= 0);
+  assert.equal(Object.keys(summary.perSeatWinRate).length, 4);
+});
+
+test('symmetric self-play stays within seat-fairness bounds over 400 games', { timeout: 120000 }, () => {
+  const seatProfiles = {
+    0: makeProfile('sym-seat-0'),
+    1: makeProfile('sym-seat-1'),
+    2: makeProfile('sym-seat-2'),
+    3: makeProfile('sym-seat-3'),
+  };
+  const seatWins = [0, 0, 0, 0];
+  const games = 400;
+
+  for (let index = 0; index < games; index++) {
+    const game = runSingleSimulationGame({
+      playerCount: 4,
+      deckSize: 6,
+      seed: `symmetry-${index}`,
+      seatProfiles,
+      strictTimeoutMs: 15000,
+      maxLoopIterations: 256,
+      maxRounds: 40,
+    });
+    for (const metric of game.playerMetrics) {
+      if (!metric.isWinner) continue;
+      seatWins[metric.playerId] += 1 / Math.max(1, game.winners.length);
+    }
+  }
+
+  const seatWinShares = seatWins.map(value => value / games);
+  const meanWinShare = seatWinShares.reduce((total, value) => total + value, 0) / seatWinShares.length;
+
+  seatWinShares.forEach(winShare => {
+    assert.ok(winShare <= 0.4, `Expected no seat above 0.40 win share, got ${winShare.toFixed(4)}.`);
+    assert.ok(Math.abs(winShare - meanWinShare) <= 0.08, `Expected seat win share ${winShare.toFixed(4)} to stay within 0.08 of mean ${meanWinShare.toFixed(4)}.`);
+  });
 });

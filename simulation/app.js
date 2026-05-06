@@ -515,8 +515,8 @@ function renderTrainingResult(result) {
     ['Validation matches', formatInteger(result.config.validationMatchesPerCandidate ?? 0)],
     ['Holdout matches', formatInteger(result.config.holdoutMatchesPerChampion ?? 0)],
     ['Training scope', result.config.scenarioMode === 'focused' ? 'Focused' : 'Generalist'],
-    ['Selection', result.overview.selectionMethod || 'win-rate-first-pareto'],
-    ['Selection mode', result.overview.safetyMode || 'win-rate-first'],
+    ['Selection', result.overview.selectionMethod || 'pareto-score-novelty'],
+    ['Selection mode', result.overview.safetyMode || 'pareto-score-novelty'],
   ];
 
   const overviewCards = [
@@ -529,6 +529,8 @@ function renderTrainingResult(result) {
     { label: 'Best Final Score', value: formatNumber(result.overview.bestFinalScore ?? result.overview.bestAverageWealth, 2) },
     { label: 'Best Score Edge', value: formatNumber(result.overview.bestFinalScoreAdvantage || 0, 2) },
     { label: 'Best Surviving Score', value: formatNumber(result.overview.bestSurvivingFinalScore || 0, 2) },
+    { label: 'Best Seat Equity', value: formatPercent(result.overview.bestMirroredSeatEquity ?? 1) },
+    { label: 'Best Seat Variance', value: formatNumber(result.overview.bestMirroredSeatVariance || 0, 4) },
     { label: 'Best Fall Rate', value: formatPercent(result.overview.bestEmpireFallRate) },
     { label: 'Best Guard Rate', value: formatPercent(result.overview.bestGuardRate || 0) },
     { label: 'Best Unsafe Rate', value: formatPercent(result.overview.bestUnsafeRate || 0) },
@@ -556,15 +558,22 @@ function renderTrainingResult(result) {
           <span class="meta-chip">Best ${escapeHtml(profile.training.bestMatchup || 'n/a')}</span>
           <span class="meta-chip">Worst ${escapeHtml(profile.training.worstMatchup || 'n/a')}</span>
           <span class="meta-chip">Seat Bias ${formatPercent(profile.training.seatBias || 0)}</span>
+          <span class="meta-chip">Seat Equity ${formatPercent(profile.training.mirroredSeatEquity ?? 1)}</span>
+          <span class="meta-chip">Seat Variance ${formatNumber(profile.training.mirroredSeatVariance || 0, 4)}</span>
           <span class="meta-chip">Novelty ${formatPercent(profile.training.noveltyPercentile || 0)}</span>
           <span class="meta-chip">Unsafe ${formatPercent(profile.training.unsafeRate || 0)}</span>
+        </div>
+        <div class="training-meta">
+          <span class="meta-chip">Frontier ${formatPercent(profile.training.behaviorProfile?.frontierTroopShare || 0)}</span>
+          <span class="meta-chip">Incumbent ${formatPercent(profile.training.behaviorProfile?.incumbentSupportRate || 0)}</span>
+          <span class="meta-chip">Self ${formatPercent(profile.training.behaviorProfile?.selfSupportRate || 0)}</span>
         </div>
         <p>${escapeHtml(profile.training.mainBehavior || '')}</p>
       </article>
     `).join('');
 
   const generationLines = result.generationHistory.map(entry => `
-    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} in ${escapeHtml(entry.safetyMode || 'win-rate-first')} mode, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, validation score ${formatNumber(entry.validationFinalScoreMean || 0, 2)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
+    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} in ${escapeHtml(entry.safetyMode || 'pareto-score-novelty')} mode, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, validation score ${formatNumber(entry.validationFinalScoreMean || 0, 2)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
   `).join('');
 
   const exportInfo = result.personalityExport

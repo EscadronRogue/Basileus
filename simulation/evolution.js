@@ -22,6 +22,7 @@ const OBJECTIVE_KEYS = [
   'scriptedWinRate',
   'hallOfFameWinRate',
   'emergentWinRate',
+  'mirroredSeatEquity',
   'opponentRobustness',
   'seatRobustness',
 ];
@@ -608,6 +609,15 @@ function getPatternForSuite(scope, stage) {
   return ['population', 'hof', 'scripted', 'emergent'];
 }
 
+function shouldMirrorEvaluationScope(scope) {
+  return scope === 'validation' || scope === 'holdout';
+}
+
+function getMirroredSeatsForMatch(scope, playerCount, focalSeat) {
+  if (!shouldMirrorEvaluationScope(scope)) return [focalSeat];
+  return Array.from({ length: playerCount }, (_, index) => index);
+}
+
 function createFreshEmergentProfile(seedKey) {
   const rng = createRng(hashSeedString(seedKey));
   return createNeutralCandidate(rng, hashSeedString(`${seedKey}:candidate`)).profile;
@@ -656,6 +666,7 @@ export function buildEvaluationSuite(config, scope, generation, matchCount, stag
   for (let matchIndex = 0; matchIndex < matchCount; matchIndex++) {
     const scenario = scenarios[matchIndex % scenarios.length];
     const opponentCount = Math.max(0, scenario.playerCount - 1);
+    const focalSeat = matchIndex % scenario.playerCount;
     const descriptors = [];
     for (let slotIndex = 0; slotIndex < opponentCount; slotIndex++) {
       const source = pattern[(matchIndex + slotIndex) % pattern.length];
@@ -666,7 +677,11 @@ export function buildEvaluationSuite(config, scope, generation, matchCount, stag
       generation,
       matchIndex,
       seed: `${config.seed}:${scope}:${scenario.key}:g${generation}:m${matchIndex}`,
-      focalSeat: matchIndex % scenario.playerCount,
+      focalSeat,
+      mirroredSeats: getMirroredSeatsForMatch(scope, scenario.playerCount, focalSeat),
+      mirrorGroupKey: shouldMirrorEvaluationScope(scope)
+        ? `${scope}:${scenario.key}:g${generation}:m${matchIndex}`
+        : null,
       playerCount: scenario.playerCount,
       deckSize: scenario.deckSize,
       scenarioKey: scenario.key,
@@ -675,6 +690,14 @@ export function buildEvaluationSuite(config, scope, generation, matchCount, stag
   }
 
   return suite;
+}
+
+function getMatchSpecEvaluationCount(matchSpec) {
+  return Math.max(1, Array.isArray(matchSpec?.mirroredSeats) && matchSpec.mirroredSeats.length ? matchSpec.mirroredSeats.length : 1);
+}
+
+function countSuiteEvaluations(suite = []) {
+  return suite.reduce((total, matchSpec) => total + getMatchSpecEvaluationCount(matchSpec), 0);
 }
 
 function pickPopulationOpponent(population, focalId, offset) {
@@ -727,13 +750,13 @@ function materializeOpponentDescriptor(descriptor, candidate, population, hallOf
   };
 }
 
-function buildMatchSeatProfiles(candidate, matchSpec, population, hallOfFame, playerCount) {
+function buildMatchSeatProfiles(candidate, matchSpec, population, hallOfFame, playerCount, focalSeat = matchSpec.focalSeat) {
   const seatProfiles = {};
   const opponentBuckets = [];
   const seatIds = Array.from({ length: playerCount }, (_, index) => index);
-  const opponentSeats = seatIds.filter(seatId => seatId !== matchSpec.focalSeat);
+  const opponentSeats = seatIds.filter(seatId => seatId !== focalSeat);
 
-  seatProfiles[matchSpec.focalSeat] = candidate.profile;
+  seatProfiles[focalSeat] = candidate.profile;
   matchSpec.descriptors.forEach((descriptor, index) => {
     const seatId = opponentSeats[index];
     if (seatId == null) return;
@@ -879,6 +902,7 @@ function createEvaluationAccumulator(candidate, generation, scope) {
       fatalCoverage: 0,
       commitmentRate: 0,
     },
+    mirroredSeatGroups: new Map(),
     basileusSeatWins: 0,
     basileusSeatMatches: 0,
     nonBasileusSeatWins: 0,
@@ -963,6 +987,53 @@ function buildBehaviorVector(summary) {
   ];
 }
 
+function ensureMirroredSeatGroup(accumulator, matchSpec) {
+  if (!matchSpec?.mirrorGroupKey) return null;
+  if (!accumulator.mirroredSeatGroups.has(matchSpec.mirrorGroupKey)) {
+    accumulator.mirroredSeatGroups.set(matchSpec.mirrorGroupKey, {
+      key: matchSpec.mirrorGroupKey,
+      seatCount: matchSpec.playerCount,
+      seatWins: new Map(),
+      seatPlacements: new Map(),
+    });
+  }
+  return accumulator.mirroredSeatGroups.get(matchSpec.mirrorGroupKey);
+}
+
+function finalizeMirroredSeatStats(mirroredSeatGroups) {
+  const groups = [...mirroredSeatGroups.values()];
+  if (!groups.length) {
+    return {
+      mirroredSeatEquity: 1,
+      mirroredSeatVariance: 0,
+    };
+  }
+
+  const seatDeltaTotals = new Map();
+  const seatDeltaCounts = new Map();
+  for (const group of groups) {
+    const placements = Array.from({ length: group.seatCount }, (_, seatId) => group.seatPlacements.get(seatId))
+      .filter(value => Number.isFinite(value));
+    if (!placements.length) continue;
+    const groupMean = average(placements);
+    for (let seatId = 0; seatId < group.seatCount; seatId++) {
+      const placement = group.seatPlacements.get(seatId);
+      if (!Number.isFinite(placement)) continue;
+      const centeredPlacement = placement - groupMean;
+      seatDeltaTotals.set(seatId, (seatDeltaTotals.get(seatId) || 0) + centeredPlacement);
+      seatDeltaCounts.set(seatId, (seatDeltaCounts.get(seatId) || 0) + 1);
+    }
+  }
+  const seatAverageDeltas = [...seatDeltaTotals.keys()].map(seatId =>
+    (seatDeltaTotals.get(seatId) || 0) / Math.max(1, seatDeltaCounts.get(seatId) || 0)
+  );
+  const mirroredSeatVariance = variance(seatAverageDeltas);
+  return {
+    mirroredSeatEquity: roundTo(Math.max(0, 1 - Math.min(1, Math.sqrt(mirroredSeatVariance) * 4)), 4),
+    mirroredSeatVariance: roundTo(mirroredSeatVariance, 4),
+  };
+}
+
 function finalizeScenarioStats(scenarioStats) {
   return [...scenarioStats.values()]
     .map(bucket => ({
@@ -1003,6 +1074,7 @@ function finalizeEvaluationSummary(accumulator) {
   const nonBasileusSeatWinShare = accumulator.nonBasileusSeatMatches
     ? accumulator.nonBasileusSeatWins / accumulator.nonBasileusSeatMatches
     : 0;
+  const mirroredSeatStats = finalizeMirroredSeatStats(accumulator.mirroredSeatGroups);
   const matchupExtremes = pickMatchupExtremes(perOpponentTypeWinRate);
   const perScenario = finalizeScenarioStats(accumulator.scenarioStats);
 
@@ -1031,6 +1103,8 @@ function finalizeEvaluationSummary(accumulator) {
     bestMatchup: matchupExtremes.bestMatchup,
     worstMatchup: matchupExtremes.worstMatchup,
     startingBasileusSeatBias: roundTo(basileusSeatWinShare - nonBasileusSeatWinShare, 4),
+    mirroredSeatEquity: mirroredSeatStats.mirroredSeatEquity,
+    mirroredSeatVariance: mirroredSeatStats.mirroredSeatVariance,
     behaviorProfile: {
       frontierTroopShare: roundTo(accumulator.behaviorTotals.frontierShare / totalTroopShare, 4),
       capitalTroopShare: roundTo(accumulator.behaviorTotals.capitalShare / totalTroopShare, 4),
@@ -1061,114 +1135,125 @@ function finalizeEvaluationSummary(accumulator) {
 export function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
   const accumulator = createEvaluationAccumulator(candidate, context.generation, context.scope);
   for (const matchSpec of suite) {
-    const { seatProfiles, opponentBuckets } = buildMatchSeatProfiles(
-      candidate,
-      matchSpec,
-      context.population,
-      context.hallOfFame,
-      matchSpec.playerCount
-    );
-    const game = runSingleSimulationGame({
-      playerCount: matchSpec.playerCount,
-      deckSize: matchSpec.deckSize,
-      scenarioKey: matchSpec.scenarioKey,
-      seed: matchSpec.seed,
-      seatProfiles,
-      strictTimeoutMs: 15000,
-      maxLoopIterations: 256,
-      maxRounds: Math.max(matchSpec.deckSize + 2, 40),
-    });
-    const playerMetric = game.playerMetrics.find(metric => metric.playerId === matchSpec.focalSeat);
-    if (!playerMetric) continue;
+    const mirroredSeats = Array.isArray(matchSpec?.mirroredSeats) && matchSpec.mirroredSeats.length
+      ? matchSpec.mirroredSeats
+      : [matchSpec.focalSeat];
+    const mirroredGroup = ensureMirroredSeatGroup(accumulator, matchSpec);
+    for (const focalSeat of mirroredSeats) {
+      const { seatProfiles, opponentBuckets } = buildMatchSeatProfiles(
+        candidate,
+        matchSpec,
+        context.population,
+        context.hallOfFame,
+        matchSpec.playerCount,
+        focalSeat
+      );
+      const game = runSingleSimulationGame({
+        playerCount: matchSpec.playerCount,
+        deckSize: matchSpec.deckSize,
+        scenarioKey: matchSpec.scenarioKey,
+        seed: matchSpec.seed,
+        seatProfiles,
+        strictTimeoutMs: 15000,
+        maxLoopIterations: 256,
+        maxRounds: Math.max(matchSpec.deckSize + 2, 40),
+      });
+      const playerMetric = game.playerMetrics.find(metric => metric.playerId === focalSeat);
+      if (!playerMetric) continue;
 
-    const winCredit = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
-    const fitness = computeFitness(game, playerMetric, fitnessWeights);
-    const placementScore = computeFinalScorePlacement(game, playerMetric);
-    const finalScore = getFinalScoreValue(playerMetric);
-    const finalScoreAdvantage = computeFinalScoreAdvantage(game, playerMetric);
-    const finalScoreRatio = computeFinalScoreRatio(game, playerMetric);
-    const totalTroops = Math.max(0, playerMetric.frontierTroops) + Math.max(0, playerMetric.capitalTroops);
-    const frontierShare = totalTroops > 0 ? playerMetric.frontierTroops / totalTroops : 0;
-    const capitalShare = totalTroops > 0 ? playerMetric.capitalTroops / totalTroops : 0;
-    const recruitUtilization = playerMetric.recruitOpportunities > 0
-      ? playerMetric.recruits / playerMetric.recruitOpportunities
-      : 0;
-    const incumbentSupportRate = playerMetric.coupVotes > 0
-      ? playerMetric.supportIncumbentVotes / playerMetric.coupVotes
-      : 0;
-    const selfSupportRate = playerMetric.coupVotes > 0
-      ? playerMetric.supportSelfVotes / playerMetric.coupVotes
-      : 0;
-    const goldHoardingRate = finalScore > 0
-      ? playerMetric.finalGold / finalScore
-      : 0;
+      const winCredit = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
+      const fitness = computeFitness(game, playerMetric, fitnessWeights);
+      const placementScore = computeFinalScorePlacement(game, playerMetric);
+      const finalScore = getFinalScoreValue(playerMetric);
+      const finalScoreAdvantage = computeFinalScoreAdvantage(game, playerMetric);
+      const finalScoreRatio = computeFinalScoreRatio(game, playerMetric);
+      const totalTroops = Math.max(0, playerMetric.frontierTroops) + Math.max(0, playerMetric.capitalTroops);
+      const frontierShare = totalTroops > 0 ? playerMetric.frontierTroops / totalTroops : 0;
+      const capitalShare = totalTroops > 0 ? playerMetric.capitalTroops / totalTroops : 0;
+      const recruitUtilization = playerMetric.recruitOpportunities > 0
+        ? playerMetric.recruits / playerMetric.recruitOpportunities
+        : 0;
+      const incumbentSupportRate = playerMetric.coupVotes > 0
+        ? playerMetric.supportIncumbentVotes / playerMetric.coupVotes
+        : 0;
+      const selfSupportRate = playerMetric.coupVotes > 0
+        ? playerMetric.supportSelfVotes / playerMetric.coupVotes
+        : 0;
+      const goldHoardingRate = finalScore > 0
+        ? playerMetric.finalGold / finalScore
+        : 0;
 
-    accumulator.matches++;
-    accumulator.weightedWins += winCredit;
-    accumulator.fitnessTotal += fitness;
-    accumulator.fitnessSamples.push(fitness);
-    accumulator.finalScoreTotal += finalScore;
-    accumulator.finalScorePlacementTotal += placementScore;
-    accumulator.finalScoreAdvantageTotal += finalScoreAdvantage;
-    accumulator.finalScoreRatioTotal += finalScoreRatio;
-    if (game.empireFall) accumulator.empireFalls++;
-    if (game.guardTriggered) accumulator.guardAborts++;
-    if (!game.empireFall && !game.guardTriggered) {
-      accumulator.survivingMatches++;
-      accumulator.survivingFinalScoreTotal += finalScore;
-    }
+      accumulator.matches++;
+      accumulator.weightedWins += winCredit;
+      accumulator.fitnessTotal += fitness;
+      accumulator.fitnessSamples.push(fitness);
+      accumulator.finalScoreTotal += finalScore;
+      accumulator.finalScorePlacementTotal += placementScore;
+      accumulator.finalScoreAdvantageTotal += finalScoreAdvantage;
+      accumulator.finalScoreRatioTotal += finalScoreRatio;
+      if (game.empireFall) accumulator.empireFalls++;
+      if (game.guardTriggered) accumulator.guardAborts++;
+      if (!game.empireFall && !game.guardTriggered) {
+        accumulator.survivingMatches++;
+        accumulator.survivingFinalScoreTotal += finalScore;
+      }
 
-    const scenarioBucket = ensureScenarioAccumulatorBucket(accumulator, matchSpec);
-    scenarioBucket.matches++;
-    scenarioBucket.wins += winCredit;
-    scenarioBucket.finalScoreTotal += finalScore;
-    scenarioBucket.finalScoreAdvantageTotal += finalScoreAdvantage;
-    scenarioBucket.finalScorePlacementTotal += placementScore;
-    scenarioBucket.empireFalls += game.empireFall ? 1 : 0;
-    scenarioBucket.guardAborts += game.guardTriggered ? 1 : 0;
-    if (!game.empireFall && !game.guardTriggered) {
-      scenarioBucket.survivingMatches++;
-      scenarioBucket.survivingFinalScoreTotal += finalScore;
-    }
+      const scenarioBucket = ensureScenarioAccumulatorBucket(accumulator, matchSpec);
+      scenarioBucket.matches++;
+      scenarioBucket.wins += winCredit;
+      scenarioBucket.finalScoreTotal += finalScore;
+      scenarioBucket.finalScoreAdvantageTotal += finalScoreAdvantage;
+      scenarioBucket.finalScorePlacementTotal += placementScore;
+      scenarioBucket.empireFalls += game.empireFall ? 1 : 0;
+      scenarioBucket.guardAborts += game.guardTriggered ? 1 : 0;
+      if (!game.empireFall && !game.guardTriggered) {
+        scenarioBucket.survivingMatches++;
+        scenarioBucket.survivingFinalScoreTotal += finalScore;
+      }
 
-    updateSeatStats(accumulator.seatStats, matchSpec.focalSeat, winCredit, fitness);
-    if (game.startingBasileusId === playerMetric.playerId) {
-      accumulator.basileusSeatMatches++;
-      accumulator.basileusSeatWins += winCredit;
-    } else {
-      accumulator.nonBasileusSeatMatches++;
-      accumulator.nonBasileusSeatWins += winCredit;
-    }
+      updateSeatStats(accumulator.seatStats, focalSeat, winCredit, fitness);
+      if (mirroredGroup) {
+        mirroredGroup.seatWins.set(focalSeat, (mirroredGroup.seatWins.get(focalSeat) || 0) + winCredit);
+        mirroredGroup.seatPlacements.set(focalSeat, placementScore);
+      }
+      if (game.startingBasileusId === playerMetric.playerId) {
+        accumulator.basileusSeatMatches++;
+        accumulator.basileusSeatWins += winCredit;
+      } else {
+        accumulator.nonBasileusSeatMatches++;
+        accumulator.nonBasileusSeatWins += winCredit;
+      }
 
-    const bucketCounts = new Map();
-    for (const bucket of opponentBuckets) {
-      bucketCounts.set(bucket, (bucketCounts.get(bucket) || 0) + 1);
-    }
-    for (const [bucketKey, count] of bucketCounts.entries()) {
-      const weight = count / Math.max(1, opponentBuckets.length);
-      addWeightedBucketStats(accumulator.opponentTypeStats, bucketKey, weight, winCredit, fitness);
-      const bucketClass = String(bucketKey).split(':')[0];
-      addWeightedBucketStats(accumulator.opponentClassStats, bucketClass, weight, winCredit, fitness);
-    }
+      const bucketCounts = new Map();
+      for (const bucket of opponentBuckets) {
+        bucketCounts.set(bucket, (bucketCounts.get(bucket) || 0) + 1);
+      }
+      for (const [bucketKey, count] of bucketCounts.entries()) {
+        const weight = count / Math.max(1, opponentBuckets.length);
+        addWeightedBucketStats(accumulator.opponentTypeStats, bucketKey, weight, winCredit, fitness);
+        const bucketClass = String(bucketKey).split(':')[0];
+        addWeightedBucketStats(accumulator.opponentClassStats, bucketClass, weight, winCredit, fitness);
+      }
 
-    accumulator.behaviorTotals.frontierShare += frontierShare;
-    accumulator.behaviorTotals.capitalShare += capitalShare;
-    accumulator.behaviorTotals.landBuys += playerMetric.landBuys;
-    accumulator.behaviorTotals.churchGifts += playerMetric.themesGifted;
-    accumulator.behaviorTotals.revocations += playerMetric.revocations;
-    accumulator.behaviorTotals.throneCaptures += playerMetric.throneCaptures;
-    accumulator.behaviorTotals.incumbentSupportRate += incumbentSupportRate;
-    accumulator.behaviorTotals.selfSupportRate += selfSupportRate;
-    accumulator.behaviorTotals.goldHoardingRate += goldHoardingRate;
-    accumulator.behaviorTotals.mercSpend += playerMetric.mercSpend;
-    accumulator.behaviorTotals.recruitmentUtilization += recruitUtilization;
+      accumulator.behaviorTotals.frontierShare += frontierShare;
+      accumulator.behaviorTotals.capitalShare += capitalShare;
+      accumulator.behaviorTotals.landBuys += playerMetric.landBuys;
+      accumulator.behaviorTotals.churchGifts += playerMetric.themesGifted;
+      accumulator.behaviorTotals.revocations += playerMetric.revocations;
+      accumulator.behaviorTotals.throneCaptures += playerMetric.throneCaptures;
+      accumulator.behaviorTotals.incumbentSupportRate += incumbentSupportRate;
+      accumulator.behaviorTotals.selfSupportRate += selfSupportRate;
+      accumulator.behaviorTotals.goldHoardingRate += goldHoardingRate;
+      accumulator.behaviorTotals.mercSpend += playerMetric.mercSpend;
+      accumulator.behaviorTotals.recruitmentUtilization += recruitUtilization;
 
-    if (game.empireFall) {
-      const collapse = computeCollapseDefenseProfile(game, playerMetric);
-      accumulator.collapseDiagnostics.matches++;
-      accumulator.collapseDiagnostics.defenseCoverage += collapse.defenseCoverage;
-      accumulator.collapseDiagnostics.fatalCoverage += collapse.fatalCoverage;
-      accumulator.collapseDiagnostics.commitmentRate += collapse.commitmentRate;
+      if (game.empireFall) {
+        const collapse = computeCollapseDefenseProfile(game, playerMetric);
+        accumulator.collapseDiagnostics.matches++;
+        accumulator.collapseDiagnostics.defenseCoverage += collapse.defenseCoverage;
+        accumulator.collapseDiagnostics.fatalCoverage += collapse.fatalCoverage;
+        accumulator.collapseDiagnostics.commitmentRate += collapse.commitmentRate;
+      }
     }
   }
 
@@ -1245,18 +1330,26 @@ function computeNoveltyScore(vector, archiveVectors, peerVectors) {
 }
 
 function computeTrainingScore(summary) {
+  const guardRate = summary.guardRate || 0;
+  const empireFallRate = summary.empireFallRate || 0;
+  const residualUnsafeRate = Math.max(0, (summary.unsafeRate || 0) - guardRate - empireFallRate);
+  const mirroredSeatEquity = summary.mirroredSeatEquity ?? 1;
+  const mirroredSeatVariance = summary.mirroredSeatVariance || 0;
   return roundTo(
     (summary.winShare * 100) +
-    (summary.finalScorePlacement * 8) +
-    (summary.finalScoreAdvantage * 2) +
-    ((summary.survivingFinalScoreMean || 0) * 0.35) +
-    (getClassWinRate(summary, 'scripted') * 4) +
-    (getClassWinRate(summary, 'hof') * 4) +
-    (getClassWinRate(summary, 'emergent') * 3) -
-    ((summary.empireFallRate || 0) * 5) -
-    ((summary.guardRate || 0) * 20) -
+    (summary.finalScorePlacement * 9) +
+    (summary.finalScoreAdvantage * 2.4) +
+    ((summary.survivingFinalScoreMean || 0) * 0.32) +
+    (getClassWinRate(summary, 'scripted') * 4.5) +
+    (getClassWinRate(summary, 'hof') * 4.5) +
+    (getClassWinRate(summary, 'emergent') * 4) +
+    (mirroredSeatEquity * 12) -
+    (guardRate * 28) -
+    (empireFallRate * 4.5) -
+    (residualUnsafeRate * 2.5) -
     (Math.sqrt(summary.opponentVariance) * 2.2) -
-    (Math.sqrt(summary.seatVariance) * 1.3),
+    (Math.sqrt(summary.seatVariance) * 0.9) -
+    (Math.sqrt(mirroredSeatVariance) * 7),
     4
   );
 }
@@ -1264,12 +1357,14 @@ function computeTrainingScore(summary) {
 function compareOutcomeSummary(leftSummary, rightSummary) {
   return (
     ((rightSummary.winShare || 0) - (leftSummary.winShare || 0)) ||
-    ((leftSummary.guardRate || 0) - (rightSummary.guardRate || 0)) ||
-    ((leftSummary.empireFallRate || 0) - (rightSummary.empireFallRate || 0)) ||
-    ((leftSummary.unsafeRate || 0) - (rightSummary.unsafeRate || 0)) ||
     ((rightSummary.finalScoreAdvantage || 0) - (leftSummary.finalScoreAdvantage || 0)) ||
     ((rightSummary.finalScorePlacement || 0) - (leftSummary.finalScorePlacement || 0)) ||
     ((rightSummary.survivingFinalScoreMean || 0) - (leftSummary.survivingFinalScoreMean || 0)) ||
+    ((rightSummary.mirroredSeatEquity || 0) - (leftSummary.mirroredSeatEquity || 0)) ||
+    ((leftSummary.guardRate || 0) - (rightSummary.guardRate || 0)) ||
+    ((leftSummary.empireFallRate || 0) - (rightSummary.empireFallRate || 0)) ||
+    ((leftSummary.unsafeRate || 0) - (rightSummary.unsafeRate || 0)) ||
+    ((leftSummary.mirroredSeatVariance || 0) - (rightSummary.mirroredSeatVariance || 0)) ||
     ((leftSummary.opponentVariance || 0) - (rightSummary.opponentVariance || 0)) ||
     ((leftSummary.seatVariance || 0) - (rightSummary.seatVariance || 0))
   );
@@ -1284,6 +1379,7 @@ function buildObjectivesFromSummary(summary) {
     scriptedWinRate: getClassWinRate(summary, 'scripted'),
     hallOfFameWinRate: getClassWinRate(summary, 'hof'),
     emergentWinRate: getClassWinRate(summary, 'emergent'),
+    mirroredSeatEquity: summary.mirroredSeatEquity ?? 1,
     opponentRobustness: roundTo(1 - Math.min(1, Math.sqrt(summary.opponentVariance)), 4),
     seatRobustness: roundTo(1 - Math.min(1, Math.sqrt(summary.seatVariance) * 4), 4),
   };
@@ -1342,11 +1438,11 @@ function assignCrowdingDistance(front) {
 
 function compareSelectionEntries(left, right) {
   return (
-    compareOutcomeSummary(left.selectionSummary || left.validationSummary, right.selectionSummary || right.validationSummary) ||
     (left.paretoRank - right.paretoRank) ||
-    ((right.crowdingDistance || 0) - (left.crowdingDistance || 0)) ||
     (right.championScore - left.championScore) ||
     (right.noveltyScore - left.noveltyScore) ||
+    ((right.crowdingDistance || 0) - (left.crowdingDistance || 0)) ||
+    compareOutcomeSummary(left.selectionSummary || left.validationSummary, right.selectionSummary || right.validationSummary) ||
     left.candidate.id.localeCompare(right.candidate.id)
   );
 }
@@ -1404,7 +1500,7 @@ export function rankSelectionEntries(entries, summarySelector = entry => entry.v
   }
   return {
     rankedEntries: sortByPareto(entries, summarySelector),
-    safetyMode: 'win-rate-first',
+    safetyMode: 'pareto-score-novelty',
   };
 }
 
@@ -1462,6 +1558,30 @@ function buildChampionSummary(candidate, holdoutSummary) {
   };
   const topTraits = dominantWeightKeys(candidate.weights, 2).map(key => traitLabels[key] || key);
   return `Self-play champion focused on ${topTraits.join(' and ')}, with holdout behavior showing ${describeBehaviorProfile(holdoutSummary)}.`;
+}
+
+function getEntryBehaviorVector(entry) {
+  return entry?.holdoutSummary?.behaviorVector
+    || entry?.validationSummary?.behaviorVector
+    || entry?.trainSummary?.behaviorVector
+    || [];
+}
+
+function selectDistinctChampionEntries(entries, maxCount, minDistance = 0.08) {
+  const selected = [];
+  for (const entry of entries) {
+    if (!selected.length) {
+      selected.push(entry);
+      if (selected.length >= maxCount) break;
+      continue;
+    }
+    const vector = getEntryBehaviorVector(entry);
+    const isDistinct = selected.every(other => euclideanDistance(vector, getEntryBehaviorVector(other)) > minDistance);
+    if (!isDistinct) continue;
+    selected.push(entry);
+    if (selected.length >= maxCount) break;
+  }
+  return selected;
 }
 
 function chunkArray(items, chunkCount) {
@@ -1704,6 +1824,8 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       averageFinalScore: holdoutSummary.finalScoreMean,
       averageWealth: holdoutSummary.averageWealth,
       empireFallRate: holdoutSummary.empireFallRate,
+      mirroredSeatEquity: holdoutSummary.mirroredSeatEquity,
+      mirroredSeatVariance: holdoutSummary.mirroredSeatVariance,
       fitnessVariance: holdoutSummary.fitnessVariance,
       perOpponentTypeWinRate: holdoutSummary.perOpponentTypeWinRate,
       perSeatWinRate: holdoutSummary.perSeatWinRate,
@@ -1735,6 +1857,12 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       trainEmpireFallRate: entry.trainSummary.empireFallRate,
       validationEmpireFallRate: entry.validationSummary.empireFallRate,
       holdoutEmpireFallRate: holdoutSummary.empireFallRate,
+      trainMirroredSeatEquity: entry.trainSummary.mirroredSeatEquity,
+      validationMirroredSeatEquity: entry.validationSummary.mirroredSeatEquity,
+      holdoutMirroredSeatEquity: holdoutSummary.mirroredSeatEquity,
+      trainMirroredSeatVariance: entry.trainSummary.mirroredSeatVariance,
+      validationMirroredSeatVariance: entry.validationSummary.mirroredSeatVariance,
+      holdoutMirroredSeatVariance: holdoutSummary.mirroredSeatVariance,
       trainWealthPercentile: entry.trainSummary.wealthPercentile,
       validationWealthPercentile: entry.validationSummary.wealthPercentile,
       holdoutWealthPercentile: holdoutSummary.wealthPercentile,
@@ -1743,7 +1871,7 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       crowdingDistance: roundTo(entry.crowdingDistance, 4),
       noveltyScore: entry.noveltyScore,
       noveltyPercentile,
-      safetyMode: entry.safetyMode || 'win-rate-first',
+      safetyMode: entry.safetyMode || 'pareto-score-novelty',
       seatBias: holdoutSummary.startingBasileusSeatBias,
       bestMatchup: holdoutSummary.bestMatchup?.tag || '',
       worstMatchup: holdoutSummary.worstMatchup?.tag || '',
@@ -1791,9 +1919,12 @@ function getHoldoutFinalistCount(config) {
 
 export function estimateTrainingMatches(rawConfig = {}) {
   const config = normalizeTrainingConfig(rawConfig);
+  const trainingMatchesPerCandidate = countSuiteEvaluations(buildEvaluationSuite(config, 'training', 1, config.matchesPerCandidate, 'mid'));
+  const validationMatchesPerCandidate = countSuiteEvaluations(buildEvaluationSuite(config, 'validation', 0, config.validationMatchesPerCandidate, 'late'));
+  const holdoutMatchesPerChampion = countSuiteEvaluations(buildEvaluationSuite(config, 'holdout', 0, config.holdoutMatchesPerChampion, 'late'));
   return (
-    config.generations * config.populationSize * (config.matchesPerCandidate + config.validationMatchesPerCandidate) +
-    (getHoldoutFinalistCount(config) * config.holdoutMatchesPerChampion)
+    config.generations * config.populationSize * (trainingMatchesPerCandidate + validationMatchesPerCandidate) +
+    (getHoldoutFinalistCount(config) * holdoutMatchesPerChampion)
   );
 }
 
@@ -1957,8 +2088,9 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
   finalChampions.forEach(entry => {
     entry.safetyMode = finalSafetyMode;
   });
-  const noveltyScores = finalChampions.map(entry => entry.noveltyScore).slice().sort((left, right) => left - right);
-  const champions = finalChampions.slice(0, config.champions).map((entry, index) => {
+  const exportedChampionEntries = selectDistinctChampionEntries(finalChampions, config.champions, 0.08);
+  const noveltyScores = exportedChampionEntries.map(entry => entry.noveltyScore).slice().sort((left, right) => left - right);
+  const champions = exportedChampionEntries.map((entry, index) => {
     const lowerCount = noveltyScores.filter(score => score <= entry.noveltyScore).length;
     const noveltyPercentile = roundTo(lowerCount / Math.max(1, noveltyScores.length), 4);
     return materializeChampion(entry, index + 1, config, noveltyPercentile);
@@ -1979,7 +2111,7 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       scenarioMode: config.scenarioMode,
       playerCounts: config.playerCounts,
       deckSizes: config.deckSizes,
-      selectionMethod: 'win-rate-first-pareto',
+      selectionMethod: 'pareto-score-novelty',
       safetyMode: finalSafetyMode,
       bestFitness: finalChampions[0]?.championScore || 0,
       bestFinalScore: finalChampions[0]?.holdoutSummary?.finalScoreMean || 0,
@@ -1987,6 +2119,8 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       bestFinalScoreAdvantage: finalChampions[0]?.holdoutSummary?.finalScoreAdvantage || 0,
       bestSurvivingFinalScore: finalChampions[0]?.holdoutSummary?.survivingFinalScoreMean || 0,
       bestEmpireFallRate: finalChampions[0]?.holdoutSummary?.empireFallRate || 0,
+      bestMirroredSeatEquity: finalChampions[0]?.holdoutSummary?.mirroredSeatEquity ?? 1,
+      bestMirroredSeatVariance: finalChampions[0]?.holdoutSummary?.mirroredSeatVariance || 0,
       bestRobustnessVariance: finalChampions[0]?.holdoutSummary?.opponentVariance || 0,
       bestHoldoutWinShare: finalChampions[0]?.holdoutSummary?.winShare || 0,
       bestGuardRate: finalChampions[0]?.holdoutSummary?.guardRate || 0,

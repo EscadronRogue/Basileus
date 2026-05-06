@@ -10,18 +10,20 @@ export const PROFILE_TACTIC_KEYS = ['independence', 'frontierAlarm', 'churchRese
 export const META_PARAM_DEFS = [
 
   ['affinitySlope',          0.32, 0.05, 1.20, 0.18],
-  ['bandwagonStrength',      1.45, 0.40, 2.80, 0.30],
+  ['bandwagonStrength',      1.10, 0.25, 2.80, 0.28],
   ['independenceDamping',    0.50, 0.05, 1.20, 0.18],
 
-  ['selfThroneBoost',        1.85, 0.30, 4.00, 0.40],
-  ['incumbentGrip',          2.35, 0.30, 4.00, 0.40],
+  ['selfThroneBoost',        2.05, 0.30, 4.20, 0.42],
+  ['incumbentGrip',          1.75, 0.20, 3.50, 0.34],
   ['coupGrievanceFactor',    1.28, 0.10, 3.00, 0.40],
+  ['incumbentStabilityBias', 0.62, 0.05, 1.80, 0.22],
+  ['frontierTrustBias',      0.58, 0.05, 1.80, 0.22],
 
   ['incomeHorizonBase',      0.80, 0.20, 2.00, 0.25],
   ['incomeHorizonGrowth',    0.35, 0.00, 1.20, 0.18],
 
   ['mercenaryThreshold',     0.18, 0.00, 1.20, 0.20],
-  ['frontierAlarmDanger',    1.15, 0.20, 3.00, 0.35],
+  ['frontierAlarmDanger',    1.05, 0.20, 3.00, 0.32],
 
   ['recruitThreshold',       1.10, 0.00, 4.00, 0.35],
   ['landPurchaseThreshold',  0.15, -1.00, 3.00, 0.30],

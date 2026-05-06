@@ -333,6 +333,8 @@ function normalizeTrainingMetadata(rawTraining = {}) {
   const unsafeRate = clamp(safeNumber(rawTraining.unsafeRate, safeNumber(rawTraining.empireFallRate, 0) + safeNumber(rawTraining.guardRate, 0)), 0, 1);
   const averageWealth = finalScoreMean;
   const empireFallRate = clamp(safeNumber(rawTraining.empireFallRate, 0), 0, 1);
+  const mirroredSeatEquity = clamp(safeNumber(rawTraining.mirroredSeatEquity, 1), 0, 1);
+  const mirroredSeatVariance = Math.max(0, safeNumber(rawTraining.mirroredSeatVariance, 0));
   const fitnessVariance = Math.max(0, safeNumber(rawTraining.fitnessVariance, 0));
   const trainedAt = rawTraining.trainedAt ? String(rawTraining.trainedAt) : new Date().toISOString();
   const behaviorProfile = safeRecord(rawTraining.behaviorProfile);
@@ -366,6 +368,8 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     averageFinalScore: roundTo(finalScoreMean, 2),
     averageWealth: roundTo(averageWealth, 2),
     empireFallRate: roundTo(empireFallRate, 4),
+    mirroredSeatEquity: roundTo(mirroredSeatEquity, 4),
+    mirroredSeatVariance: roundTo(mirroredSeatVariance, 4),
     fitnessVariance: roundTo(fitnessVariance, 4),
     fitnessPresetId: rawTraining.fitnessPresetId ? String(rawTraining.fitnessPresetId) : 'balanced',
     scenarioMode: rawTraining.scenarioMode === 'focused' ? 'focused' : 'generalist',
@@ -394,6 +398,12 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     trainEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.trainEmpireFallRate, 0), 0, 1), 4),
     validationEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.validationEmpireFallRate, 0), 0, 1), 4),
     holdoutEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.holdoutEmpireFallRate, 0), 0, 1), 4),
+    trainMirroredSeatEquity: roundTo(clamp(safeNumber(rawTraining.trainMirroredSeatEquity, 1), 0, 1), 4),
+    validationMirroredSeatEquity: roundTo(clamp(safeNumber(rawTraining.validationMirroredSeatEquity, 1), 0, 1), 4),
+    holdoutMirroredSeatEquity: roundTo(clamp(safeNumber(rawTraining.holdoutMirroredSeatEquity, mirroredSeatEquity), 0, 1), 4),
+    trainMirroredSeatVariance: roundTo(Math.max(0, safeNumber(rawTraining.trainMirroredSeatVariance, 0)), 4),
+    validationMirroredSeatVariance: roundTo(Math.max(0, safeNumber(rawTraining.validationMirroredSeatVariance, 0)), 4),
+    holdoutMirroredSeatVariance: roundTo(Math.max(0, safeNumber(rawTraining.holdoutMirroredSeatVariance, mirroredSeatVariance)), 4),
     trainWealthPercentile: roundTo(clamp(safeNumber(rawTraining.trainWealthPercentile, 0), 0, 1), 4),
     validationWealthPercentile: roundTo(clamp(safeNumber(rawTraining.validationWealthPercentile, 0), 0, 1), 4),
     holdoutWealthPercentile: roundTo(clamp(safeNumber(rawTraining.holdoutWealthPercentile, 0), 0, 1), 4),

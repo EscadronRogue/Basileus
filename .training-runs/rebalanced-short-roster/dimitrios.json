@@ -1,0 +1,340 @@
+{
+  "id": "dimitrios",
+  "name": "Dimitrios",
+  "shortName": "Dimitrios",
+  "theory": "Self-play champion",
+  "summary": "Self-play champion focused on land acquisition and revocations, with holdout behavior showing high frontier defense, high land buying, low revocation.",
+  "source": "emergent-trained",
+  "basePersonalityId": null,
+  "weights": {
+    "wealth": 2.205,
+    "land": 3.82,
+    "frontier": 0.99,
+    "capital": 1.609,
+    "throne": 1.817,
+    "church": 0.82,
+    "loyalty": 0.303,
+    "retaliation": 2.067,
+    "selfAppointment": 0.638,
+    "mercenary": 1.889,
+    "revocation": 2.44
+  },
+  "tactics": {
+    "independence": 0.886,
+    "frontierAlarm": 1.64,
+    "churchReserve": 1.207,
+    "incumbencyGrip": 1.475
+  },
+  "meta": {
+    "affinitySlope": 0.3449,
+    "bandwagonStrength": 1.4792,
+    "independenceDamping": 0.5849,
+    "selfThroneBoost": 2.9619,
+    "incumbentGrip": 2.5497,
+    "coupGrievanceFactor": 0.9423,
+    "incumbentStabilityBias": 1.446,
+    "frontierTrustBias": 0.9754,
+    "incomeHorizonBase": 2,
+    "incomeHorizonGrowth": 0.78,
+    "mercenaryThreshold": 0.6644,
+    "frontierAlarmDanger": 1.3808,
+    "recruitThreshold": 2.0471,
+    "landPurchaseThreshold": 0.9129,
+    "churchGiftThreshold": 1.9512,
+    "dismissalThreshold": 0.1321,
+    "revocationThreshold": 2.7844,
+    "courtTemperature": 1.8582,
+    "orderTemperature": 1.3967,
+    "supportTemperature": 0.1791,
+    "opponentLearnRate": 0.0673,
+    "opponentTrust": 0.539
+  },
+  "training": {
+    "generation": 8,
+    "matches": 125,
+    "wins": 47,
+    "winShare": 0.376,
+    "championScore": 109.586,
+    "averageFitness": 16.248,
+    "finalScoreMean": 96.65,
+    "finalScoreAdvantage": 8.8312,
+    "finalScorePlacement": 0.666,
+    "survivingFinalScoreMean": 96.65,
+    "unsafeRate": 0,
+    "averageFinalScore": 96.65,
+    "averageWealth": 96.65,
+    "empireFallRate": 0,
+    "mirroredSeatEquity": 0.8096,
+    "mirroredSeatVariance": 0.0023,
+    "fitnessVariance": 475.6261,
+    "fitnessPresetId": "balanced",
+    "scenarioMode": "generalist",
+    "playerCount": 4,
+    "deckSize": 6,
+    "playerCounts": [
+      3,
+      4,
+      5
+    ],
+    "deckSizes": [
+      6,
+      9,
+      12
+    ],
+    "populationPresetId": "emergent-self-play",
+    "seed": "20260429",
+    "trainedAt": "2026-05-06T17:47:44.288Z",
+    "trainMatches": 16,
+    "validationMatches": 21,
+    "holdoutMatches": 125,
+    "trainWinShare": 0.5313,
+    "validationWinShare": 0.381,
+    "holdoutWinShare": 0.376,
+    "trainFinalScoreMean": 108.44,
+    "validationFinalScoreMean": 108.71,
+    "holdoutFinalScoreMean": 96.65,
+    "trainFinalScoreAdvantage": 12.424,
+    "validationFinalScoreAdvantage": 7.6746,
+    "holdoutFinalScoreAdvantage": 8.8312,
+    "trainSurvivingFinalScoreMean": 108.44,
+    "validationSurvivingFinalScoreMean": 108.71,
+    "holdoutSurvivingFinalScoreMean": 96.65,
+    "trainEmpireFallRate": 0,
+    "validationEmpireFallRate": 0,
+    "holdoutEmpireFallRate": 0,
+    "trainMirroredSeatEquity": 1,
+    "validationMirroredSeatEquity": 0.1524,
+    "holdoutMirroredSeatEquity": 0.8096,
+    "trainMirroredSeatVariance": 0,
+    "validationMirroredSeatVariance": 0.0449,
+    "holdoutMirroredSeatVariance": 0.0023,
+    "trainWealthPercentile": 0.6771,
+    "validationWealthPercentile": 0.5714,
+    "holdoutWealthPercentile": 0.666,
+    "guardRate": 0,
+    "paretoFront": 1,
+    "crowdingDistance": 0,
+    "noveltyScore": 0.0518,
+    "noveltyPercentile": 0.5,
+    "seatBias": 0.0407,
+    "bestMatchup": "scripted:always_buy_land",
+    "worstMatchup": "emergent:cluster_1",
+    "mainBehavior": "high frontier defense, high land buying, low revocation",
+    "safetyMode": "pareto-score-novelty",
+    "behaviorProfile": {
+      "frontierTroopShare": 0.9582,
+      "capitalTroopShare": 0.0418,
+      "averageLandBuys": 10.072,
+      "averageChurchGifts": 0,
+      "averageRevocations": 0.064,
+      "averageThroneCaptures": 1.688,
+      "incumbentSupportRate": 0.2676,
+      "selfSupportRate": 0.292,
+      "goldHoardingRate": 0.701,
+      "averageMercSpend": 0,
+      "recruitmentUtilization": 0
+    },
+    "perOpponentTypeWinRate": {
+      "scripted:always_coup_leader": {
+        "matches": 15.6667,
+        "winRate": 0.4202,
+        "averageFitness": 16.4911
+      },
+      "hof:generation_bucket_0": {
+        "matches": 30.9167,
+        "winRate": 0.3315,
+        "averageFitness": 14.8949
+      },
+      "emergent:cluster_3": {
+        "matches": 4.0833,
+        "winRate": 0.3469,
+        "averageFitness": 11.015
+      },
+      "emergent:cluster_2": {
+        "matches": 13.5,
+        "winRate": 0.3395,
+        "averageFitness": 13.7963
+      },
+      "scripted:always_buy_land": {
+        "matches": 17.8333,
+        "winRate": 0.4813,
+        "averageFitness": 20.1115
+      },
+      "scripted:always_gift_to_church": {
+        "matches": 15.25,
+        "winRate": 0.4044,
+        "averageFitness": 20.6576
+      },
+      "emergent:cluster_0": {
+        "matches": 12,
+        "winRate": 0.3819,
+        "averageFitness": 16.9255
+      },
+      "scripted:always_support_richest_rival": {
+        "matches": 14.4167,
+        "winRate": 0.3121,
+        "averageFitness": 13.5114
+      },
+      "emergent:cluster_1": {
+        "matches": 1.3333,
+        "winRate": 0.25,
+        "averageFitness": 7
+      }
+    },
+    "perSeatWinRate": {
+      "0": {
+        "matches": 32,
+        "winRate": 0.3125,
+        "averageFitness": 14.0156
+      },
+      "1": {
+        "matches": 32,
+        "winRate": 0.3438,
+        "averageFitness": 15.5
+      },
+      "2": {
+        "matches": 32,
+        "winRate": 0.375,
+        "averageFitness": 17.5146
+      },
+      "3": {
+        "matches": 20,
+        "winRate": 0.4,
+        "averageFitness": 17.3517
+      },
+      "4": {
+        "matches": 9,
+        "winRate": 0.6667,
+        "averageFitness": 19.8889
+      }
+    },
+    "perScenario": [
+      {
+        "key": "3p-6d",
+        "playerCount": 3,
+        "deckSize": 6,
+        "matches": 12,
+        "winShare": 0.6667,
+        "finalScoreMean": 72.25,
+        "finalScoreAdvantage": 7.0278,
+        "finalScorePlacement": 0.7917,
+        "survivingFinalScoreMean": 72.25,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "3p-9d",
+        "playerCount": 3,
+        "deckSize": 9,
+        "matches": 12,
+        "winShare": 0.5,
+        "finalScoreMean": 118.75,
+        "finalScoreAdvantage": 14.6389,
+        "finalScorePlacement": 0.7083,
+        "survivingFinalScoreMean": 118.75,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "3p-12d",
+        "playerCount": 3,
+        "deckSize": 12,
+        "matches": 12,
+        "winShare": 0.4167,
+        "finalScoreMean": 188.08,
+        "finalScoreAdvantage": 22.4167,
+        "finalScorePlacement": 0.625,
+        "survivingFinalScoreMean": 188.08,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "4p-6d",
+        "playerCount": 4,
+        "deckSize": 6,
+        "matches": 16,
+        "winShare": 0.1875,
+        "finalScoreMean": 54.88,
+        "finalScoreAdvantage": 3.9063,
+        "finalScorePlacement": 0.5833,
+        "survivingFinalScoreMean": 54.88,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "4p-9d",
+        "playerCount": 4,
+        "deckSize": 9,
+        "matches": 16,
+        "winShare": 0.25,
+        "finalScoreMean": 94.38,
+        "finalScoreAdvantage": 6.4844,
+        "finalScorePlacement": 0.6458,
+        "survivingFinalScoreMean": 94.38,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "4p-12d",
+        "playerCount": 4,
+        "deckSize": 12,
+        "matches": 12,
+        "winShare": 0.3333,
+        "finalScoreMean": 134,
+        "finalScoreAdvantage": 8.6875,
+        "finalScorePlacement": 0.6111,
+        "survivingFinalScoreMean": 134,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "5p-6d",
+        "playerCount": 5,
+        "deckSize": 6,
+        "matches": 15,
+        "winShare": 0.4,
+        "finalScoreMean": 46,
+        "finalScoreAdvantage": 3.4,
+        "finalScorePlacement": 0.65,
+        "survivingFinalScoreMean": 46,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "5p-9d",
+        "playerCount": 5,
+        "deckSize": 9,
+        "matches": 15,
+        "winShare": 0.4667,
+        "finalScoreMean": 83.2,
+        "finalScoreAdvantage": 8.88,
+        "finalScorePlacement": 0.75,
+        "survivingFinalScoreMean": 83.2,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      },
+      {
+        "key": "5p-12d",
+        "playerCount": 5,
+        "deckSize": 12,
+        "matches": 15,
+        "winShare": 0.2667,
+        "finalScoreMean": 106.53,
+        "finalScoreAdvantage": 8.0133,
+        "finalScorePlacement": 0.65,
+        "survivingFinalScoreMean": 106.53,
+        "empireFallRate": 0,
+        "guardRate": 0,
+        "unsafeRate": 0
+      }
+    ]
+  }
+}

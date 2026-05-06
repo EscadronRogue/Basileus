@@ -5,6 +5,15 @@ import { normalizeAiProfile } from './profileStore.js';
 import { DEFAULT_META_PARAMS, NEUTRAL_PROFILE } from './personalities.js';
 import { __testing, createAIMeta } from './brain.js';
 
+function createSequenceRng(values) {
+  let index = 0;
+  return () => {
+    const value = values[index] ?? values[values.length - 1] ?? 0.5;
+    index++;
+    return value;
+  };
+}
+
 function makeProfile(id, metaOverrides = {}) {
   return normalizeAiProfile({
     id,
@@ -110,4 +119,33 @@ test('temperature-controlled softmax can preserve greed or allow exploration', (
 
   assert.equal(greedy.label, 'best');
   assert.notEqual(exploratory.label, 'best');
+});
+
+test('equal-score throne candidates do not always resolve to the lowest player id', () => {
+  const options = [
+    { candidateId: 0, score: 2 },
+    { candidateId: 1, score: 2 },
+    { candidateId: 2, score: 2 },
+  ];
+
+  const picked = __testing.softmaxPick(options, 0.01, createSequenceRng([0.1, 0.1]));
+
+  assert.equal(picked.candidateId, 1);
+  assert.notEqual(picked.candidateId, 0);
+});
+
+test('equal-score court options do not always pick the earliest enumerated action and stay deterministic for a fixed seed', () => {
+  const options = [
+    { kind: 'buy', score: 1.5 },
+    { kind: 'gift', score: 1.5 },
+    { kind: 'recruit', score: 1.5 },
+  ];
+
+  const rankedA = __testing.rankOptionsByKey(options, createSequenceRng([0.1, 0.1]), { primaryKey: 'score' });
+  const rankedB = __testing.rankOptionsByKey(options, createSequenceRng([0.1, 0.1]), { primaryKey: 'score' });
+  const picked = __testing.softmaxPick(options, 0.01, createSequenceRng([0.1, 0.1]));
+
+  assert.deepEqual(rankedA.map(entry => entry.kind), rankedB.map(entry => entry.kind));
+  assert.deepEqual(rankedA.map(entry => entry.kind), ['gift', 'recruit', 'buy']);
+  assert.equal(picked.kind, 'gift');
 });

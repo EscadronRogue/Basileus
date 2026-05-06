@@ -52,6 +52,7 @@ import {
 import { normalizeAiProfile } from './profileStore.js';
 
 const PUBLIC_LOG_LIMIT = 48;
+const DEFAULT_TIE_EPSILON = 0.035;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -69,6 +70,56 @@ function roundTo(value, digits = 2) {
 function incrementMapCount(map, key, amount = 1) {
   if (key == null) return;
   map.set(key, (map.get(key) || 0) + amount);
+}
+
+function getNumericKeyValue(option, key) {
+  const value = Number(option?.[key]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function areNearlyTied(left, right, epsilon = DEFAULT_TIE_EPSILON) {
+  const scale = Math.max(1, Math.abs(left), Math.abs(right));
+  return Math.abs(left - right) <= (epsilon + (scale * 0.003));
+}
+
+function rankOptionsByKey(options, rng, {
+  primaryKey = 'score',
+  secondaryKey = null,
+  descending = true,
+  epsilon = DEFAULT_TIE_EPSILON,
+} = {}) {
+  const sorted = options.slice().sort((left, right) => {
+    const leftPrimary = getNumericKeyValue(left, primaryKey);
+    const rightPrimary = getNumericKeyValue(right, primaryKey);
+    if (descending && rightPrimary !== leftPrimary) return rightPrimary - leftPrimary;
+    if (!descending && leftPrimary !== rightPrimary) return leftPrimary - rightPrimary;
+    if (secondaryKey) {
+      const leftSecondary = getNumericKeyValue(left, secondaryKey);
+      const rightSecondary = getNumericKeyValue(right, secondaryKey);
+      if (descending && rightSecondary !== leftSecondary) return rightSecondary - leftSecondary;
+      if (!descending && leftSecondary !== rightSecondary) return leftSecondary - rightSecondary;
+    }
+    return 0;
+  });
+  if (!rng || sorted.length < 2) return sorted;
+
+  const ranked = [];
+  let index = 0;
+  while (index < sorted.length) {
+    const anchorPrimary = getNumericKeyValue(sorted[index], primaryKey);
+    const anchorSecondary = secondaryKey ? getNumericKeyValue(sorted[index], secondaryKey) : null;
+    const group = [sorted[index]];
+    index++;
+    while (index < sorted.length) {
+      const next = sorted[index];
+      if (!areNearlyTied(anchorPrimary, getNumericKeyValue(next, primaryKey), epsilon)) break;
+      if (secondaryKey && !areNearlyTied(anchorSecondary, getNumericKeyValue(next, secondaryKey), epsilon)) break;
+      group.push(next);
+      index++;
+    }
+    ranked.push(...shuffle(group, rng));
+  }
+  return ranked;
 }
 
 function getFastCache(state, meta) {
@@ -364,18 +415,19 @@ function updateOpponentPosterior(meta, observerId, targetId, observedFeatures) {
 // ---------------------------------------------------------------------------
 function softmaxPick(rankedOptions, temperature, rng) {
   if (!rankedOptions.length) return null;
-  if (temperature <= 0.05 || rankedOptions.length === 1) return rankedOptions[0];
+  const ranked = rankOptionsByKey(rankedOptions, rng, { primaryKey: 'score' });
+  if (temperature <= 0.05 || ranked.length === 1) return ranked[0];
   // Numerical stability: subtract max
-  const maxScore = Math.max(...rankedOptions.map(opt => opt.score));
-  const weights = rankedOptions.map(opt => Math.exp((opt.score - maxScore) / Math.max(0.05, temperature)));
+  const maxScore = Math.max(...ranked.map(opt => opt.score));
+  const weights = ranked.map(opt => Math.exp((opt.score - maxScore) / Math.max(0.05, temperature)));
   const total = weights.reduce((s, v) => s + v, 0);
-  if (total <= 0 || !Number.isFinite(total)) return rankedOptions[0];
+  if (total <= 0 || !Number.isFinite(total)) return ranked[0];
   let cursor = rng() * total;
-  for (let index = 0; index < rankedOptions.length; index++) {
+  for (let index = 0; index < ranked.length; index++) {
     cursor -= weights[index];
-    if (cursor <= 0) return rankedOptions[index];
+    if (cursor <= 0) return ranked[index];
   }
-  return rankedOptions[rankedOptions.length - 1];
+  return ranked[ranked.length - 1];
 }
 
 export function getPlayerProfessionalCount(player) {
@@ -523,9 +575,10 @@ function getStandings(state, meta) {
       landIncome: getPlayerIncomePotential(state, player.id, meta),
       threatenedValue: getPlayerThreatenedLandValue(state, player.id, meta),
     }))
-    .sort((left, right) => right.score - left.score);
-  if (cache) cache.standings = standings;
-  return standings;
+  ;
+  const rankedStandings = rankOptionsByKey(standings, state.rng, { primaryKey: 'score' });
+  if (cache) cache.standings = rankedStandings;
+  return rankedStandings;
 }
 
 function getStandingSnapshot(state, meta, playerId) {
@@ -1336,10 +1389,10 @@ function estimateCandidateRewardPotential(state, meta, candidateId, beneficiaryI
 
   let value = 0.35 + (candidateOwesBeneficiary * 0.8);
   if (candidateId === state.basileusId) {
-    value += 0.95;
-    if (!state.courtActions?.basileusAppointed) value += 0.55;
+    value += 0.42;
+    if (!state.courtActions?.basileusAppointed) value += 0.22;
     const revocationsUsed = state.courtActions?.basileusRevocationsUsed || 0;
-    if (revocationsUsed === 0) value += 0.2;
+    if (revocationsUsed === 0) value += 0.08;
   } else {
     value += beneficiaryTitleNeed * 0.75;
     value += Math.max(0, 1.6 - beneficiary.majorTitles.length) * 0.25;
@@ -1372,6 +1425,10 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
   const endgamePressure = remainingRounds <= 2 ? 1.15 : remainingRounds <= 4 ? 0.35 : 0;
   const rivalSummary = getRivalSummary(state, meta, playerId, candidateId);
   const dangerWeight = empireDanger * frontierAlarmDanger;
+  const incumbentStabilityBias = getMeta(profile, 'incumbentStabilityBias');
+  const frontierTrustBias = getMeta(profile, 'frontierTrustBias');
+  const threatUrgency = clamp((threat - 0.7) / 0.7, 0, 1.35);
+  const empirePressure = clamp((empireDanger - 1.02) / 0.45, 0, 1.35);
 
   let score = relation * profile.weights.loyalty;
   score += obligationToCandidate * 1.05;
@@ -1379,7 +1436,7 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
   score += (candidateStrength - playerStrength) * 0.05;
   score += rewardPotential * 0.58;
   score += rivalSummary.patronageValue * 0.18;
-  score += rivalSummary.likelyFrontierCooperation * threat * 0.28;
+  score += rivalSummary.likelyFrontierCooperation * threatUrgency * 0.22 * frontierTrustBias;
   score -= rivalSummary.currentThreatToMe * 0.22;
   score -= rivalSummary.coupAmbition * 0.18;
 
@@ -1390,38 +1447,38 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
   const coupGrievanceFactor = getMeta(profile, 'coupGrievanceFactor');
 
   if (candidateId === playerId) {
-    score += profile.weights.throne * selfThroneBoost;
+    score += profile.weights.throne * (selfThroneBoost * 1.06);
     score += getPlayerInfluence(state, meta, playerId) * 0.04;
     score += grievanceAgainstBasileus * 0.42;
-    score += (comebackPressure * 0.12) + endgamePressure;
-    score -= threat * 0.3 * frontierAlarmDanger;
+    score += (comebackPressure * 0.15) + (endgamePressure * 1.08);
+    score -= threatUrgency * 0.24 * frontierAlarmDanger;
     if (playerId === state.basileusId) {
-      score += (incumbentGrip * temperament.incumbencyGrip) + (rewardPotential * 0.32);
-      if (myStanding.rank === 1) score += 1.05 + (dangerWeight * 0.28);
-      if (empireDanger > 1.05) score += 0.85 + (exposure * 0.28 * frontierAlarmDanger);
+      score += (incumbentGrip * temperament.incumbencyGrip * 0.52 * incumbentStabilityBias) + (rewardPotential * 0.18);
+      if (myStanding.rank === 1) score += 0.52 + (empirePressure * 0.18 * incumbentStabilityBias);
+      if (empirePressure > 0) score += (0.18 + (exposure * 0.16 * frontierAlarmDanger)) * incumbentStabilityBias;
     }
-    if (myStanding.rank === 1) score -= 0.8 + (dangerWeight * 0.2);
-    if (threatenedValue > 0 && empireDanger > 1.15) score -= 0.45;
+    if (myStanding.rank === 1) score -= 0.52 + (empirePressure * 0.12);
+    if (threatenedValue > 0 && empirePressure > 0.2) score -= 0.28;
   } else if (candidateId === state.basileusId) {
-    score += 0.95 + (dangerWeight * ((profile.weights.frontier * 0.95) + (exposure * 0.65)));
-    score += threatenedValue * 0.06;
+    score += (0.38 * incumbentStabilityBias) + (threatUrgency * ((profile.weights.frontier * 0.42) + (exposure * 0.3)) * frontierTrustBias);
+    score += threatenedValue * 0.03 * frontierTrustBias;
     score -= grievanceAgainstBasileus * 0.82;
     if (basileusStanding.rank === 1 && myStanding.rank > 1) {
-      score -= 1.25 + (comebackPressure * 0.08);
+      score -= 0.95 + (comebackPressure * 0.1);
     }
-    if (myStanding.rank === 1) score += 0.85;
-    if (empireDanger > 1.05) score += threatenedValue * 0.03;
+    if (myStanding.rank === 1) score += 0.42;
+    if (empirePressure > 0) score += threatenedValue * 0.015 * frontierTrustBias;
   } else {
     score += grievanceAgainstBasileus * coupGrievanceFactor;
-    score += profile.weights.capital * 1.02;
-    score += (comebackPressure * 0.09) + (endgamePressure * 0.55);
-    score -= dangerWeight * 0.22;
+    score += profile.weights.capital * 1.08;
+    score += (comebackPressure * 0.12) + (endgamePressure * 0.72);
+    score -= threatUrgency * frontierTrustBias * 0.12;
     if (candidateStanding.rank === 1) {
-      score -= 1.55 + (Math.max(0, candidateStanding.leadOverNextBehind) * 0.12);
+      score -= 1.15 + (Math.max(0, candidateStanding.leadOverNextBehind) * 0.08);
     }
-    if (basileusStanding.rank === 1) score += 0.95;
-    if (candidateStanding.rank > myStanding.rank) score += 0.25;
-    if (candidateStanding.rank < myStanding.rank) score -= 0.4;
+    if (basileusStanding.rank === 1) score += 1.05;
+    if (candidateStanding.rank > myStanding.rank) score += 0.35;
+    if (candidateStanding.rank < myStanding.rank) score -= 0.28;
   }
 
   score -= ambitionRisk * 0.34;
@@ -1431,7 +1488,8 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
 function getCandidateMomentum(state, meta, candidateId) {
   const standing = getStandingSnapshot(state, meta, candidateId);
   const influence = getPlayerInfluence(state, meta, candidateId);
-  const officeWeight = candidateId === state.basileusId ? 1.1 : 0.18;
+  const threatUrgency = clamp((getThreatLevel(state, meta) - 0.75) / 0.65, 0, 1.2);
+  const officeWeight = candidateId === state.basileusId ? 0.38 + (threatUrgency * 0.24) : 0.2;
   const rankPressure = Math.max(0, 3 - standing.rank) * 0.22;
   return (influence * 0.28) + officeWeight + rankPressure;
 }
@@ -1457,10 +1515,11 @@ function buildRoundContext(state, meta, stage = 'court') {
     }
     const ranked = [...candidateIds]
       .map(candidateId => ({ candidateId, score: candidateBaseScores[playerId][candidateId] }))
-      .sort((left, right) => right.score - left.score);
+    ;
+    const rankedCandidates = rankOptionsByKey(ranked, state.rng, { primaryKey: 'score' });
     const supportTemperature = getMetaForPlayer(meta, playerId, 'supportTemperature');
-    candidateChoice[playerId] = softmaxPick(ranked.slice(0, 4), supportTemperature, state.rng)?.candidateId ?? ranked[0]?.candidateId ?? playerId;
-    candidateMargins[playerId] = (ranked[0]?.score || 0) - (ranked[1]?.score || 0);
+    candidateChoice[playerId] = softmaxPick(rankedCandidates.slice(0, 4), supportTemperature, state.rng)?.candidateId ?? rankedCandidates[0]?.candidateId ?? playerId;
+    candidateMargins[playerId] = (rankedCandidates[0]?.score || 0) - (rankedCandidates[1]?.score || 0);
   }
 
   for (let iteration = 0; iteration < 3; iteration++) {
@@ -1475,7 +1534,9 @@ function buildRoundContext(state, meta, stage = 'court') {
     const challengerFrontRunner = candidateIds
       .filter(candidateId => candidateId !== state.basileusId)
       .map(candidateId => ({ candidateId, signal: supportSignal[candidateId] }))
-      .sort((left, right) => right.signal - left.signal)[0] || { candidateId: state.basileusId, signal: 0 };
+    ;
+    const challengerSignals = rankOptionsByKey(challengerFrontRunner, state.rng, { primaryKey: 'signal' });
+    const leadChallenger = challengerSignals[0] || { candidateId: state.basileusId, signal: 0 };
     const strongestChallengerSignal = Math.max(
       0,
       ...candidateIds.filter(candidateId => candidateId !== state.basileusId).map(candidateId => supportSignal[candidateId])
@@ -1486,40 +1547,42 @@ function buildRoundContext(state, meta, stage = 'court') {
       const temperament = getAITemperament(meta, playerId);
       const exposure = getPlayerExposure(state, playerId, meta);
       const threat = getThreatLevel(state, meta);
+      const threatUrgency = clamp((threat - 0.72) / 0.68, 0, 1.25);
       const bandwagonStrength = getMeta(profile, 'bandwagonStrength');
       const independenceDamping = getMeta(profile, 'independenceDamping');
       const bandwagonScale = clamp(bandwagonStrength / Math.max(0.8, temperament.independence + independenceDamping), 0.2, 1.8);
       const selfResolve = 0.9 + (temperament.independence * 0.28) + independenceDamping;
       const supportTemperature = getMeta(profile, 'supportTemperature');
+      const frontierTrustBias = getMeta(profile, 'frontierTrustBias');
 
-      const ranked = candidateIds.map(candidateId => {
+      const ranked = rankOptionsByKey(candidateIds.map(candidateId => {
         const rivalSummary = rivalSummaries[playerId][candidateId] || getRivalSummary(state, meta, playerId, candidateId);
         let coordination = supportSignal[candidateId] * 0.1 * profile.weights.loyalty * bandwagonScale;
-        if (candidateId === challengerFrontRunner.candidateId && candidateId !== state.basileusId) {
-          coordination += (0.35 + (challengerFrontRunner.signal * 0.045)) * bandwagonScale;
+        if (candidateId === leadChallenger.candidateId && candidateId !== state.basileusId) {
+          coordination += (0.35 + (leadChallenger.signal * 0.045)) * bandwagonScale;
         }
-        if (candidateId === state.basileusId && supportSignal[state.basileusId] >= challengerFrontRunner.signal) {
+        if (candidateId === state.basileusId && supportSignal[state.basileusId] >= leadChallenger.signal) {
           coordination += (0.45 + (supportSignal[state.basileusId] * 0.03)) * bandwagonScale;
         }
-        if (candidateId === playerId && supportSignal[candidateId] < (challengerFrontRunner.signal * 0.55)) {
+        if (candidateId === playerId && supportSignal[candidateId] < (leadChallenger.signal * 0.55)) {
           coordination -= 0.55 / selfResolve;
         }
         if (candidateId !== playerId && candidateId !== state.basileusId && supportSignal[candidateId] > supportSignal[playerId]) {
           coordination += 0.24 * bandwagonScale;
         }
         const stabilityBoost = candidateId === state.basileusId
-          ? Math.max(0, supportSignal[state.basileusId] - strongestChallengerSignal) * 0.1 + threat * exposure * 0.45
-          : Math.max(0, supportSignal[candidateId] - supportSignal[state.basileusId]) * 0.16;
+          ? Math.max(0, supportSignal[state.basileusId] - strongestChallengerSignal) * 0.07 + threatUrgency * exposure * 0.18
+          : Math.max(0, supportSignal[candidateId] - supportSignal[state.basileusId]) * 0.14;
         const obligationBoost = getObligation(meta, playerId, candidateId) * 0.6;
         const repaymentHope = getObligation(meta, candidateId, playerId) * 0.45;
         const momentumBoost = getCandidateMomentum(state, meta, candidateId) * 0.07;
         const reliabilityBoost = rivalSummary.reliability * 0.35;
-        const frontierTrustBoost = rivalSummary.likelyFrontierCooperation * threat * 0.45;
+        const frontierTrustBoost = rivalSummary.likelyFrontierCooperation * threatUrgency * 0.26 * frontierTrustBias;
         const threatPenalty = rivalSummary.currentThreatToMe * 0.28;
         const freeRiderPenalty = rivalSummary.freeRiderRisk * 0.18;
         const score = candidateBaseScores[playerId][candidateId] + coordination + stabilityBoost + obligationBoost + repaymentHope + momentumBoost + reliabilityBoost + frontierTrustBoost - threatPenalty - freeRiderPenalty;
         return { candidateId, score };
-      }).sort((left, right) => right.score - left.score);
+      }), state.rng, { primaryKey: 'score' });
 
       candidateChoice[playerId] = softmaxPick(ranked.slice(0, 4), supportTemperature, state.rng)?.candidateId ?? ranked[0]?.candidateId ?? playerId;
       candidateMargins[playerId] = (ranked[0]?.score || 0) - (ranked[1]?.score || 0);
@@ -1536,7 +1599,9 @@ function buildRoundContext(state, meta, stage = 'court') {
   const strongestChallenger = candidateIds
     .filter(candidateId => candidateId !== state.basileusId)
     .map(candidateId => ({ candidateId, signal: supportSignal[candidateId] }))
-    .sort((left, right) => right.signal - left.signal)[0] || { candidateId: state.basileusId, signal: 0 };
+  ;
+  const rankedStrongestChallenger = rankOptionsByKey(strongestChallenger, state.rng, { primaryKey: 'signal' });
+  const strongestChallengerEntry = rankedStrongestChallenger[0] || { candidateId: state.basileusId, signal: 0 };
 
   const pactByPlayer = {};
   for (const playerId of aiPlayerIds) {
@@ -1552,7 +1617,7 @@ function buildRoundContext(state, meta, stage = 'court') {
     const standing = getStandingSnapshot(state, meta, playerId);
     const endgamePressure = getRemainingRounds(state) <= 2 ? 0.8 : 0;
     const candidateNeed = candidateId === state.basileusId
-      ? Math.max(0, strongestChallenger.signal - supportSignal[state.basileusId])
+      ? Math.max(0, strongestChallengerEntry.signal - supportSignal[state.basileusId])
       : Math.max(0, supportSignal[state.basileusId] - supportSignal[candidateId] + 1.5);
     const opportunismDiscount = empireDanger < 1.05 ? Math.max(0, rivalStake - ownStake) * 0.12 : 0;
 
@@ -1576,8 +1641,8 @@ function buildRoundContext(state, meta, stage = 'court') {
     rivalSummaries,
     supportersByCandidate,
     supportSignal,
-    strongestChallengerId: strongestChallenger.candidateId,
-    strongestChallengerSignal: strongestChallenger.signal,
+    strongestChallengerId: strongestChallengerEntry.candidateId,
+    strongestChallengerSignal: strongestChallengerEntry.signal,
     pactByPlayer,
   };
 }
@@ -1746,13 +1811,14 @@ function handleBasileusAppointment(state, meta) {
       ...option,
       score: scoreMinorSlot(state, meta, actorId, option.type, option.themeId ? state.themes[option.themeId] : null, option.appointeeId),
     }))
-    .sort((left, right) => right.score - left.score);
+  ;
+  const rankedAppointments = rankOptionsByKey(ranked, state.rng, { primaryKey: 'score' });
 
   // Tier 6: stochastic court appointment — softmax over the top candidates so
   // training can explore unconventional patronage patterns instead of locking
   // into greedy argmax forever.
   const temperature = getMetaForPlayer(meta, actorId, 'courtTemperature');
-  const candidates = ranked.slice(0, 6);
+  const candidates = rankedAppointments.slice(0, 6);
   const orderedAttempts = [softmaxPick(candidates, temperature, state.rng), ...candidates].filter(Boolean);
   const seen = new Set();
   for (const option of orderedAttempts) {
@@ -1820,9 +1886,10 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
       ...option,
       score: scoreMinorSlot(state, meta, actorId, 'STRATEGOS', state.themes[option.themeId], option.appointeeId),
     }))
-    .sort((left, right) => right.score - left.score);
+  ;
+  const rankedStrategosOptions = rankOptionsByKey(ranked, state.rng, { primaryKey: 'score' });
 
-  for (const option of ranked) {
+  for (const option of rankedStrategosOptions) {
     const previousHolder = state.themes[option.themeId].strategos;
     const result = appointStrategos(state, actorId, option.themeId, option.appointeeId);
     if (!result?.ok) continue;
@@ -1873,9 +1940,10 @@ function handlePatriarchAppointment(state, meta) {
       ...option,
       score: scoreMinorSlot(state, meta, actorId, 'BISHOP', state.themes[option.themeId], option.appointeeId),
     }))
-    .sort((left, right) => right.score - left.score);
+  ;
+  const rankedBishopOptions = rankOptionsByKey(ranked, state.rng, { primaryKey: 'score' });
 
-  for (const option of ranked) {
+  for (const option of rankedBishopOptions) {
     const previousHolder = state.themes[option.themeId].bishop;
     const result = appointBishop(state, actorId, option.themeId, option.appointeeId);
     if (!result?.ok) continue;
@@ -1911,16 +1979,16 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const incomeHorizon = getMeta(profile, 'incomeHorizonBase') + (remainingRounds * getMeta(profile, 'incomeHorizonGrowth'));
   const treasuryAfter = player.gold - cost;
   const diminishingReturns = Math.max(0, ownedThemeCount - 1) * (0.65 + (profile.weights.land * 0.08));
-  const privateValue = (ownerIncome * (1.25 + (incomeHorizon * 1.55))) + (theme.L * 0.18) + (remainingRounds * profile.weights.wealth * 0.08);
+  const privateValue = (ownerIncome * (1.32 + (incomeHorizon * 1.7))) + (theme.L * 0.22) + (remainingRounds * profile.weights.wealth * 0.1);
   const landControl = profile.weights.land * 0.78;
-  const cheapness = (4 - cost) * 0.28;
+  const cheapness = (4 - cost) * 0.34;
   const scarcityBonus = ownedThemeCount === 0 ? 1.6 : Math.max(0, 2 - ownedThemeCount) * 0.7;
-  const catchUpBonus = Math.max(0, leaderThemeCount - ownedThemeCount) * 0.32;
+  const catchUpBonus = Math.max(0, leaderThemeCount - ownedThemeCount) * 0.38;
   const churchOptionality = profile.weights.church * theme.P * 0.14;
-  const reservePenalty = treasuryAfter < 2 ? (1.1 + (empireDanger * 0.4)) : treasuryAfter < 4 ? 0.35 + (empireDanger * 0.12) : 0;
-  const dangerPenalty = routeRisk * empireDanger * (0.55 + (profile.weights.frontier * 0.08));
+  const reservePenalty = treasuryAfter < 1 ? (0.9 + (empireDanger * 0.24)) : treasuryAfter < 3 ? 0.18 + (empireDanger * 0.06) : 0;
+  const dangerPenalty = routeRisk * empireDanger * (0.42 + (profile.weights.frontier * 0.06));
   const selfProtection = exposure > 0 ? theme.L * 0.12 : 0;
-  const zeroIncomeRelief = getPlayerIncomePotential(state, playerId, meta) === 0 ? 1.1 : 0;
+  const zeroIncomeRelief = getPlayerIncomePotential(state, playerId, meta) === 0 ? 1.25 : 0;
   return privateValue + landControl + cheapness + scarcityBonus + catchUpBonus + churchOptionality + selfProtection + zeroIncomeRelief - (cost * 0.82) - reservePenalty - dangerPenalty - diminishingReturns;
 }
 
@@ -1935,16 +2003,16 @@ function scoreChurchGift(state, meta, playerId, theme) {
   const incomeHorizon = getMeta(profile, 'incomeHorizonBase') + (remainingRounds * getMeta(profile, 'incomeHorizonGrowth'));
   const routeRisk = getThemeRouteRisk(state, theme.id);
   const keepsValue =
-    (remainingRounds * profile.weights.wealth * 0.42) +
-    (ownerIncome * (1.2 + (incomeHorizon * 0.95) + (profile.weights.land * 0.18))) +
-    (ownedThemeCount <= 1 ? 1.1 : ownedThemeCount <= 2 ? 0.45 : 0);
-  const churchValue = (theme.P * profile.weights.church * 1.18) + (theme.T * 0.25) + 0.8;
-  const patriarchBonus = getPlayer(state, playerId).majorTitles.includes('PATRIARCH') ? 1.2 : 0;
-  const bishopLockBonus = 0.75 + (profile.weights.church * 0.34);
-  const routeRiskRelief = routeRisk * (0.85 + (empireDanger * 0.28));
+    (remainingRounds * profile.weights.wealth * 0.5) +
+    (ownerIncome * (1.35 + (incomeHorizon * 1.05) + (profile.weights.land * 0.22))) +
+    (ownedThemeCount <= 1 ? 1.25 : ownedThemeCount <= 2 ? 0.6 : 0);
+  const churchValue = (theme.P * profile.weights.church * 1.02) + (theme.T * 0.18) + 0.45;
+  const patriarchBonus = getPlayer(state, playerId).majorTitles.includes('PATRIARCH') ? 0.95 : 0;
+  const bishopLockBonus = 0.42 + (profile.weights.church * 0.24);
+  const routeRiskRelief = routeRisk * (0.58 + (empireDanger * 0.22));
   const dangerRelief = threatenedValue * 0.018;
-  const saturationBonus = Math.max(0, ownedThemeCount - 2) * 0.32;
-  const reservePenalty = temperament.churchReserve * (0.85 + (threatenedValue * 0.01));
+  const saturationBonus = Math.max(0, ownedThemeCount - 3) * 0.18;
+  const reservePenalty = temperament.churchReserve * (1.05 + (ownerIncome * 0.08) + (threatenedValue * 0.015));
   return churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief + dangerRelief + saturationBonus - keepsValue - reservePenalty;
 }
 
@@ -1955,7 +2023,7 @@ function findBestRecruitmentAction(state, meta, playerId) {
   const commitment = ensureRoundContext(state, meta, 'court').pactByPlayer[playerId];
   const standing = getStandingSnapshot(state, meta, playerId);
   const candidateId = commitment?.candidateId ?? state.basileusId;
-  let best = null;
+  const options = [];
 
   for (const office of offices) {
     noteRecruitOpportunity(state, meta, playerId, office.key);
@@ -1964,17 +2032,17 @@ function findBestRecruitmentAction(state, meta, playerId) {
     const capitalPotential = scoreOfficeDestination(state, meta, playerId, office, 1, 'capital', candidateId, commitment);
     const frontierPotential = scoreOfficeDestination(state, meta, playerId, office, 1, 'frontier', candidateId, commitment);
     const score =
-      (Math.max(capitalPotential, frontierPotential) * 0.38) +
-      (profile.weights.mercenary * 0.35) +
-      (standing.rank > 1 ? standing.gapToLeader * 0.03 : 0) -
-      (player.gold <= 0 ? 0.3 : 0.05);
+      (Math.max(capitalPotential, frontierPotential) * 0.46) +
+      (profile.weights.mercenary * 0.18) +
+      (profile.weights.frontier * 0.08) +
+      (standing.rank > 1 ? standing.gapToLeader * 0.05 : 0) -
+      (player.gold <= 0 ? 0.22 : 0.02);
 
-    if (!best || score > best.score) {
-      best = { kind: 'recruit', office, score };
-    }
+    options.push({ kind: 'recruit', office, score });
   }
 
-  return best;
+  const rankedRecruitment = rankOptionsByKey(options, state.rng, { primaryKey: 'score' });
+  return rankedRecruitment[0] || null;
 }
 
 function runRecruitmentStrategy(state, meta, playerId, plannedAction = null) {
@@ -2017,12 +2085,12 @@ function findBestDismissalAction(state, meta, playerId) {
   const threat = getThreatLevel(state, meta);
   const empireDanger = getEmpireDanger(state, meta);
   const standing = getStandingSnapshot(state, meta, playerId);
-  const reserveTarget = 2.5 + (standing.rank === 1 ? 1 : 0) + (threat > 0.95 ? 1 : 0);
+  const reserveTarget = 1.8 + (standing.rank === 1 ? 0.7 : 0) + (threat > 1.05 ? 0.6 : 0);
   const projectedBuffer = estimateProjectedIncomeBuffer(state, playerId);
   const immediateStrain = maintenance - Math.max(0, player.gold - reserveTarget);
   const longTermStrain = maintenance - Math.max(2, projectedBuffer + (player.gold * 0.2));
 
-  if (immediateStrain <= 0.2 && (longTermStrain <= 1 || empireDanger > 1.05)) {
+  if (immediateStrain <= 0.35 && (longTermStrain <= 1.25 || empireDanger > 1.15)) {
     return null;
   }
 
@@ -2041,14 +2109,19 @@ function findBestDismissalAction(state, meta, playerId) {
       };
     })
     .filter(Boolean)
-    .sort((left, right) => left.marginalValue - right.marginalValue);
+  ;
+  const rankedDismissals = rankOptionsByKey(rankedOffices, state.rng, {
+    primaryKey: 'marginalValue',
+    descending: false,
+    epsilon: 0.025,
+  });
 
-  const weakestOffice = rankedOffices[0];
+  const weakestOffice = rankedDismissals[0];
   if (!weakestOffice) return null;
 
-  const targetCuts = Math.max(immediateStrain, longTermStrain * 0.7);
+  const targetCuts = Math.max(immediateStrain * 0.92, longTermStrain * 0.62);
   const count = Math.max(1, Math.min(weakestOffice.count, Math.ceil(targetCuts / Math.max(0.9, temperament.frontierAlarm))));
-  const score = (targetCuts * 1.1) - (weakestOffice.marginalValue * 0.28) - (empireDanger * 0.25);
+  const score = (targetCuts * 0.9) - (weakestOffice.marginalValue * 0.36) - (empireDanger * 0.18);
   // Tier 2: evolvable dismissal threshold (was 0.75)
   const threshold = getMetaForPlayer(meta, playerId, 'dismissalThreshold');
   if (score <= threshold) return null;
@@ -2081,10 +2154,14 @@ function findBestLandPurchaseAction(state, meta, playerId) {
   if (budget.landPurchasesRemaining <= 0) return null;
 
   const player = getPlayer(state, playerId);
-  return getFreeThemes(state)
-    .map(theme => ({ kind: 'buy', theme, score: scoreLandPurchase(state, meta, playerId, theme) }))
-    .filter(entry => getThemeLandPrice(entry.theme) <= player.gold)
-    .sort((left, right) => right.score - left.score)[0] || null;
+  const rankedLandOptions = rankOptionsByKey(
+    getFreeThemes(state)
+      .map(theme => ({ kind: 'buy', theme, score: scoreLandPurchase(state, meta, playerId, theme) }))
+      .filter(entry => getThemeLandPrice(entry.theme) <= player.gold),
+    state.rng,
+    { primaryKey: 'score' }
+  );
+  return rankedLandOptions[0] || null;
 }
 
 function runLandStrategy(state, meta, playerId, plannedAction = null) {
@@ -2114,9 +2191,13 @@ function findBestChurchGiftAction(state, meta, playerId) {
   const budget = ensureCourtBudget(state, meta, playerId);
   if (budget.churchGiftsRemaining <= 0) return null;
 
-  return getPlayerThemes(state, playerId)
-    .map(theme => ({ kind: 'gift', theme, score: scoreChurchGift(state, meta, playerId, theme) }))
-    .sort((left, right) => right.score - left.score)[0] || null;
+  const rankedGiftOptions = rankOptionsByKey(
+    getPlayerThemes(state, playerId)
+      .map(theme => ({ kind: 'gift', theme, score: scoreChurchGift(state, meta, playerId, theme) })),
+    state.rng,
+    { primaryKey: 'score' }
+  );
+  return rankedGiftOptions[0] || null;
 }
 
 function runChurchGiftStrategy(state, meta, playerId, plannedAction = null) {
@@ -2161,9 +2242,14 @@ function takeOneStrategicCourtAction(state, meta, playerId) {
       selectionScore: normalizeCourtActionScore(meta, playerId, action),
     }))
     .filter(action => action.selectionScore > 0)
-    .sort((left, right) => right.selectionScore - left.selectionScore || right.score - left.score);
+  ;
+  const rankedActions = rankOptionsByKey(options, state.rng, {
+    primaryKey: 'selectionScore',
+    secondaryKey: 'score',
+    epsilon: 0.02,
+  });
 
-  const best = softmaxPick(options.slice(0, 6), getMetaForPlayer(meta, playerId, 'courtTemperature'), state.rng);
+  const best = softmaxPick(rankedActions.slice(0, 6), getMetaForPlayer(meta, playerId, 'courtTemperature'), state.rng);
   if (!best) return false;
   if (best.kind === 'recruit') return runRecruitmentStrategy(state, meta, playerId, best);
   if (best.kind === 'buy') return runLandStrategy(state, meta, playerId, best);
@@ -2285,7 +2371,7 @@ function buildRevocationOptions(state, meta, basileusId) {
     });
   }
 
-  return options.sort((left, right) => right.score - left.score);
+  return rankOptionsByKey(options, state.rng, { primaryKey: 'score' });
 }
 
 function handleBasileusRevocation(state, meta, plannedAction = null) {
@@ -2421,9 +2507,10 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
   const rankedOffices = officePlans
     .filter(plan => !plan.capitalLocked)
     .map(plan => ({ ...plan, baseValue: Math.max(plan.frontierScore, plan.capitalScore) }))
-    .sort((left, right) => right.baseValue - left.baseValue);
+  ;
+  const mercenaryOffices = rankOptionsByKey(rankedOffices, state.rng, { primaryKey: 'baseValue' });
 
-  const bestOffice = rankedOffices[0];
+  const bestOffice = mercenaryOffices[0];
   if (!bestOffice) return [];
 
   const maxMercenaries = Math.max(1, Math.min(5, Math.ceil(profile.weights.mercenary + ((pact?.capitalBias || 0) * 0.35))));
@@ -2622,10 +2709,10 @@ function normalizeCourtActionScore(meta, playerId, action) {
     mercenaries: getMetaForPlayer(meta, playerId, 'mercenaryThreshold'),
   };
   const scales = {
-    recruit: 1,
-    buy: 0.58,
-    gift: 0.72,
-    dismiss: 0.9,
+    recruit: 1.08,
+    buy: 0.7,
+    gift: 0.56,
+    dismiss: 0.76,
     revoke: 0.82,
     mercenaries: 0.92,
   };
@@ -2786,9 +2873,10 @@ function planMajorTitleAssignment(state, meta, newBasileusId) {
       assignment,
       score: scoreTitleAssignment(state, meta, newBasileusId, assignment, previousHolders),
     }))
-    .sort((left, right) => right.score - left.score);
+  ;
+  const rankedAssignments = rankOptionsByKey(assignments, state.rng, { primaryKey: 'score' });
 
-  return { previousHolders, best: assignments[0] || null };
+  return { previousHolders, best: rankedAssignments[0] || null };
 }
 
 function applyMajorTitleAssignment(state, meta, newBasileusId, plan) {
@@ -3006,6 +3094,7 @@ export function getRecentPublicLog(meta, limit = 10) {
 }
 
 export const __testing = {
+  rankOptionsByKey,
   softmaxPick,
   buildRoundContext,
   ensureSocialMemory,
