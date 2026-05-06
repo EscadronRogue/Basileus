@@ -9,24 +9,20 @@ import {
   renderOrdersPanel,
   renderPlayerDashboard,
   renderResolutionPanelDetailed,
-  renderRulesPanel,
 } from './panels.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
 
 export function createDefaultUiState() {
   return {
     panels: {
-      dashboard: true,
-      action: true,
-      rules: true,
+      dashboard: false,
       history: false,
+      action: true,
     },
     sections: {
       'court:guide': true,
-      'rules:goal': true,
     },
     dashboardFocus: null,
-    rulesFocus: null,
   };
 }
 
@@ -42,10 +38,9 @@ export function setPanelOpen(uiState, panelKey, open) {
 
 export function bindUiChrome({ uiState, render }) {
   const containers = [
-    document.getElementById('actionPanel'),
     document.getElementById('playerDashboard'),
-    document.getElementById('rulesPanel'),
     document.getElementById('historyPanel'),
+    document.getElementById('actionPanel'),
   ].filter(Boolean);
 
   for (const container of containers) {
@@ -70,18 +65,6 @@ export function bindUiChrome({ uiState, render }) {
         uiState.dashboardFocus = focusKey;
         if (!uiState.sections) uiState.sections = {};
         uiState.sections[`dashboard:${focusKey}`] = true;
-        render();
-      });
-    });
-
-    container.querySelectorAll('[data-rules-focus]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const focusKey = button.dataset.rulesFocus;
-        if (!focusKey) return;
-        uiState.rulesFocus = focusKey;
-        if (!uiState.sections) uiState.sections = {};
-        uiState.sections[`rules:${focusKey}`] = true;
-        setPanelOpen(uiState, 'rules', true);
         render();
       });
     });
@@ -271,13 +254,12 @@ export function renderScoringHtml(state, options = {}) {
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Final score = gold on hand + next Administration income.</p>
       <div class="score-list">
         ${scores.map((score, index) => `
           <div class="score-row ${index === 0 ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
             <span class="score-rank">${index === 0 ? '1' : index + 1}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
-            <span class="score-breakdown">${formatGold(score.gold)} on hand + ${formatGold(score.projected, { signed: true })} next Administration income</span>
+            <span class="score-breakdown">${formatGold(score.gold)} on hand + ${formatGold(score.projected, { signed: true })} next income</span>
             <span class="score-total">${score.wealth}</span>
           </div>
         `).join('')}
@@ -405,7 +387,6 @@ export function renderGameFrame({
   updateMapState(state);
   setSelectedProvince(selectedProvinceId);
   drawInvasionRoute(state.currentInvasion);
-  renderActionPanel?.();
   renderPlayerDashboard(
     document.getElementById('playerDashboard'),
     state,
@@ -413,14 +394,9 @@ export function renderGameFrame({
     selectedProvinceId,
     { aiMeta, uiState },
   );
-  renderRulesPanel(
-    document.getElementById('rulesPanel'),
-    state,
-    activePlayerId,
-    { uiState },
-  );
   renderHistoryPanel(document.getElementById('historyPanel'), state, { aiMeta, uiState });
   renderTabs?.();
+  renderActionPanel?.();
   bindUiChrome({ uiState, render: rerender || (() => {}) });
   if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
 }
