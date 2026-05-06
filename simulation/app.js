@@ -170,6 +170,20 @@ function populateControls() {
   );
 
   populateCheckboxGroup(
+    'trainingPlayerCounts',
+    SUPPORTED_PLAYER_COUNTS.map(value => ({ id: String(value), value })),
+    DEFAULT_TRAINING_CONFIG.playerCounts.map(String),
+    item => `${item.value} players`
+  );
+
+  populateCheckboxGroup(
+    'trainingDeckSizes',
+    DEFAULT_MIXED_DECK_SIZES.map(value => ({ id: String(value), value })),
+    DEFAULT_TRAINING_CONFIG.deckSizes.map(String),
+    item => `${item.value} invasions`
+  );
+
+  populateCheckboxGroup(
     'personalityPool',
     state.availableProfiles,
     state.availableProfiles.map(profile => profile.id),
@@ -201,7 +215,10 @@ function populateControls() {
   byId('trainingChampions').value = DEFAULT_TRAINING_CONFIG.champions;
   byId('trainingDeckSize').value = DEFAULT_TRAINING_CONFIG.deckSize;
   byId('trainingSeed').value = DEFAULT_TRAINING_CONFIG.seed;
+  byId('trainingModeGeneralist').checked = DEFAULT_TRAINING_CONFIG.scenarioMode !== 'focused';
+  byId('trainingModeFocused').checked = DEFAULT_TRAINING_CONFIG.scenarioMode === 'focused';
   applyTrainingFitnessPreset(DEFAULT_TRAINING_CONFIG.fitnessPresetId);
+  updateTrainingModeVisibility();
 }
 
 function getCheckedValues(containerId) {
@@ -212,6 +229,12 @@ function updateModeVisibility() {
   const mixed = byId('modeMixed').checked;
   byId('mixedControls').hidden = !mixed;
   byId('focusedControls').hidden = mixed;
+}
+
+function updateTrainingModeVisibility() {
+  const generalist = byId('trainingModeGeneralist').checked;
+  byId('trainingGeneralistControls').hidden = !generalist;
+  byId('trainingFocusedControls').hidden = generalist;
 }
 
 function readConfigFromForm() {
@@ -238,8 +261,11 @@ function readConfigFromForm() {
 function readTrainingConfigFromForm() {
   return normalizeTrainingConfig({
     seed: byId('trainingSeed').value.trim(),
+    scenarioMode: byId('trainingModeFocused').checked ? 'focused' : 'generalist',
     playerCount: Number(byId('trainingPlayerCount').value),
     deckSize: Number(byId('trainingDeckSize').value),
+    playerCounts: getCheckedValues('trainingPlayerCounts').map(Number),
+    deckSizes: getCheckedValues('trainingDeckSizes').map(Number),
     fitnessPresetId: byId('trainingFitnessPreset').value,
     fitness: readTrainingFitnessFromForm(),
     populationSize: Number(byId('trainingPopulationSize').value),
@@ -485,10 +511,12 @@ function renderTrainingResult(result) {
     ['Survival bonus', formatNumber(result.config.fitness.survivalBonus, 2)],
     ['Win reward', formatNumber(result.config.fitness.winReward, 2)],
     ['Placement reward', formatNumber(result.config.fitness.placementReward, 2)],
-    ['Wealth reward', formatNumber(result.config.fitness.wealthReward, 2)],
+    ['Score advantage reward', formatNumber(result.config.fitness.scoreAdvantageReward ?? result.config.fitness.wealthReward, 2)],
     ['Validation matches', formatInteger(result.config.validationMatchesPerCandidate ?? 0)],
     ['Holdout matches', formatInteger(result.config.holdoutMatchesPerChampion ?? 0)],
-    ['Selection', result.overview.selectionMethod || 'pareto-crowding'],
+    ['Training scope', result.config.scenarioMode === 'focused' ? 'Focused' : 'Generalist'],
+    ['Selection', result.overview.selectionMethod || 'survival-gated-pareto'],
+    ['Safety gate', result.overview.safetyMode || 'safe-only'],
   ];
 
   const overviewCards = [
@@ -498,10 +526,12 @@ function renderTrainingResult(result) {
     { label: 'Workers', value: formatInteger(result.overview.parallelWorkers || 1) },
     { label: 'Best Score', value: formatNumber(result.overview.bestFitness, 3) },
     { label: 'Best Holdout Win', value: formatPercent(result.overview.bestHoldoutWinShare || 0) },
-    { label: 'Best Wealth', value: formatNumber(result.overview.bestAverageWealth, 2) },
+    { label: 'Best Final Score', value: formatNumber(result.overview.bestFinalScore ?? result.overview.bestAverageWealth, 2) },
+    { label: 'Best Score Edge', value: formatNumber(result.overview.bestFinalScoreAdvantage || 0, 2) },
+    { label: 'Best Surviving Score', value: formatNumber(result.overview.bestSurvivingFinalScore || 0, 2) },
     { label: 'Best Fall Rate', value: formatPercent(result.overview.bestEmpireFallRate) },
     { label: 'Best Guard Rate', value: formatPercent(result.overview.bestGuardRate || 0) },
-    { label: 'Best Variance', value: formatNumber(result.overview.bestRobustnessVariance ?? 0, 3) },
+    { label: 'Best Unsafe Rate', value: formatPercent(result.overview.bestUnsafeRate || 0) },
   ];
 
   const championCards = result.champions.map((profile, index) => `
@@ -517,7 +547,8 @@ function renderTrainingResult(result) {
           <span class="meta-chip">Train ${formatPercent(profile.training.trainWinShare || 0)}</span>
           <span class="meta-chip">Validation ${formatPercent(profile.training.validationWinShare || 0)}</span>
           <span class="meta-chip">Holdout ${formatPercent(profile.training.holdoutWinShare || profile.training.winShare || 0)}</span>
-          <span class="meta-chip">Wealth ${formatNumber(profile.training.averageWealth, 2)}</span>
+          <span class="meta-chip">Final Score ${formatNumber(profile.training.finalScoreMean ?? profile.training.averageWealth, 2)}</span>
+          <span class="meta-chip">Score Edge ${formatNumber(profile.training.finalScoreAdvantage || 0, 2)}</span>
           <span class="meta-chip">Fall ${formatPercent(profile.training.empireFallRate)}</span>
           <span class="meta-chip">Guard ${formatPercent(profile.training.guardRate || 0)}</span>
         </div>
@@ -526,13 +557,14 @@ function renderTrainingResult(result) {
           <span class="meta-chip">Worst ${escapeHtml(profile.training.worstMatchup || 'n/a')}</span>
           <span class="meta-chip">Seat Bias ${formatPercent(profile.training.seatBias || 0)}</span>
           <span class="meta-chip">Novelty ${formatPercent(profile.training.noveltyPercentile || 0)}</span>
+          <span class="meta-chip">Unsafe ${formatPercent(profile.training.unsafeRate || 0)}</span>
         </div>
         <p>${escapeHtml(profile.training.mainBehavior || '')}</p>
       </article>
     `).join('');
 
   const generationLines = result.generationHistory.map(entry => `
-    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} on Pareto front ${formatInteger(entry.leaderParetoFront || 0)}, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
+    <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} in ${escapeHtml(entry.safetyMode || 'safe-only')} mode, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, validation score ${formatNumber(entry.validationFinalScoreMean || 0, 2)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
   `).join('');
 
   const exportInfo = result.personalityExport
@@ -620,7 +652,7 @@ function renderSavedProfileLibrary() {
             <span class="meta-chip">${escapeHtml(getFitnessPresetName(profile.training.fitnessPresetId))}</span>
             <span class="meta-chip">Score ${formatNumber(profile.training.championScore ?? profile.training.averageFitness, 3)}</span>
             <span class="meta-chip">Holdout ${formatPercent(profile.training.holdoutWinShare || profile.training.winShare || 0)}</span>
-            <span class="meta-chip">Deck ${formatInteger(profile.training.deckSize)}</span>
+            <span class="meta-chip">${escapeHtml(profile.training.scenarioMode === 'focused' ? `Focused ${formatInteger(profile.training.playerCount)}p/${formatInteger(profile.training.deckSize)}d` : 'Generalist')}</span>
             <span class="meta-chip">${escapeHtml(formatProfileSnapshot(profile))}</span>
           </div>
         </article>
@@ -961,12 +993,15 @@ function resetDefaults() {
   populateControls();
   byId('modeMixed').checked = true;
   updateModeVisibility();
+  updateTrainingModeVisibility();
   setStatus('Defaults restored. Ready for another sweep or training run.');
 }
 
 function bindEvents() {
   byId('modeMixed').addEventListener('change', updateModeVisibility);
   byId('modeFocused').addEventListener('change', updateModeVisibility);
+  byId('trainingModeGeneralist').addEventListener('change', updateTrainingModeVisibility);
+  byId('trainingModeFocused').addEventListener('change', updateTrainingModeVisibility);
   byId('runButton').addEventListener('click', () => startJob('run'));
   byId('trainButton').addEventListener('click', () => startJob('train'));
   byId('saveTrainingButton').addEventListener('click', saveTrainingChampions);
@@ -1008,6 +1043,7 @@ async function init() {
   populateControls();
   bindEvents();
   updateModeVisibility();
+  updateTrainingModeVisibility();
   renderSavedProfileLibrary();
   renderTrainingResult(null);
   setProgress(0, 0);

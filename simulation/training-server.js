@@ -63,6 +63,7 @@ function configToArgs(config, outputPath) {
 
   const flatKeys = [
     'seed',
+    'scenarioMode',
     'playerCount',
     'deckSize',
     'fitnessPresetId',
@@ -75,13 +76,19 @@ function configToArgs(config, outputPath) {
     'hallOfFameSize',
     'eliteFraction',
     'freshBloodRate',
-    'hallOfFameMixFraction',
   ];
 
   for (const key of flatKeys) {
     if (config[key] !== undefined && config[key] !== null && config[key] !== '') {
       args.push(`--${key}=${config[key]}`);
     }
+  }
+
+  if (Array.isArray(config.playerCounts) && config.playerCounts.length) {
+    args.push(`--playerCounts=${config.playerCounts.join(',')}`);
+  }
+  if (Array.isArray(config.deckSizes) && config.deckSizes.length) {
+    args.push(`--deckSizes=${config.deckSizes.join(',')}`);
   }
 
   if (Number(config.parallelWorkers || 0) <= 0) {

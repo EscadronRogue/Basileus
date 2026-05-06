@@ -32,10 +32,12 @@
     "serve": "node simulation/training-server.js",
     "serve:multiplayer": "node multiplayer/server.js",
     "train:node": "node simulation/train-node.js --parallelWorkers=auto",
+    "test:ai": "node ai/brain.test.js",
     "test:economy": "node engine/economy.test.js",
+    "test:evolution": "node simulation/evolution.test.js",
     "smoke:simulation": "node simulation/smoke-test.js",
     "test:multiplayer": "node multiplayer/verify.js",
-    "test": "npm run test:economy && npm run test:ui && npm run smoke:simulation && npm run test:multiplayer",
+    "test": "npm run test:economy && npm run test:ui && npm run test:ai && npm run test:evolution && npm run smoke:simulation && npm run test:multiplayer",
     "test:ui": "node ui/gameController.test.js"
   }
 }

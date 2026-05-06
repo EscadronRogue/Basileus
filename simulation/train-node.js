@@ -6,6 +6,9 @@ import { join, resolve } from 'node:path';
 import { availableParallelism } from 'node:os';
 
 function parseValue(value) {
+  if (typeof value === 'string' && value.includes(',')) {
+    return value.split(',').map(part => parseValue(part.trim())).filter(part => part !== '');
+  }
   if (value === 'true') return true;
   if (value === 'false') return false;
   if (/^-?\d+$/.test(value)) return Number.parseInt(value, 10);

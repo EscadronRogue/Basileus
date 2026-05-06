@@ -580,11 +580,191 @@ function ensurePlayerLink(meta, playerId, targetId, key, fallback = 0) {
   return meta.players[playerId][key][targetId];
 }
 
+function decayTowardZero(value, rounds, factor = 0.82) {
+  if (!rounds) return value;
+  return value * (factor ** rounds);
+}
+
+function createSocialMemory(round = 0) {
+  return {
+    favorCredit: 0,
+    harmDebt: 0,
+    strategicAlignment: 0,
+    reliability: 0,
+    opportunism: 0,
+    threat: 0,
+    lastUpdatedRound: round,
+  };
+}
+
+function createRecentBehavior(round = 0) {
+  return {
+    landBuying: 0,
+    churchGifting: 0,
+    mercenarySpikes: 0,
+    revocationFrequency: 0,
+    incumbentSupport: 0,
+    selfSupport: 0,
+    frontierCommitment: 0,
+    observations: 0,
+    lastUpdatedRound: round,
+  };
+}
+
+function ensureRecentBehavior(meta, playerId, round = meta.currentRound || 0) {
+  const playerMeta = meta.players[playerId];
+  if (!playerMeta) return createRecentBehavior(round);
+  if (!playerMeta.recentBehavior) {
+    playerMeta.recentBehavior = createRecentBehavior(round);
+  }
+  const behavior = playerMeta.recentBehavior;
+  const elapsed = Math.max(0, round - (behavior.lastUpdatedRound || 0));
+  if (elapsed > 0) {
+    behavior.landBuying = decayTowardZero(behavior.landBuying, elapsed, 0.76);
+    behavior.churchGifting = decayTowardZero(behavior.churchGifting, elapsed, 0.76);
+    behavior.mercenarySpikes = decayTowardZero(behavior.mercenarySpikes, elapsed, 0.72);
+    behavior.revocationFrequency = decayTowardZero(behavior.revocationFrequency, elapsed, 0.74);
+    behavior.incumbentSupport = decayTowardZero(behavior.incumbentSupport, elapsed, 0.74);
+    behavior.selfSupport = decayTowardZero(behavior.selfSupport, elapsed, 0.74);
+    behavior.frontierCommitment = decayTowardZero(behavior.frontierCommitment, elapsed, 0.72);
+    behavior.observations = decayTowardZero(behavior.observations, elapsed, 0.8);
+    behavior.lastUpdatedRound = round;
+  }
+  return behavior;
+}
+
+function updateRecentBehavior(meta, playerId, deltas = {}, round = meta.currentRound || 0) {
+  const behavior = ensureRecentBehavior(meta, playerId, round);
+  for (const [key, delta] of Object.entries(deltas)) {
+    if (key === 'observations' || !Number.isFinite(delta)) continue;
+    behavior[key] = clamp((behavior[key] || 0) + delta, 0, 12);
+  }
+  behavior.observations = clamp((behavior.observations || 0) + 1, 0, 24);
+  behavior.lastUpdatedRound = round;
+}
+
+function ensureSocialMemory(meta, playerId, targetId, round = meta.currentRound || 0) {
+  if (playerId == null || targetId == null || playerId === targetId) return createSocialMemory(round);
+  const playerMeta = meta.players[playerId];
+  if (!playerMeta) return createSocialMemory(round);
+  if (!playerMeta.social) playerMeta.social = {};
+  if (!playerMeta.social[targetId]) {
+    playerMeta.social[targetId] = createSocialMemory(round);
+  }
+  const memory = playerMeta.social[targetId];
+  const elapsed = Math.max(0, round - (memory.lastUpdatedRound || 0));
+  if (elapsed > 0) {
+    memory.favorCredit = decayTowardZero(memory.favorCredit, elapsed, 0.8);
+    memory.harmDebt = decayTowardZero(memory.harmDebt, elapsed, 0.84);
+    memory.strategicAlignment = decayTowardZero(memory.strategicAlignment, elapsed, 0.78);
+    memory.reliability = decayTowardZero(memory.reliability, elapsed, 0.82);
+    memory.opportunism = decayTowardZero(memory.opportunism, elapsed, 0.85);
+    memory.threat = decayTowardZero(memory.threat, elapsed, 0.8);
+    memory.lastUpdatedRound = round;
+  }
+  return memory;
+}
+
+function updateSocialMemory(meta, playerId, targetId, deltas = {}, round = meta.currentRound || 0) {
+  if (playerId == null || targetId == null || playerId === targetId) return;
+  const memory = ensureSocialMemory(meta, playerId, targetId, round);
+  memory.favorCredit = clamp(memory.favorCredit + (Number(deltas.favorCredit) || 0), 0, 8);
+  memory.harmDebt = clamp(memory.harmDebt + (Number(deltas.harmDebt) || 0), 0, 8);
+  memory.strategicAlignment = clamp(memory.strategicAlignment + (Number(deltas.strategicAlignment) || 0), -4, 4);
+  memory.reliability = clamp(memory.reliability + (Number(deltas.reliability) || 0), -3, 6);
+  memory.opportunism = clamp(memory.opportunism + (Number(deltas.opportunism) || 0), 0, 6);
+  memory.threat = clamp(memory.threat + (Number(deltas.threat) || 0), 0, 8);
+  memory.lastUpdatedRound = round;
+}
+
+function getRivalSummary(state, meta, observerId, targetId) {
+  const round = state?.round ?? meta.currentRound ?? 0;
+  const behavior = ensureRecentBehavior(meta, targetId, round);
+  const social = ensureSocialMemory(meta, observerId, targetId, round);
+  const opponentModel = ensureOpponentModel(meta, observerId, targetId);
+  const inferred = blendedOpponentProfile(meta, observerId, targetId);
+  const targetStanding = getStandingSnapshot(state, meta, targetId);
+  const observerStanding = getStandingSnapshot(state, meta, observerId);
+  const likelyThroneAlignment = clamp(
+    0.5 +
+    (behavior.incumbentSupport * 0.12) -
+    (behavior.selfSupport * 0.08) +
+    ((opponentModel?.loyaltyEstimate || 0.5) - (opponentModel?.coupRiskEstimate || 0.5)) * 0.45,
+    0,
+    1
+  );
+  const likelyFrontierCooperation = clamp(
+    ((opponentModel?.frontierCooperationEstimate || 0.5) * 0.55) +
+    (behavior.frontierCommitment * 0.08) +
+    (inferred.weights.frontier * 0.06),
+    0,
+    1
+  );
+  const freeRiderRisk = clamp(
+    (1 - likelyFrontierCooperation) * 0.65 +
+    (behavior.landBuying * 0.04) +
+    (behavior.mercenarySpikes * 0.03),
+    0,
+    1.5
+  );
+  const coupAmbition = clamp(
+    ((opponentModel?.coupRiskEstimate || 0.5) * 0.55) +
+    (behavior.selfSupport * 0.08) +
+    (inferred.weights.throne * 0.08) +
+    (inferred.weights.capital * 0.05),
+    0,
+    2
+  );
+  const patronageValue = clamp(
+    (getPlayerInfluence(state, meta, targetId) * 0.1) +
+    (social.reliability * 0.35) +
+    (likelyThroneAlignment * 0.8) -
+    (coupAmbition * 0.3),
+    0,
+    6
+  );
+  const currentThreatToMe = clamp(
+    Math.max(0, targetStanding.score - observerStanding.score) * 0.18 +
+    Math.max(0, observerStanding.rank - targetStanding.rank) * 0.18 +
+    (coupAmbition * 0.35) +
+    (freeRiderRisk * 0.18),
+    0,
+    6
+  );
+
+  return {
+    recentActionProfile: {
+      landBuying: roundTo(behavior.landBuying, 3),
+      churchGifting: roundTo(behavior.churchGifting, 3),
+      mercenarySpikes: roundTo(behavior.mercenarySpikes, 3),
+      revocationFrequency: roundTo(behavior.revocationFrequency, 3),
+    },
+    likelyThroneAlignment,
+    likelyFrontierCooperation,
+    freeRiderRisk,
+    coupAmbition,
+    patronageValue,
+    currentThreatToMe,
+    reliability: clamp(0.5 + (social.reliability * 0.1), 0, 1.5),
+    strategicAlignment: clamp(social.strategicAlignment, -2, 2),
+  };
+}
+
 function getRelationValue(meta, fromId, toId) {
   if (fromId === toId) return 0;
   const trust = ensurePlayerLink(meta, fromId, toId, 'trust', 0);
   const grievance = ensurePlayerLink(meta, fromId, toId, 'grievance', 0);
-  return trust - grievance;
+  const social = ensureSocialMemory(meta, fromId, toId, meta.currentRound || 0);
+  return (
+    trust -
+    grievance +
+    (social.favorCredit * 0.7) +
+    (social.strategicAlignment * 0.75) +
+    (social.reliability * 0.5) -
+    (social.harmDebt * 0.95) -
+    (social.opportunism * 0.65) -
+    (social.threat * 0.8)
+  );
 }
 
 function getAffinityScore(meta, fromId, toId) {
@@ -603,6 +783,13 @@ function adjustRelation(meta, fromId, toId, trustDelta = 0, grievanceDelta = 0) 
   ensurePlayerLink(meta, fromId, toId, 'grievance', 0);
   meta.players[fromId].trust[toId] = clamp(meta.players[fromId].trust[toId] + trustDelta, -3, 8);
   meta.players[fromId].grievance[toId] = clamp(meta.players[fromId].grievance[toId] + grievanceDelta, 0, 8);
+  updateSocialMemory(meta, fromId, toId, {
+    favorCredit: Math.max(0, trustDelta) * 0.55,
+    harmDebt: Math.max(0, grievanceDelta) * 0.7,
+    strategicAlignment: trustDelta * 0.18,
+    reliability: trustDelta * 0.12,
+    opportunism: grievanceDelta * 0.08,
+  });
 }
 
 function getObligation(meta, debtorId, creditorId) {
@@ -614,12 +801,19 @@ function addObligation(meta, debtorId, creditorId, amount) {
   if (debtorId == null || creditorId == null || debtorId === creditorId || amount <= 0) return;
   ensurePlayerLink(meta, debtorId, creditorId, 'obligations', 0);
   meta.players[debtorId].obligations[creditorId] = clamp(meta.players[debtorId].obligations[creditorId] + amount, 0, 10);
+  updateSocialMemory(meta, debtorId, creditorId, {
+    favorCredit: amount * 0.25,
+    strategicAlignment: amount * 0.08,
+  });
 }
 
 function reduceObligation(meta, debtorId, creditorId, amount) {
   if (debtorId == null || creditorId == null || debtorId === creditorId || amount <= 0) return;
   ensurePlayerLink(meta, debtorId, creditorId, 'obligations', 0);
   meta.players[debtorId].obligations[creditorId] = clamp(meta.players[debtorId].obligations[creditorId] - amount, 0, 10);
+  updateSocialMemory(meta, debtorId, creditorId, {
+    favorCredit: -amount * 0.12,
+  });
 }
 
 function logDecision(meta, message) {
@@ -1028,6 +1222,8 @@ export function createAIMeta(state, options = {}) {
       trust: {},
       grievance: {},
       obligations: {},
+      social: {},
+      recentBehavior: createRecentBehavior(state.round),
       tactics,
       // Tier 5: per-rival posterior over opponent type. Initialised lazily via
       // ensureOpponentModel() the first time the AI scores against a rival.
@@ -1062,6 +1258,7 @@ export function createAIMeta(state, options = {}) {
       players[sourcePlayer.id].trust[targetPlayer.id] = 0;
       players[sourcePlayer.id].grievance[targetPlayer.id] = 0;
       players[sourcePlayer.id].obligations[targetPlayer.id] = 0;
+      players[sourcePlayer.id].social[targetPlayer.id] = createSocialMemory(state.round);
     }
   }
 
@@ -1078,6 +1275,7 @@ export function createAIMeta(state, options = {}) {
   return {
     sampled: Boolean(options.sampled),
     scenario: options.scenario || null,
+    currentRound: state.round,
     populationPresetId,
     humanPlayerIds,
     profileBasis: [...profileBasisMap.values()],
@@ -1155,6 +1353,7 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
   const temperament = getAITemperament(meta, playerId);
   const threat = getThreatLevel(state, meta);
   const empireDanger = getEmpireDanger(state, meta);
+  const frontierAlarmDanger = getMeta(profile, 'frontierAlarmDanger');
   const exposure = getPlayerExposure(state, playerId, meta);
   const threatenedValue = getPlayerThreatenedLandValue(state, playerId, meta);
   const playerStrength = getPlayerStrength(state, meta, playerId);
@@ -1171,12 +1370,18 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
   const basileusStanding = getStandingSnapshot(state, meta, state.basileusId);
   const comebackPressure = Math.max(0, myStanding.gapToLeader);
   const endgamePressure = remainingRounds <= 2 ? 1.15 : remainingRounds <= 4 ? 0.35 : 0;
+  const rivalSummary = getRivalSummary(state, meta, playerId, candidateId);
+  const dangerWeight = empireDanger * frontierAlarmDanger;
 
   let score = relation * profile.weights.loyalty;
   score += obligationToCandidate * 1.05;
   score += candidateOwesPlayer * 0.85;
   score += (candidateStrength - playerStrength) * 0.05;
   score += rewardPotential * 0.58;
+  score += rivalSummary.patronageValue * 0.18;
+  score += rivalSummary.likelyFrontierCooperation * threat * 0.28;
+  score -= rivalSummary.currentThreatToMe * 0.22;
+  score -= rivalSummary.coupAmbition * 0.18;
 
   // Tier 2: selfThroneBoost (was 1.85), incumbentGrip (was 2.35),
   // coupGrievanceFactor (was 1.28) are now evolvable meta-params.
@@ -1189,16 +1394,16 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
     score += getPlayerInfluence(state, meta, playerId) * 0.04;
     score += grievanceAgainstBasileus * 0.42;
     score += (comebackPressure * 0.12) + endgamePressure;
-    score -= threat * 0.3;
+    score -= threat * 0.3 * frontierAlarmDanger;
     if (playerId === state.basileusId) {
       score += (incumbentGrip * temperament.incumbencyGrip) + (rewardPotential * 0.32);
-      if (myStanding.rank === 1) score += 1.05 + (empireDanger * 0.35);
-      if (empireDanger > 1.05) score += 0.85 + (exposure * 0.28);
+      if (myStanding.rank === 1) score += 1.05 + (dangerWeight * 0.28);
+      if (empireDanger > 1.05) score += 0.85 + (exposure * 0.28 * frontierAlarmDanger);
     }
-    if (myStanding.rank === 1) score -= 0.8 + (empireDanger * 0.25);
+    if (myStanding.rank === 1) score -= 0.8 + (dangerWeight * 0.2);
     if (threatenedValue > 0 && empireDanger > 1.15) score -= 0.45;
   } else if (candidateId === state.basileusId) {
-    score += 0.95 + (empireDanger * ((profile.weights.frontier * 0.95) + (exposure * 0.65)));
+    score += 0.95 + (dangerWeight * ((profile.weights.frontier * 0.95) + (exposure * 0.65)));
     score += threatenedValue * 0.06;
     score -= grievanceAgainstBasileus * 0.82;
     if (basileusStanding.rank === 1 && myStanding.rank > 1) {
@@ -1210,7 +1415,7 @@ function scoreCandidateBase(state, meta, playerId, candidateId) {
     score += grievanceAgainstBasileus * coupGrievanceFactor;
     score += profile.weights.capital * 1.02;
     score += (comebackPressure * 0.09) + (endgamePressure * 0.55);
-    score -= empireDanger * 0.3;
+    score -= dangerWeight * 0.22;
     if (candidateStanding.rank === 1) {
       score -= 1.55 + (Math.max(0, candidateStanding.leadOverNextBehind) * 0.12);
     }
@@ -1237,16 +1442,24 @@ function buildRoundContext(state, meta, stage = 'court') {
   const candidateBaseScores = {};
   const candidateChoice = {};
   const candidateMargins = {};
+  const rivalSummaries = {};
 
   for (const playerId of aiPlayerIds) {
+    rivalSummaries[playerId] = {};
     candidateBaseScores[playerId] = {};
     for (const candidateId of candidateIds) {
+      rivalSummaries[playerId][candidateId] = getRivalSummary(state, meta, playerId, candidateId);
+      updateSocialMemory(meta, playerId, candidateId, {
+        threat: rivalSummaries[playerId][candidateId].currentThreatToMe * 0.08,
+        strategicAlignment: rivalSummaries[playerId][candidateId].strategicAlignment * 0.04,
+      }, state.round);
       candidateBaseScores[playerId][candidateId] = scoreCandidateBase(state, meta, playerId, candidateId);
     }
     const ranked = [...candidateIds]
       .map(candidateId => ({ candidateId, score: candidateBaseScores[playerId][candidateId] }))
       .sort((left, right) => right.score - left.score);
-    candidateChoice[playerId] = ranked[0]?.candidateId ?? playerId;
+    const supportTemperature = getMetaForPlayer(meta, playerId, 'supportTemperature');
+    candidateChoice[playerId] = softmaxPick(ranked.slice(0, 4), supportTemperature, state.rng)?.candidateId ?? ranked[0]?.candidateId ?? playerId;
     candidateMargins[playerId] = (ranked[0]?.score || 0) - (ranked[1]?.score || 0);
   }
 
@@ -1273,10 +1486,14 @@ function buildRoundContext(state, meta, stage = 'court') {
       const temperament = getAITemperament(meta, playerId);
       const exposure = getPlayerExposure(state, playerId, meta);
       const threat = getThreatLevel(state, meta);
-      const bandwagonScale = clamp(1.45 - (temperament.independence * 0.5), 0.3, 1.05);
-      const selfResolve = 0.9 + (temperament.independence * 0.28);
+      const bandwagonStrength = getMeta(profile, 'bandwagonStrength');
+      const independenceDamping = getMeta(profile, 'independenceDamping');
+      const bandwagonScale = clamp(bandwagonStrength / Math.max(0.8, temperament.independence + independenceDamping), 0.2, 1.8);
+      const selfResolve = 0.9 + (temperament.independence * 0.28) + independenceDamping;
+      const supportTemperature = getMeta(profile, 'supportTemperature');
 
       const ranked = candidateIds.map(candidateId => {
+        const rivalSummary = rivalSummaries[playerId][candidateId] || getRivalSummary(state, meta, playerId, candidateId);
         let coordination = supportSignal[candidateId] * 0.1 * profile.weights.loyalty * bandwagonScale;
         if (candidateId === challengerFrontRunner.candidateId && candidateId !== state.basileusId) {
           coordination += (0.35 + (challengerFrontRunner.signal * 0.045)) * bandwagonScale;
@@ -1296,11 +1513,15 @@ function buildRoundContext(state, meta, stage = 'court') {
         const obligationBoost = getObligation(meta, playerId, candidateId) * 0.6;
         const repaymentHope = getObligation(meta, candidateId, playerId) * 0.45;
         const momentumBoost = getCandidateMomentum(state, meta, candidateId) * 0.07;
-        const score = candidateBaseScores[playerId][candidateId] + coordination + stabilityBoost + obligationBoost + repaymentHope + momentumBoost;
+        const reliabilityBoost = rivalSummary.reliability * 0.35;
+        const frontierTrustBoost = rivalSummary.likelyFrontierCooperation * threat * 0.45;
+        const threatPenalty = rivalSummary.currentThreatToMe * 0.28;
+        const freeRiderPenalty = rivalSummary.freeRiderRisk * 0.18;
+        const score = candidateBaseScores[playerId][candidateId] + coordination + stabilityBoost + obligationBoost + repaymentHope + momentumBoost + reliabilityBoost + frontierTrustBoost - threatPenalty - freeRiderPenalty;
         return { candidateId, score };
       }).sort((left, right) => right.score - left.score);
 
-      candidateChoice[playerId] = ranked[0]?.candidateId ?? playerId;
+      candidateChoice[playerId] = softmaxPick(ranked.slice(0, 4), supportTemperature, state.rng)?.candidateId ?? ranked[0]?.candidateId ?? playerId;
       candidateMargins[playerId] = (ranked[0]?.score || 0) - (ranked[1]?.score || 0);
     }
   }
@@ -1352,6 +1573,7 @@ function buildRoundContext(state, meta, stage = 'court') {
     candidateBaseScores,
     candidateChoice,
     candidateMargins,
+    rivalSummaries,
     supportersByCandidate,
     supportSignal,
     strongestChallengerId: strongestChallenger.candidateId,
@@ -1402,6 +1624,7 @@ function buildFallbackRoundContext(state, meta, stage = 'court') {
 }
 
 function ensureRoundContext(state, meta, stage = 'court') {
+  meta.currentRound = state.round;
   if (!meta.roundContext || meta.roundContext.round !== state.round || meta.roundContext.stage !== stage) {
     try {
       meta.roundContext = buildRoundContext(state, meta, stage);
@@ -1429,10 +1652,6 @@ function finalizeCourtAutomation(state, meta, aiOrder) {
   markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch appointment');
 
   for (const playerId of aiOrder) {
-    runMercenaryStrategy(state, meta, playerId);
-  }
-
-  for (const playerId of aiOrder) {
     if (!state.courtActions.playerConfirmed.has(playerId)) {
       recordHistoryEvent(state, {
         category: 'court',
@@ -1456,6 +1675,7 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
   const routeRisk = theme ? getThemeRouteRisk(state, theme.id) : 0;
   const appointeeAffinity = getAffinityScore(meta, actorId, appointeeId);
   const appointeeAmbition = getAmbitionScore(meta, appointeeId);
+  const appointeeSummary = getRivalSummary(state, meta, actorId, appointeeId);
   const actorOwesAppointee = getObligation(meta, actorId, appointeeId);
   const appointeeOwesActor = getObligation(meta, appointeeId, actorId);
   const sharedCandidate = actorPact && appointeePact && actorPact.candidateId === appointeePact.candidateId;
@@ -1479,11 +1699,11 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
 
   const sharedCoalitionBonus = sharedCandidate ? 0.9 : -0.18;
   const debtRepayment = actorOwesAppointee * 1.25;
-  const leverageGain = supportLeverage * 0.6 + appointeePact?.capitalBias * 0.25;
+  const leverageGain = supportLeverage * 0.6 + appointeePact?.capitalBias * 0.25 + (appointeeSummary.patronageValue * 0.22);
   const patronageRetention = appointeeOwesActor * 0.22;
   const selfBias = appointeeId === actorId ? actorProfile.weights.selfAppointment * 0.85 : 0;
-  const controlBias = actorProfile.weights.loyalty * appointeeAffinity;
-  const riskPenalty = appointeeAmbition * 0.32;
+  const controlBias = actorProfile.weights.loyalty * appointeeAffinity + (appointeeSummary.reliability * 0.2);
+  const riskPenalty = (appointeeAmbition * 0.32) + (appointeeSummary.coupAmbition * 0.18) + (appointeeSummary.currentThreatToMe * 0.1);
 
   return slotValue + sharedCoalitionBonus + debtRepayment + leverageGain + patronageRetention + selfBias + controlBias - riskPenalty;
 }
@@ -1493,6 +1713,14 @@ function registerFavor(meta, actorId, recipientId, amount) {
   adjustRelation(meta, actorId, recipientId, 0.22, 0);
   addObligation(meta, recipientId, actorId, amount);
   reduceObligation(meta, actorId, recipientId, amount * 0.4);
+  updateSocialMemory(meta, recipientId, actorId, {
+    favorCredit: amount * 0.95,
+    reliability: amount * 0.35,
+    strategicAlignment: amount * 0.2,
+  });
+  updateSocialMemory(meta, actorId, recipientId, {
+    reliability: amount * 0.1,
+  });
 }
 
 function handleBasileusAppointment(state, meta) {
@@ -1680,17 +1908,20 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const cost = getThemeLandPrice(theme);
   const ownerIncome = getNormalOwnerIncome(theme);
   const player = getPlayer(state, playerId);
-  const privateValue = (ownerIncome * (1.8 + (remainingRounds * 0.56))) + (theme.L * 0.25) + (remainingRounds * profile.weights.wealth * 0.18);
-  const landControl = profile.weights.land * 1.2;
-  const cheapness = (4 - theme.P) * 0.35;
-  const scarcityBonus = ownedThemeCount === 0 ? 4.5 : Math.max(0, 2 - ownedThemeCount) * 1.6;
-  const catchUpBonus = Math.max(0, leaderThemeCount - ownedThemeCount) * 0.55;
-  const churchOptionality = profile.weights.church * theme.P * 0.08;
-  const reservePenalty = (player.gold - cost) < 2 ? 0.9 + (empireDanger * 0.25) : 0;
-  const riskPenalty = routeRisk * (empireDanger < 1 ? 0.45 : 0.85);
-  const selfProtection = exposure > 0 ? theme.L * 0.15 : 0;
-  const zeroIncomeRelief = getPlayerIncomePotential(state, playerId, meta) === 0 ? 2.2 : 0;
-  return privateValue + landControl + cheapness + scarcityBonus + catchUpBonus + churchOptionality + selfProtection + zeroIncomeRelief - (cost * 0.7) - reservePenalty - riskPenalty - (profile.weights.frontier * 0.15);
+  const incomeHorizon = getMeta(profile, 'incomeHorizonBase') + (remainingRounds * getMeta(profile, 'incomeHorizonGrowth'));
+  const treasuryAfter = player.gold - cost;
+  const diminishingReturns = Math.max(0, ownedThemeCount - 1) * (0.65 + (profile.weights.land * 0.08));
+  const privateValue = (ownerIncome * (1.25 + (incomeHorizon * 1.55))) + (theme.L * 0.18) + (remainingRounds * profile.weights.wealth * 0.08);
+  const landControl = profile.weights.land * 0.78;
+  const cheapness = (4 - cost) * 0.28;
+  const scarcityBonus = ownedThemeCount === 0 ? 1.6 : Math.max(0, 2 - ownedThemeCount) * 0.7;
+  const catchUpBonus = Math.max(0, leaderThemeCount - ownedThemeCount) * 0.32;
+  const churchOptionality = profile.weights.church * theme.P * 0.14;
+  const reservePenalty = treasuryAfter < 2 ? (1.1 + (empireDanger * 0.4)) : treasuryAfter < 4 ? 0.35 + (empireDanger * 0.12) : 0;
+  const dangerPenalty = routeRisk * empireDanger * (0.55 + (profile.weights.frontier * 0.08));
+  const selfProtection = exposure > 0 ? theme.L * 0.12 : 0;
+  const zeroIncomeRelief = getPlayerIncomePotential(state, playerId, meta) === 0 ? 1.1 : 0;
+  return privateValue + landControl + cheapness + scarcityBonus + catchUpBonus + churchOptionality + selfProtection + zeroIncomeRelief - (cost * 0.82) - reservePenalty - dangerPenalty - diminishingReturns;
 }
 
 function scoreChurchGift(state, meta, playerId, theme) {
@@ -1701,16 +1932,20 @@ function scoreChurchGift(state, meta, playerId, theme) {
   const ownedThemeCount = getPlayerThemes(state, playerId).length;
   const threatenedValue = getPlayerThreatenedLandValue(state, playerId, meta);
   const ownerIncome = getThemeOwnerIncome(theme);
+  const incomeHorizon = getMeta(profile, 'incomeHorizonBase') + (remainingRounds * getMeta(profile, 'incomeHorizonGrowth'));
+  const routeRisk = getThemeRouteRisk(state, theme.id);
   const keepsValue =
-    (remainingRounds * profile.weights.wealth * 0.95) +
-    (ownerIncome * (2.2 + (profile.weights.land * 0.55))) +
-    (ownedThemeCount <= 1 ? 2.4 : ownedThemeCount <= 2 ? 1.15 : 0);
-  const churchValue = (theme.P * profile.weights.church * 0.95) + 0.45;
+    (remainingRounds * profile.weights.wealth * 0.42) +
+    (ownerIncome * (1.2 + (incomeHorizon * 0.95) + (profile.weights.land * 0.18))) +
+    (ownedThemeCount <= 1 ? 1.1 : ownedThemeCount <= 2 ? 0.45 : 0);
+  const churchValue = (theme.P * profile.weights.church * 1.18) + (theme.T * 0.25) + 0.8;
   const patriarchBonus = getPlayer(state, playerId).majorTitles.includes('PATRIARCH') ? 1.2 : 0;
-  const bishopLockBonus = 0.35 + (profile.weights.church * 0.28);
-  const routeRiskRelief = getThemeRouteRisk(state, theme.id) * (empireDanger < 1 ? 1.05 : 0.35);
-  const reservePenalty = temperament.churchReserve * (1.25 + (threatenedValue * 0.02));
-  return churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief - keepsValue - reservePenalty;
+  const bishopLockBonus = 0.75 + (profile.weights.church * 0.34);
+  const routeRiskRelief = routeRisk * (0.85 + (empireDanger * 0.28));
+  const dangerRelief = threatenedValue * 0.018;
+  const saturationBonus = Math.max(0, ownedThemeCount - 2) * 0.32;
+  const reservePenalty = temperament.churchReserve * (0.85 + (threatenedValue * 0.01));
+  return churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief + dangerRelief + saturationBonus - keepsValue - reservePenalty;
 }
 
 function findBestRecruitmentAction(state, meta, playerId) {
@@ -1756,6 +1991,7 @@ function runRecruitmentStrategy(state, meta, playerId, plannedAction = null) {
   invalidateRoundContext(meta);
   meta.players[playerId].stats.recruits++;
   meta.totals.recruits++;
+  updateRecentBehavior(meta, playerId, { frontierCommitment: 0.35 }, state.round);
   applyDecisionToResult(state, result, buildRecruitmentDecision(state, meta, playerId, action, candidateId, commitment));
   logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} recruits 1 professional troop for ${action.office.key}.`);
   logPublic(meta, `${publicActor(state, playerId)} recruits a professional troop for ${action.office.key}.`);
@@ -1867,6 +2103,7 @@ function runLandStrategy(state, meta, playerId, plannedAction = null) {
   budget.landPurchasesRemaining--;
   meta.players[playerId].stats.landBuys++;
   meta.totals.landBuys++;
+  updateRecentBehavior(meta, playerId, { landBuying: 1 }, state.round);
   applyDecisionToResult(state, result, buildLandPurchaseDecision(state, meta, playerId, action));
   logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${action.theme.id} for ${getThemeLandPrice(action.theme)}g (score ${roundTo(action.score, 2)}).`);
   logPublic(meta, `${publicActor(state, playerId)} buys ${action.theme.id}.`);
@@ -1899,6 +2136,7 @@ function runChurchGiftStrategy(state, meta, playerId, plannedAction = null) {
   budget.churchGiftsRemaining--;
   meta.players[playerId].stats.themesGifted++;
   meta.totals.gifts++;
+  updateRecentBehavior(meta, playerId, { churchGifting: 1 }, state.round);
   if (previousBishop != null && previousBishop !== playerId) {
     adjustRelation(meta, previousBishop, playerId, 0, 0.35);
   }
@@ -1914,14 +2152,25 @@ function takeOneStrategicCourtAction(state, meta, playerId) {
     findBestLandPurchaseAction(state, meta, playerId),
     findBestChurchGiftAction(state, meta, playerId),
     findBestDismissalAction(state, meta, playerId),
-  ].filter(Boolean).sort((left, right) => right.score - left.score);
+    findBestMercenaryAction(state, meta, playerId),
+    playerId === state.basileusId ? findBestRevocationAction(state, meta, playerId) : null,
+  ]
+    .filter(Boolean)
+    .map(action => ({
+      ...action,
+      selectionScore: normalizeCourtActionScore(meta, playerId, action),
+    }))
+    .filter(action => action.selectionScore > 0)
+    .sort((left, right) => right.selectionScore - left.selectionScore || right.score - left.score);
 
-  const best = options[0];
+  const best = softmaxPick(options.slice(0, 6), getMetaForPlayer(meta, playerId, 'courtTemperature'), state.rng);
   if (!best) return false;
   if (best.kind === 'recruit') return runRecruitmentStrategy(state, meta, playerId, best);
   if (best.kind === 'buy') return runLandStrategy(state, meta, playerId, best);
   if (best.kind === 'gift') return runChurchGiftStrategy(state, meta, playerId, best);
   if (best.kind === 'dismiss') return runDismissalStrategy(state, meta, playerId, best);
+  if (best.kind === 'mercenaries') return runMercenaryStrategy(state, meta, playerId, best);
+  if (best.kind === 'revoke') return handleBasileusRevocation(state, meta, best);
   return false;
 }
 
@@ -1938,12 +2187,14 @@ function buildRevocationOptions(state, meta, basileusId) {
     for (const titleKey of player.majorTitles) {
       for (const candidate of state.players) {
         if (candidate.id === basileusId || candidate.id === player.id) continue;
+        const targetSummary = getRivalSummary(state, meta, basileusId, player.id);
+        const replacementSummary = getRivalSummary(state, meta, basileusId, candidate.id);
         const targetThreat = getPlayerStrength(state, meta, player.id) - basileusStrength;
         const loyaltyGain = getAffinityScore(meta, basileusId, candidate.id) * 1.2;
         const stability = titleKey === 'PATRIARCH'
           ? getPersonalityProfile(meta, candidate.id).weights.church
           : getCompetenceScore(state, meta, candidate.id);
-        let score = (targetThreat * 0.22) + (profile.weights.revocation * 1.3) + loyaltyGain + (stability * 0.32) - (getAmbitionScore(meta, candidate.id) * 0.42);
+        let score = (targetThreat * 0.22) + (targetSummary.currentThreatToMe * 0.28) + (profile.weights.revocation * 1.3) + loyaltyGain + (stability * 0.32) + (replacementSummary.reliability * 0.35) - (getAmbitionScore(meta, candidate.id) * 0.42);
         score -= getObligation(meta, basileusId, player.id) * 1.6;
         score -= getObligation(meta, candidate.id, basileusId) * 0.2;
         if (context.pactByPlayer[player.id]?.candidateId === basileusId) score -= 2.4;
@@ -1959,8 +2210,9 @@ function buildRevocationOptions(state, meta, basileusId) {
     }
 
     const wealthLead = getPlayer(state, player.id).gold - getPlayer(state, basileusId).gold;
+    const targetSummary = getRivalSummary(state, meta, basileusId, player.id);
     for (const theme of getPlayerThemes(state, player.id)) {
-      let score = (wealthLead * 0.35) + profile.weights.revocation + (theme.P * 0.25) + (theme.L * 0.25);
+      let score = (wealthLead * 0.35) + (targetSummary.currentThreatToMe * 0.24) + profile.weights.revocation + (theme.P * 0.25) + (theme.L * 0.25);
       score -= getObligation(meta, basileusId, player.id) * 1.25;
       if (context.pactByPlayer[player.id]?.candidateId === basileusId) score -= 1.8;
       if (getThemeRouteRisk(state, theme.id) > 0.6 && threat > 0.75) score -= 0.7;
@@ -1976,7 +2228,8 @@ function buildRevocationOptions(state, meta, basileusId) {
   for (const theme of Object.values(state.themes)) {
     if (theme.occupied) continue;
     if (theme.strategos != null) {
-      let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + profile.weights.revocation + theme.L;
+      const targetSummary = getRivalSummary(state, meta, basileusId, theme.strategos);
+      let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + (targetSummary.currentThreatToMe * 0.2) + profile.weights.revocation + theme.L;
       score -= getObligation(meta, basileusId, theme.strategos) * 1.15;
       if (context.pactByPlayer[theme.strategos]?.candidateId === basileusId) score -= 1.7;
       options.push({
@@ -1988,7 +2241,8 @@ function buildRevocationOptions(state, meta, basileusId) {
       });
     }
     if (theme.bishop != null) {
-      let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.P * 0.8);
+      const targetSummary = getRivalSummary(state, meta, basileusId, theme.bishop);
+      let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + (targetSummary.currentThreatToMe * 0.14) + profile.weights.revocation + (theme.P * 0.8);
       score -= getObligation(meta, basileusId, theme.bishop) * 1.1;
       if (context.pactByPlayer[theme.bishop]?.candidateId === basileusId) score -= 1.5;
       options.push({
@@ -2034,22 +2288,13 @@ function buildRevocationOptions(state, meta, basileusId) {
   return options.sort((left, right) => right.score - left.score);
 }
 
-function handleBasileusRevocation(state, meta) {
+function handleBasileusRevocation(state, meta, plannedAction = null) {
   const basileusId = state.basileusId;
   // Each revocation costs more troops than the last. Skip the action entirely if
   // the Basileus does not have enough troops left to pay the next cost.
   const costCheck = canPayRevocationCost(state);
   if (!costCheck.ok) return false;
-  const cost = costCheck.cost;
-  const ranked = buildRevocationOptions(state, meta, basileusId);
-  // Tier 2 + 6: evolvable revocation threshold (was 2.45) and softmax pick
-  // over plausible options instead of greedy argmax.
-  // The threshold scales with the troop cost so the AI demands a proportionally
-  // bigger payoff for the second / third / ... revocation in the same round.
-  const threshold = getMetaForPlayer(meta, basileusId, 'revocationThreshold') + (cost - 1) * 0.85;
-  const temperature = getMetaForPlayer(meta, basileusId, 'courtTemperature');
-  const plausible = ranked.filter(option => option.score > threshold).slice(0, 6);
-  const best = softmaxPick(plausible, temperature, state.rng);
+  const best = plannedAction?.revocation || findBestRevocationAction(state, meta, basileusId)?.revocation;
   if (!best) return false;
 
   let result = null;
@@ -2099,6 +2344,7 @@ function handleBasileusRevocation(state, meta) {
     applyDecisionToResult(state, result, buildRevocationDecision(state, meta, basileusId, best));
     meta.players[basileusId].stats.revocations++;
     meta.totals.revocations++;
+    updateRecentBehavior(meta, basileusId, { revocationFrequency: 1 }, state.round);
     invalidateRoundContext(meta);
     return true;
   }
@@ -2111,6 +2357,7 @@ function scoreOfficeDestination(state, meta, playerId, office, troopCount, desti
   const temperament = getAITemperament(meta, playerId);
   const threat = getThreatLevel(state, meta);
   const empireDanger = getEmpireDanger(state, meta);
+  const frontierAlarmDanger = getMeta(profile, 'frontierAlarmDanger');
   const candidateAffinity = getAffinityScore(meta, playerId, candidateId);
   const exposure = getPlayerExposure(state, playerId, meta);
   const ownStake = getPlayerThreatenedLandValue(state, playerId, meta);
@@ -2121,13 +2368,17 @@ function scoreOfficeDestination(state, meta, playerId, office, troopCount, desti
   const basileusStanding = getStandingSnapshot(state, meta, state.basileusId);
   const candidateStanding = getStandingSnapshot(state, meta, candidateId);
   const endgamePressure = getRemainingRounds(state) <= 2 ? 0.6 : 0;
+  const rivalSummary = getRivalSummary(state, meta, playerId, candidateId);
+  const dangerWeight = empireDanger * frontierAlarmDanger;
 
   if (destination === 'frontier') {
-    let score = troopCount * ((profile.weights.frontier * (1.05 + (empireDanger * temperament.frontierAlarm))) + 0.55);
+    let score = troopCount * ((profile.weights.frontier * (1.05 + (dangerWeight * temperament.frontierAlarm))) + 0.55);
     score += exposure * (0.9 + (0.22 * temperament.frontierAlarm));
     score += ownStake * 0.12;
-    score += empireDanger * (1.15 + (0.45 * temperament.frontierAlarm));
+    score += dangerWeight * (1.05 + (0.45 * temperament.frontierAlarm));
     score += threat * (0.55 + (0.4 * temperament.frontierAlarm));
+    score += rivalSummary.likelyFrontierCooperation * 0.45;
+    score -= rivalSummary.freeRiderRisk * 0.12;
     if (office.key.startsWith('STRAT_')) score += 0.95;
     if (officeRouteRisk > 0) score += officeRouteRisk * (2 + (0.65 * temperament.frontierAlarm));
     if (office.region && getPlayerThemes(state, playerId).some(theme => theme.region === office.region)) score += 0.7;
@@ -2145,11 +2396,13 @@ function scoreOfficeDestination(state, meta, playerId, office, troopCount, desti
   score += getObligation(meta, playerId, candidateId) * 0.8;
   score += Math.max(0, standing.gapToLeader) * 0.07;
   score += endgamePressure;
+  score += rivalSummary.patronageValue * 0.18;
+  score -= rivalSummary.currentThreatToMe * 0.12;
   if (candidateId === playerId) score += troopCount * 1.6;
   if (candidateId === state.basileusId) score += troopCount * 0.62 + (standing.rank === 1 ? 0.5 : 0);
   if (candidateId !== state.basileusId && basileusStanding.rank === 1) score += troopCount * 0.58;
   if (candidateId !== playerId && candidateStanding.rank === 1) score -= troopCount * 0.55;
-  if (empireDanger > 1.05) score -= troopCount * (0.28 + (0.22 * temperament.frontierAlarm));
+  if (empireDanger > 1.05) score -= troopCount * (0.28 + (0.22 * temperament.frontierAlarm * frontierAlarmDanger));
   if (empireDanger > 1.2 && candidateId !== state.basileusId) score -= troopCount * 0.45;
   if (exposure > 1.25 && empireDanger > 1.1) score -= exposure * 0.58;
   return score;
@@ -2158,8 +2411,10 @@ function scoreOfficeDestination(state, meta, playerId, office, troopCount, desti
 function planMercenaries(state, meta, playerId, officePlans, pact) {
   const profile = getPersonalityProfile(meta, playerId);
   const remainingRounds = getRemainingRounds(state);
-  const goldOpportunity = profile.weights.wealth * (1.05 + ((remainingRounds / Math.max(1, state.maxRounds)) * 0.75));
+  const incomeHorizon = getMeta(profile, 'incomeHorizonBase') + (remainingRounds * getMeta(profile, 'incomeHorizonGrowth'));
+  const goldOpportunity = profile.weights.wealth * (0.75 + (incomeHorizon * 0.38));
   const threat = getThreatLevel(state, meta);
+  const threshold = getMeta(profile, 'mercenaryThreshold');
   let availableGold = getPlayer(state, playerId).gold;
   let totalPlannedMercenaries = getPlayerMercenaryTotal(state, playerId);
 
@@ -2179,7 +2434,7 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
     if (availableGold < nextCost) break;
     const crisisDemand = (pact?.capitalBias || 0) + (pact?.frontierBias || 0) + threat;
     const marginalValue = (bestOffice.baseValue * (0.4 + (profile.weights.mercenary * 0.24) + (crisisDemand * 0.1))) - goldOpportunity - (count * 0.72);
-    if (marginalValue <= 0.18) break;
+    if (marginalValue <= threshold) break;
     availableGold -= nextCost;
     count++;
     totalPlannedMercenaries++;
@@ -2192,6 +2447,42 @@ function planMercenaries(state, meta, playerId, officePlans, pact) {
   }] : [];
 }
 
+function findBestMercenaryAction(state, meta, playerId) {
+  const context = ensureRoundContext(state, meta, 'court');
+  const pact = context.pactByPlayer[playerId];
+  const candidateId = pact?.candidateId ?? state.basileusId;
+  const { officePlans } = planOfficeDeployments(state, meta, playerId, candidateId, pact);
+  const mercenaryPlan = planMercenaries(state, meta, playerId, officePlans, pact);
+  if (!mercenaryPlan.length) return null;
+
+  const count = mercenaryPlan.reduce((total, entry) => total + (entry.count || 0), 0);
+  const baseValue = Math.max(0, ...officePlans.map(plan => Math.max(plan.frontierScore, plan.capitalScore)));
+  return {
+    kind: 'mercenaries',
+    mercenaryPlan,
+    officePlans,
+    candidateId,
+    pact,
+    score: (baseValue * 0.78) + (count * 0.65),
+  };
+}
+
+function findBestRevocationAction(state, meta, basileusId) {
+  if (basileusId !== state.basileusId) return null;
+  const costCheck = canPayRevocationCost(state);
+  if (!costCheck.ok) return null;
+  const threshold = getMetaForPlayer(meta, basileusId, 'revocationThreshold') + (costCheck.cost - 1) * 0.85;
+  const ranked = buildRevocationOptions(state, meta, basileusId);
+  const plausible = ranked.filter(option => option.score > threshold).slice(0, 6);
+  const selected = softmaxPick(plausible, getMetaForPlayer(meta, basileusId, 'courtTemperature'), state.rng);
+  if (!selected) return null;
+  return {
+    kind: 'revoke',
+    score: selected.score,
+    revocation: selected,
+  };
+}
+
 function getMercCount(mercenaries, officeKey) {
   return mercenaries.find(entry => entry.officeKey === officeKey)?.count || 0;
 }
@@ -2201,6 +2492,7 @@ function planOfficeDeployments(state, meta, playerId, candidateId, pact) {
   const offices = getOfficeList(state, playerId, { includeMercenaryCompany: getPlayerMercenaryTotal(state, playerId) > 0 });
   const deployments = {};
   const officePlans = [];
+  const orderTemperature = getMetaForPlayer(meta, playerId, 'orderTemperature');
 
   for (const office of offices) {
     const professionalTroops = office.key === MERCENARY_COMPANY_KEY ? 0 : (player.professionalArmies[office.key] || 0);
@@ -2218,7 +2510,11 @@ function planOfficeDeployments(state, meta, playerId, candidateId, pact) {
     } else {
       frontierScore = scoreOfficeDestination(state, meta, playerId, office, troopCount || 1, 'frontier', candidateId, pact);
       capitalScore = scoreOfficeDestination(state, meta, playerId, office, troopCount || 1, 'capital', candidateId, pact);
-      destination = capitalScore > frontierScore ? 'capital' : 'frontier';
+      const picked = softmaxPick([
+        { destination: 'frontier', score: frontierScore },
+        { destination: 'capital', score: capitalScore },
+      ], orderTemperature, state.rng);
+      destination = picked?.destination || (capitalScore > frontierScore ? 'capital' : 'frontier');
     }
     deployments[office.key] = destination;
     officePlans.push({
@@ -2275,12 +2571,12 @@ export function buildAIOrders(state, meta, playerId) {
   return { deployments, candidate: candidateId, debug };
 }
 
-function runMercenaryStrategy(state, meta, playerId) {
+function runMercenaryStrategy(state, meta, playerId, plannedAction = null) {
   const context = ensureRoundContext(state, meta, 'court');
-  const pact = context.pactByPlayer[playerId];
-  const candidateId = pact?.candidateId ?? state.basileusId;
-  const { officePlans } = planOfficeDeployments(state, meta, playerId, candidateId, pact);
-  const mercenaryPlan = planMercenaries(state, meta, playerId, officePlans, pact);
+  const pact = plannedAction?.pact || context.pactByPlayer[playerId];
+  const candidateId = plannedAction?.candidateId ?? pact?.candidateId ?? state.basileusId;
+  const officePlans = plannedAction?.officePlans || planOfficeDeployments(state, meta, playerId, candidateId, pact).officePlans;
+  const mercenaryPlan = plannedAction?.mercenaryPlan || planMercenaries(state, meta, playerId, officePlans, pact);
   if (!mercenaryPlan.length) return false;
 
   const debug = {
@@ -2304,6 +2600,7 @@ function runMercenaryStrategy(state, meta, playerId) {
     meta.players[playerId].stats.mercsHired += mercenary.count;
     meta.players[playerId].stats.mercSpend += result.cost || 0;
     meta.totals.mercSpend += result.cost || 0;
+    updateRecentBehavior(meta, playerId, { mercenarySpikes: clamp(mercenary.count / 5, 0, 1) }, state.round);
     applyDecisionToResult(state, result, buildMercenaryDecision(debug, mercenary, result.cost || 0));
     const officeLabel = getOfficeDisplayName(state, mercenary.officeKey);
     logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${officeLabel}.`);
@@ -2313,6 +2610,28 @@ function runMercenaryStrategy(state, meta, playerId) {
 
   if (hiredAny) invalidateRoundContext(meta);
   return hiredAny;
+}
+
+function normalizeCourtActionScore(meta, playerId, action) {
+  const thresholds = {
+    recruit: getMetaForPlayer(meta, playerId, 'recruitThreshold'),
+    buy: getMetaForPlayer(meta, playerId, 'landPurchaseThreshold'),
+    gift: getMetaForPlayer(meta, playerId, 'churchGiftThreshold'),
+    dismiss: getMetaForPlayer(meta, playerId, 'dismissalThreshold'),
+    revoke: getMetaForPlayer(meta, playerId, 'revocationThreshold'),
+    mercenaries: getMetaForPlayer(meta, playerId, 'mercenaryThreshold'),
+  };
+  const scales = {
+    recruit: 1,
+    buy: 0.58,
+    gift: 0.72,
+    dismiss: 0.9,
+    revoke: 0.82,
+    mercenaries: 0.92,
+  };
+  const threshold = thresholds[action.kind] ?? 0;
+  const scale = scales[action.kind] ?? 1;
+  return (action.score - threshold) * scale;
 }
 
 function computeOrderTotals(state, playerId, orders) {
@@ -2334,6 +2653,7 @@ function computeOrderTotals(state, playerId, orders) {
 }
 
 function updatePostResolutionRelations(state, meta) {
+  meta.currentRound = state.round;
   const winnerId = state.lastCoupResult?.winner ?? state.basileusId;
   const defenderWon = winnerId === state.basileusId;
   const incumbentId = state.basileusId;
@@ -2352,6 +2672,12 @@ function updatePostResolutionRelations(state, meta) {
       const mercSpend = getPlayerMercenaryTotal(state, target.id);
       const mercNorm = clamp(mercSpend / 5, 0, 1);
       const throneAgainst = targetOrders.candidate != null && targetOrders.candidate !== incumbentId ? 1 : 0;
+      updateRecentBehavior(meta, target.id, {
+        incumbentSupport: targetOrders.candidate === incumbentId ? 1 : 0,
+        selfSupport: targetOrders.candidate === target.id ? 1 : 0,
+        frontierCommitment: frontierShare,
+        mercenarySpikes: mercNorm,
+      }, state.round);
       updateOpponentPosterior(meta, observer.id, target.id, {
         frontierShare,
         mercenarySpend: mercNorm,
@@ -2371,14 +2697,37 @@ function updatePostResolutionRelations(state, meta) {
       adjustRelation(meta, winnerId, player.id, 0.35, 0);
       addObligation(meta, winnerId, player.id, 0.55 + (totals.capital * 0.22) + (defenderWon ? 0.2 : 0.35));
       reduceObligation(meta, player.id, winnerId, 0.8 + (totals.capital * 0.12));
+      updateSocialMemory(meta, player.id, winnerId, {
+        strategicAlignment: 0.45,
+        reliability: 0.25,
+      }, state.round);
+      updateSocialMemory(meta, winnerId, player.id, {
+        favorCredit: 0.25,
+        reliability: 0.18,
+      }, state.round);
     } else if (orders.candidate === player.id && player.id !== winnerId) {
       adjustRelation(meta, player.id, winnerId, 0, 0.35);
+      updateSocialMemory(meta, winnerId, player.id, {
+        opportunism: 0.35,
+        threat: 0.25,
+      }, state.round);
     } else if (orders.candidate === state.basileusId && winnerId !== state.basileusId) {
       adjustRelation(meta, player.id, state.basileusId, 0.15, 0.15);
+      updateSocialMemory(meta, player.id, state.basileusId, {
+        strategicAlignment: 0.08,
+      }, state.round);
     }
 
     if (totals.frontier > totals.capital && state.lastWarResult?.outcome === 'victory') {
       addObligation(meta, state.basileusId, player.id, 0.15 + (totals.frontier * 0.05));
+      updateSocialMemory(meta, state.basileusId, player.id, {
+        reliability: 0.22,
+        strategicAlignment: 0.14,
+      }, state.round);
+    } else if ((state.lastWarResult?.invaderStrength || 0) > 0 && totals.frontier <= totals.capital) {
+      updateSocialMemory(meta, state.basileusId, player.id, {
+        opportunism: 0.16,
+      }, state.round);
     }
   }
 }
@@ -2412,6 +2761,7 @@ function scoreTitleAssignment(state, meta, newBasileusId, assignment, previousHo
     const loyalty = getAffinityScore(meta, newBasileusId, holderId);
     const competence = getCompetenceScore(state, meta, holderId);
     const ambition = getAmbitionScore(meta, holderId);
+    const rivalSummary = getRivalSummary(state, meta, newBasileusId, holderId);
     // Tier 5: when judging the holder's likely church alignment, use the new
     // Basileus's INFERRED view of them, not their true profile. This is the
     // crux of opponent-modeled play.
@@ -2420,7 +2770,7 @@ function scoreTitleAssignment(state, meta, newBasileusId, assignment, previousHo
     const continuity = previousHolders[titleKey] === holderId ? 0.42 : 0;
     const supporterBonus = (state.allOrders?.[holderId]?.candidate === newBasileusId) ? 1.25 : 0;
     const debtRepayment = getObligation(meta, newBasileusId, holderId) * 1.3;
-    totalScore += (loyalty * 1.1) + (competence * 0.58) + churchBonus + continuity + supporterBonus + debtRepayment - (ambition * 0.42);
+    totalScore += (loyalty * 1.1) + (competence * 0.58) + (rivalSummary.reliability * 0.32) + (rivalSummary.patronageValue * 0.18) + churchBonus + continuity + supporterBonus + debtRepayment - (ambition * 0.42) - (rivalSummary.currentThreatToMe * 0.16);
   }
   return totalScore;
 }
@@ -2484,10 +2834,6 @@ function takeOneAiCourtAction(state, meta, playerId) {
     return handlePatriarchAppointment(state, meta);
   }
 
-  if (playerId === state.basileusId && handleBasileusRevocation(state, meta)) {
-    return true;
-  }
-
   return takeOneStrategicCourtAction(state, meta, playerId);
 }
 
@@ -2536,6 +2882,7 @@ export function runAICourtAutomation(state, meta, options = {}) {
 
 export function observeCourtAction(state, meta, action) {
   if (!meta || !action) return;
+  meta.currentRound = state.round;
   invalidateRoundContext(meta);
 
   if (action.type === 'appointment') {
@@ -2543,17 +2890,30 @@ export function observeCourtAction(state, meta, action) {
     if (action.previousHolderId != null && action.previousHolderId !== action.appointeeId) {
       adjustRelation(meta, action.previousHolderId, action.actorId, 0, 0.55);
       reduceObligation(meta, action.actorId, action.previousHolderId, 0.45);
+      updateSocialMemory(meta, action.previousHolderId, action.actorId, {
+        harmDebt: 0.45,
+        opportunism: 0.2,
+      }, state.round);
     }
   }
 
   if (action.type === 'revocation') {
+    updateRecentBehavior(meta, action.actorId, { revocationFrequency: 1 }, state.round);
     if (action.targetPlayerId != null) {
       adjustRelation(meta, action.targetPlayerId, action.actorId, 0, 1.15);
       reduceObligation(meta, action.actorId, action.targetPlayerId, 0.8);
+      updateSocialMemory(meta, action.targetPlayerId, action.actorId, {
+        harmDebt: 0.9,
+        threat: 0.45,
+      }, state.round);
     }
     if (action.newHolderId != null) {
       adjustRelation(meta, action.newHolderId, action.actorId, 0.65, 0);
       addObligation(meta, action.newHolderId, action.actorId, 0.8);
+      updateSocialMemory(meta, action.newHolderId, action.actorId, {
+        favorCredit: 0.55,
+        reliability: 0.2,
+      }, state.round);
     }
     // Tier 5: every other AI updates its posterior on the actor as a revoker
     for (const observer of state.players) {
@@ -2564,6 +2924,7 @@ export function observeCourtAction(state, meta, action) {
   }
 
   if (action.type === 'gift') {
+    updateRecentBehavior(meta, action.actorId, { churchGifting: 1 }, state.round);
     for (const observer of state.players) {
       if (observer.id === action.actorId) continue;
       if (!isAIPlayer(meta, observer.id)) continue;
@@ -2572,6 +2933,7 @@ export function observeCourtAction(state, meta, action) {
   }
 
   if (action.type === 'recruit') {
+    updateRecentBehavior(meta, action.actorId, { frontierCommitment: 0.35 }, state.round);
     for (const observer of state.players) {
       if (observer.id === action.actorId) continue;
       if (!isAIPlayer(meta, observer.id)) continue;
@@ -2581,11 +2943,16 @@ export function observeCourtAction(state, meta, action) {
 
   if (action.type === 'mercenaries') {
     const mercNorm = clamp((Number(action.count) || 0) / 5, 0, 1);
+    updateRecentBehavior(meta, action.actorId, { mercenarySpikes: mercNorm }, state.round);
     for (const observer of state.players) {
       if (observer.id === action.actorId) continue;
       if (!isAIPlayer(meta, observer.id)) continue;
       updateOpponentPosterior(meta, observer.id, action.actorId, { mercenarySpend: mercNorm });
     }
+  }
+
+  if (action.type === 'buy_theme') {
+    updateRecentBehavior(meta, action.actorId, { landBuying: 1 }, state.round);
   }
 }
 
@@ -2637,6 +3004,17 @@ export function applyPlannedAiTitleAssignment(state, meta, plan, newBasileusId) 
 export function getRecentPublicLog(meta, limit = 10) {
   return meta.publicLog.slice(-limit);
 }
+
+export const __testing = {
+  softmaxPick,
+  buildRoundContext,
+  ensureSocialMemory,
+  updateSocialMemory,
+  ensureRecentBehavior,
+  updateRecentBehavior,
+  getAffinityScore,
+  getRivalSummary,
+};
 
 export {
   DEFAULT_MIXED_DECK_SIZES,

@@ -207,6 +207,10 @@ function safeRecord(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function dominantWeightLabels(weights) {
   const labels = {
     wealth: 'wealth',
@@ -284,11 +288,30 @@ function normalizeTrainingMetadata(rawTraining = {}) {
   const winShare = clamp(safeNumber(rawTraining.winShare, matches ? wins / matches : 0), 0, 1);
   const averageFitness = safeNumber(rawTraining.averageFitness, 0);
   const championScore = safeNumber(rawTraining.championScore, rawTraining.rankingScore ?? averageFitness);
-  const averageWealth = safeNumber(rawTraining.averageWealth, 0);
+  const finalScoreMean = safeNumber(rawTraining.finalScoreMean, rawTraining.averageFinalScore ?? rawTraining.averageWealth);
+  const finalScoreAdvantage = safeNumber(rawTraining.finalScoreAdvantage, 0);
+  const finalScorePlacement = clamp(safeNumber(rawTraining.finalScorePlacement, rawTraining.holdoutWealthPercentile ?? rawTraining.wealthPercentile), 0, 1);
+  const survivingFinalScoreMean = safeNumber(rawTraining.survivingFinalScoreMean, rawTraining.holdoutSurvivingFinalScoreMean ?? finalScoreMean);
+  const unsafeRate = clamp(safeNumber(rawTraining.unsafeRate, safeNumber(rawTraining.empireFallRate, 0) + safeNumber(rawTraining.guardRate, 0)), 0, 1);
+  const averageWealth = finalScoreMean;
   const empireFallRate = clamp(safeNumber(rawTraining.empireFallRate, 0), 0, 1);
   const fitnessVariance = Math.max(0, safeNumber(rawTraining.fitnessVariance, 0));
   const trainedAt = rawTraining.trainedAt ? String(rawTraining.trainedAt) : new Date().toISOString();
   const behaviorProfile = safeRecord(rawTraining.behaviorProfile);
+  const perScenario = safeArray(rawTraining.perScenario).map(entry => ({
+    key: String(entry?.key || ''),
+    playerCount: safeInteger(entry?.playerCount, 4),
+    deckSize: safeInteger(entry?.deckSize, 9),
+    matches: safeInteger(entry?.matches, 0),
+    winShare: roundTo(clamp(safeNumber(entry?.winShare, 0), 0, 1), 4),
+    finalScoreMean: roundTo(safeNumber(entry?.finalScoreMean, entry?.averageWinnerWealth ?? 0), 2),
+    finalScoreAdvantage: roundTo(safeNumber(entry?.finalScoreAdvantage, 0), 4),
+    finalScorePlacement: roundTo(clamp(safeNumber(entry?.finalScorePlacement, 0), 0, 1), 4),
+    survivingFinalScoreMean: roundTo(safeNumber(entry?.survivingFinalScoreMean, 0), 2),
+    empireFallRate: roundTo(clamp(safeNumber(entry?.empireFallRate, 0), 0, 1), 4),
+    guardRate: roundTo(clamp(safeNumber(entry?.guardRate, 0), 0, 1), 4),
+    unsafeRate: roundTo(clamp(safeNumber(entry?.unsafeRate, 0), 0, 1), 4),
+  })).filter(entry => entry.key);
 
   return {
     generation,
@@ -297,12 +320,21 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     winShare: roundTo(winShare, 4),
     championScore: roundTo(championScore, 3),
     averageFitness: roundTo(averageFitness, 3),
+    finalScoreMean: roundTo(finalScoreMean, 2),
+    finalScoreAdvantage: roundTo(finalScoreAdvantage, 4),
+    finalScorePlacement: roundTo(finalScorePlacement, 4),
+    survivingFinalScoreMean: roundTo(survivingFinalScoreMean, 2),
+    unsafeRate: roundTo(unsafeRate, 4),
+    averageFinalScore: roundTo(finalScoreMean, 2),
     averageWealth: roundTo(averageWealth, 2),
     empireFallRate: roundTo(empireFallRate, 4),
     fitnessVariance: roundTo(fitnessVariance, 4),
     fitnessPresetId: rawTraining.fitnessPresetId ? String(rawTraining.fitnessPresetId) : 'balanced',
+    scenarioMode: rawTraining.scenarioMode === 'focused' ? 'focused' : 'generalist',
     playerCount: safeInteger(rawTraining.playerCount, 4),
     deckSize: safeInteger(rawTraining.deckSize, 9),
+    playerCounts: safeArray(rawTraining.playerCounts).map(value => safeInteger(value, 0)).filter(Boolean),
+    deckSizes: safeArray(rawTraining.deckSizes).map(value => safeInteger(value, 0)).filter(Boolean),
     populationPresetId: rawTraining.populationPresetId ? String(rawTraining.populationPresetId) : 'balanced',
     seed: rawTraining.seed == null ? '' : String(rawTraining.seed),
     trainedAt,
@@ -312,6 +344,15 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     trainWinShare: roundTo(clamp(safeNumber(rawTraining.trainWinShare, 0), 0, 1), 4),
     validationWinShare: roundTo(clamp(safeNumber(rawTraining.validationWinShare, 0), 0, 1), 4),
     holdoutWinShare: roundTo(clamp(safeNumber(rawTraining.holdoutWinShare, 0), 0, 1), 4),
+    trainFinalScoreMean: roundTo(safeNumber(rawTraining.trainFinalScoreMean, rawTraining.averageFinalScore ?? 0), 2),
+    validationFinalScoreMean: roundTo(safeNumber(rawTraining.validationFinalScoreMean, 0), 2),
+    holdoutFinalScoreMean: roundTo(safeNumber(rawTraining.holdoutFinalScoreMean, finalScoreMean), 2),
+    trainFinalScoreAdvantage: roundTo(safeNumber(rawTraining.trainFinalScoreAdvantage, 0), 4),
+    validationFinalScoreAdvantage: roundTo(safeNumber(rawTraining.validationFinalScoreAdvantage, 0), 4),
+    holdoutFinalScoreAdvantage: roundTo(safeNumber(rawTraining.holdoutFinalScoreAdvantage, finalScoreAdvantage), 4),
+    trainSurvivingFinalScoreMean: roundTo(safeNumber(rawTraining.trainSurvivingFinalScoreMean, 0), 2),
+    validationSurvivingFinalScoreMean: roundTo(safeNumber(rawTraining.validationSurvivingFinalScoreMean, 0), 2),
+    holdoutSurvivingFinalScoreMean: roundTo(safeNumber(rawTraining.holdoutSurvivingFinalScoreMean, survivingFinalScoreMean), 2),
     trainEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.trainEmpireFallRate, 0), 0, 1), 4),
     validationEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.validationEmpireFallRate, 0), 0, 1), 4),
     holdoutEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.holdoutEmpireFallRate, 0), 0, 1), 4),
@@ -327,6 +368,7 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     bestMatchup: rawTraining.bestMatchup ? String(rawTraining.bestMatchup) : '',
     worstMatchup: rawTraining.worstMatchup ? String(rawTraining.worstMatchup) : '',
     mainBehavior: rawTraining.mainBehavior ? String(rawTraining.mainBehavior) : '',
+    safetyMode: rawTraining.safetyMode ? String(rawTraining.safetyMode) : 'safe-only',
     behaviorProfile: {
       frontierTroopShare: roundTo(clamp(safeNumber(behaviorProfile.frontierTroopShare, 0), 0, 1), 4),
       capitalTroopShare: roundTo(clamp(safeNumber(behaviorProfile.capitalTroopShare, 0), 0, 1), 4),
@@ -342,6 +384,7 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     },
     perOpponentTypeWinRate: safeRecord(rawTraining.perOpponentTypeWinRate),
     perSeatWinRate: safeRecord(rawTraining.perSeatWinRate),
+    perScenario,
   };
 }
 
