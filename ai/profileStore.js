@@ -9,9 +9,8 @@ import {
 } from './personalities.js';
 
 const STORAGE_KEY = 'basileus.savedAiProfiles.v1';
-const EXPORTED_PROFILE_INDEX_ENDPOINTS = [
-  'api/personalities/exported',
-];
+const EXPORTED_PROFILE_INDEX_PATH = '/api/personalities/exported';
+const GITHUB_PERSONALITY_FOLDER = 'trained-personalities';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -129,6 +128,64 @@ async function fetchJsonMaybe(path) {
   }
 }
 
+function readMetaContent(name) {
+  if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return '';
+  const value = document.querySelector(`meta[name="${name}"]`)?.getAttribute('content');
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeBaseUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function readConfiguredPersonalityBase() {
+  const browserWindow = typeof window !== 'undefined' ? window : null;
+  return normalizeBaseUrl(
+    browserWindow?.BASILEUS_PERSONALITIES_URL
+      || browserWindow?.BASILEUS_MULTIPLAYER_URL
+      || readMetaContent('basileus-personalities-url')
+      || readMetaContent('basileus-multiplayer-url')
+  );
+}
+
+function resolveGithubPagesPersonalitySource() {
+  if (typeof window === 'undefined' || !window.location) return null;
+  const { hostname, pathname } = window.location;
+  if (!String(hostname || '').endsWith('.github.io')) return null;
+
+  const owner = String(hostname).replace(/\.github\.io$/i, '').trim();
+  const repo = String(pathname || '').split('/').filter(Boolean)[0] || '';
+  if (!owner || !repo) return null;
+
+  return {
+    type: 'github-contents',
+    path: `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${GITHUB_PERSONALITY_FOLDER}?ref=main`,
+  };
+}
+
+function resolveExportedProfileSources() {
+  const configuredBase = readConfiguredPersonalityBase();
+  const sources = [];
+
+  if (configuredBase) {
+    sources.push({ type: 'api', path: `${configuredBase}${EXPORTED_PROFILE_INDEX_PATH}` });
+  }
+
+  const githubSource = resolveGithubPagesPersonalitySource();
+  if (githubSource) {
+    sources.push(githubSource);
+  } else if (!configuredBase) {
+    sources.push({ type: 'api', path: EXPORTED_PROFILE_INDEX_PATH });
+  }
+
+  return sources;
+}
+
+function isLoadableProfileFileName(fileName) {
+  const lower = String(fileName || '').toLowerCase();
+  return lower.endsWith('.json') && lower !== 'manifest.json' && lower !== 'latest-manifest.json';
+}
+
 async function loadProfilesFromIndexApi(endpointPath) {
   const payload = await fetchJsonMaybe(endpointPath);
   const rawProfiles = Array.isArray(payload?.profiles) ? payload.profiles : [];
@@ -138,13 +195,36 @@ async function loadProfilesFromIndexApi(endpointPath) {
     .filter(Boolean)
     .map(profile => ({ ...profile, librarySource: 'exported' }));
 }
+
+async function loadProfilesFromGithubContentsApi(endpointPath) {
+  const entries = await fetchJsonMaybe(endpointPath);
+  if (!Array.isArray(entries) || !entries.length) return [];
+
+  const files = entries
+    .filter(entry => entry?.type === 'file' && isLoadableProfileFileName(entry.name) && entry.download_url)
+    .sort((left, right) => String(left.name).localeCompare(String(right.name)));
+
+  const profiles = await Promise.all(files.map(async (entry) => {
+    const rawProfile = await fetchJsonMaybe(entry.download_url);
+    const profile = normalizeAiProfile(rawProfile);
+    return profile ? { ...profile, librarySource: 'exported', file: entry.name } : null;
+  }));
+
+  return profiles.filter(Boolean);
+}
+
+async function loadProfilesFromSource(source) {
+  if (source.type === 'github-contents') return loadProfilesFromGithubContentsApi(source.path);
+  return loadProfilesFromIndexApi(source.path);
+}
+
 async function readExportedProfiles() {
   const merged = new Map();
-  const indexProfiles = await Promise.all(
-    EXPORTED_PROFILE_INDEX_ENDPOINTS.map(path => loadProfilesFromIndexApi(path))
+  const exportedProfiles = await Promise.all(
+    resolveExportedProfileSources().map(source => loadProfilesFromSource(source))
   );
 
-  for (const profile of indexProfiles.flat()) {
+  for (const profile of exportedProfiles.flat()) {
     if (!merged.has(profile.id)) {
       merged.set(profile.id, profile);
     }

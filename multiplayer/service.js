@@ -109,6 +109,19 @@ export class MultiplayerRoomManager {
 }
 
 export async function handleMultiplayerApiRequest(manager, req, url) {
+  if (req.method === 'GET' && url.pathname === '/api/personalities/exported') {
+    const profiles = await manager.getAvailableAiProfiles();
+    return {
+      statusCode: 200,
+      payload: {
+        version: 1,
+        loading: 'folder-scan',
+        profileCount: profiles.length,
+        profiles,
+      },
+    };
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/rooms') {
     const body = await parseMultiplayerRequestJson(req);
     const result = manager.createRoom({
