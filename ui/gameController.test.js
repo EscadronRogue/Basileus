@@ -133,10 +133,14 @@ test('court panel renders the private deals fold when seat-local deal data exist
   });
 
   assert.match(container.innerHTML, /Deals/);
-  assert.match(container.innerHTML, /Draft New Offer/);
+  assert.match(container.innerHTML, /Create Deal/);
+  assert.match(container.innerHTML, /What this part is about/);
+  assert.match(container.innerHTML, /You pay them/);
   assert.match(container.innerHTML, /Awaiting You/);
   assert.match(container.innerHTML, /Accept/);
-  assert.match(container.innerHTML, /Counter/);
+  assert.match(container.innerHTML, /Change Offer/);
+  assert.doesNotMatch(container.innerHTML, /Troops each turn/);
+  assert.doesNotMatch(container.innerHTML, /Which claimant to back/);
 });
 
 test('orders panel renders deal lock summaries from private order lock data', () => {

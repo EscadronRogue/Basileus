@@ -1018,6 +1018,12 @@ body::before {
   gap: var(--sp-3);
 }
 
+.deal-composer-note {
+  font-size: 12px;
+  color: var(--umber-2);
+  line-height: 1.45;
+}
+
 .deal-composer-head .btn-secondary-link,
 .deal-clause-head .btn-secondary-link {
   width: auto;
@@ -1047,10 +1053,21 @@ body::before {
   color: var(--gold-2);
 }
 
+.deal-clause-help {
+  font-size: 12px;
+  color: var(--umber-2);
+  line-height: 1.45;
+}
+
 .deal-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 152px), 1fr));
   gap: var(--sp-2);
+}
+
+.deal-detail-grid {
+  padding-top: 2px;
+  border-top: 1px solid rgba(168,116,32,0.12);
 }
 
 .deal-counterparty-row {
@@ -1092,6 +1109,16 @@ body::before {
   color: var(--umber-1);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.deal-clause-preview {
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.75);
+  border: 1px dashed rgba(168,116,32,0.24);
+  color: var(--umber-1);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .deal-lock-summary {
