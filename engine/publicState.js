@@ -3,6 +3,12 @@ const NON_PUBLIC_STATE_KEYS = [
   'adjacency',
   'invasionDeck',
   'log',
+  'dealThreads',
+  'activeDealObligations',
+  'reservedGold',
+  'dealParticipantIds',
+  'dealThreadSeq',
+  'dealObligationSeq',
 ];
 
 export function clonePlain(value) {

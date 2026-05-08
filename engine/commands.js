@@ -12,6 +12,14 @@ import {
 } from './state.js';
 import { submitOrders } from './turnflow.js';
 import {
+  acceptDealOffer,
+  autoRefuseAwaitingDeals,
+  counterDealOffer,
+  isPlayerProtectedFromRevocation,
+  refuseDealOffer,
+  sendDealOffer,
+} from './deals.js';
+import {
   applyCoupTitleReassignment,
   appointBishop,
   appointCourtTitle,
@@ -48,6 +56,22 @@ function playerLabel(state, playerId) {
 // the player is non-AI (i.e. the action came from a human seat).
 export function applyCourtAction(state, playerId, payload = {}) {
   const action = String(payload.action || '').trim();
+
+  if (action === 'deal-send') {
+    return sendDealOffer(state, playerId, payload);
+  }
+
+  if (action === 'deal-counter') {
+    return counterDealOffer(state, playerId, payload);
+  }
+
+  if (action === 'deal-accept') {
+    return acceptDealOffer(state, playerId, payload);
+  }
+
+  if (action === 'deal-refuse') {
+    return refuseDealOffer(state, playerId, payload);
+  }
 
   if (action === 'buy') {
     const result = buyTheme(state, playerId, payload.themeId);
@@ -181,6 +205,9 @@ export function applyCourtAction(state, playerId, payload = {}) {
     if (parts[0] === 'major') {
       const revokedPlayerId = Number(parts[1]);
       const titleKey = parts[2];
+      if (isPlayerProtectedFromRevocation(state, state.basileusId, revokedPlayerId)) {
+        return fail(`${playerLabel(state, revokedPlayerId)} is protected by an accepted non-revocation deal.`);
+      }
       const eligible = state.players.filter((candidate) =>
         candidate.id !== state.basileusId && candidate.id !== revokedPlayerId
       );
@@ -192,11 +219,17 @@ export function applyCourtAction(state, playerId, payload = {}) {
     } else if (parts[0] === 'minor') {
       const theme = state.themes[parts[1]];
       const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
+      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, state.basileusId, targetPlayerId)) {
+        return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
+      }
       const result = revokeMinorTitle(state, parts[1], parts[2]);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
       observation = { ...observation, targetPlayerId };
     } else if (parts[0] === 'court') {
       const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
+      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, state.basileusId, targetPlayerId)) {
+        return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
+      }
       const result = revokeCourtTitle(state, parts[1]);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that court title.');
       observation = { ...observation, targetPlayerId };
@@ -222,6 +255,7 @@ export function confirmCourt(state, playerId) {
   if (state.phase !== 'court') return fail('Court confirmation is not available right now.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
   state.courtActions.playerConfirmed.add(playerId);
+  autoRefuseAwaitingDeals(state, playerId);
   recordHistoryEvent(state, {
     category: 'court',
     type: 'court_confirmed',

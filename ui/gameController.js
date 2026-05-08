@@ -1,4 +1,5 @@
 import { createGameState } from '../engine/state.js';
+import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
 import {
   autoResolveUnavailableHumanAppointments,
   handleContinueAfterResolution,
@@ -49,6 +50,7 @@ export class GameController {
 
   async init() {
     this.state = createGameState(this.config);
+    setDealParticipantIds(this.state, this.config.humanPlayerIds);
     if (this.config.mode === 'single') {
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
@@ -148,6 +150,7 @@ export class GameController {
       uiState: this.uiState,
       activePlayerId: this.activePlayer,
       selectedProvinceId: this.selectedProvinceId,
+      privateData: buildPrivateDealView(state, this.activePlayer),
       canControl,
       spectatorMessage,
       handlers: {
@@ -185,6 +188,10 @@ export class GameController {
       recruit: (_, data) => dispatch({ action: 'recruit', office: data.office }),
       hireMercenaries: (_, data) => dispatch({ action: 'hire-mercenaries', office: data.office, count: data.count }),
       dismiss: (_, data) => dispatch({ action: 'dismiss', office: data.office, count: data.count }),
+      'deal-send': (payload) => dispatch({ action: 'deal-send', ...payload }),
+      'deal-counter': (payload) => dispatch({ action: 'deal-counter', ...payload }),
+      'deal-accept': (payload) => dispatch({ action: 'deal-accept', ...payload }),
+      'deal-refuse': (payload) => dispatch({ action: 'deal-refuse', ...payload }),
       'confirm-court': () => {
         const result = handleHumanCourtConfirmation(this.state, this.aiMeta, this, playerId);
         if (!result.ok) {

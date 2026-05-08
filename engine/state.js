@@ -200,6 +200,14 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     allOrders: {},
     currentMercenaryTroops: {},
 
+    // Formal court deals (private to participating dynasties)
+    dealThreads: [],
+    activeDealObligations: [],
+    reservedGold: {},
+    dealParticipantIds: [],
+    dealThreadSeq: 0,
+    dealObligationSeq: 0,
+
     // Resolution results (for animation/display)
     lastCoupResult: null,
     lastWarResult: null,

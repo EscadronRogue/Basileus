@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
+import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
 import {
   handleContinueAfterResolution,
   handleHumanCourtAction,
@@ -261,6 +262,7 @@ export class MultiplayerRoom {
       humanPlayerIds,
       seatProfiles,
     });
+    setDealParticipantIds(this.gameState, humanPlayerIds);
     this.assignPlayerFirstNames();
     this.pendingAiTitleAssignment = null;
     this.status = ROOM_STATUS.IN_PROGRESS;
@@ -354,6 +356,7 @@ export class MultiplayerRoom {
 
   createPrivateSnapshotFor(sessionId) {
     const seat = this.findSeatBySession(sessionId);
+    const dealView = this.gameState && seat?.seatId != null ? buildPrivateDealView(this.gameState, seat.seatId) : null;
     return {
       type: 'private_snapshot',
       roomCode: this.roomCode,
@@ -363,6 +366,10 @@ export class MultiplayerRoom {
       reconnectAllowed: Boolean(seat?.seatToken),
       submittedOrders: seat && this.gameState?.allOrders ? Boolean(this.gameState.allOrders[seat.seatId]) : false,
       pendingAiTitleAssignment: Boolean(this.pendingAiTitleAssignment),
+      dealEligiblePlayerIds: dealView?.dealEligiblePlayerIds || [],
+      dealThreads: dealView?.dealThreads || [],
+      dealCounts: dealView?.dealCounts || { pendingInbox: 0, pendingOutbox: 0, activeObligations: 0 },
+      orderLocks: dealView?.orderLocks || null,
     };
   }
 

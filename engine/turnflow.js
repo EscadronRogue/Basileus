@@ -5,6 +5,7 @@
 import { runAdministration } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './actions.js';
+import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
 import {
   getOfficeDisplayName,
@@ -183,6 +184,10 @@ export function phaseAdministration(state) {
 // When all mandatory appointments are done and players confirm, advance.
 export function phaseCourt(state) {
   state.phase = 'court';
+  const dealRound = startCourtDealRound(state);
+  if (!dealRound.ok) {
+    throw new Error(dealRound.reason || 'Failed to prepare the court deal state.');
+  }
   // Reset tracking for mandatory appointments this round
   state.courtActions = {
     basileusAppointed: false,
@@ -355,6 +360,8 @@ export function phaseResolution(state) {
 // ─── Phase: Cleanup ───
 export function phaseCleanup(state) {
   state.phase = 'cleanup';
+
+  finalizeDealRound(state);
 
   // 1. Pay professional army maintenance
   for (const player of state.players) {

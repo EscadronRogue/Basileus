@@ -179,6 +179,8 @@ async function createStartedThreePlayerRoom(baseUrl, manager) {
   await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'start-room');
   const hostGame = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
   const guestGame = await guestSocket.waitFor((message) => message.type === 'game_snapshot');
+  const hostGamePrivate = await hostSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
+  const guestGamePrivate = await guestSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
 
   return {
     roomCode: createPayload.roomCode,
@@ -188,17 +190,132 @@ async function createStartedThreePlayerRoom(baseUrl, manager) {
       sessionToken: createPayload.sessionToken,
       seatToken: hostPrivate.seatToken,
       game: hostGame,
+      private: hostGamePrivate,
     },
     guest: {
       socket: guestSocket,
       sessionToken: joinPayload.sessionToken,
       seatToken: guestPrivate.seatToken,
       game: guestGame,
+      private: guestGamePrivate,
     },
     close: async () => {
       await Promise.allSettled([
         hostSocket.close(),
         guestSocket.close(),
+      ]);
+    },
+  };
+}
+
+async function createStartedFourPlayerRoom(baseUrl, manager) {
+  const createPayload = await createRoom(baseUrl, {
+    playerName: 'Host',
+    config: {
+      playerCount: 4,
+      deckSize: 6,
+      seed: 'deal-privacy-seed',
+    },
+  });
+
+  const hostSocket = await connectSocket(baseUrl, {
+    roomCode: createPayload.roomCode,
+    sessionToken: createPayload.sessionToken,
+    playerName: 'Host',
+    seatToken: createPayload.seatToken,
+  });
+  hostSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-host',
+    seatId: 0,
+    playerName: 'Host',
+  });
+  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-host');
+  const hostPrivate = await hostSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
+
+  const guestJoin = await joinRoom(baseUrl, createPayload.roomCode, {
+    playerName: 'Guest',
+  });
+  const guestSocket = await connectSocket(baseUrl, {
+    roomCode: guestJoin.roomCode,
+    sessionToken: guestJoin.sessionToken,
+    playerName: 'Guest',
+  });
+  guestSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-guest',
+    seatId: 1,
+    playerName: 'Guest',
+  });
+  await guestSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-guest');
+  const guestPrivate = await guestSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
+
+  const observerJoin = await joinRoom(baseUrl, createPayload.roomCode, {
+    playerName: 'Observer',
+  });
+  const observerSocket = await connectSocket(baseUrl, {
+    roomCode: observerJoin.roomCode,
+    sessionToken: observerJoin.sessionToken,
+    playerName: 'Observer',
+  });
+  observerSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-observer',
+    seatId: 2,
+    playerName: 'Observer',
+  });
+  await observerSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-observer');
+  const observerPrivate = await observerSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
+
+  hostSocket.send({
+    type: 'set_seat_kind',
+    requestId: 'seat-three-ai',
+    seatId: 3,
+    kind: 'ai',
+  });
+  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'seat-three-ai');
+
+  hostSocket.send({
+    type: 'start_game',
+    requestId: 'start-room',
+  });
+  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'start-room');
+  const hostGame = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
+  const guestGame = await guestSocket.waitFor((message) => message.type === 'game_snapshot');
+  const observerGame = await observerSocket.waitFor((message) => message.type === 'game_snapshot');
+  const hostGamePrivate = await hostSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
+  const guestGamePrivate = await guestSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
+  const observerGamePrivate = await observerSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
+
+  return {
+    roomCode: createPayload.roomCode,
+    room: manager.getRoom(createPayload.roomCode),
+    host: {
+      socket: hostSocket,
+      sessionToken: createPayload.sessionToken,
+      seatToken: hostPrivate.seatToken,
+      game: hostGame,
+      private: hostGamePrivate,
+    },
+    guest: {
+      socket: guestSocket,
+      sessionToken: guestJoin.sessionToken,
+      seatToken: guestPrivate.seatToken,
+      game: guestGame,
+      private: guestGamePrivate,
+    },
+    observer: {
+      socket: observerSocket,
+      sessionToken: observerJoin.sessionToken,
+      seatToken: observerPrivate.seatToken,
+      game: observerGame,
+      private: observerGamePrivate,
+    },
+    close: async () => {
+      await Promise.allSettled([
+        hostSocket.close(),
+        guestSocket.close(),
+        observerSocket.close(),
       ]);
     },
   };
@@ -429,6 +546,127 @@ async function verifySeatReclaim() {
   });
 }
 
+async function verifyDealPrivacy() {
+  await withServer(async (instance) => {
+    const harness = await createStartedFourPlayerRoom(instance.url, instance.manager);
+    try {
+      const { host, guest, observer } = harness;
+
+      host.socket.send({
+        type: 'court_action',
+        requestId: 'send-private-deal',
+        action: 'deal-send',
+        counterpartyId: 1,
+        clauses: [
+          { kind: 'non_revocation', direction: 'give', durationTurns: 1 },
+        ],
+      });
+
+      await host.socket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'send-private-deal');
+      const publicSnapshot = await host.socket.waitFor((message) => message.type === 'game_snapshot' && message.state.phase === 'court');
+      const hostPrivate = await host.socket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0 && message.dealThreads.length === 1);
+      const guestPrivate = await guest.socket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1 && message.dealThreads.length === 1);
+      const observerPrivate = await observer.socket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
+
+      assert.equal('dealThreads' in publicSnapshot.state, false);
+      assert.equal('activeDealObligations' in publicSnapshot.state, false);
+      assert.equal('reservedGold' in publicSnapshot.state, false);
+      assert.equal(hostPrivate.dealThreads[0].currentOffer.clauses.length, 1);
+      assert.equal(hostPrivate.dealThreads[0].id, guestPrivate.dealThreads[0].id);
+      assert.deepEqual(observerPrivate.dealThreads, []);
+      assert.deepEqual(observerPrivate.dealCounts, {
+        pendingInbox: 0,
+        pendingOutbox: 0,
+        activeObligations: 0,
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+}
+
+async function verifyDealOrderEnforcement() {
+  await withServer(async (instance) => {
+    const harness = await createStartedThreePlayerRoom(instance.url, instance.manager);
+    try {
+      const { room, host, guest } = harness;
+
+      const actorSeatId = room.gameState.players.find((player) => {
+        if (![0, 1].includes(player.id)) return false;
+        return Boolean(firstPlayableOffice(room, player.id));
+      }).id;
+      const counterpartySeatId = actorSeatId === 0 ? 1 : 0;
+      const actorSocket = actorSeatId === 0 ? host.socket : guest.socket;
+      const counterpartySocket = counterpartySeatId === 0 ? host.socket : guest.socket;
+
+      counterpartySocket.send({
+        type: 'court_action',
+        requestId: 'send-locking-deal',
+        action: 'deal-send',
+        counterpartyId: actorSeatId,
+        clauses: [
+          { kind: 'coup_support', direction: 'ask', troopCount: 1, candidateId: counterpartySeatId, durationTurns: 1 },
+        ],
+      });
+
+      await counterpartySocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'send-locking-deal');
+      const actorThreadSnapshot = await actorSocket.waitFor((message) => (
+        message.type === 'private_snapshot'
+        && message.seatId === actorSeatId
+        && message.dealThreads.some((thread) => thread.status === 'open' && thread.awaitingPlayerId === actorSeatId)
+      ));
+      const thread = actorThreadSnapshot.dealThreads.find((entry) => entry.status === 'open' && entry.awaitingPlayerId === actorSeatId);
+
+      actorSocket.send({
+        type: 'court_action',
+        requestId: 'accept-locking-deal',
+        action: 'deal-accept',
+        threadId: thread.id,
+        expectedRevision: thread.revision,
+      });
+
+      await actorSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'accept-locking-deal');
+      const acceptedSnapshot = await actorSocket.waitFor((message) => message.type === 'game_snapshot' && message.state.phase === 'court');
+      assert.equal('dealThreads' in acceptedSnapshot.state, false);
+      await actorSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === actorSeatId);
+      await counterpartySocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === counterpartySeatId);
+
+      room.gameState.phase = 'orders';
+      room.broadcastGameSnapshots({ previousPhase: 'court' });
+      await host.socket.waitFor((message) => message.type === 'phase_changed' && message.phase === 'orders');
+      await guest.socket.waitFor((message) => message.type === 'phase_changed' && message.phase === 'orders');
+      await host.socket.waitFor((message) => message.type === 'game_snapshot' && message.state.phase === 'orders');
+      await guest.socket.waitFor((message) => message.type === 'game_snapshot' && message.state.phase === 'orders');
+
+      const actorOrderLocks = await actorSocket.waitFor((message) => (
+        message.type === 'private_snapshot'
+        && message.seatId === actorSeatId
+        && message.orderLocks?.candidateId === counterpartySeatId
+        && Array.isArray(message.orderLocks.officeSelections)
+        && message.orderLocks.officeSelections.length > 0
+      ));
+      const lockedOfficeKey = actorOrderLocks.orderLocks.officeSelections[0].officeKey;
+
+      actorSocket.send({
+        type: 'submit_orders',
+        requestId: 'submit-locked-orders',
+        orders: {
+          deployments: {
+            [lockedOfficeKey]: 'frontier',
+          },
+          candidate: actorSeatId,
+        },
+      });
+
+      await actorSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'submit-locked-orders');
+      assert.equal(room.gameState.allOrders[actorSeatId].candidate, counterpartySeatId);
+      assert.equal(room.gameState.allOrders[actorSeatId].deployments[lockedOfficeKey], 'capital');
+    } finally {
+      await harness.close();
+    }
+  });
+}
+
 async function verifyHostOnlyContinue() {
   await withServer(async (instance) => {
     const harness = await createStartedThreePlayerRoom(instance.url, instance.manager);
@@ -455,6 +693,8 @@ async function verifyHostOnlyContinue() {
 async function main() {
   await runCase('lobby ownership and room start', verifyLobbyAndStart);
   await runCase('public court mercenaries and sealed order redaction', verifyOrderRedaction);
+  await runCase('private deal snapshots stay seat-local', verifyDealPrivacy);
+  await runCase('accepted deal locks are enforced on submitted orders', verifyDealOrderEnforcement);
   await runCase('live seat reclaim', verifySeatReclaim);
   await runCase('host-only resolution continue', verifyHostOnlyContinue);
   console.log('multiplayer verification passed');

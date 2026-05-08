@@ -1,4 +1,5 @@
 import { getPlayer, getPlayerMercenaryTroops, MERCENARY_COMPANY_KEY } from './state.js';
+import { normalizeOrdersWithDealLocks } from './deals.js';
 
 function toInt(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -68,9 +69,16 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
     return orderFailure('Choose a valid Basileus candidate.');
   }
 
+  const normalizedOrders = {
+    deployments,
+    candidate,
+  };
+  const dealLocks = normalizeOrdersWithDealLocks(state, playerId, normalizedOrders);
+  if (!dealLocks.ok) return orderFailure(dealLocks.reason || 'Accepted deal commitments can no longer be fulfilled.');
+
   return {
     ok: true,
-    orders: { deployments, candidate },
+    orders: dealLocks.orders,
     totalCost: 0,
   };
 }

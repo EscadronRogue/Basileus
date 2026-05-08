@@ -457,6 +457,7 @@ export class MultiplayerController {
       uiState: this.uiState,
       activePlayerId: controlledSeatId ?? this.viewPlayerId,
       selectedProvinceId: this.selectedProvinceId,
+      privateData: this.privateSnapshot || null,
       canControl: controlledSeatId != null || state.phase === 'scoring',
       spectatorMessage: 'Claim a human seat in the lobby to control a dynasty.',
       error: this.lastError,
@@ -476,6 +477,10 @@ export class MultiplayerController {
       recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),
       hireMercenaries: (_, data) => this.send('court_action', { action: 'hire-mercenaries', office: data.office, count: data.count }),
       dismiss: (_, data) => this.send('court_action', { action: 'dismiss', office: data.office, count: data.count }),
+      'deal-send': (payload) => this.send('court_action', { action: 'deal-send', ...payload }),
+      'deal-counter': (payload) => this.send('court_action', { action: 'deal-counter', ...payload }),
+      'deal-accept': (payload) => this.send('court_action', { action: 'deal-accept', ...payload }),
+      'deal-refuse': (payload) => this.send('court_action', { action: 'deal-refuse', ...payload }),
       'confirm-court': () => this.send('confirm_court'),
       'basileus-appoint': (titleType, appointeeId, themeId) => this.send('court_action', {
         action: 'basileus-appoint',

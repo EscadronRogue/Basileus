@@ -11,6 +11,13 @@ import {
 } from './state.js';
 import { recordHistoryEvent } from './history.js';
 import {
+  consumeAppointmentPromise,
+  getSpendableGold,
+  isThemeReservedByDeal,
+  validateAppointmentPromiseChoice,
+  validateDismissAgainstDeals,
+} from './deals.js';
+import {
   getMercenaryHireCost,
   getTaxExemptionCost,
   getThemeLandPrice,
@@ -97,8 +104,8 @@ export function canBuyTheme(state, playerId, themeId) {
   if (theme.owner !== null) return { ok: false, reason: 'Theme already owned' };
   if (theme.id === 'CPL') return { ok: false, reason: 'Cannot buy Constantinople' };
   const cost = getThemeLandPrice(theme);
-  const player = getPlayer(state, playerId);
-  if (player.gold < cost) return { ok: false, reason: `Need ${formatGold(cost)}, have ${formatGold(player.gold)}.` };
+  const spendableGold = getSpendableGold(state, playerId);
+  if (spendableGold < cost) return { ok: false, reason: `Need ${formatGold(cost)} of unreserved gold, have ${formatGold(spendableGold)}.` };
   return { ok: true, cost };
 }
 
@@ -132,6 +139,9 @@ export function buyTheme(state, playerId, themeId) {
 export function giftToChurch(state, playerId, themeId) {
   const theme = state.themes[themeId];
   if (!theme || theme.owner !== playerId) return { ok: false, reason: 'Not your theme' };
+  if (isThemeReservedByDeal(state, themeId)) {
+    return { ok: false, reason: `${themeName(state, themeId)} is reserved by an accepted deal and cannot be gifted away.` };
+  }
   extractOfficeArmy(state, `STRAT_${themeId}`);
   theme.owner = 'church';
   theme.taxExempt = false;
@@ -164,9 +174,9 @@ export function canGrantTaxExemption(state, playerId, themeId) {
   if (playerId === state.basileusId) return { ok: false, reason: 'The Basileus cannot buy tax exemption for his own estates' };
 
   const cost = getTaxExemptionCost(theme);
-  const owner = getPlayer(state, playerId);
-  if (owner.gold < cost) {
-    return { ok: false, reason: `Need ${formatGold(cost)}, have ${formatGold(owner.gold)}.` };
+  const spendableGold = getSpendableGold(state, playerId);
+  if (spendableGold < cost) {
+    return { ok: false, reason: `Need ${formatGold(cost)} of unreserved gold, have ${formatGold(spendableGold)}.` };
   }
   return { ok: true, cost };
 }
@@ -214,11 +224,14 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
 
   const selfAppointmentCheck = validateGenericSelfAppointment(state, appointerId, appointeeId);
   if (!selfAppointmentCheck.ok) return selfAppointmentCheck;
+  const dealCheck = validateAppointmentPromiseChoice(state, appointerId, appointeeId);
+  if (!dealCheck.ok) return dealCheck;
 
   const officeKey = `STRAT_${themeId}`;
   theme.strategos = appointeeId;
   transferOfficeArmy(state, officeKey, appointeeId, 1);
   markGenericSelfAppointment(state, appointerId, appointeeId);
+  consumeAppointmentPromise(state, appointerId, appointeeId);
   state.log.push({ type: 'appoint_strategos', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -251,9 +264,12 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
 
   const selfAppointmentCheck = validateGenericSelfAppointment(state, appointerId, appointeeId);
   if (!selfAppointmentCheck.ok) return selfAppointmentCheck;
+  const dealCheck = validateAppointmentPromiseChoice(state, appointerId, appointeeId);
+  if (!dealCheck.ok) return dealCheck;
 
   theme.bishop = appointeeId;
   markGenericSelfAppointment(state, appointerId, appointeeId);
+  consumeAppointmentPromise(state, appointerId, appointeeId);
   state.log.push({ type: 'appoint_bishop', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -273,6 +289,8 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
 export function appointCourtTitle(state, titleType, appointeeId) {
   const selfAppointmentCheck = validateGenericSelfAppointment(state, state.basileusId, appointeeId);
   if (!selfAppointmentCheck.ok) return selfAppointmentCheck;
+  const dealCheck = validateAppointmentPromiseChoice(state, state.basileusId, appointeeId);
+  if (!dealCheck.ok) return dealCheck;
 
   if (titleType === 'EMPRESS') {
     if (state.empress !== null) return { ok: false, reason: 'The Empress title is already appointed' };
@@ -285,6 +303,7 @@ export function appointCourtTitle(state, titleType, appointeeId) {
   }
 
   markGenericSelfAppointment(state, state.basileusId, appointeeId);
+  consumeAppointmentPromise(state, state.basileusId, appointeeId);
   state.log.push({ type: 'appoint_court', title: titleType, appointee: appointeeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -759,7 +778,8 @@ export function hireMercenaries(state, playerId, officeKey, count) {
   if (!state.currentMercenaryTroops) state.currentMercenaryTroops = {};
   const hiredSoFar = getPlayerMercenaryTotal(state, playerId);
   const cost = getMercenaryHireCost(hiredSoFar, normalizedCount);
-  if (player.gold < cost) return { ok: false, reason: `Need ${formatGold(cost)}, have ${formatGold(player.gold)}.` };
+  const spendableGold = getSpendableGold(state, playerId);
+  if (spendableGold < cost) return { ok: false, reason: `Need ${formatGold(cost)} of unreserved gold, have ${formatGold(spendableGold)}.` };
   player.gold -= cost;
   state.currentMercenaryTroops[playerId] = getPlayerMercenaryTroops(state, playerId) + normalizedCount;
   state.log.push({ type: 'hire_mercs', player: playerId, office: MERCENARY_COMPANY_KEY, count: normalizedCount, cost, round: state.round });
@@ -833,6 +853,8 @@ export function canDismissProfessional(state, playerId, officeKey, count) {
   if (dismissCount > currentCount) {
     return { ok: false, reason: `Cannot dismiss ${dismissCount} troops from ${currentCount} available` };
   }
+  const dealCheck = validateDismissAgainstDeals(state, playerId, officeKey, dismissCount);
+  if (!dealCheck.ok) return dealCheck;
   return { ok: true, count: dismissCount, currentCount };
 }
 

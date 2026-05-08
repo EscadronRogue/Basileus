@@ -5,7 +5,23 @@ import { PROVINCES } from '../data/provinces.js';
 import { createGameState, makeRng, MERCENARY_COMPANY_KEY, rollInvasionStrength } from './state.js';
 import { runAdministration } from './cascade.js';
 import { phaseAdministration, phaseCleanup, phaseInvasion, phaseResolution, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
-import { buyTheme, canRecruitProfessional, grantTaxExemption, hireMercenaries, recruitProfessional } from './actions.js';
+import {
+  appointCourtTitle,
+  buyTheme,
+  canRecruitProfessional,
+  grantTaxExemption,
+  hireMercenaries,
+  recruitProfessional,
+} from './actions.js';
+import {
+  acceptDealOffer,
+  buildOrderLocksForPlayer,
+  counterDealOffer,
+  refuseDealOffer,
+  sendDealOffer,
+  setDealParticipantIds,
+  startCourtDealRound,
+} from './deals.js';
 import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
@@ -14,6 +30,7 @@ import {
   getThemeLandPrice,
 } from './rules.js';
 import { normalizeHumanOrders } from './orders.js';
+import { applyCourtAction, confirmCourt } from './commands.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -77,6 +94,20 @@ function makeState(themes, playerOverrides = {}) {
     historyEnabled: false,
     history: [],
   };
+}
+
+function setDealHumans(state, humanPlayerIds = [0, 1]) {
+  setDealParticipantIds(state, humanPlayerIds);
+  return state;
+}
+
+function makeDealState(themes = [], playerOverrides = {}, humanPlayerIds = [0, 1]) {
+  const state = makeState(themes, playerOverrides);
+  setDealHumans(state, humanPlayerIds);
+  state.phase = 'court';
+  state.courtActions = { playerConfirmed: new Set() };
+  state.historyEnabled = true;
+  return state;
 }
 
 test('province table matches the profit-tax-levy economy constraints', () => {
@@ -328,6 +359,304 @@ test('mercenary costs ramp within a turn and reset on the next turn', () => {
   const third = hireMercenaries(state, 1, MERCENARY_COMPANY_KEY, 1);
   assert.equal(third.cost, 1);
   assert.equal(state.players[1].gold, 13);
+});
+
+test('deal threads support send, counter, refuse, accept, stale revisions, and only one open negotiation per pair', () => {
+  const state = makeDealState();
+
+  const firstOffer = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'non_revocation', direction: 'give', durationTurns: 1 },
+    ],
+  });
+  assert.equal(firstOffer.ok, true);
+  assert.equal(state.dealThreads.length, 1);
+  assert.equal(state.dealThreads[0].status, 'open');
+
+  const duplicateOpenOffer = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'appointment_promise', direction: 'give', appointmentCount: 1 },
+    ],
+  });
+  assert.equal(duplicateOpenOffer.ok, false);
+  assert.match(duplicateOpenOffer.reason, /still open/i);
+
+  const counter = counterDealOffer(state, 1, {
+    threadId: firstOffer.threadId,
+    expectedRevision: 1,
+    clauses: [
+      { kind: 'appointment_promise', direction: 'ask', appointmentCount: 1 },
+    ],
+  });
+  assert.equal(counter.ok, true);
+  assert.equal(counter.revision, 2);
+  assert.equal(state.dealThreads[0].awaitingPlayerId, 0);
+
+  const staleAccept = acceptDealOffer(state, 0, {
+    threadId: firstOffer.threadId,
+    expectedRevision: 1,
+  });
+  assert.equal(staleAccept.ok, false);
+  assert.match(staleAccept.reason, /changed before your action/i);
+
+  const refusal = refuseDealOffer(state, 0, {
+    threadId: firstOffer.threadId,
+    expectedRevision: 2,
+  });
+  assert.equal(refusal.ok, true);
+  assert.equal(state.dealThreads[0].status, 'refused');
+
+  const reopenedOffer = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    expectedRevision: 2,
+    clauses: [
+      { kind: 'appointment_promise', direction: 'give', appointmentCount: 1 },
+    ],
+  });
+  assert.equal(reopenedOffer.ok, true);
+  assert.equal(reopenedOffer.revision, 3);
+
+  const acceptance = acceptDealOffer(state, 1, {
+    threadId: reopenedOffer.threadId,
+    expectedRevision: 3,
+  });
+  assert.equal(acceptance.ok, true);
+  assert.equal(state.dealThreads[0].status, 'accepted');
+  assert.equal(state.activeDealObligations.length, 1);
+  assert.equal(state.activeDealObligations[0].kind, 'appointment_promise');
+  assert.deepEqual(
+    state.dealThreads[0].history.map((entry) => entry.type),
+    ['offer_sent', 'offer_countered', 'offer_refused', 'offer_sent', 'offer_accepted'],
+  );
+});
+
+test('confirming court auto-refuses waiting deals and blocks new incoming offers', () => {
+  const state = makeDealState();
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'non_revocation', direction: 'give', durationTurns: 1 },
+    ],
+  });
+  assert.equal(sent.ok, true);
+
+  const confirmation = confirmCourt(state, 1);
+  assert.equal(confirmation.ok, true);
+  assert.equal(state.dealThreads[0].status, 'refused');
+  assert.equal(state.dealThreads[0].history.at(-1).type, 'auto_refused');
+  assert.equal(state.dealThreads[0].history.at(-1).reason, 'court_confirmed');
+
+  const blocked = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'non_revocation', direction: 'give', durationTurns: 1 },
+    ],
+  });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason, /already confirmed court actions/i);
+});
+
+test('accepted gold deals reserve future installments and settle them at later court starts', () => {
+  const state = makeDealState(
+    [makeTheme('SAM')],
+    {
+      0: { gold: 5 },
+    },
+  );
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'gold', direction: 'give', amount: 4, durationTurns: 2 },
+    ],
+  });
+  assert.equal(sent.ok, true);
+
+  const accepted = acceptDealOffer(state, 1, {
+    threadId: sent.threadId,
+    expectedRevision: 1,
+  });
+  assert.equal(accepted.ok, true);
+  assert.equal(state.players[0].gold, 3);
+  assert.equal(state.players[1].gold, 2);
+  assert.equal(state.reservedGold[0], 2);
+
+  const blockedPurchase = buyTheme(state, 0, 'SAM');
+  assert.equal(blockedPurchase.ok, false);
+  assert.match(blockedPurchase.reason, /unreserved gold/i);
+
+  state.round = 2;
+  const nextCourt = startCourtDealRound(state);
+  assert.equal(nextCourt.ok, true);
+  assert.equal(state.players[0].gold, 1);
+  assert.equal(state.players[1].gold, 4);
+  assert.equal(state.reservedGold[0], 0);
+  assert.equal(state.activeDealObligations.length, 0);
+});
+
+test('accepted estate deals transfer the estate immediately without disturbing its province state', () => {
+  const state = makeDealState([
+    makeTheme('OPS', {
+      owner: 0,
+      taxExempt: true,
+      strategos: 1,
+      bishop: 2,
+      privateLevyReduced: true,
+    }),
+  ]);
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'estate', direction: 'give', themeId: 'OPS' },
+    ],
+  });
+  assert.equal(sent.ok, true);
+
+  const accepted = acceptDealOffer(state, 1, {
+    threadId: sent.threadId,
+    expectedRevision: 1,
+  });
+  assert.equal(accepted.ok, true);
+  assert.equal(state.themes.OPS.owner, 1);
+  assert.equal(state.themes.OPS.taxExempt, true);
+  assert.equal(state.themes.OPS.strategos, 1);
+  assert.equal(state.themes.OPS.bishop, 2);
+  assert.equal(state.themes.OPS.privateLevyReduced, true);
+  assert.equal(state.activeDealObligations.length, 0);
+});
+
+test('appointment promises carry forward until a legal appointment is made to the promised beneficiary', () => {
+  const state = makeDealState();
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'appointment_promise', direction: 'give', appointmentCount: 1 },
+    ],
+  });
+  assert.equal(sent.ok, true);
+  assert.equal(acceptDealOffer(state, 1, { threadId: sent.threadId, expectedRevision: 1 }).ok, true);
+
+  state.round = 3;
+  assert.equal(startCourtDealRound(state).ok, true);
+  assert.equal(state.activeDealObligations[0].remainingAppointments, 1);
+
+  const wrongAppointee = appointCourtTitle(state, 'EMPRESS', 2);
+  assert.equal(wrongAppointee.ok, false);
+  assert.match(wrongAppointee.reason, /owes the next legal appointment/i);
+
+  const promisedAppointee = appointCourtTitle(state, 'EMPRESS', 1);
+  assert.equal(promisedAppointee.ok, true);
+  assert.equal(state.empress, 1);
+  assert.equal(state.activeDealObligations.length, 0);
+});
+
+test('accepted non-revocation promises block Basileus title revocations', () => {
+  const state = makeDealState([], {
+    0: { professionalArmies: { BASILEUS: 2 } },
+    1: { majorTitles: ['DOM_EAST'] },
+  });
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'non_revocation', direction: 'give', durationTurns: 2 },
+    ],
+  });
+  assert.equal(sent.ok, true);
+  assert.equal(acceptDealOffer(state, 1, { threadId: sent.threadId, expectedRevision: 1 }).ok, true);
+
+  const revoke = applyCourtAction(state, 0, {
+    action: 'revoke',
+    value: 'major:1:DOM_EAST',
+  });
+  assert.equal(revoke.ok, false);
+  assert.match(revoke.reason, /protected by an accepted non-revocation deal/i);
+});
+
+test('conflicting troop deals are rejected before they can create incompatible claimant locks', () => {
+  const state = makeDealState([], {
+    0: {
+      majorTitles: ['DOM_EAST'],
+      professionalArmies: { BASILEUS: 2, DOM_EAST: 2 },
+    },
+  });
+  state.currentLevies = { BASILEUS: 2, DOM_EAST: 1 };
+
+  const first = sendDealOffer(state, 1, {
+    counterpartyId: 0,
+    clauses: [
+      { kind: 'coup_support', direction: 'ask', troopCount: 2, candidateId: 1, durationTurns: 1 },
+    ],
+  });
+  assert.equal(first.ok, true);
+  assert.equal(acceptDealOffer(state, 0, { threadId: first.threadId, expectedRevision: 1 }).ok, true);
+
+  const second = sendDealOffer(state, 1, {
+    counterpartyId: 0,
+    clauses: [
+      { kind: 'coup_support', direction: 'ask', troopCount: 1, candidateId: 2, durationTurns: 1 },
+    ],
+  });
+  assert.equal(second.ok, false);
+  assert.match(second.reason, /multiple claimants|another claimant/i);
+});
+
+test('deal order locks choose the minimum-overcommit office plan and override conflicting human orders', () => {
+  const state = makeDealState([], {
+    0: {
+      majorTitles: ['DOM_EAST', 'DOM_WEST'],
+      professionalArmies: { BASILEUS: 2, DOM_EAST: 2, DOM_WEST: 0 },
+    },
+  });
+  state.currentLevies = { BASILEUS: 2, DOM_EAST: 1, DOM_WEST: 4 };
+  state.currentMercenaryTroops = { 0: 3 };
+
+  const sent = sendDealOffer(state, 1, {
+    counterpartyId: 0,
+    clauses: [
+      { kind: 'coup_support', direction: 'ask', troopCount: 3, candidateId: 1, durationTurns: 1 },
+      { kind: 'frontier_support', direction: 'ask', troopCount: 3, durationTurns: 1 },
+    ],
+  });
+  assert.equal(sent.ok, true);
+  assert.equal(acceptDealOffer(state, 0, { threadId: sent.threadId, expectedRevision: 1 }).ok, true);
+
+  const locks = buildOrderLocksForPlayer(state, 0);
+  assert.equal(locks.ok, true);
+  assert.equal(locks.candidateId, 1);
+  assert.equal(locks.capitalCommitted, 3);
+  assert.equal(locks.frontierCommitted, 3);
+  assert.deepEqual(
+    locks.officeSelections.map((selection) => ({
+      officeKey: selection.officeKey,
+      destination: selection.destination,
+      troops: selection.troops,
+    })),
+    [
+      { officeKey: 'DOM_EAST', destination: 'frontier', troops: 3 },
+      { officeKey: MERCENARY_COMPANY_KEY, destination: 'capital', troops: 3 },
+    ],
+  );
+
+  state.phase = 'orders';
+  const normalized = normalizeHumanOrders(state, 0, {
+    deployments: {
+      BASILEUS: 'frontier',
+      DOM_EAST: 'capital',
+      DOM_WEST: 'capital',
+      [MERCENARY_COMPANY_KEY]: 'frontier',
+    },
+    candidate: 0,
+  });
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.orders.candidate, 1);
+  assert.equal(normalized.orders.deployments.DOM_EAST, 'frontier');
+  assert.equal(normalized.orders.deployments[MERCENARY_COMPANY_KEY], 'capital');
 });
 
 test('secret orders reject mercenary payloads because mercenaries are hired in court', () => {

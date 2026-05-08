@@ -22,6 +22,7 @@ import {
   getPlayerMercenaryTotal,
   MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
+import { summarizeDealClause } from '../engine/deals.js';
 import {
   formatGold,
   formatLevies,
@@ -926,12 +927,254 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
 
 }
 
+function encodeDealPayload(value) {
+  return encodeURIComponent(JSON.stringify(value));
+}
+
+function decodeDealPayload(value) {
+  try {
+    return JSON.parse(decodeURIComponent(String(value || '')));
+  } catch {
+    return null;
+  }
+}
+
+function getPrivateEstateOptions(state) {
+  return Object.values(state.themes)
+    .filter((theme) => theme.owner !== null && theme.owner !== 'church')
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function getDealCounterpartyLabel(state, playerId) {
+  return renderPlayerRoleNameById(state, playerId, `Player ${Number(playerId) + 1}`);
+}
+
+function buildEditableClausePreset(viewerId, clause) {
+  return {
+    kind: clause.kind,
+    direction: clause.giverId === viewerId ? 'give' : 'ask',
+    startTriggerType: clause.startTrigger?.type || 'immediate',
+    triggerPlayerId: clause.startTrigger?.playerId ?? '',
+    amount: clause.payload?.totalAmount ?? '',
+    durationTurns: clause.durationTurns ?? '',
+    troopCount: clause.payload?.troopCount ?? '',
+    candidateId: clause.payload?.candidateId ?? '',
+    themeId: clause.payload?.themeId ?? '',
+    appointmentCount: clause.payload?.appointmentCount ?? '',
+  };
+}
+
+function renderDealClauseEditorRow(state, playerId, rowIndex, preset = null) {
+  const allPlayers = state.players.slice();
+  const privateEstates = getPrivateEstateOptions(state);
+  const nextPreset = preset || {};
+  const kind = nextPreset.kind || 'gold';
+  const direction = nextPreset.direction || 'give';
+  const triggerType = nextPreset.startTriggerType || 'immediate';
+  const triggerPlayerId = nextPreset.triggerPlayerId ?? '';
+  const durationTurns = nextPreset.durationTurns ?? 1;
+  const amount = nextPreset.amount ?? 1;
+  const troopCount = nextPreset.troopCount ?? 1;
+  const candidateId = nextPreset.candidateId ?? playerId;
+  const themeId = nextPreset.themeId ?? privateEstates[0]?.id ?? '';
+  const appointmentCount = nextPreset.appointmentCount ?? 1;
+
+  return `
+    <div class="deal-clause-editor" data-deal-clause-row data-row-index="${rowIndex}">
+      <div class="deal-clause-head">
+        <span class="deal-clause-title">Clause ${rowIndex + 1}</span>
+        <button type="button" class="btn-secondary-link deal-remove-clause" data-action="deal-remove-clause">Remove</button>
+      </div>
+      <div class="deal-form-grid">
+        <label class="deal-field field-kind">
+          <span>Kind</span>
+          <select class="appt-select" data-deal-field="kind">
+            <option value="gold" ${kind === 'gold' ? 'selected' : ''}>Gold</option>
+            <option value="estate" ${kind === 'estate' ? 'selected' : ''}>Estate</option>
+            <option value="coup_support" ${kind === 'coup_support' ? 'selected' : ''}>Support In Coup</option>
+            <option value="frontier_support" ${kind === 'frontier_support' ? 'selected' : ''}>Send Troops To Border</option>
+            <option value="appointment_promise" ${kind === 'appointment_promise' ? 'selected' : ''}>Appointment Promise</option>
+            <option value="non_revocation" ${kind === 'non_revocation' ? 'selected' : ''}>No Revocation</option>
+          </select>
+        </label>
+        <label class="deal-field field-direction">
+          <span>Direction</span>
+          <select class="appt-select" data-deal-field="direction">
+            <option value="give" ${direction === 'give' ? 'selected' : ''}>You give</option>
+            <option value="ask" ${direction === 'ask' ? 'selected' : ''}>You ask</option>
+          </select>
+        </label>
+        <label class="deal-field field-trigger">
+          <span>Starts</span>
+          <select class="appt-select" data-deal-field="start-trigger">
+            <option value="immediate" ${triggerType === 'immediate' ? 'selected' : ''}>Now</option>
+            <option value="when_player_is_basileus" ${triggerType === 'when_player_is_basileus' ? 'selected' : ''}>When A Player Becomes Basileus</option>
+          </select>
+        </label>
+        <label class="deal-field field-trigger-player">
+          <span>Trigger Player</span>
+          <select class="appt-select" data-deal-field="trigger-player">
+            ${allPlayers.map((player) => `
+              <option value="${player.id}" ${Number(triggerPlayerId) === player.id ? 'selected' : ''}>${getDealCounterpartyLabel(state, player.id)}</option>
+            `).join('')}
+          </select>
+        </label>
+        <label class="deal-field field-amount">
+          <span>Gold</span>
+          <input class="army-dismiss-count deal-number" type="number" min="1" step="1" value="${amount}" data-deal-field="amount">
+        </label>
+        <label class="deal-field field-duration">
+          <span>Turns</span>
+          <input class="army-dismiss-count deal-number" type="number" min="1" step="1" value="${durationTurns}" data-deal-field="duration">
+        </label>
+        <label class="deal-field field-troops">
+          <span>Troops</span>
+          <input class="army-dismiss-count deal-number" type="number" min="1" step="1" value="${troopCount}" data-deal-field="troops">
+        </label>
+        <label class="deal-field field-candidate">
+          <span>Claimant</span>
+          <select class="appt-select" data-deal-field="candidate">
+            ${allPlayers.map((player) => `
+              <option value="${player.id}" ${Number(candidateId) === player.id ? 'selected' : ''}>${getDealCounterpartyLabel(state, player.id)}</option>
+            `).join('')}
+          </select>
+        </label>
+        <label class="deal-field field-estate">
+          <span>Estate</span>
+          <select class="appt-select" data-deal-field="estate">
+            ${privateEstates.length
+              ? privateEstates.map((theme) => `
+                  <option value="${theme.id}" ${themeId === theme.id ? 'selected' : ''}>${theme.name} — ${getDealCounterpartyLabel(state, theme.owner)}</option>
+                `).join('')
+              : '<option value="">No private estates</option>'}
+          </select>
+        </label>
+        <label class="deal-field field-appointments">
+          <span>Appointments</span>
+          <input class="army-dismiss-count deal-number" type="number" min="1" step="1" value="${appointmentCount}" data-deal-field="appointments">
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+function renderDealThreadCard(state, viewerId, thread, disabled = false) {
+  const open = thread.status === 'open';
+  const awaitingViewer = open && thread.awaitingPlayerId === viewerId;
+  const counterpartyId = thread.playerIds.find((playerId) => playerId !== viewerId);
+  const currentOffer = thread.currentOffer || null;
+  const clauseHtml = currentOffer?.clauses?.length
+    ? `<div class="deal-clause-list">${currentOffer.clauses.map((clause) => `
+        <div class="deal-clause-chip">${summarizeDealClause(state, clause, viewerId)}</div>
+      `).join('')}</div>`
+    : '<div class="dashboard-empty">No clauses recorded.</div>';
+  const statusLabel = open
+    ? (awaitingViewer ? 'Awaiting You' : `Waiting For ${getDealCounterpartyLabel(state, thread.awaitingPlayerId)}`)
+    : thread.status === 'accepted'
+      ? 'Accepted'
+      : 'Refused';
+  const editableClauses = currentOffer?.clauses?.map((clause) => buildEditableClausePreset(viewerId, clause)) || [];
+
+  return `
+    <div class="deal-thread-card ${open ? 'open' : 'closed'}">
+      <div class="deal-thread-head">
+        <div>
+          <div class="dashboard-list-title">${getDealCounterpartyLabel(state, counterpartyId)}</div>
+          <div class="dashboard-list-note">Revision ${thread.revision}</div>
+        </div>
+        <span class="dashboard-tag ${open ? 'warm' : 'wary'}">${statusLabel}</span>
+      </div>
+      ${clauseHtml}
+      ${open ? `
+        <div class="deal-thread-actions">
+          ${awaitingViewer && !disabled ? `
+            <button class="appt-btn" data-action="deal-accept" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Accept</button>
+            <button class="btn-dismiss" data-action="deal-refuse" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Refuse</button>
+            <button class="btn-recruit" data-action="deal-open-counter" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}" data-counterparty-id="${counterpartyId}" data-counter-clauses="${encodeDealPayload(editableClauses)}">Counter</button>
+          ` : '<div class="dashboard-list-note">This offer is waiting on the other dynasty.</div>'}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderDealsSection(state, playerId, privateData, courtAlreadyConfirmed) {
+  const dealThreads = Array.isArray(privateData?.dealThreads) ? privateData.dealThreads : [];
+  const eligibleIds = Array.isArray(privateData?.dealEligiblePlayerIds) ? privateData.dealEligiblePlayerIds : [];
+  const counts = privateData?.dealCounts || { pendingInbox: 0, pendingOutbox: 0, activeObligations: 0 };
+
+  const threadsHtml = dealThreads.length
+    ? `<div class="deal-thread-list">${dealThreads.map((thread) => renderDealThreadCard(state, playerId, thread, courtAlreadyConfirmed)).join('')}</div>`
+    : '<div class="dashboard-empty">No private negotiations yet this round.</div>';
+
+  if (!eligibleIds.length) {
+    return `
+      <p class="section-hint">Formal deals are only available between human-controlled dynasties during Court.</p>
+      <div class="dashboard-list-note">Inbox ${counts.pendingInbox} | Outbox ${counts.pendingOutbox} | Active obligations ${counts.activeObligations}</div>
+      ${threadsHtml}
+    `;
+  }
+
+  return `
+    <p class="section-hint">Deals stay private between the two dynasties involved. Accepted clauses become mandatory and may lock later orders automatically.</p>
+    <div class="dashboard-list-note">Inbox ${counts.pendingInbox} | Outbox ${counts.pendingOutbox} | Active obligations ${counts.activeObligations}</div>
+    ${threadsHtml}
+    <div class="deal-composer" data-deal-composer data-composer-mode="send" data-composer-thread-id="" data-composer-expected-revision="">
+      <div class="deal-composer-head">
+        <span class="dashboard-list-title" data-deal-composer-title>Draft New Offer</span>
+        <button type="button" class="btn-secondary-link" data-action="deal-reset-composer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Reset</button>
+      </div>
+      <div class="deal-form-grid deal-counterparty-row">
+        <label class="deal-field">
+          <span>Counterparty</span>
+          <select class="appt-select" data-deal-composer-counterparty ${courtAlreadyConfirmed ? 'disabled' : ''}>
+            ${eligibleIds.map((eligibleId) => `
+              <option value="${eligibleId}">${getDealCounterpartyLabel(state, eligibleId)}</option>
+            `).join('')}
+          </select>
+        </label>
+      </div>
+      <div class="deal-clause-editor-list" data-deal-clause-list>
+        ${renderDealClauseEditorRow(state, playerId, 0)}
+      </div>
+      <div class="deal-thread-actions">
+        <button class="btn-recruit" data-action="deal-add-clause" ${courtAlreadyConfirmed ? 'disabled' : ''}>Add Clause</button>
+        <button class="appt-btn" data-action="deal-submit-offer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Send Offer</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderDealLocksSection(state, playerId, orderLocks) {
+  if (!orderLocks?.ok) {
+    return `<div class="deal-locks-error">${orderLocks?.reason || 'Accepted deal commitments can no longer be fulfilled.'}</div>`;
+  }
+  if (!orderLocks.candidateId && !orderLocks.officeSelections?.length) return '';
+
+  return `
+    <div class="deal-lock-summary">
+      ${orderLocks.candidateId != null ? `<div class="deal-lock-row"><strong>Claimant locked:</strong> ${getDealCounterpartyLabel(state, orderLocks.candidateId)}</div>` : ''}
+      ${orderLocks.officeSelections?.length ? `
+        <div class="deal-lock-row"><strong>Locked deployments:</strong></div>
+        <div class="deal-clause-list">
+          ${orderLocks.officeSelections.map((selection) => `
+            <div class="deal-clause-chip">${selection.officeName} -> ${selection.destination} (${selection.troops} troops)</div>
+          `).join('')}
+        </div>
+      ` : ''}
+      ${orderLocks.capitalRequired > 0 ? `<div class="dashboard-list-note">Capital commitment: ${orderLocks.capitalRequired} troops.</div>` : ''}
+      ${orderLocks.frontierRequired > 0 ? `<div class="dashboard-list-note">Frontier commitment: ${orderLocks.frontierRequired} troops.</div>` : ''}
+    </div>
+  `;
+}
+
 // â”€â”€â”€ Court Phase Panel â”€â”€â”€
 export function renderCourtPanel(container, state, activePlayerId, callbacks, options = {}) {
   const player = getPlayer(state, activePlayerId);
   const isBasileus = activePlayerId === state.basileusId;
   const selectedProvinceId = options.selectedProvinceId || null;
   const uiSectionState = options.uiState || null;
+  const privateData = options.privateData || null;
 
   const appointmentParts = [];
   if (isBasileus) {
@@ -1051,6 +1294,19 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   );
 
   courtHtml += renderFoldSection(
+    'court:deals',
+    'Deals',
+    renderDealsSection(state, activePlayerId, privateData, courtAlreadyConfirmed),
+    uiSectionState,
+    {
+      defaultOpen: false,
+      badge: privateData?.dealCounts
+        ? `${privateData.dealCounts.pendingInbox}/${privateData.dealCounts.pendingOutbox}`
+        : null,
+    }
+  );
+
+  courtHtml += renderFoldSection(
     'court:confirm',
     'Confirm',
     `
@@ -1070,7 +1326,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += `</div>`;
   container.innerHTML = courtHtml;
 
-  bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId);
+  bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData);
   return;
 
 }
@@ -1091,7 +1347,7 @@ function bindThemeChoiceControls(root) {
   });
 }
 
-function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId) {
+function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData = null) {
   container.querySelectorAll('[data-player-choice]').forEach((button) => {
     button.addEventListener('click', () => {
       const group = button.closest('[data-player-choice-group]');
@@ -1237,6 +1493,163 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       }
     });
   });
+
+  bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData);
+}
+
+function refreshDealClauseEditor(row) {
+  const kind = row.querySelector('[data-deal-field="kind"]')?.value || 'gold';
+  const triggerType = row.querySelector('[data-deal-field="start-trigger"]')?.value || 'immediate';
+  const visibility = {
+    '.field-amount': kind === 'gold',
+    '.field-duration': ['gold', 'coup_support', 'frontier_support', 'non_revocation'].includes(kind),
+    '.field-troops': ['coup_support', 'frontier_support'].includes(kind),
+    '.field-candidate': kind === 'coup_support',
+    '.field-estate': kind === 'estate',
+    '.field-appointments': kind === 'appointment_promise',
+    '.field-trigger-player': triggerType === 'when_player_is_basileus',
+  };
+  Object.entries(visibility).forEach(([selector, show]) => {
+    const field = row.querySelector(selector);
+    if (field) field.hidden = !show;
+  });
+}
+
+function buildCounterClauseRowsHtml(state, playerId, clauses = []) {
+  return clauses.length
+    ? clauses.map((clause, index) => renderDealClauseEditorRow(state, playerId, index, clause)).join('')
+    : renderDealClauseEditorRow(state, playerId, 0);
+}
+
+function refreshDealRowIndices(root) {
+  root.querySelectorAll('[data-deal-clause-row]').forEach((row, index) => {
+    row.dataset.rowIndex = String(index);
+    const title = row.querySelector('.deal-clause-title');
+    if (title) title.textContent = `Clause ${index + 1}`;
+    refreshDealClauseEditor(row);
+  });
+}
+
+function bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData = null) {
+  const composer = container.querySelector('[data-deal-composer]');
+  if (!composer) return;
+
+  const clauseList = composer.querySelector('[data-deal-clause-list]');
+  const counterpartySelect = composer.querySelector('[data-deal-composer-counterparty]');
+  const titleEl = composer.querySelector('[data-deal-composer-title]');
+  const submitButton = composer.querySelector('[data-action="deal-submit-offer"]');
+
+  const attachRowListeners = (row) => {
+    row.querySelectorAll('[data-deal-field="kind"], [data-deal-field="start-trigger"]').forEach((control) => {
+      control.addEventListener('change', () => refreshDealClauseEditor(row));
+    });
+    row.querySelector('[data-action="deal-remove-clause"]')?.addEventListener('click', () => {
+      row.remove();
+      if (!clauseList.querySelector('[data-deal-clause-row]')) {
+        clauseList.innerHTML = renderDealClauseEditorRow(state, activePlayerId, 0);
+        clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
+      }
+      refreshDealRowIndices(clauseList);
+    });
+    refreshDealClauseEditor(row);
+  };
+
+  const resetComposer = () => {
+    composer.dataset.composerMode = 'send';
+    composer.dataset.composerThreadId = '';
+    composer.dataset.composerExpectedRevision = '';
+    if (titleEl) titleEl.textContent = 'Draft New Offer';
+    if (submitButton) submitButton.textContent = 'Send Offer';
+    if (counterpartySelect) counterpartySelect.disabled = false;
+    clauseList.innerHTML = renderDealClauseEditorRow(state, activePlayerId, 0);
+    clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
+    refreshDealRowIndices(clauseList);
+  };
+
+  const serializeRows = () => Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((row) => ({
+    kind: row.querySelector('[data-deal-field="kind"]')?.value || 'gold',
+    direction: row.querySelector('[data-deal-field="direction"]')?.value || 'give',
+    startTriggerType: row.querySelector('[data-deal-field="start-trigger"]')?.value || 'immediate',
+    triggerPlayerId: row.querySelector('[data-deal-field="trigger-player"]')?.value || '',
+    amount: row.querySelector('[data-deal-field="amount"]')?.value || '',
+    durationTurns: row.querySelector('[data-deal-field="duration"]')?.value || '',
+    troopCount: row.querySelector('[data-deal-field="troops"]')?.value || '',
+    candidateId: row.querySelector('[data-deal-field="candidate"]')?.value || '',
+    themeId: row.querySelector('[data-deal-field="estate"]')?.value || '',
+    appointmentCount: row.querySelector('[data-deal-field="appointments"]')?.value || '',
+  }));
+
+  composer.querySelector('[data-action="deal-add-clause"]')?.addEventListener('click', () => {
+    const nextIndex = clauseList.querySelectorAll('[data-deal-clause-row]').length;
+    clauseList.insertAdjacentHTML('beforeend', renderDealClauseEditorRow(state, activePlayerId, nextIndex));
+    const newRow = clauseList.querySelectorAll('[data-deal-clause-row]')[nextIndex];
+    if (newRow) attachRowListeners(newRow);
+    refreshDealRowIndices(clauseList);
+  });
+
+  composer.querySelector('[data-action="deal-reset-composer"]')?.addEventListener('click', () => {
+    resetComposer();
+  });
+
+  submitButton?.addEventListener('click', () => {
+    const payload = {
+      counterpartyId: counterpartySelect?.value,
+      clauses: serializeRows(),
+    };
+    const mode = composer.dataset.composerMode || 'send';
+    if (mode === 'counter') {
+      callbacks['deal-counter']?.({
+        ...payload,
+        threadId: composer.dataset.composerThreadId,
+        expectedRevision: composer.dataset.composerExpectedRevision,
+      });
+      return;
+    }
+    callbacks['deal-send']?.(payload);
+  });
+
+  container.querySelectorAll('[data-action="deal-accept"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      callbacks['deal-accept']?.({
+        threadId: button.dataset.threadId,
+        expectedRevision: button.dataset.threadRevision,
+      });
+    });
+  });
+
+  container.querySelectorAll('[data-action="deal-refuse"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      callbacks['deal-refuse']?.({
+        threadId: button.dataset.threadId,
+        expectedRevision: button.dataset.threadRevision,
+      });
+    });
+  });
+
+  container.querySelectorAll('[data-action="deal-open-counter"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const counterpartyId = button.dataset.counterpartyId || '';
+      const clauses = decodeDealPayload(button.dataset.counterClauses) || [];
+      composer.dataset.composerMode = 'counter';
+      composer.dataset.composerThreadId = button.dataset.threadId || '';
+      composer.dataset.composerExpectedRevision = button.dataset.threadRevision || '';
+      if (titleEl) titleEl.textContent = `Counter ${getDealCounterpartyLabel(state, Number(counterpartyId))}`;
+      if (submitButton) submitButton.textContent = 'Send Counteroffer';
+      if (counterpartySelect) {
+        counterpartySelect.value = counterpartyId;
+        counterpartySelect.disabled = true;
+      }
+      clauseList.innerHTML = buildCounterClauseRowsHtml(state, activePlayerId, clauses);
+      clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
+      refreshDealRowIndices(clauseList);
+    });
+  });
+
+  clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
+  refreshDealRowIndices(clauseList);
+  if (privateData?.dealThreads?.every((thread) => thread.status !== 'open')) {
+    resetComposer();
+  }
 }
 
 // â”€â”€â”€ Basileus appointment: can appoint ANY minor title to ANY player â”€â”€â”€
@@ -1516,6 +1929,7 @@ function renderArmyManagement(state, playerId) {
 // â”€â”€â”€ Orders Phase Panel (Secret, per-player) â”€â”€â”€
 export function renderOrdersPanel(container, state, playerId, callbacks, options = {}) {
   const player = getPlayer(state, playerId);
+  const orderLocks = options.privateData?.orderLocks || null;
   const offices = getPlayerOffices(state, playerId, {
     includeMercenaryCompany: getPlayerMercenaryTroops(state, playerId) > 0,
   });
@@ -1531,6 +1945,28 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       <p class="section-hint">Send each office's troops to the Capital (vote in this round's coup) or the Frontier (fight the invader), then pick the candidate you back for the throne. Orders are locked in simultaneously and revealed at Resolution. The Empress, Patriarch and Chief of Eunuchs can only defend the Capital.</p>
     </div>`;
 
+  if (orderLocks?.ok && (orderLocks.candidateId != null || orderLocks.officeSelections?.length)) {
+    html += renderFoldSection(
+      'orders:deal-locks',
+      'Deal Locks',
+      `<p class="section-hint">Accepted deals can force some deployments or your coup claimant. These locks will still be enforced even if you try to submit different orders.</p>${renderDealLocksSection(state, playerId, orderLocks)}`,
+      uiSectionState,
+      {
+        defaultOpen: true,
+      }
+    );
+  } else if (orderLocks && orderLocks.ok === false) {
+    html += renderFoldSection(
+      'orders:deal-locks',
+      'Deal Locks',
+      `<div class="deal-locks-error">${orderLocks.reason || 'Accepted deal commitments can no longer be fulfilled.'}</div>`,
+      uiSectionState,
+      {
+        defaultOpen: true,
+      }
+    );
+  }
+
   if (!alreadyLocked) {
     const deploymentRows = offices.map((office) => {
       const proCount = office.mercenaryOnly ? 0 : (player.professionalArmies[office.key] || 0);
@@ -1538,18 +1974,23 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       const mercCount = mercenaryAssignments[office.key] || 0;
       const total = proCount + levyCount + mercCount;
       const capitalLocked = office.capitalLocked || isCapitalLockedOfficeKey(office.key);
+      const dealLockedDestination = orderLocks?.committedOfficeKeys?.[office.key] || null;
       const troopLine = office.mercenaryOnly
         ? `${formatMercenaries(mercCount)} | No levies | No professional troops`
         : `Professional troops ${proCount} | ${formatLevies(levyCount)} | ${formatMercenaries(mercCount)}`;
 
-      if (capitalLocked) {
+      if (capitalLocked || dealLockedDestination) {
+        const lockedDestination = dealLockedDestination || 'capital';
+        const lockedLabel = capitalLocked && !dealLockedDestination
+          ? 'Capital (locked)'
+          : `${lockedDestination.charAt(0).toUpperCase()}${lockedDestination.slice(1)} (deal locked)`;
         return `
           <div class="deploy-row deploy-row-locked">
             <span class="office-name">${office.label}</span>
             <span class="troop-count">${formatTroops(total)}</span>
             <span class="section-hint">${troopLine}</span>
-            <div class="deploy-toggle deploy-toggle-locked" data-office="${office.key}" data-locked="capital">
-              <button class="toggle-btn active" data-dest="capital" disabled>Capital (locked)</button>
+            <div class="deploy-toggle deploy-toggle-locked" data-office="${office.key}" data-locked="${lockedDestination}">
+              <button class="toggle-btn active" data-dest="${lockedDestination}" disabled>${lockedLabel}</button>
             </div>
           </div>`;
       }
@@ -1580,10 +2021,10 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       'orders:claimant',
       'Choose Your Claimant',
       `
-        <p class="section-hint">All your Capital troops back this candidate. Most votes wins the throne; ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles among the other players.</p>
+        <p class="section-hint">All your Capital troops back this candidate. Most votes wins the throne; ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles among the other players.${orderLocks?.candidateId != null ? ` Your claimant is locked to ${getDealCounterpartyLabel(state, orderLocks.candidateId)} by an accepted deal.` : ''}</p>
         <div class="candidate-grid">
           ${state.players.map((candidatePlayer) => `
-            <button class="candidate-btn ${candidatePlayer.id === state.basileusId ? 'current-bas' : ''} ${candidatePlayer.id === playerId ? 'selected' : ''}" data-candidate="${candidatePlayer.id}" style="${getPlayerStyleAttr(state, candidatePlayer.id)}">
+            <button class="candidate-btn ${candidatePlayer.id === state.basileusId ? 'current-bas' : ''} ${candidatePlayer.id === (orderLocks?.candidateId ?? playerId) ? 'selected' : ''}" data-candidate="${candidatePlayer.id}" style="${getPlayerStyleAttr(state, candidatePlayer.id)}" ${orderLocks?.candidateId != null ? 'disabled' : ''}>
               <span class="candidate-crest" style="background: ${candidatePlayer.color}">${candidatePlayer.dynasty.charAt(0)}</span>
               <span>${renderPlayerRoleName(state, candidatePlayer)}</span>
               ${candidatePlayer.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}

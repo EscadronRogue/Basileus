@@ -306,6 +306,7 @@ export function renderGameActionPanel({
   uiState,
   activePlayerId,
   selectedProvinceId = null,
+  privateData = null,
   canControl = true,
   spectatorMessage = 'You can inspect this dynasty, but cannot issue commands.',
   error = '',
@@ -332,6 +333,7 @@ export function renderGameActionPanel({
       renderCourtPanel(shell, state, activePlayerId, handlers.court || {}, {
         selectedProvinceId,
         uiState,
+        privateData,
       });
       break;
 
@@ -340,6 +342,7 @@ export function renderGameActionPanel({
         lockOrders: handlers.lockOrders,
       }, {
         uiState,
+        privateData,
       });
       break;
 

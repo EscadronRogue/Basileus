@@ -89,3 +89,89 @@ test('player tabs use compact reserve, income, and upkeep formatting', () => {
   assert.match(html, />-3</);
   assert.doesNotMatch(html, /gold/i);
 });
+
+test('court panel renders the private deals fold when seat-local deal data exists', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 12 });
+  const playerId = state.basileusId;
+  const counterpartyId = state.players.find((player) => player.id !== playerId).id;
+  state.phase = 'court';
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, playerId, {}, {
+    uiState: null,
+    privateData: {
+      dealEligiblePlayerIds: [counterpartyId],
+      dealThreads: [
+        {
+          id: 'deal-thread-1',
+          playerIds: [playerId, counterpartyId],
+          status: 'open',
+          revision: 2,
+          awaitingPlayerId: playerId,
+          currentOffer: {
+            clauses: [
+              {
+                kind: 'gold',
+                giverId: counterpartyId,
+                receiverId: playerId,
+                startTrigger: { type: 'immediate' },
+                durationTurns: 1,
+                payload: { totalAmount: 3, installments: [3] },
+              },
+            ],
+          },
+          history: [],
+        },
+      ],
+      dealCounts: {
+        pendingInbox: 1,
+        pendingOutbox: 0,
+        activeObligations: 0,
+      },
+      orderLocks: null,
+    },
+  });
+
+  assert.match(container.innerHTML, /Deals/);
+  assert.match(container.innerHTML, /Draft New Offer/);
+  assert.match(container.innerHTML, /Awaiting You/);
+  assert.match(container.innerHTML, /Accept/);
+  assert.match(container.innerHTML, /Counter/);
+});
+
+test('orders panel renders deal lock summaries from private order lock data', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 13 });
+  const playerId = state.basileusId;
+  const counterpartyId = state.players.find((player) => player.id !== playerId).id;
+  state.phase = 'orders';
+  state.currentLevies = { BASILEUS: 2 };
+
+  const container = makePanelContainer();
+  renderOrdersPanel(container, state, playerId, {}, {
+    uiState: null,
+    privateData: {
+      orderLocks: {
+        ok: true,
+        candidateId: counterpartyId,
+        capitalRequired: 1,
+        frontierRequired: 0,
+        committedOfficeKeys: {
+          BASILEUS: 'capital',
+        },
+        officeSelections: [
+          {
+            officeKey: 'BASILEUS',
+            officeName: 'Basileus',
+            troops: 4,
+            destination: 'capital',
+          },
+        ],
+      },
+    },
+  });
+
+  assert.match(container.innerHTML, /Deal Locks/);
+  assert.match(container.innerHTML, /Claimant locked:/);
+  assert.match(container.innerHTML, /Capital \(deal locked\)/);
+  assert.match(container.innerHTML, /Your claimant is locked to/);
+});
