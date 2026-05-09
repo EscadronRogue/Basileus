@@ -223,3 +223,38 @@ test('multiplayer heartbeat policy stops ten minutes after a finished game', () 
   controller.noteLocalPlayerActivity(finishedAtMs + 20 * 60 * 1000);
   assert.equal(controller.shouldKeepHeartbeatAlive(finishedAtMs + 10 * 60 * 1000 + 1), false);
 });
+
+test('multiplayer HTTP keepalive pings health without extending room activity', async () => {
+  const updatedAt = '2026-05-09T10:12:00.000Z';
+  const updatedAtMs = Date.parse(updatedAt);
+  const fetchCalls = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    fetchCalls.push({ url, options });
+    return { ok: true };
+  };
+
+  try {
+    const controller = new MultiplayerController({
+      roomCode: 'ABC123',
+      sessionToken: 'session',
+      roomSnapshot: {
+        status: 'in_progress',
+        createdAt: '2026-05-09T10:00:00.000Z',
+        updatedAt,
+      },
+    });
+
+    await controller.sendHttpKeepalive(updatedAtMs + 15 * 60 * 1000);
+    assert.equal(fetchCalls.length, 1);
+    assert.match(fetchCalls[0].url, /^\/healthz\?keepalive=/);
+    assert.equal(fetchCalls[0].options.method, 'GET');
+    assert.equal(fetchCalls[0].options.credentials, 'omit');
+    assert.equal(controller.localPlayerActivityAtMs, 0);
+
+    await controller.sendHttpKeepalive(updatedAtMs + 60 * 60 * 1000 + 1);
+    assert.equal(fetchCalls.length, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

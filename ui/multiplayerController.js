@@ -11,6 +11,7 @@ import {
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
 const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
 const HEARTBEAT_INTERVAL_MS = 60_000;
+const HTTP_KEEPALIVE_INTERVAL_MS = 4 * 60_000;
 const ACTIVE_ROOM_KEEPALIVE_MS = 60 * 60 * 1000;
 const FINISHED_ROOM_KEEPALIVE_MS = 10 * 60 * 1000;
 
@@ -202,6 +203,8 @@ export class MultiplayerController {
     this.requestSeq = 0;
     this.reconnectTimer = null;
     this.heartbeatTimer = null;
+    this.httpKeepaliveTimer = null;
+    this.httpKeepaliveInFlight = false;
     this.localPlayerActivityAtMs = 0;
     this.localFinishedAtMs = 0;
     this.intentionalClose = false;
@@ -264,7 +267,7 @@ export class MultiplayerController {
 
     socket.addEventListener('close', (event) => {
       if (this.socket !== socket) return;
-      this.stopHeartbeat();
+      this.stopKeepalives();
       this.socket = null;
       if (this.intentionalClose) return;
       this.connectionState = 'disconnected';
@@ -307,9 +310,29 @@ export class MultiplayerController {
     this.heartbeatTimer = null;
   }
 
+  startHttpKeepalive() {
+    this.stopHttpKeepalive();
+    if (!this.shouldKeepHeartbeatAlive()) return;
+    this.sendHttpKeepalive();
+    this.httpKeepaliveTimer = window.setInterval(() => {
+      this.sendHttpKeepalive();
+    }, HTTP_KEEPALIVE_INTERVAL_MS);
+  }
+
+  stopHttpKeepalive() {
+    if (!this.httpKeepaliveTimer) return;
+    window.clearInterval(this.httpKeepaliveTimer);
+    this.httpKeepaliveTimer = null;
+  }
+
+  stopKeepalives() {
+    this.stopHeartbeat();
+    this.stopHttpKeepalive();
+  }
+
   sendHeartbeat() {
     if (!this.shouldKeepHeartbeatAlive()) {
-      this.stopHeartbeat();
+      this.stopKeepalives();
       return;
     }
     if (this.socket?.readyState !== WebSocket.OPEN) return;
@@ -320,13 +343,34 @@ export class MultiplayerController {
     }));
   }
 
+  async sendHttpKeepalive(now = Date.now()) {
+    if (!this.shouldKeepHeartbeatAlive(now)) {
+      this.stopKeepalives();
+      return;
+    }
+    if (typeof fetch !== 'function' || this.httpKeepaliveInFlight) return;
+
+    this.httpKeepaliveInFlight = true;
+    try {
+      await fetch(resolveApiUrl(`/healthz?keepalive=${Math.trunc(now)}`), {
+        method: 'GET',
+        credentials: 'omit',
+      });
+    } catch {
+      // The request still wakes Render even if the browser blocks the response.
+    } finally {
+      this.httpKeepaliveInFlight = false;
+    }
+  }
+
   updateHeartbeatSchedule() {
     if (typeof WebSocket === 'undefined' || this.socket?.readyState !== WebSocket.OPEN) return;
     if (this.shouldKeepHeartbeatAlive()) {
       if (!this.heartbeatTimer) this.startHeartbeat();
+      if (!this.httpKeepaliveTimer) this.startHttpKeepalive();
       return;
     }
-    this.stopHeartbeat();
+    this.stopKeepalives();
   }
 
   noteLocalPlayerActivity(now = Date.now()) {
@@ -381,7 +425,7 @@ export class MultiplayerController {
 
   disconnect() {
     this.intentionalClose = true;
-    this.stopHeartbeat();
+    this.stopKeepalives();
     if (this.reconnectTimer) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
