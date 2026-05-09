@@ -6,9 +6,14 @@ import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 export const MERCENARY_COMPANY_KEY = 'MERCENARY_COMPANY';
 
 // ─── Seeded RNG ───
-export function makeRng(seed = Date.now()) {
-  let s = seed >>> 0;
-  return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+export function makeRng(seed = Date.now(), initialState = null) {
+  let s = initialState == null ? seed >>> 0 : initialState >>> 0;
+  const rng = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+  rng.getState = () => s >>> 0;
+  rng.setState = (nextState) => {
+    s = nextState >>> 0;
+  };
+  return rng;
 }
 
 export function shuffle(arr, rng) {

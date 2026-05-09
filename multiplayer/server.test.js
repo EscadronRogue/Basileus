@@ -382,7 +382,7 @@ test('multiplayer snapshots show public court mercenaries and redact sealed orde
   assert.equal(viewerGame.state.allOrders[String(actorSeatId)], true);
 });
 
-test('multiplayer rooms allow reclaiming a disconnected live seat', async (t) => {
+test('multiplayer rooms allow manually claiming a disconnected live seat', async (t) => {
   const harness = await createStartedThreePlayerRoom(t);
   const { instance, roomCode, host, guest } = harness;
 
@@ -392,16 +392,24 @@ test('multiplayer rooms allow reclaiming a disconnected live seat', async (t) =>
 
   const rejoined = await joinRoom(instance.url, roomCode, {
     playerName: 'Guest Rejoin',
-    seatToken: guest.seatToken,
   });
-  assert.deepEqual(rejoined.claimResult, { seatId: 1 });
+  assert.equal(rejoined.claimResult, null);
 
   const rejoinSocket = await connectSocket(instance.url, {
     roomCode,
     sessionToken: rejoined.sessionToken,
     playerName: 'Guest Rejoin',
-    seatToken: rejoined.seatToken,
   });
+  const spectatorPrivate = await rejoinSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId == null);
+  assert.equal(spectatorPrivate.seatId, null);
+
+  rejoinSocket.send({
+    type: 'claim_seat',
+    requestId: 'manual-live-claim',
+    seatId: 1,
+    playerName: 'Guest Rejoin',
+  });
+  await rejoinSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'manual-live-claim');
   const rejoinPrivate = await rejoinSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
   assert.equal(rejoinPrivate.seatId, 1);
   const rejoinGame = await rejoinSocket.waitFor((message) => message.type === 'game_snapshot');
@@ -447,6 +455,59 @@ test('finished multiplayer rooms expose a stable finished timestamp', async (t) 
   room.refreshStatusFromGame();
   assert.equal(room.finishedAt, firstFinishedAt);
 
+  await guest.socket.close();
+  await host.socket.close();
+});
+
+test('multiplayer rooms can be saved and loaded into a new manually claimable room', async (t) => {
+  const harness = await createStartedThreePlayerRoom(t);
+  const { instance, room, host, guest } = harness;
+
+  room.gameState.players[0].gold = 7;
+  room.gameState.themes.CPL.taxExempt = true;
+  room.gameState.allOrders[1] = {
+    deployments: { DOM_EAST: 'capital' },
+    candidate: 0,
+  };
+  const rngBeforeSave = room.gameState.rng.getState();
+  const saveGame = room.createSavePayload();
+
+  const loaded = await createRoom(instance.url, {
+    playerName: 'Loader',
+    saveGame,
+  });
+  assert.notEqual(loaded.roomCode, harness.roomCode);
+  assert.equal(loaded.claimResult, null);
+
+  const loadedRoom = instance.manager.getRoom(loaded.roomCode);
+  assert.equal(loadedRoom.gameState.players[0].gold, 7);
+  assert.equal(loadedRoom.gameState.themes.CPL.taxExempt, true);
+  assert.deepEqual(loadedRoom.gameState.allOrders[1], {
+    deployments: { DOM_EAST: 'capital' },
+    candidate: 0,
+  });
+  assert.equal(loadedRoom.gameState.rng.getState(), rngBeforeSave);
+  assert.equal(loadedRoom.seats.filter((seat) => seat.kind === 'human').every((seat) => seat.sessionId == null), true);
+
+  const loadedSocket = await connectSocket(instance.url, {
+    roomCode: loaded.roomCode,
+    sessionToken: loaded.sessionToken,
+    playerName: 'Loader',
+  });
+  const loadedPrivate = await loadedSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId == null);
+  assert.equal(loadedPrivate.seatId, null);
+
+  loadedSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-loaded-seat',
+    seatId: 0,
+    playerName: 'Loader',
+  });
+  await loadedSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-loaded-seat');
+  const claimedPrivate = await loadedSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
+  assert.equal(claimedPrivate.seatId, 0);
+
+  await loadedSocket.close();
   await guest.socket.close();
   await host.socket.close();
 });

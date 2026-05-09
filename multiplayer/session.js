@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
+import { createGameState, getPlayer, formatPlayerLabel, makeRng } from '../engine/state.js';
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
 import {
   handleContinueAfterResolution,
@@ -10,7 +10,12 @@ import {
   handleManualTitleReassignment,
   startInteractiveRuntime,
 } from '../engine/runtime.js';
-import { clonePlain, serializePublicGameState } from '../engine/publicState.js';
+import {
+  clonePlain,
+  hydrateCourtActions,
+  serializeCourtActions,
+  serializePublicGameState,
+} from '../engine/publicState.js';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, pickRandom, resolveConfiguredSeed, toInt } from '../engine/setup.js';
 import { createAIMeta } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
@@ -21,6 +26,9 @@ export const ROOM_STATUS = {
   IN_PROGRESS: 'in_progress',
   FINISHED: 'finished',
 };
+
+export const SAVE_SCHEMA = 'basileus.multiplayer.save';
+export const SAVE_VERSION = 1;
 
 function normalizeTrainedAiProfiles(rawProfiles = []) {
   if (!Array.isArray(rawProfiles)) return [];
@@ -40,6 +48,83 @@ function createOpenSeat(seatId) {
     seatId,
     kind: 'human',
     playerName: null,
+    sessionId: null,
+    seatToken: null,
+    connected: false,
+  };
+}
+
+function createDecisionLog(lines = []) {
+  return {
+    lines: Array.isArray(lines) ? lines.slice() : [],
+    push(message) {
+      this.lines.push(message);
+    },
+  };
+}
+
+function serializeFullGameState(state) {
+  assert(state, 'Save file requires a game state.');
+  const { rng, courtActions, ...rest } = state;
+  return {
+    ...clonePlain(rest),
+    rngState: typeof rng?.getState === 'function' ? rng.getState() : 0,
+    courtActions: serializeCourtActions(courtActions),
+  };
+}
+
+function hydrateFullGameState(rawState) {
+  assert(rawState && typeof rawState === 'object', 'Save file is missing game state.');
+  const { rngState, courtActions, ...rest } = clonePlain(rawState);
+  return {
+    ...rest,
+    rng: makeRng(0, Number.isFinite(Number(rngState)) ? Number(rngState) : 0),
+    courtActions: hydrateCourtActions(courtActions),
+  };
+}
+
+function serializeAiMeta(aiMeta) {
+  if (!aiMeta) return null;
+  const {
+    humanPlayerIds,
+    decisionLog,
+    fastCache,
+    roundContext,
+    ...rest
+  } = aiMeta;
+  void fastCache;
+  void roundContext;
+  return {
+    ...clonePlain(rest),
+    humanPlayerIds: [...(humanPlayerIds || new Set())],
+    decisionLog: {
+      lines: Array.isArray(decisionLog?.lines) ? decisionLog.lines.slice() : [],
+    },
+  };
+}
+
+function hydrateAiMeta(rawMeta) {
+  if (!rawMeta) return null;
+  const {
+    humanPlayerIds = [],
+    decisionLog = null,
+    ...rest
+  } = clonePlain(rawMeta);
+  return {
+    ...rest,
+    humanPlayerIds: new Set(humanPlayerIds),
+    decisionLog: createDecisionLog(decisionLog?.lines || []),
+    fastCache: null,
+    roundContext: null,
+  };
+}
+
+function normalizeSavedSeat(rawSeat, seatId) {
+  const kind = rawSeat?.kind === 'ai' ? 'ai' : 'human';
+  return {
+    seatId,
+    kind,
+    playerName: kind === 'ai' ? (rawSeat?.playerName || `AI Seat ${seatId + 1}`) : null,
     sessionId: null,
     seatToken: null,
     connected: false,
@@ -146,6 +231,27 @@ export class MultiplayerRoom {
     seat.sessionId = sessionId;
     seat.seatToken = seat.seatToken || crypto.randomUUID();
     seat.connected = this.connections.has(sessionId);
+    this.touch();
+    return { seatId: seat.seatId, seatToken: seat.seatToken };
+  }
+
+  claimActiveSeat(sessionId, seatId, playerName) {
+    assert(this.status === ROOM_STATUS.IN_PROGRESS, 'Live seats can only be claimed while a game is in progress.');
+    assert(this.gameState, 'The game has not started.');
+    const seat = this.seats[seatId];
+    assert(seat, 'Seat not found.');
+    assert(seat.kind === 'human', 'Seat is AI-controlled.');
+    assert(!seat.connected || seat.sessionId === sessionId, 'That seat is already connected.');
+    const currentSeat = this.findSeatBySession(sessionId);
+    assert(!currentSeat || currentSeat.seatId === seatId, 'Leave your current seat before claiming another one.');
+
+    const session = this.ensureSession(sessionId, playerName);
+    seat.playerName = session.playerName;
+    seat.sessionId = sessionId;
+    seat.seatToken = crypto.randomUUID();
+    seat.connected = this.connections.has(sessionId);
+    const player = getPlayer(this.gameState, seat.seatId);
+    if (player) player.firstName = session.playerName;
     this.touch();
     return { seatId: seat.seatId, seatToken: seat.seatToken };
   }
@@ -381,6 +487,32 @@ export class MultiplayerRoom {
     };
   }
 
+  createSavePayload() {
+    assert(this.gameState, 'Only started games can be saved.');
+    this.refreshStatusFromGame();
+    return {
+      schema: SAVE_SCHEMA,
+      version: SAVE_VERSION,
+      savedAt: new Date().toISOString(),
+      room: {
+        config: clonePlain(this.config),
+        status: this.status,
+        createdAt: this.createdAt,
+        updatedAt: this.updatedAt,
+        finishedAt: this.finishedAt,
+        trainedAiProfiles: clonePlain(this.trainedAiProfiles),
+        seats: this.seats.map((seat) => ({
+          seatId: seat.seatId,
+          kind: seat.kind,
+          playerName: seat.kind === 'ai' ? seat.playerName : null,
+        })),
+        gameState: serializeFullGameState(this.gameState),
+        aiMeta: serializeAiMeta(this.aiMeta),
+        pendingAiTitleAssignment: clonePlain(this.pendingAiTitleAssignment),
+      },
+    };
+  }
+
   sendToSession(sessionId, payload) {
     this.connections.get(sessionId)?.sendJson(payload);
   }
@@ -530,13 +662,26 @@ export class MultiplayerRoom {
     const requestId = message.requestId || null;
     try {
       if (message.type === 'claim_seat') {
-        const claimResult = this.claimSeat(sessionId, toInt(message.seatId, -1), message.playerName);
+        const claimResult = this.status === ROOM_STATUS.LOBBY
+          ? this.claimSeat(sessionId, toInt(message.seatId, -1), message.playerName)
+          : this.claimActiveSeat(sessionId, toInt(message.seatId, -1), message.playerName);
         this.broadcast({
           type: 'seat_claimed',
           roomCode: this.roomCode,
           seatId: claimResult.seatId,
         });
         this.finalizeMutation(sessionId, requestId, null, { action: message.type, seatId: claimResult.seatId });
+        return;
+      }
+
+      if (message.type === 'request_save') {
+        this.sendToSession(sessionId, {
+          type: 'room_save',
+          roomCode: this.roomCode,
+          requestId,
+          filename: `basileus-${this.roomCode}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+          save: this.createSavePayload(),
+        });
         return;
       }
 
@@ -622,6 +767,44 @@ export function createRoom({ existingRoomCodes, hostSessionId, hostPlayerName, c
     hostPlayerName,
     config,
   });
+}
+
+export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlayerName, saveGame }) {
+  assert(saveGame?.schema === SAVE_SCHEMA, 'Save file is not a Basileus multiplayer save.');
+  assert(saveGame.version === SAVE_VERSION, 'Save file version is not supported.');
+  const savedRoom = saveGame.room;
+  assert(savedRoom && typeof savedRoom === 'object', 'Save file is missing room data.');
+
+  const gameState = hydrateFullGameState(savedRoom.gameState);
+  const config = normalizeRoomConfig({
+    ...(savedRoom.config || {}),
+    playerCount: gameState.players?.length || savedRoom.config?.playerCount,
+    deckSize: gameState.maxRounds || savedRoom.config?.deckSize,
+  });
+  const room = new MultiplayerRoom({
+    roomCode: createRoomCode(existingRoomCodes),
+    hostSessionId,
+    hostPlayerName,
+    config,
+  });
+
+  room.config = config;
+  room.trainedAiProfiles = normalizeTrainedAiProfiles(savedRoom.trainedAiProfiles || []);
+  room.gameState = gameState;
+  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta);
+  room.pendingAiTitleAssignment = clonePlain(savedRoom.pendingAiTitleAssignment);
+  room.finishedAt = savedRoom.finishedAt || null;
+  room.gameOverSent = false;
+  room.seats = Array.from({ length: room.config.playerCount }, (_, seatId) =>
+    normalizeSavedSeat(savedRoom.seats?.[seatId], seatId)
+  );
+  room.refreshStatusFromGame();
+  if (room.status !== ROOM_STATUS.FINISHED) {
+    room.status = ROOM_STATUS.IN_PROGRESS;
+    room.finishedAt = null;
+  }
+  room.touch();
+  return room;
 }
 
 export { DEFAULT_ROOM_CONFIG, normalizeRoomConfig };

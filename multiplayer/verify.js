@@ -525,22 +525,90 @@ async function verifySeatReclaim() {
 
       const rejoined = await joinRoom(instance.url, roomCode, {
         playerName: 'Guest Rejoin',
-        seatToken: guest.seatToken,
       });
-      assert.deepEqual(rejoined.claimResult, { seatId: 1 });
+      assert.equal(rejoined.claimResult, null);
 
       rejoinSocket = await connectSocket(instance.url, {
         roomCode,
         sessionToken: rejoined.sessionToken,
         playerName: 'Guest Rejoin',
-        seatToken: rejoined.seatToken,
       });
+      const spectatorPrivate = await rejoinSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId == null);
+      assert.equal(spectatorPrivate.seatId, null);
+
+      rejoinSocket.send({
+        type: 'claim_seat',
+        requestId: 'manual-live-claim',
+        seatId: 1,
+        playerName: 'Guest Rejoin',
+      });
+      await rejoinSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'manual-live-claim');
       const rejoinPrivate = await rejoinSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
       assert.equal(rejoinPrivate.seatId, 1);
       const rejoinGame = await rejoinSocket.waitFor((message) => message.type === 'game_snapshot');
       assert.equal(rejoinGame.status, 'in_progress');
     } finally {
       if (rejoinSocket) await rejoinSocket.close();
+      await harness.close();
+    }
+  });
+}
+
+async function verifySaveLoadRecovery() {
+  await withServer(async (instance) => {
+    const harness = await createStartedThreePlayerRoom(instance.url, instance.manager);
+    let loadedSocket = null;
+    try {
+      const { room, host } = harness;
+      room.gameState.players[0].gold = 7;
+      room.gameState.themes.CPL.taxExempt = true;
+      room.gameState.allOrders[1] = {
+        deployments: { DOM_EAST: 'capital' },
+        candidate: 0,
+      };
+      const rngBeforeSave = room.gameState.rng.getState();
+      const saveGame = room.createSavePayload();
+
+      const loaded = await createRoom(instance.url, {
+        playerName: 'Loader',
+        saveGame,
+      });
+      assert.notEqual(loaded.roomCode, harness.roomCode);
+      assert.equal(loaded.claimResult, null);
+
+      const loadedRoom = instance.manager.getRoom(loaded.roomCode);
+      assert.equal(loadedRoom.gameState.players[0].gold, 7);
+      assert.equal(loadedRoom.gameState.themes.CPL.taxExempt, true);
+      assert.deepEqual(loadedRoom.gameState.allOrders[1], {
+        deployments: { DOM_EAST: 'capital' },
+        candidate: 0,
+      });
+      assert.equal(loadedRoom.gameState.rng.getState(), rngBeforeSave);
+
+      loadedSocket = await connectSocket(instance.url, {
+        roomCode: loaded.roomCode,
+        sessionToken: loaded.sessionToken,
+        playerName: 'Loader',
+      });
+      await loadedSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId == null);
+      loadedSocket.send({
+        type: 'claim_seat',
+        requestId: 'claim-loaded-seat',
+        seatId: 0,
+        playerName: 'Loader',
+      });
+      await loadedSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-loaded-seat');
+      const privateSnapshot = await loadedSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
+      assert.equal(privateSnapshot.seatId, 0);
+
+      host.socket.send({
+        type: 'request_save',
+        requestId: 'download-save',
+      });
+      const saveMessage = await host.socket.waitFor((message) => message.type === 'room_save' && message.requestId === 'download-save');
+      assert.equal(saveMessage.save.schema, 'basileus.multiplayer.save');
+    } finally {
+      if (loadedSocket) await loadedSocket.close();
       await harness.close();
     }
   });
@@ -695,7 +763,8 @@ async function main() {
   await runCase('public court mercenaries and sealed order redaction', verifyOrderRedaction);
   await runCase('private deal snapshots stay seat-local', verifyDealPrivacy);
   await runCase('accepted deal locks are enforced on submitted orders', verifyDealOrderEnforcement);
-  await runCase('live seat reclaim', verifySeatReclaim);
+  await runCase('manual live seat reclaim', verifySeatReclaim);
+  await runCase('save/load recovery', verifySaveLoadRecovery);
   await runCase('host-only resolution continue', verifyHostOnlyContinue);
   console.log('multiplayer verification passed');
 }

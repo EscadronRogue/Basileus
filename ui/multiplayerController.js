@@ -26,6 +26,14 @@ function maxTimestampMs(...values) {
   return values.reduce((max, value) => Math.max(max, parseTimestampMs(value)), 0);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
 function readStorage() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -134,18 +142,10 @@ async function requestJson(path, payload) {
   return body;
 }
 
-async function joinRoomPayload(roomCode, playerName, stored) {
-  try {
-    return await requestJson(`/api/rooms/${encodeURIComponent(roomCode)}/join`, {
-      playerName,
-    });
-  } catch (error) {
-    if (error?.status !== 409 || !stored?.seatToken) throw error;
-    return requestJson(`/api/rooms/${encodeURIComponent(roomCode)}/join`, {
-      playerName,
-      seatToken: stored.seatToken,
-    });
-  }
+async function joinRoomPayload(roomCode, playerName) {
+  return requestJson(`/api/rooms/${encodeURIComponent(roomCode)}/join`, {
+    playerName,
+  });
 }
 
 export async function launchMultiplayerClient(options = {}) {
@@ -160,13 +160,12 @@ export async function launchMultiplayerClient(options = {}) {
   if (intent === 'join' && !ROOM_CODE_PATTERN.test(roomCode)) {
     throw new Error('Enter a full 6-character room code to join, or leave it blank to create a room.');
   }
-  const stored = roomCode ? getStoredMultiplayerSession(roomCode) : null;
-
   const payload = intent === 'join'
-    ? await joinRoomPayload(roomCode, playerName, stored)
+    ? await joinRoomPayload(roomCode, playerName)
     : await requestJson('/api/rooms', {
       playerName,
       config: options.config || {},
+      saveGame: options.saveGame || null,
     });
 
   const controller = new MultiplayerController({
@@ -498,6 +497,13 @@ export class MultiplayerController {
       return;
     }
 
+    if (message.type === 'room_save') {
+      this.downloadSaveFile(message.save, message.filename);
+      this.lastError = '';
+      this.render();
+      return;
+    }
+
     if (message.type === 'action_rejected') {
       this.lastError = message.reason || 'The server rejected that action.';
       this.render();
@@ -593,7 +599,7 @@ export class MultiplayerController {
       resolution.continue = () => this.send('continue_after_resolution');
     }
 
-    renderGameActionPanel({
+    const body = renderGameActionPanel({
       panel: document.getElementById('actionPanel'),
       state,
       uiState: this.uiState,
@@ -609,6 +615,79 @@ export class MultiplayerController {
       },
       resolution,
     });
+    this.renderMultiplayerRecoveryControls(body);
+  }
+
+  getClaimableHumanSeats() {
+    const controlledSeatId = this.getControlledSeatId();
+    if (controlledSeatId != null || this.roomSnapshot?.status !== 'in_progress') return [];
+    return (this.roomSnapshot?.seats || []).filter((seat) =>
+      seat.kind === 'human' && !seat.connected
+    );
+  }
+
+  renderMultiplayerRecoveryControls(body) {
+    if (!body || !this.publicSnapshot) return;
+    const claimableSeats = this.getClaimableHumanSeats();
+    const seatButtons = claimableSeats.map((seat) => {
+      const dynasty = seat.dynasty || `Seat ${Number(seat.seatId) + 1}`;
+      const status = seat.status === 'disconnected' ? 'Away' : 'Open';
+      return `
+        <button class="btn-secondary-link btn-live-claim-seat" type="button" data-seat-id="${seat.seatId}">
+          Claim ${escapeHtml(dynasty)} (${status})
+        </button>
+      `;
+    }).join('');
+
+    const section = document.createElement('div');
+    section.className = 'multiplayer-recovery-controls';
+    section.innerHTML = `
+      ${claimableSeats.length ? `
+        <div class="multiplayer-banner">
+          <strong>Rejoin Control</strong>
+          <span>Choose an open or disconnected human seat to control it.</span>
+          <div class="setup-actions">${seatButtons}</div>
+        </div>
+      ` : ''}
+      <div class="multiplayer-banner">
+        <strong>Recovery Save</strong>
+        <span>Download the full server state so this match can be restored if the host service restarts.</span>
+        <div class="setup-actions">
+          <button class="btn-secondary-link" type="button" data-action="save-multiplayer-room">Save Match</button>
+        </div>
+      </div>
+    `;
+    body.appendChild(section);
+
+    section.querySelectorAll('.btn-live-claim-seat').forEach((button) => {
+      button.addEventListener('click', () => {
+        this.send('claim_seat', {
+          seatId: Number(button.dataset.seatId),
+          playerName: this.playerName,
+        });
+      });
+    });
+
+    section.querySelector('[data-action="save-multiplayer-room"]')?.addEventListener('click', () => {
+      this.send('request_save');
+    });
+  }
+
+  downloadSaveFile(save, filename = '') {
+    if (!save || typeof Blob === 'undefined' || typeof document === 'undefined') return;
+    const safeFilename = String(filename || `basileus-${this.roomCode}.json`)
+      .replace(/[^a-z0-9._-]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      || `basileus-${this.roomCode}.json`;
+    const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = safeFilename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   createCourtHandlers() {

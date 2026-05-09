@@ -20,6 +20,7 @@ const singlePlayerFields = document.getElementById('singlePlayerFields');
 const multiplayerFields = document.getElementById('multiplayerFields');
 const setupPlayerName = document.getElementById('setupPlayerName');
 const setupRoomCode = document.getElementById('setupRoomCode');
+const setupSaveFile = document.getElementById('setupSaveFile');
 const setupMultiplayerError = document.getElementById('setupMultiplayerError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
@@ -198,6 +199,16 @@ async function refreshAvailableAiProfiles() {
   return availableAiProfiles;
 }
 
+async function readSelectedMultiplayerSave() {
+  const file = setupSaveFile?.files?.[0];
+  if (!file) return null;
+  try {
+    return JSON.parse(await file.text());
+  } catch {
+    throw new Error('Saved match file must be valid JSON.');
+  }
+}
+
 async function launchMultiplayerFlow(intent) {
   if (multiplayerLaunchInFlight) return;
   multiplayerLaunchInFlight = true;
@@ -218,6 +229,7 @@ async function launchMultiplayerFlow(intent) {
   );
 
   try {
+    const saveGame = intent === 'create' ? await readSelectedMultiplayerSave() : null;
     if (typeof window.__basileus?.disconnect === 'function') {
       window.__basileus.disconnect();
     }
@@ -232,6 +244,7 @@ async function launchMultiplayerFlow(intent) {
         seed: seedInput,
         aiProfiles: availableAiProfiles.map(cloneProfile),
       },
+      saveGame,
     });
     window.__basileus = multiplayer;
     setMultiplayerError('');
@@ -321,6 +334,9 @@ setupRoomCode.addEventListener('input', () => {
   setMultiplayerError('');
 });
 setupPlayerName.addEventListener('input', () => {
+  setMultiplayerError('');
+});
+setupSaveFile?.addEventListener('change', () => {
   setMultiplayerError('');
 });
 btnCreateRoom?.addEventListener('click', () => {

@@ -161,6 +161,12 @@
           <p id="setupMultiplayerError" class="setup-hint"></p>
         </div>
 
+        <div class="setup-field">
+          <label>Load Saved Match (optional)</label>
+          <input type="file" id="setupSaveFile" accept="application/json,.json">
+          <p class="setup-hint">Leave empty to create a brand new room. Upload a Basileus save to restore a match under a new room code.</p>
+        </div>
+
         <div id="multiplayerActions" class="setup-actions">
           <button class="btn-start" id="btnCreateRoom" type="button">Create Room</button>
           <button class="btn-secondary-link" id="btnJoinRoom" type="button">Join Room</button>

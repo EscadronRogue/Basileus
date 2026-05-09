@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import { readExportedPersonalitiesFromFolder } from '../simulation/personality-files.js';
-import { createRoom } from './session.js';
+import { createRoom, createRoomFromSave } from './session.js';
 import { attachWebSocketServer } from './wsServer.js';
 
 export function createMultiplayerError(statusCode, message) {
@@ -17,7 +17,7 @@ export function parseMultiplayerRequestJson(req) {
     req.setEncoding('utf8');
     req.on('data', (chunk) => {
       body += chunk;
-      if (body.length > 1_000_000) {
+      if (body.length > 5_000_000) {
         rejectBody(createMultiplayerError(413, 'Request body is too large.'));
         req.destroy();
       }
@@ -60,14 +60,21 @@ export class MultiplayerRoomManager {
     return randomUUID();
   }
 
-  createRoom({ playerName, config }) {
+  createRoom({ playerName, config, saveGame = null }) {
     const sessionToken = this.createSessionToken();
-    const room = createRoom({
-      existingRoomCodes: new Set(this.rooms.keys()),
-      hostSessionId: sessionToken,
-      hostPlayerName: normalizePlayerName(playerName),
-      config,
-    });
+    const room = saveGame
+      ? createRoomFromSave({
+        existingRoomCodes: new Set(this.rooms.keys()),
+        hostSessionId: sessionToken,
+        hostPlayerName: normalizePlayerName(playerName),
+        saveGame,
+      })
+      : createRoom({
+        existingRoomCodes: new Set(this.rooms.keys()),
+        hostSessionId: sessionToken,
+        hostPlayerName: normalizePlayerName(playerName),
+        config,
+      });
     this.rooms.set(room.roomCode, room);
 
     return {
@@ -78,7 +85,7 @@ export class MultiplayerRoomManager {
     };
   }
 
-  joinRoom(roomCode, { playerName, seatToken = '' }) {
+  joinRoom(roomCode, { playerName }) {
     const room = this.getRoom(roomCode);
     if (!room) {
       throw createMultiplayerError(404, 'Room not found.');
@@ -87,23 +94,11 @@ export class MultiplayerRoomManager {
     const sessionToken = this.createSessionToken();
     room.ensureSession(sessionToken, normalizePlayerName(playerName));
 
-    let claimResult = null;
-    let nextSeatToken = null;
-    const reclaimToken = String(seatToken || '').trim();
-
-    if (reclaimToken) {
-      const reclaim = room.reclaimSeat(sessionToken, reclaimToken, playerName);
-      claimResult = { seatId: reclaim.seatId };
-      nextSeatToken = reclaim.seatToken;
-    } else if (room.status !== 'lobby') {
-      throw createMultiplayerError(409, 'The game is already in progress. Rejoin with your seat token.');
-    }
-
     return {
       room,
       sessionToken,
-      seatToken: nextSeatToken,
-      claimResult,
+      seatToken: null,
+      claimResult: null,
     };
   }
 
@@ -118,6 +113,7 @@ export async function handleMultiplayerApiRequest(manager, req, url) {
     const result = manager.createRoom({
       playerName: body.playerName,
       config: body.config || {},
+      saveGame: body.saveGame || null,
     });
     return {
       statusCode: 201,
@@ -136,7 +132,6 @@ export async function handleMultiplayerApiRequest(manager, req, url) {
     const body = await parseMultiplayerRequestJson(req);
     const result = manager.joinRoom(joinMatch[1], {
       playerName: body.playerName,
-      seatToken: body.seatToken,
     });
     return {
       statusCode: 200,
@@ -192,14 +187,6 @@ export function attachMultiplayerSocketServer(server, manager, options = {}) {
           activeRoom = room;
           activeSessionId = sessionToken;
           room.attachConnection(activeSessionId, connection);
-
-          if (message.seatToken && !room.findSeatBySession(activeSessionId)) {
-            try {
-              room.reclaimSeat(activeSessionId, message.seatToken, message.playerName);
-            } catch {
-              // Ignore reclaim failures here; the explicit reclaim command can retry.
-            }
-          }
 
           room.sendInitialSync(activeSessionId);
           room.broadcastRoomSnapshot();
