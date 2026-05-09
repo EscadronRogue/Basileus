@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createGameState } from '../engine/state.js';
 import { GameController } from './gameController.js';
+import { MultiplayerController } from './multiplayerController.js';
 import { renderCourtPanel, renderOrdersPanel } from './panels.js';
 import { getPlayerTabEconomy, renderPlayerTabFinance } from './sharedView.js';
 
@@ -178,4 +179,47 @@ test('orders panel renders deal lock summaries from private order lock data', ()
   assert.match(container.innerHTML, /Claimant locked:/);
   assert.match(container.innerHTML, /Capital \(deal locked\)/);
   assert.match(container.innerHTML, /Your claimant is locked to/);
+});
+
+test('multiplayer heartbeat policy keeps active rooms awake for one idle hour', () => {
+  const createdAt = '2026-05-09T10:00:00.000Z';
+  const updatedAt = '2026-05-09T10:12:00.000Z';
+  const updatedAtMs = Date.parse(updatedAt);
+  const controller = new MultiplayerController({
+    roomCode: 'ABC123',
+    sessionToken: 'session',
+    roomSnapshot: {
+      status: 'in_progress',
+      createdAt,
+      updatedAt,
+    },
+  });
+
+  assert.equal(controller.shouldKeepHeartbeatAlive(updatedAtMs + 60 * 60 * 1000), true);
+  assert.equal(controller.shouldKeepHeartbeatAlive(updatedAtMs + 60 * 60 * 1000 + 1), false);
+
+  controller.noteLocalPlayerActivity(updatedAtMs + 30 * 60 * 1000);
+  assert.equal(controller.shouldKeepHeartbeatAlive(updatedAtMs + 90 * 60 * 1000), true);
+  assert.equal(controller.shouldKeepHeartbeatAlive(updatedAtMs + 90 * 60 * 1000 + 1), false);
+});
+
+test('multiplayer heartbeat policy stops ten minutes after a finished game', () => {
+  const finishedAt = '2026-05-09T11:00:00.000Z';
+  const finishedAtMs = Date.parse(finishedAt);
+  const controller = new MultiplayerController({
+    roomCode: 'ABC123',
+    sessionToken: 'session',
+    roomSnapshot: {
+      status: 'finished',
+      createdAt: '2026-05-09T10:00:00.000Z',
+      updatedAt: finishedAt,
+      finishedAt,
+    },
+  });
+
+  assert.equal(controller.shouldKeepHeartbeatAlive(finishedAtMs + 10 * 60 * 1000), true);
+  assert.equal(controller.shouldKeepHeartbeatAlive(finishedAtMs + 10 * 60 * 1000 + 1), false);
+
+  controller.noteLocalPlayerActivity(finishedAtMs + 20 * 60 * 1000);
+  assert.equal(controller.shouldKeepHeartbeatAlive(finishedAtMs + 10 * 60 * 1000 + 1), false);
 });

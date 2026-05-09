@@ -426,3 +426,27 @@ test('only the host can advance past resolution in multiplayer', async (t) => {
   const rejection = await guest.socket.waitFor((message) => message.type === 'action_rejected' && message.requestId === 'guest-continue');
   assert.match(rejection.reason, /host/i);
 });
+
+test('finished multiplayer rooms expose a stable finished timestamp', async (t) => {
+  const harness = await createStartedThreePlayerRoom(t);
+  const { room, host, guest } = harness;
+
+  assert.equal(room.finishedAt, null);
+  room.gameState.gameOver = { type: 'fall', message: 'Constantinople has fallen.' };
+  room.refreshStatusFromGame();
+
+  assert.equal(room.status, 'finished');
+  assert.match(room.finishedAt, /^\d{4}-\d{2}-\d{2}T/);
+  const firstFinishedAt = room.finishedAt;
+
+  const roomSnapshot = room.createRoomSnapshotFor(host.sessionToken);
+  const gameSnapshot = room.createGameSnapshotFor(host.sessionToken);
+  assert.equal(roomSnapshot.finishedAt, firstFinishedAt);
+  assert.equal(gameSnapshot.finishedAt, firstFinishedAt);
+
+  room.refreshStatusFromGame();
+  assert.equal(room.finishedAt, firstFinishedAt);
+
+  await guest.socket.close();
+  await host.socket.close();
+});

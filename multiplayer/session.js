@@ -93,6 +93,7 @@ export class MultiplayerRoom {
     this.aiMeta = null;
     this.pendingAiTitleAssignment = null;
     this.gameOverSent = false;
+    this.finishedAt = null;
 
     this.ensureSession(hostSessionId, hostPlayerName);
   }
@@ -267,6 +268,7 @@ export class MultiplayerRoom {
     this.pendingAiTitleAssignment = null;
     this.status = ROOM_STATUS.IN_PROGRESS;
     this.gameOverSent = false;
+    this.finishedAt = null;
     startInteractiveRuntime(this.gameState, this.aiMeta, this);
     this.refreshStatusFromGame();
     this.touch();
@@ -277,8 +279,10 @@ export class MultiplayerRoom {
     if (!this.gameState) return;
     if (this.gameState.gameOver || this.gameState.phase === 'scoring') {
       this.status = ROOM_STATUS.FINISHED;
+      this.finishedAt = this.finishedAt || new Date().toISOString();
     } else {
       this.status = ROOM_STATUS.IN_PROGRESS;
+      this.finishedAt = null;
     }
   }
 
@@ -338,6 +342,7 @@ export class MultiplayerRoom {
       canStart: this.canStartGame() && this.isHostSession(sessionId),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      finishedAt: this.finishedAt,
     };
   }
 
@@ -348,6 +353,9 @@ export class MultiplayerRoom {
       type: 'game_snapshot',
       roomCode: this.roomCode,
       status: this.status,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+      finishedAt: this.finishedAt,
       yourSeatId: viewerSeatId,
       hostSeatId: this.findSeatBySession(this.hostSessionId)?.seatId ?? null,
       state: serializePublicGameState(this.gameState, viewerSeatId),
@@ -390,6 +398,7 @@ export class MultiplayerRoom {
   }
 
   broadcastGameSnapshots({ previousPhase = null } = {}) {
+    if (this.gameState) this.refreshStatusFromGame();
     for (const sessionId of this.connections.keys()) {
       const gameSnapshot = this.createGameSnapshotFor(sessionId);
       const privateSnapshot = this.createPrivateSnapshotFor(sessionId);
@@ -411,6 +420,7 @@ export class MultiplayerRoom {
         roomCode: this.roomCode,
         gameOver: clonePlain(this.gameState?.gameOver || null),
         phase: this.gameState?.phase || null,
+        finishedAt: this.finishedAt,
       });
       this.gameOverSent = true;
     }

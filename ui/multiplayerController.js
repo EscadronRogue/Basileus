@@ -10,6 +10,20 @@ import {
 
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
 const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
+const HEARTBEAT_INTERVAL_MS = 60_000;
+const ACTIVE_ROOM_KEEPALIVE_MS = 60 * 60 * 1000;
+const FINISHED_ROOM_KEEPALIVE_MS = 10 * 60 * 1000;
+
+function parseTimestampMs(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function maxTimestampMs(...values) {
+  return values.reduce((max, value) => Math.max(max, parseTimestampMs(value)), 0);
+}
 
 function readStorage() {
   try {
@@ -188,6 +202,8 @@ export class MultiplayerController {
     this.requestSeq = 0;
     this.reconnectTimer = null;
     this.heartbeatTimer = null;
+    this.localPlayerActivityAtMs = 0;
+    this.localFinishedAtMs = 0;
     this.intentionalClose = false;
     this.uiState = createDefaultUiState();
   }
@@ -231,7 +247,7 @@ export class MultiplayerController {
         seatToken: this.seatToken,
         playerName: this.playerName,
       }, false);
-      this.startHeartbeat();
+      this.updateHeartbeatSchedule();
       this.render();
     });
 
@@ -278,16 +294,89 @@ export class MultiplayerController {
 
   startHeartbeat() {
     this.stopHeartbeat();
+    if (!this.shouldKeepHeartbeatAlive()) return;
+    this.sendHeartbeat();
     this.heartbeatTimer = window.setInterval(() => {
-      if (this.socket?.readyState !== WebSocket.OPEN) return;
-      this.socket.send(JSON.stringify({ type: 'heartbeat' }));
-    }, 25_000);
+      this.sendHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   stopHeartbeat() {
     if (!this.heartbeatTimer) return;
     window.clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
+  }
+
+  sendHeartbeat() {
+    if (!this.shouldKeepHeartbeatAlive()) {
+      this.stopHeartbeat();
+      return;
+    }
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify({
+      type: 'heartbeat',
+      roomCode: this.roomCode,
+      sentAt: new Date().toISOString(),
+    }));
+  }
+
+  updateHeartbeatSchedule() {
+    if (typeof WebSocket === 'undefined' || this.socket?.readyState !== WebSocket.OPEN) return;
+    if (this.shouldKeepHeartbeatAlive()) {
+      if (!this.heartbeatTimer) this.startHeartbeat();
+      return;
+    }
+    this.stopHeartbeat();
+  }
+
+  noteLocalPlayerActivity(now = Date.now()) {
+    this.localPlayerActivityAtMs = Math.max(this.localPlayerActivityAtMs, now);
+    this.updateHeartbeatSchedule();
+  }
+
+  noteRoomFinished(finishedAt = null, now = Date.now()) {
+    const parsedFinishedAt = parseTimestampMs(finishedAt);
+    if (parsedFinishedAt) {
+      this.localFinishedAtMs = parsedFinishedAt;
+    } else if (!this.localFinishedAtMs) {
+      this.localFinishedAtMs = now;
+    }
+    this.updateHeartbeatSchedule();
+  }
+
+  isRoomFinished() {
+    return this.roomSnapshot?.status === 'finished'
+      || this.publicSnapshot?.status === 'finished'
+      || Boolean(this.state?.gameOver)
+      || this.state?.phase === 'scoring';
+  }
+
+  getLastRoomActivityAtMs(now = Date.now()) {
+    return Math.max(
+      maxTimestampMs(this.roomSnapshot?.createdAt, this.roomSnapshot?.updatedAt),
+      maxTimestampMs(this.publicSnapshot?.createdAt, this.publicSnapshot?.updatedAt),
+      this.localPlayerActivityAtMs,
+      now && !this.roomSnapshot && !this.publicSnapshot ? now : 0,
+    );
+  }
+
+  getRoomFinishedAtMs(now = Date.now()) {
+    const snapshotFinishedAt = maxTimestampMs(this.roomSnapshot?.finishedAt, this.publicSnapshot?.finishedAt);
+    if (snapshotFinishedAt) return snapshotFinishedAt;
+    if (!this.isRoomFinished()) return 0;
+    if (!this.localFinishedAtMs) this.localFinishedAtMs = now;
+    return this.localFinishedAtMs;
+  }
+
+  getHeartbeatDeadlineMs(now = Date.now()) {
+    if (this.isRoomFinished()) {
+      return this.getRoomFinishedAtMs(now) + FINISHED_ROOM_KEEPALIVE_MS;
+    }
+    return this.getLastRoomActivityAtMs(now) + ACTIVE_ROOM_KEEPALIVE_MS;
+  }
+
+  shouldKeepHeartbeatAlive(now = Date.now()) {
+    return now <= this.getHeartbeatDeadlineMs(now);
   }
 
   disconnect() {
@@ -319,12 +408,15 @@ export class MultiplayerController {
       ...(requestId ? { requestId } : {}),
       ...payload,
     }));
+    if (type !== 'heartbeat') this.noteLocalPlayerActivity();
     return requestId;
   }
 
   handleMessage(message = {}) {
     if (message.type === 'room_snapshot') {
       this.roomSnapshot = message;
+      if (message.status === 'finished') this.noteRoomFinished(message.finishedAt);
+      else this.updateHeartbeatSchedule();
       if (message.yourSession?.claimedSeatId != null && this.viewPlayerId == null) {
         this.viewPlayerId = message.yourSession.claimedSeatId;
       }
@@ -335,6 +427,11 @@ export class MultiplayerController {
     if (message.type === 'game_snapshot') {
       this.publicSnapshot = message;
       this.state = hydratePublicState(message.state || {});
+      if (message.status === 'finished' || this.state.gameOver || this.state.phase === 'scoring') {
+        this.noteRoomFinished(message.finishedAt);
+      } else {
+        this.updateHeartbeatSchedule();
+      }
       const controlledSeatId = this.getControlledSeatId();
       if (controlledSeatId != null && !Number.isInteger(this.viewPlayerId)) {
         this.viewPlayerId = controlledSeatId;
@@ -376,6 +473,7 @@ export class MultiplayerController {
     }
 
     if (message.type === 'game_over') {
+      this.noteRoomFinished(message.finishedAt);
       this.render();
       return;
     }
