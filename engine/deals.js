@@ -656,10 +656,10 @@ function validateDealParticipants(state, actorId, counterpartyId) {
   ensureDealState(state);
   const eligibleIds = getDealParticipantIds(state);
   if (!eligibleIds.includes(actorId)) {
-    return fail('Only human dynasties can negotiate formal deals.');
+    return fail('You cannot start a formal deal right now.');
   }
   if (!eligibleIds.includes(counterpartyId)) {
-    return fail('Formal deals are only available between human dynasties.');
+    return fail('That dynasty cannot enter a formal deal right now.');
   }
   if (actorId === counterpartyId) {
     return fail('Choose another dynasty for this deal.');
@@ -1365,6 +1365,107 @@ export function summarizeDealClause(state, clause, viewerId = null) {
     return `${playerName(state, clause.giverId)} promises not to revoke ${playerName(state, clause.receiverId)}'s titles for ${turns} turn${turns === 1 ? '' : 's'}${triggerText}.`;
   }
   return clause.kind;
+}
+
+// ─── AI / automation surface ───────────────────────────────────────────────
+// These helpers let non-UI agents (AI brains, training harnesses, scripts)
+// inspect open deals and dispatch responses through the same engine path the
+// UI uses. They are intentionally thin so the engine stays the single source
+// of truth for validation and bookkeeping.
+
+export function getIncomingDealsForPlayer(state, playerId) {
+  ensureDealState(state);
+  return state.dealThreads.filter((thread) => (
+    thread.status === DEAL_THREAD_STATUS.OPEN
+    && thread.awaitingPlayerId === playerId
+  ));
+}
+
+export function getOutgoingDealsForPlayer(state, playerId) {
+  ensureDealState(state);
+  return state.dealThreads.filter((thread) => (
+    thread.status === DEAL_THREAD_STATUS.OPEN
+    && thread.playerIds.includes(playerId)
+    && thread.awaitingPlayerId !== playerId
+  ));
+}
+
+// Aggregate numeric snapshot of an offer from a viewer's perspective. Useful
+// as a feature vector for AI training: every entry is a non-negative scalar.
+export function summarizeDealOfferImpact(clauses = [], viewerId = null) {
+  const totals = {
+    clauseCount: Array.isArray(clauses) ? clauses.length : 0,
+    goldGiven: 0,
+    goldReceived: 0,
+    estatesGiven: 0,
+    estatesReceived: 0,
+    capitalTroopsPromised: 0,
+    capitalTroopsRequested: 0,
+    frontierTroopsPromised: 0,
+    frontierTroopsRequested: 0,
+    appointmentsGiven: 0,
+    appointmentsReceived: 0,
+    protectionTurnsGiven: 0,
+    protectionTurnsReceived: 0,
+    triggerThronebound: 0,
+  };
+  if (!Array.isArray(clauses)) return totals;
+  for (const clause of clauses) {
+    const youGive = viewerId != null && clause.giverId === viewerId;
+    const youReceive = viewerId != null && clause.receiverId === viewerId;
+    if (clause.startTrigger?.type === DEAL_TRIGGER_TYPES.WHEN_PLAYER_IS_BASILEUS) {
+      totals.triggerThronebound += 1;
+    }
+    switch (clause.kind) {
+      case DEAL_CLAUSE_KINDS.GOLD: {
+        const amount = Number(clause.payload?.totalAmount) || 0;
+        if (youGive) totals.goldGiven += amount;
+        if (youReceive) totals.goldReceived += amount;
+        break;
+      }
+      case DEAL_CLAUSE_KINDS.ESTATE:
+        if (youGive) totals.estatesGiven += 1;
+        if (youReceive) totals.estatesReceived += 1;
+        break;
+      case DEAL_CLAUSE_KINDS.COUP_SUPPORT: {
+        const troops = Number(clause.payload?.troopCount) || 0;
+        if (youGive) totals.capitalTroopsPromised += troops;
+        if (youReceive) totals.capitalTroopsRequested += troops;
+        break;
+      }
+      case DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT: {
+        const troops = Number(clause.payload?.troopCount) || 0;
+        if (youGive) totals.frontierTroopsPromised += troops;
+        if (youReceive) totals.frontierTroopsRequested += troops;
+        break;
+      }
+      case DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE: {
+        const count = Number(clause.payload?.appointmentCount) || 0;
+        if (youGive) totals.appointmentsGiven += count;
+        if (youReceive) totals.appointmentsReceived += count;
+        break;
+      }
+      case DEAL_CLAUSE_KINDS.NON_REVOCATION: {
+        const turns = Number(clause.durationTurns) || 0;
+        if (youGive) totals.protectionTurnsGiven += turns;
+        if (youReceive) totals.protectionTurnsReceived += turns;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return totals;
+}
+
+// Single dispatch point for accept / refuse / counter. Mirrors the human
+// command surface so AI calls go through the exact same validation path.
+export function respondToDeal(state, actorId, payload = {}) {
+  const action = String(payload.action || '').trim();
+  if (action === 'accept') return acceptDealOffer(state, actorId, payload);
+  if (action === 'refuse') return refuseDealOffer(state, actorId, payload);
+  if (action === 'counter') return counterDealOffer(state, actorId, payload);
+  return fail('Choose accept, refuse, or counter.');
 }
 
 export function buildPrivateDealView(state, viewerId) {

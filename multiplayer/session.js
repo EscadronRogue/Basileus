@@ -369,7 +369,7 @@ export class MultiplayerRoom {
       humanPlayerIds,
       seatProfiles,
     });
-    setDealParticipantIds(this.gameState, humanPlayerIds);
+    setDealParticipantIds(this.gameState, this.gameState.players.map((player) => player.id));
     this.assignPlayerFirstNames();
     this.pendingAiTitleAssignment = null;
     this.status = ROOM_STATUS.IN_PROGRESS;

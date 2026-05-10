@@ -50,6 +50,13 @@ import {
   SUPPORTED_PLAYER_COUNTS,
 } from './personalities.js';
 import { normalizeAiProfile } from './profileStore.js';
+import {
+  getIncomingDealsForPlayer,
+  getOutgoingDealsForPlayer,
+  respondToDeal,
+  sendDealOffer,
+  summarizeDealOfferImpact,
+} from '../engine/deals.js';
 
 const PUBLIC_LOG_LIMIT = 48;
 
@@ -2463,6 +2470,102 @@ function applyMajorTitleAssignment(state, meta, newBasileusId, plan) {
   return plan.best.assignment;
 }
 
+// ── AI deal policy ─────────────────────────────────────────────────────────
+// Single integration point for future training. The two policy hooks
+// (`aiDecideOnIncomingDeal` and `aiProposeOutgoingDeal`) are intentionally
+// pure of side effects so a learned model or scripted policy can replace
+// them without touching the dispatch path.
+
+// Snapshot of the live deal context for one player. Designed as a feature
+// vector: every value is either a small int or a normalized scalar so it
+// can feed directly into a model without further wrangling.
+export function getDealFeatureSnapshot(state, meta, playerId) {
+  const incoming = getIncomingDealsForPlayer(state, playerId).map((thread) => ({
+    threadId: thread.id,
+    counterpartyId: thread.playerIds.find((id) => id !== playerId) ?? null,
+    revision: thread.revision,
+    impact: summarizeDealOfferImpact(thread.currentOffer?.clauses || [], playerId),
+  }));
+  const outgoing = getOutgoingDealsForPlayer(state, playerId).map((thread) => ({
+    threadId: thread.id,
+    counterpartyId: thread.playerIds.find((id) => id !== playerId) ?? null,
+    revision: thread.revision,
+    impact: summarizeDealOfferImpact(thread.currentOffer?.clauses || [], playerId),
+  }));
+  return {
+    playerId,
+    round: state.round,
+    isBasileus: playerId === state.basileusId,
+    incoming,
+    outgoing,
+    activeObligations: (state.activeDealObligations || []).filter((entry) => (
+      entry.status !== 'completed' && (entry.giverId === playerId || entry.receiverId === playerId)
+    )).length,
+  };
+}
+
+// Hook for AI relation / posterior updates triggered by deal events. Currently
+// a no-op; training can plug in here without touching the dispatch loop.
+export function observeDealEvent(state, meta, event) {
+  if (!meta || !event) return;
+  invalidateRoundContext(meta);
+}
+
+// Default policy: refuse every incoming offer so humans get a clean response
+// instead of waiting until the AI confirms court. Replace with a learned
+// policy by overriding `aiDecideOnIncomingDeal`.
+function aiDecideOnIncomingDeal(state, meta, playerId, thread) {
+  return { action: 'refuse', reason: 'ai_no_policy' };
+}
+
+// Default policy: never propose. Training can return `{ counterpartyId, clauses }`
+// here to dispatch a real offer through the same path the UI uses.
+function aiProposeOutgoingDeal(state, meta, playerId) {
+  return null;
+}
+
+function handleAIDealActions(state, meta, playerId) {
+  let acted = false;
+
+  for (const thread of getIncomingDealsForPlayer(state, playerId)) {
+    const decision = aiDecideOnIncomingDeal(state, meta, playerId, thread);
+    if (!decision || !decision.action) continue;
+    const payload = {
+      threadId: thread.id,
+      expectedRevision: thread.revision,
+      action: decision.action,
+    };
+    if (decision.action === 'counter') payload.clauses = decision.clauses || [];
+    if (decision.action === 'refuse' && decision.reason) payload.reason = decision.reason;
+    const result = respondToDeal(state, playerId, payload);
+    if (result?.ok) {
+      observeDealEvent(state, meta, {
+        type: `deal_${decision.action}`,
+        actorId: playerId,
+        counterpartyId: thread.playerIds.find((id) => id !== playerId) ?? null,
+        threadId: thread.id,
+      });
+      acted = true;
+    }
+  }
+
+  const proposal = aiProposeOutgoingDeal(state, meta, playerId);
+  if (proposal && proposal.counterpartyId != null) {
+    const result = sendDealOffer(state, playerId, proposal);
+    if (result?.ok) {
+      observeDealEvent(state, meta, {
+        type: 'deal_propose',
+        actorId: playerId,
+        counterpartyId: Number(proposal.counterpartyId),
+        threadId: result.threadId,
+      });
+      acted = true;
+    }
+  }
+
+  return acted;
+}
+
 function takeOneAiCourtAction(state, meta, playerId) {
   const player = getPlayer(state, playerId);
   if (!player) return false;
@@ -2485,6 +2588,10 @@ function takeOneAiCourtAction(state, meta, playerId) {
   }
 
   if (playerId === state.basileusId && handleBasileusRevocation(state, meta)) {
+    return true;
+  }
+
+  if (handleAIDealActions(state, meta, playerId)) {
     return true;
   }
 

@@ -1134,6 +1134,17 @@ function serializeDealRow(row) {
   };
 }
 
+function renderDealToggle(fieldName, options, selectedValue) {
+  return `
+    <div class="deal-toggle" data-deal-toggle="${fieldName}">
+      ${options.map((option) => `
+        <button type="button" class="deal-toggle-btn ${String(option.value) === String(selectedValue) ? 'selected' : ''}" data-deal-toggle-value="${option.value}">${option.label}</button>
+      `).join('')}
+      <input type="hidden" data-deal-field="${fieldName}" value="${selectedValue}">
+    </div>
+  `;
+}
+
 function renderDealClauseEditorRow(state, playerId, rowIndex, preset = null, counterpartyId = null) {
   const allPlayers = state.players.slice();
   const nextPreset = preset || {};
@@ -1167,67 +1178,60 @@ function renderDealClauseEditorRow(state, playerId, rowIndex, preset = null, cou
   const detailFields = [];
   if (kind === 'gold') {
     detailFields.push(renderDealNumberField('Total gold', 'amount', amount));
-    detailFields.push(renderDealNumberField('Court phases (1 = all at once)', 'duration', durationTurns));
+    detailFields.push(renderDealNumberField('Spread over (court phases)', 'duration', durationTurns));
   } else if (kind === 'estate') {
     detailFields.push(renderDealSelectField(
-      'Which estate',
+      'Estate',
       'estate',
       estateOptions.length
         ? estateOptions.map((theme) => ({ value: theme.id, label: theme.name }))
-        : [{ value: '', label: 'No valid estate available' }],
+        : [{ value: '', label: 'No estate available' }],
       themeId,
       estateOptions.length ? '' : 'disabled',
     ));
   } else if (kind === 'coup_support') {
     detailFields.push(renderDealSelectField(
-      'Which claimant to back',
+      'Claimant to back',
       'candidate',
       allPlayers.map((player) => ({ value: player.id, label: getDealCounterpartyLabel(state, player.id) })),
       candidateId,
     ));
-    detailFields.push(renderDealNumberField('Troops each turn', 'troops', troopCount));
-    detailFields.push(renderDealNumberField('How many turns', 'duration', durationTurns));
+    detailFields.push(renderDealNumberField('Troops per turn', 'troops', troopCount));
+    detailFields.push(renderDealNumberField('Duration (turns)', 'duration', durationTurns));
   } else if (kind === 'frontier_support') {
-    detailFields.push(renderDealNumberField('Troops each turn', 'troops', troopCount));
-    detailFields.push(renderDealNumberField('How many turns', 'duration', durationTurns));
+    detailFields.push(renderDealNumberField('Troops per turn', 'troops', troopCount));
+    detailFields.push(renderDealNumberField('Duration (turns)', 'duration', durationTurns));
   } else if (kind === 'appointment_promise') {
-    detailFields.push(renderDealNumberField('How many future appointments', 'appointments', appointmentCount));
+    detailFields.push(renderDealNumberField('Future appointments', 'appointments', appointmentCount));
   } else if (kind === 'non_revocation') {
-    detailFields.push(renderDealNumberField('How many turns of protection', 'duration', durationTurns));
+    detailFields.push(renderDealNumberField('Protection (turns)', 'duration', durationTurns));
   }
+
+  const triggerOptions = [
+    { value: 'immediate', label: 'Right away' },
+    { value: 'when_player_is_basileus', label: 'On coronation' },
+  ];
 
   return `
     <div class="deal-clause-editor" data-deal-clause-row data-row-index="${rowIndex}">
       <div class="deal-clause-head">
-        <span class="deal-clause-title">Part ${rowIndex + 1}</span>
+        <span class="deal-clause-title">Clause ${rowIndex + 1}</span>
         <button type="button" class="btn-secondary-link deal-remove-clause" data-action="deal-remove-clause">Remove</button>
       </div>
       <div class="deal-clause-help">${getDealClauseHelpText(kind)}</div>
       <div class="deal-form-grid">
-        ${renderDealSelectField(
-          'What this part is about',
-          'kind',
-          getDealKindOptions(),
-          kind,
-        )}
-        ${renderDealSelectField(
-          'Who is making this promise',
-          'direction',
-          directionOptions,
-          direction,
-        )}
-        ${renderDealSelectField(
-          'When it starts',
-          'start-trigger',
-          [
-            { value: 'immediate', label: 'Right away' },
-            { value: 'when_player_is_basileus', label: 'Only when someone becomes Basileus' },
-          ],
-          triggerType,
-        )}
+        ${renderDealSelectField('Type', 'kind', getDealKindOptions(), kind)}
+        <label class="deal-field">
+          <span>Direction</span>
+          ${renderDealToggle('direction', directionOptions, direction)}
+        </label>
+        <label class="deal-field">
+          <span>Trigger</span>
+          ${renderDealToggle('start-trigger', triggerOptions, triggerType)}
+        </label>
         ${triggerType === 'when_player_is_basileus'
           ? renderDealSelectField(
-              'Which player must become Basileus',
+              'Coronation of',
               'trigger-player',
               allPlayers.map((player) => ({ value: player.id, label: getDealCounterpartyLabel(state, player.id) })),
               triggerPlayerId,
@@ -1236,6 +1240,24 @@ function renderDealClauseEditorRow(state, playerId, rowIndex, preset = null, cou
       </div>
       ${detailFields.length ? `<div class="deal-form-grid deal-detail-grid">${detailFields.join('')}</div>` : ''}
       <div class="deal-clause-preview" data-deal-preview>${preview}</div>
+    </div>
+  `;
+}
+
+function renderDealStatusPills(counts) {
+  const pills = [
+    { label: 'Awaiting You', count: counts.pendingInbox, urgent: counts.pendingInbox > 0 },
+    { label: 'Awaiting Reply', count: counts.pendingOutbox, urgent: false },
+    { label: 'Active Obligations', count: counts.activeObligations, urgent: false },
+  ];
+  return `
+    <div class="deal-status-row">
+      ${pills.map((pill) => `
+        <span class="deal-status-pill${pill.urgent ? ' urgent' : ''}">
+          <span class="deal-status-count">${pill.count}</span>
+          <span class="deal-status-label">${pill.label}</span>
+        </span>
+      `).join('')}
     </div>
   `;
 }
@@ -1251,32 +1273,62 @@ function renderDealThreadCard(state, viewerId, thread, disabled = false) {
       `).join('')}</div>`
     : '<div class="dashboard-empty">No clauses recorded.</div>';
   const statusLabel = open
-    ? (awaitingViewer ? 'Awaiting You' : `Waiting For ${getDealCounterpartyLabel(state, thread.awaitingPlayerId)}`)
-    : thread.status === 'accepted'
-      ? 'Accepted'
-      : 'Refused';
+    ? (awaitingViewer ? 'Awaiting You' : 'Awaiting Reply')
+    : thread.status === 'accepted' ? 'Accepted' : 'Refused';
+  const statusTone = !open
+    ? (thread.status === 'accepted' ? 'loyal' : 'wary')
+    : (awaitingViewer ? 'warm' : 'cold');
   const editableClauses = currentOffer?.clauses?.map((clause) => buildEditableClausePreset(viewerId, clause)) || [];
+
+  const actionsHtml = open ? (awaitingViewer && !disabled
+    ? `<div class="deal-thread-actions">
+        <button class="appt-btn" data-action="deal-accept" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Accept</button>
+        <button class="btn-recruit" data-action="deal-open-counter" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}" data-counterparty-id="${counterpartyId}" data-counter-clauses="${encodeDealPayload(editableClauses)}">Counter</button>
+        <button class="btn-dismiss" data-action="deal-refuse" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Refuse</button>
+      </div>`
+    : `<div class="deal-thread-meta">Waiting on ${getDealCounterpartyLabel(state, thread.awaitingPlayerId)}.</div>`)
+    : '';
 
   return `
     <div class="deal-thread-card ${open ? 'open' : 'closed'}">
       <div class="deal-thread-head">
-        <div>
-          <div class="dashboard-list-title">${getDealCounterpartyLabel(state, counterpartyId)}</div>
-          <div class="dashboard-list-note">Version ${thread.revision}</div>
+        <div class="deal-thread-title">
+          <span class="dashboard-list-title">${getDealCounterpartyLabel(state, counterpartyId)}</span>
+          <span class="deal-thread-rev">v${thread.revision}</span>
         </div>
-        <span class="dashboard-tag ${open ? 'warm' : 'wary'}">${statusLabel}</span>
+        <span class="dashboard-tag ${statusTone}">${statusLabel}</span>
       </div>
       ${clauseHtml}
-      ${open ? `
-        <div class="deal-thread-actions">
-          ${awaitingViewer && !disabled ? `
-            <button class="appt-btn" data-action="deal-accept" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Accept</button>
-            <button class="btn-dismiss" data-action="deal-refuse" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Refuse</button>
-            <button class="btn-recruit" data-action="deal-open-counter" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}" data-counterparty-id="${counterpartyId}" data-counter-clauses="${encodeDealPayload(editableClauses)}">Change Offer</button>
-          ` : '<div class="dashboard-list-note">This offer is waiting on the other dynasty.</div>'}
-        </div>
-      ` : ''}
+      ${actionsHtml}
     </div>
+  `;
+}
+
+function groupDealThreads(threads, viewerId) {
+  const awaitingYou = [];
+  const awaitingThem = [];
+  const closed = [];
+  for (const thread of threads) {
+    if (thread.status !== 'open') closed.push(thread);
+    else if (thread.awaitingPlayerId === viewerId) awaitingYou.push(thread);
+    else awaitingThem.push(thread);
+  }
+  return { awaitingYou, awaitingThem, closed };
+}
+
+function renderDealThreadGroup(state, playerId, threads, label, disabled, options = {}) {
+  if (!threads.length) return '';
+  const collapsedAttr = options.collapsed ? '' : 'open';
+  return `
+    <details class="deal-thread-group" ${collapsedAttr}>
+      <summary class="deal-thread-group-summary">
+        <span>${label}</span>
+        <span class="deal-thread-group-count">${threads.length}</span>
+      </summary>
+      <div class="deal-thread-list">
+        ${threads.map((thread) => renderDealThreadCard(state, playerId, thread, disabled)).join('')}
+      </div>
+    </details>
   `;
 }
 
@@ -1285,26 +1337,31 @@ function renderDealsSection(state, playerId, privateData, courtAlreadyConfirmed)
   const eligibleIds = Array.isArray(privateData?.dealEligiblePlayerIds) ? privateData.dealEligiblePlayerIds : [];
   const counts = privateData?.dealCounts || { pendingInbox: 0, pendingOutbox: 0, activeObligations: 0 };
   const initialCounterpartyId = eligibleIds[0] ?? '';
+  const groups = groupDealThreads(dealThreads, playerId);
 
   const threadsHtml = dealThreads.length
-    ? `<div class="deal-thread-list">${dealThreads.map((thread) => renderDealThreadCard(state, playerId, thread, courtAlreadyConfirmed)).join('')}</div>`
-    : '<div class="dashboard-empty">No deals started yet this round.</div>';
+    ? `
+      ${renderDealThreadGroup(state, playerId, groups.awaitingYou, 'Awaiting your reply', courtAlreadyConfirmed)}
+      ${renderDealThreadGroup(state, playerId, groups.awaitingThem, 'Awaiting other dynasty', courtAlreadyConfirmed)}
+      ${renderDealThreadGroup(state, playerId, groups.closed, 'Settled this round', courtAlreadyConfirmed, { collapsed: true })}
+    `
+    : '<div class="dashboard-empty">No deals opened yet this round.</div>';
 
   if (!eligibleIds.length) {
     return `
-      <p class="section-hint">Formal deals are only available between human-controlled dynasties during Court.</p>
-      <div class="dashboard-list-note">Inbox ${counts.pendingInbox} | Outbox ${counts.pendingOutbox} | Active obligations ${counts.activeObligations}</div>
+      <p class="section-hint">No other dynasty is available to negotiate with right now.</p>
+      ${renderDealStatusPills(counts)}
       ${threadsHtml}
     `;
   }
 
   return `
-    <p class="section-hint">Build the deal one part at a time. Each part only shows the choices it actually needs. Accepted deals become binding automatically.</p>
-    <div class="dashboard-list-note">Inbox ${counts.pendingInbox} | Outbox ${counts.pendingOutbox} | Active obligations ${counts.activeObligations}</div>
+    <p class="section-hint">Negotiate binding multi-clause deals during Court. Each clause adds one promise; both sides must agree before anything fires.</p>
+    ${renderDealStatusPills(counts)}
     ${threadsHtml}
     <div class="deal-composer" data-deal-composer data-composer-mode="send" data-composer-thread-id="" data-composer-expected-revision="">
       <div class="deal-composer-head">
-        <span class="dashboard-list-title" data-deal-composer-title>Create Deal</span>
+        <span class="dashboard-list-title" data-deal-composer-title>New Offer</span>
         <button type="button" class="btn-secondary-link" data-action="deal-reset-composer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Clear</button>
       </div>
       <div class="deal-form-grid deal-counterparty-row">
@@ -1317,13 +1374,12 @@ function renderDealsSection(state, playerId, privateData, courtAlreadyConfirmed)
           </select>
         </label>
       </div>
-      <div class="deal-composer-note">The plain-language sentence below each part shows exactly what the promise means.</div>
       <div class="deal-clause-editor-list" data-deal-clause-list>
         ${renderDealClauseEditorRow(state, playerId, 0, null, initialCounterpartyId)}
       </div>
-      <div class="deal-thread-actions">
-        <button class="btn-recruit" data-action="deal-add-clause" ${courtAlreadyConfirmed ? 'disabled' : ''}>Add Another Part</button>
-        <button class="appt-btn" data-action="deal-submit-offer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Send Deal</button>
+      <div class="deal-composer-actions">
+        <button class="btn-recruit" data-action="deal-add-clause" ${courtAlreadyConfirmed ? 'disabled' : ''}>Add Clause</button>
+        <button class="appt-btn deal-submit" data-action="deal-submit-offer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Send Offer</button>
       </div>
     </div>
   `;
@@ -1484,8 +1540,8 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     uiSectionState,
     {
       defaultOpen: false,
-      badge: privateData?.dealCounts
-        ? `${privateData.dealCounts.pendingInbox}/${privateData.dealCounts.pendingOutbox}`
+      badge: privateData?.dealCounts?.pendingInbox > 0
+        ? `${privateData.dealCounts.pendingInbox} awaiting`
         : null,
     }
   );
@@ -1697,7 +1753,7 @@ function refreshDealRowIndices(root) {
   root.querySelectorAll('[data-deal-clause-row]').forEach((row, index) => {
     row.dataset.rowIndex = String(index);
     const title = row.querySelector('.deal-clause-title');
-    if (title) title.textContent = `Part ${index + 1}`;
+    if (title) title.textContent = `Clause ${index + 1}`;
   });
 }
 
@@ -1727,9 +1783,13 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
   };
 
   const attachRowListeners = (row) => {
+    const rerenderFields = new Set(['kind', 'direction', 'start-trigger']);
     row.querySelectorAll('[data-deal-field]').forEach((control) => {
+      if (control.tagName !== 'INPUT' && control.tagName !== 'SELECT') return;
+      // Skip the hidden inputs that back toggle widgets — toggles drive
+      // re-renders themselves via the click handler below.
+      if (control.type === 'hidden') return;
       const fieldName = control.dataset.dealField || '';
-      const rerenderFields = new Set(['kind', 'direction', 'start-trigger']);
       const eventName = control.tagName === 'INPUT' ? 'input' : 'change';
       control.addEventListener(eventName, () => {
         if (rerenderFields.has(fieldName)) {
@@ -1737,6 +1797,19 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
           return;
         }
         refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
+      });
+    });
+    row.querySelectorAll('[data-deal-toggle]').forEach((toggle) => {
+      const fieldName = toggle.dataset.dealToggle;
+      const hidden = toggle.querySelector(`input[data-deal-field="${fieldName}"]`);
+      toggle.querySelectorAll('.deal-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', (event) => {
+          event.preventDefault();
+          if (hidden) hidden.value = btn.dataset.dealToggleValue || '';
+          toggle.querySelectorAll('.deal-toggle-btn').forEach((other) => other.classList.toggle('selected', other === btn));
+          if (rerenderFields.has(fieldName)) rerenderSingleRow(row);
+          else refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
+        });
       });
     });
     row.querySelector('[data-action="deal-remove-clause"]')?.addEventListener('click', () => {
@@ -1754,8 +1827,8 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
     composer.dataset.composerMode = 'send';
     composer.dataset.composerThreadId = '';
     composer.dataset.composerExpectedRevision = '';
-    if (titleEl) titleEl.textContent = 'Create Deal';
-    if (submitButton) submitButton.textContent = 'Send Deal';
+    if (titleEl) titleEl.textContent = 'New Offer';
+    if (submitButton) submitButton.textContent = 'Send Offer';
     if (counterpartySelect) counterpartySelect.disabled = false;
     rerenderRows([{
       kind: 'gold',
@@ -1840,8 +1913,8 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
       composer.dataset.composerMode = 'counter';
       composer.dataset.composerThreadId = button.dataset.threadId || '';
       composer.dataset.composerExpectedRevision = button.dataset.threadRevision || '';
-      if (titleEl) titleEl.textContent = `Change Offer For ${getDealCounterpartyLabel(state, Number(counterpartyId))}`;
-      if (submitButton) submitButton.textContent = 'Send Updated Deal';
+      if (titleEl) titleEl.textContent = `Counter Offer to ${getDealCounterpartyLabel(state, Number(counterpartyId))}`;
+      if (submitButton) submitButton.textContent = 'Send Counter';
       if (counterpartySelect) {
         counterpartySelect.value = counterpartyId;
         counterpartySelect.disabled = true;

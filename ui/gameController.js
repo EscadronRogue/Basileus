@@ -50,7 +50,9 @@ export class GameController {
 
   async init() {
     this.state = createGameState(this.config);
-    setDealParticipantIds(this.state, this.config.humanPlayerIds);
+    // Every dynasty (human or AI) is a deal participant. Engine + AI brain
+    // already validate per-actor; gating belonged to UI copy, not state.
+    setDealParticipantIds(this.state, this.state.players.map((player) => player.id));
     if (this.config.mode === 'single') {
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
