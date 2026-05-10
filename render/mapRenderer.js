@@ -34,6 +34,8 @@ const MIN_THREAT_HATCH_SCALE = 0.001;
 const MIN_MAP_ZOOM = 1;
 const MAX_MAP_ZOOM = 4;
 const MAP_ZOOM_STEP = 1.2;
+const MAP_DRAG_THRESHOLD_PX = 4;
+const MIN_PINCH_DISTANCE_PX = 8;
 const SVG_PATH_TOKEN_PATTERN = /[A-Za-z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g;
 const PATH_PARAM_COUNTS = Object.freeze({
   M: 2,
@@ -61,16 +63,7 @@ let provinceSelectHandler = null;
 let hoveredProvinceId = null;
 let viewportLayer = null;
 let mapView = { zoom: 1, panX: 0, panY: 0 };
-let panState = {
-  active: false,
-  pointerId: null,
-  startClientX: 0,
-  startClientY: 0,
-  startPanX: 0,
-  startPanY: 0,
-  moved: false,
-  suppressClick: false,
-};
+let gestureState = createGestureState();
 
 export async function createMapSVG(containerId, options = {}) {
   const container = document.getElementById(containerId);
@@ -82,16 +75,7 @@ export async function createMapSVG(containerId, options = {}) {
   hoveredProvinceId = null;
   viewportLayer = null;
   mapView = { zoom: 1, panX: 0, panY: 0 };
-  panState = {
-    active: false,
-    pointerId: null,
-    startClientX: 0,
-    startClientY: 0,
-    startPanX: 0,
-    startPanY: 0,
-    moved: false,
-    suppressClick: false,
-  };
+  gestureState = createGestureState();
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`);
@@ -112,19 +96,21 @@ export async function createMapSVG(containerId, options = {}) {
   `;
 
   svg.addEventListener('pointermove', (event) => {
-    if (panState.active) {
-      updateMapPan(svg, event);
+    if (gestureState.pointers.has(event.pointerId)) {
+      updateMapGesture(svg, event);
       return;
     }
+
+    if (event.pointerType !== 'mouse') return;
 
     const provinceId = findProvinceAtClientPoint(svg, event.clientX, event.clientY);
     updateHoveredProvince(provinceId);
     updateMapCursor(svg, provinceId);
   });
 
-  svg.addEventListener('pointerdown', (event) => beginMapPan(svg, event));
-  svg.addEventListener('pointerup', (event) => endMapPan(svg, event));
-  svg.addEventListener('pointercancel', (event) => endMapPan(svg, event));
+  svg.addEventListener('pointerdown', (event) => beginMapGesture(svg, event));
+  svg.addEventListener('pointerup', (event) => endMapGesture(svg, event));
+  svg.addEventListener('pointercancel', (event) => endMapGesture(svg, event));
   svg.addEventListener('wheel', (event) => zoomMapAtPoint(svg, event), { passive: false });
   svg.addEventListener('dblclick', (event) => {
     event.preventDefault();
@@ -137,8 +123,8 @@ export async function createMapSVG(containerId, options = {}) {
   });
 
   svg.addEventListener('click', (event) => {
-    if (panState.suppressClick) {
-      panState.suppressClick = false;
+    if (gestureState.suppressClick) {
+      gestureState.suppressClick = false;
       return;
     }
 
@@ -1247,53 +1233,179 @@ function updateHoveredProvince(provinceId) {
   hoveredProvinceId = provinceId;
 }
 
-function beginMapPan(svg, event) {
-  if (event.button !== 0) return;
+function createGestureState() {
+  return {
+    mode: 'idle',
+    pointers: new Map(),
+    primaryPointerId: null,
+    startClientX: 0,
+    startClientY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    pinchStartDistance: 0,
+    pinchStartZoom: 1,
+    pinchContentX: 0,
+    pinchContentY: 0,
+    moved: false,
+    suppressClick: false,
+  };
+}
 
-  panState.active = true;
-  panState.pointerId = event.pointerId;
-  panState.startClientX = event.clientX;
-  panState.startClientY = event.clientY;
-  panState.startPanX = mapView.panX;
-  panState.startPanY = mapView.panY;
-  panState.moved = false;
+function beginMapGesture(svg, event) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
 
+  gestureState.pointers.set(event.pointerId, getEventClientPoint(event));
   svg.setPointerCapture?.(event.pointerId);
+
+  if (event.pointerType !== 'mouse') updateHoveredProvince(null);
+
+  if (gestureState.pointers.size >= 2) {
+    beginMapPinch(svg);
+  } else {
+    beginSinglePointerPan(event);
+  }
+
   updateMapCursor(svg, hoveredProvinceId);
+}
+
+function beginSinglePointerPan(event) {
+  gestureState.mode = 'pan';
+  gestureState.primaryPointerId = event.pointerId;
+  gestureState.startClientX = event.clientX;
+  gestureState.startClientY = event.clientY;
+  gestureState.startPanX = mapView.panX;
+  gestureState.startPanY = mapView.panY;
+}
+
+function beginMapPinch(svg) {
+  const pointers = getPrimaryGesturePointers();
+  if (pointers.length < 2) return;
+
+  const center = getClientCenter(pointers[0], pointers[1]);
+  const centerPoint = clientPointToSvg(svg, center.clientX, center.clientY);
+  if (!centerPoint) return;
+
+  const distance = getClientDistance(pointers[0], pointers[1]);
+  gestureState.mode = 'pinch';
+  gestureState.pinchStartDistance = Math.max(MIN_PINCH_DISTANCE_PX, distance);
+  gestureState.pinchStartZoom = mapView.zoom;
+  gestureState.pinchContentX = (centerPoint.x - mapView.panX) / mapView.zoom;
+  gestureState.pinchContentY = (centerPoint.y - mapView.panY) / mapView.zoom;
+}
+
+function updateMapGesture(svg, event) {
+  gestureState.pointers.set(event.pointerId, getEventClientPoint(event));
+
+  if (gestureState.pointers.size >= 2) {
+    updateMapPinch(svg);
+    return;
+  }
+
+  updateMapPan(svg, event);
 }
 
 function updateMapPan(svg, event) {
-  if (!panState.active || event.pointerId !== panState.pointerId || mapView.zoom <= 1.001) return;
+  if (gestureState.mode !== 'pan' || event.pointerId !== gestureState.primaryPointerId) return;
 
-  const startPoint = clientPointToSvg(svg, panState.startClientX, panState.startClientY);
-  const currentPoint = clientPointToSvg(svg, event.clientX, event.clientY);
-  if (!startPoint || !currentPoint) return;
-
-  mapView.panX = panState.startPanX + (currentPoint.x - startPoint.x);
-  mapView.panY = panState.startPanY + (currentPoint.y - startPoint.y);
-  clampMapView();
-  applyMapTransform();
-
-  if (Math.hypot(event.clientX - panState.startClientX, event.clientY - panState.startClientY) > 4) {
-    panState.moved = true;
+  const dragDistance = Math.hypot(event.clientX - gestureState.startClientX, event.clientY - gestureState.startClientY);
+  if (dragDistance > MAP_DRAG_THRESHOLD_PX) {
+    gestureState.moved = true;
     updateHoveredProvince(null);
   }
 
+  if (mapView.zoom <= 1.001) {
+    updateMapCursor(svg, null);
+    return;
+  }
+
+  const startPoint = clientPointToSvg(svg, gestureState.startClientX, gestureState.startClientY);
+  const currentPoint = clientPointToSvg(svg, event.clientX, event.clientY);
+  if (!startPoint || !currentPoint) return;
+
+  mapView.panX = gestureState.startPanX + (currentPoint.x - startPoint.x);
+  mapView.panY = gestureState.startPanY + (currentPoint.y - startPoint.y);
+  clampMapView();
+  applyMapTransform();
   updateMapCursor(svg, null);
 }
 
-function endMapPan(svg, event) {
-  if (!panState.active || (event && event.pointerId !== panState.pointerId)) return;
+function updateMapPinch(svg) {
+  const pointers = getPrimaryGesturePointers();
+  if (pointers.length < 2 || gestureState.mode !== 'pinch') return;
 
-  if (panState.moved) {
-    panState.suppressClick = true;
+  const distance = getClientDistance(pointers[0], pointers[1]);
+  const center = getClientCenter(pointers[0], pointers[1]);
+  const centerPoint = clientPointToSvg(svg, center.clientX, center.clientY);
+  if (!centerPoint || distance < MIN_PINCH_DISTANCE_PX) return;
+
+  const nextZoom = clampValue(
+    gestureState.pinchStartZoom * (distance / gestureState.pinchStartDistance),
+    MIN_MAP_ZOOM,
+    MAX_MAP_ZOOM,
+  );
+
+  mapView.zoom = nextZoom;
+  mapView.panX = centerPoint.x - gestureState.pinchContentX * mapView.zoom;
+  mapView.panY = centerPoint.y - gestureState.pinchContentY * mapView.zoom;
+  clampMapView();
+  applyMapTransform();
+
+  gestureState.moved = true;
+  updateHoveredProvince(null);
+  updateMapCursor(svg, null);
+}
+
+function endMapGesture(svg, event) {
+  if (!gestureState.pointers.has(event.pointerId)) return;
+
+  svg.releasePointerCapture?.(event.pointerId);
+  gestureState.pointers.delete(event.pointerId);
+
+  if (gestureState.mode === 'pinch' && gestureState.pointers.size === 1) {
+    const [remainingPointer] = gestureState.pointers.entries();
+    gestureState.primaryPointerId = remainingPointer[0];
+    gestureState.startClientX = remainingPointer[1].clientX;
+    gestureState.startClientY = remainingPointer[1].clientY;
+    gestureState.startPanX = mapView.panX;
+    gestureState.startPanY = mapView.panY;
+    gestureState.mode = 'pan';
+    updateMapCursor(svg, null);
+    return;
   }
 
-  svg.releasePointerCapture?.(panState.pointerId);
-  panState.active = false;
-  panState.pointerId = null;
-  panState.moved = false;
+  if (gestureState.mode === 'pinch' && gestureState.pointers.size >= 2) {
+    beginMapPinch(svg);
+    updateMapCursor(svg, null);
+    return;
+  }
+
+  if (gestureState.pointers.size > 0) return;
+
+  if (gestureState.moved) gestureState.suppressClick = true;
+
+  gestureState.mode = 'idle';
+  gestureState.primaryPointerId = null;
+  gestureState.moved = false;
   updateMapCursor(svg, hoveredProvinceId);
+}
+
+function getEventClientPoint(event) {
+  return { clientX: event.clientX, clientY: event.clientY };
+}
+
+function getPrimaryGesturePointers() {
+  return [...gestureState.pointers.values()].slice(0, 2);
+}
+
+function getClientCenter(first, second) {
+  return {
+    clientX: (first.clientX + second.clientX) / 2,
+    clientY: (first.clientY + second.clientY) / 2,
+  };
+}
+
+function getClientDistance(first, second) {
+  return Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
 }
 
 function zoomMapAtPoint(svg, event) {
@@ -1324,7 +1436,7 @@ function resetMapView(svg) {
   mapView.zoom = 1;
   mapView.panX = 0;
   mapView.panY = 0;
-  panState.suppressClick = true;
+  gestureState.suppressClick = true;
   applyMapTransform();
   updateHoveredProvince(null);
   updateMapCursor(svg, null);
@@ -1364,7 +1476,7 @@ function clientPointToSvg(svg, clientX, clientY) {
 }
 
 function updateMapCursor(svg, provinceId) {
-  if (panState.active && mapView.zoom > 1.001) {
+  if ((gestureState.mode === 'pinch' || gestureState.mode === 'pan') && mapView.zoom > 1.001) {
     svg.style.cursor = 'grabbing';
     return;
   }
