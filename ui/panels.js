@@ -1740,7 +1740,10 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
 function refreshDealClauseEditor(row, state, playerId, counterpartyId) {
   const preview = row.querySelector('[data-deal-preview]');
   if (!preview) return;
-  preview.textContent = summarizeDealDraft(state, playerId, counterpartyId, serializeDealRow(row));
+  // The preview embeds player-role HTML (badge/colour spans) like every other
+  // dynasty label in the panel. Use innerHTML so those render instead of
+  // appearing as literal markup.
+  preview.innerHTML = summarizeDealDraft(state, playerId, counterpartyId, serializeDealRow(row));
 }
 
 function buildCounterClauseRowsHtml(state, playerId, clauses = [], counterpartyId = null) {
@@ -2545,6 +2548,15 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
 
   if (options.allowManualTitleReassignment !== false && state.nextBasileusId !== null && state.nextBasileusId !== state.basileusId) {
     html += renderMajorTitleReassignmentSection(state);
+  }
+
+  html += `<div class="resolution-actions">
+    <button class="btn-continue" data-action="continue">Continue</button>
+  </div></div>`;
+
+  container.innerHTML = html;
+}
+ion(state);
   }
 
   html += `<div class="resolution-actions">
