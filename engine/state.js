@@ -107,7 +107,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
       professionalArmies: {},
       // Secret orders (filled during Orders phase)
       orders: null,
-      // Track self-appointment cooldown: { slotKey: lastRoundAppointed }
+      // Tracks whether this player's latest appointment was to themselves.
       appointmentCooldown: {},
     });
   }
@@ -229,6 +229,22 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
 // ─── Utility getters ───
 export function getPlayer(state, id) {
   return state.players.find(p => p.id === id);
+}
+
+export function hasSelfAppointmentLock(state, playerId) {
+  const marker = getPlayer(state, playerId)?.appointmentCooldown?.__SELF_ANY;
+  return marker === true || marker === state.round || marker === state.round - 1;
+}
+
+export function recordAppointmentChoice(state, appointerId, appointeeId) {
+  const appointer = getPlayer(state, appointerId);
+  if (!appointer) return;
+  if (!appointer.appointmentCooldown) appointer.appointmentCooldown = {};
+  if (Number(appointerId) === Number(appointeeId)) {
+    appointer.appointmentCooldown.__SELF_ANY = true;
+  } else {
+    delete appointer.appointmentCooldown.__SELF_ANY;
+  }
 }
 
 // Returns "FirstName Dynasty" if the player has a first name attached, else just the dynasty.

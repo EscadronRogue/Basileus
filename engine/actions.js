@@ -7,7 +7,9 @@ import {
   getOfficeDisplayName,
   getPlayerMercenaryTotal,
   getPlayerMercenaryTroops,
+  hasSelfAppointmentLock,
   MERCENARY_COMPANY_KEY,
+  recordAppointmentChoice,
 } from './state.js';
 import { recordHistoryEvent } from './history.js';
 import {
@@ -31,24 +33,12 @@ function canOfficeHoldProfessionals(officeKey) {
   return !PROFESSIONAL_BANNED_OFFICES.has(officeKey);
 }
 
-function usedGenericSelfAppointmentLastRound(state, playerId) {
-  return getPlayer(state, playerId)?.appointmentCooldown?.__SELF_ANY === state.round - 1;
-}
-
 function validateGenericSelfAppointment(state, appointerId, appointeeId) {
-  if (appointerId !== appointeeId) return { ok: true };
-  if (usedGenericSelfAppointmentLastRound(state, appointerId)) {
-    return { ok: false, reason: 'Cannot appoint yourself in two consecutive rounds.' };
+  if (Number(appointerId) !== Number(appointeeId)) return { ok: true };
+  if (hasSelfAppointmentLock(state, appointerId)) {
+    return { ok: false, reason: 'Cannot appoint yourself again until you appoint someone else.' };
   }
   return { ok: true };
-}
-
-function markGenericSelfAppointment(state, appointerId, appointeeId) {
-  if (appointerId !== appointeeId) return;
-  const appointer = getPlayer(state, appointerId);
-  if (!appointer) return;
-  if (!appointer.appointmentCooldown) appointer.appointmentCooldown = {};
-  appointer.appointmentCooldown.__SELF_ANY = state.round;
 }
 
 function playerName(state, playerId) {
@@ -230,8 +220,8 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
   const officeKey = `STRAT_${themeId}`;
   theme.strategos = appointeeId;
   transferOfficeArmy(state, officeKey, appointeeId, 1);
-  markGenericSelfAppointment(state, appointerId, appointeeId);
   consumeAppointmentPromise(state, appointerId, appointeeId);
+  recordAppointmentChoice(state, appointerId, appointeeId);
   state.log.push({ type: 'appoint_strategos', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -268,8 +258,8 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
   if (!dealCheck.ok) return dealCheck;
 
   theme.bishop = appointeeId;
-  markGenericSelfAppointment(state, appointerId, appointeeId);
   consumeAppointmentPromise(state, appointerId, appointeeId);
+  recordAppointmentChoice(state, appointerId, appointeeId);
   state.log.push({ type: 'appoint_bishop', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -302,8 +292,8 @@ export function appointCourtTitle(state, titleType, appointeeId) {
     return { ok: false, reason: 'Invalid court title' };
   }
 
-  markGenericSelfAppointment(state, state.basileusId, appointeeId);
   consumeAppointmentPromise(state, state.basileusId, appointeeId);
+  recordAppointmentChoice(state, state.basileusId, appointeeId);
   state.log.push({ type: 'appoint_court', title: titleType, appointee: appointeeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',

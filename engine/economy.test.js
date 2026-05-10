@@ -6,7 +6,9 @@ import { createGameState, makeRng, MERCENARY_COMPANY_KEY, rollInvasionStrength }
 import { runAdministration } from './cascade.js';
 import { phaseAdministration, phaseCleanup, phaseInvasion, phaseResolution, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
 import {
+  appointBishop,
   appointCourtTitle,
+  appointStrategos,
   buyTheme,
   canRecruitProfessional,
   grantTaxExemption,
@@ -552,6 +554,56 @@ test('appointment promises carry forward until a legal appointment is made to th
   const promisedAppointee = appointCourtTitle(state, 'EMPRESS', 1);
   assert.equal(promisedAppointee.ok, true);
   assert.equal(state.empress, 1);
+  assert.equal(state.activeDealObligations.length, 0);
+});
+
+test('self appointments stay locked until the appointer appoints someone else', () => {
+  const state = makeDealState([makeTheme('OPS')]);
+
+  const firstSelf = appointCourtTitle(state, 'EMPRESS', 0);
+  assert.equal(firstSelf.ok, true);
+
+  state.round = 2;
+  const secondSelf = appointCourtTitle(state, 'CHIEF_EUNUCHS', 0);
+  assert.equal(secondSelf.ok, false);
+  assert.match(secondSelf.reason, /until you appoint someone else/i);
+
+  const otherCourtTitle = appointCourtTitle(state, 'CHIEF_EUNUCHS', 1);
+  assert.equal(otherCourtTitle.ok, true);
+
+  const selfStrategos = appointStrategos(state, 0, 'OPS', 0);
+  assert.equal(selfStrategos.ok, true);
+
+  const sameTurnSelfBishop = appointBishop(state, 0, 'OPS', 0);
+  assert.equal(sameTurnSelfBishop.ok, false);
+  assert.match(sameTurnSelfBishop.reason, /until you appoint someone else/i);
+
+  const otherBishop = appointBishop(state, 0, 'OPS', 2);
+  assert.equal(otherBishop.ok, true);
+  assert.equal(state.players[0].appointmentCooldown.__SELF_ANY, undefined);
+});
+
+test('self appointment promises wait while self is locked and consume once legal', () => {
+  const state = makeDealState();
+  state.players[0].appointmentCooldown.__SELF_ANY = true;
+  state.activeDealObligations = [{
+    kind: 'appointment_promise',
+    status: 'active',
+    giverId: 0,
+    receiverId: 0,
+    remainingAppointments: 1,
+  }];
+
+  const clearingAppointment = appointCourtTitle(state, 'EMPRESS', 1);
+  assert.equal(clearingAppointment.ok, true);
+  assert.equal(state.activeDealObligations[0].remainingAppointments, 1);
+
+  const wrongAppointee = appointCourtTitle(state, 'CHIEF_EUNUCHS', 2);
+  assert.equal(wrongAppointee.ok, false);
+  assert.match(wrongAppointee.reason, /owes the next legal appointment/i);
+
+  const selfAppointment = appointCourtTitle(state, 'CHIEF_EUNUCHS', 0);
+  assert.equal(selfAppointment.ok, true);
   assert.equal(state.activeDealObligations.length, 0);
 });
 

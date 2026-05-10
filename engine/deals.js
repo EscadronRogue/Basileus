@@ -4,6 +4,7 @@ import {
   getOfficeDisplayName,
   getPlayer,
   getPlayerMercenaryTroops,
+  hasSelfAppointmentLock,
   MERCENARY_COMPANY_KEY,
 } from './state.js';
 
@@ -1049,8 +1050,8 @@ export function validateAppointmentPromiseChoice(state, appointerId, appointeeId
   if (!obligation) return { ok: true };
 
   const beneficiaryId = obligation.receiverId;
-  const beneficiarySelfLocked = beneficiaryId === appointerId
-    && getPlayer(state, appointerId)?.appointmentCooldown?.__SELF_ANY === state.round - 1;
+  const beneficiarySelfLocked = Number(beneficiaryId) === Number(appointerId)
+    && hasSelfAppointmentLock(state, appointerId);
   if (beneficiarySelfLocked) return { ok: true };
 
   if (Number(appointeeId) !== Number(beneficiaryId)) {
@@ -1068,8 +1069,8 @@ export function consumeAppointmentPromise(state, appointerId, appointeeId) {
   ));
   if (!obligation) return;
   if (Number(obligation.receiverId) !== Number(appointeeId)) return;
-  const beneficiarySelfLocked = obligation.receiverId === appointerId
-    && getPlayer(state, appointerId)?.appointmentCooldown?.__SELF_ANY === state.round - 1;
+  const beneficiarySelfLocked = Number(obligation.receiverId) === Number(appointerId)
+    && hasSelfAppointmentLock(state, appointerId);
   if (beneficiarySelfLocked) return;
   obligation.remainingAppointments = Math.max(0, (Number(obligation.remainingAppointments) || 0) - 1);
   if (obligation.remainingAppointments <= 0) {

@@ -7,6 +7,7 @@ import {
   formatPlayerLabel,
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
+  hasSelfAppointmentLock,
   MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
 import { recordHistoryEvent, updateHistoryEvent } from '../engine/history.js';
@@ -1505,9 +1506,11 @@ function registerFavor(meta, actorId, recipientId, amount) {
 function handleBasileusAppointment(state, meta) {
   const actorId = state.basileusId;
   const themes = Object.values(state.themes).filter(theme => !theme.occupied && theme.id !== 'CPL');
+  const selfLocked = hasSelfAppointmentLock(state, actorId);
   const options = [];
 
   for (const appointee of state.players) {
+    if (selfLocked && appointee.id === actorId) continue;
     options.push({ type: 'EMPRESS', appointeeId: appointee.id });
     options.push({ type: 'CHIEF_EUNUCHS', appointeeId: appointee.id });
     for (const theme of themes) {
@@ -1572,6 +1575,7 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
   }
 
   const region = MAJOR_TITLES[titleKey].region;
+  const selfLocked = hasSelfAppointmentLock(state, actorId);
   const themes = Object.values(state.themes).filter(theme =>
     theme.region === region &&
     !theme.occupied &&
@@ -1581,6 +1585,7 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
   const options = [];
   for (const theme of themes) {
     for (const appointee of state.players) {
+      if (selfLocked && appointee.id === actorId) continue;
       options.push({ themeId: theme.id, appointeeId: appointee.id });
     }
   }
@@ -1633,10 +1638,12 @@ function handlePatriarchAppointment(state, meta) {
   const actorId = state.players.find(player => player.majorTitles.includes('PATRIARCH'))?.id ?? null;
   if (actorId == null) return markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch');
 
+  const selfLocked = hasSelfAppointmentLock(state, actorId);
   const themes = Object.values(state.themes).filter(theme => !theme.occupied && theme.id !== 'CPL' && !theme.bishopIsDonor);
   const options = [];
   for (const theme of themes) {
     for (const appointee of state.players) {
+      if (selfLocked && appointee.id === actorId) continue;
       options.push({ themeId: theme.id, appointeeId: appointee.id });
     }
   }

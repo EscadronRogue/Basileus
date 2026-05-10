@@ -20,6 +20,7 @@ import {
   getOfficeMercenaryCount,
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
+  hasSelfAppointmentLock,
   MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
 import { summarizeDealClause } from '../engine/deals.js';
@@ -287,11 +288,9 @@ function countMinorTitles(state, playerId) {
   return count;
 }
 
-function selfAppointmentOnCooldown(state, appointerId) {
+function selfAppointmentLocked(state, appointerId) {
   if (appointerId == null) return false;
-  const appointer = getPlayer(state, appointerId);
-  if (!appointer) return false;
-  return appointer.appointmentCooldown?.__SELF_ANY === state.round - 1;
+  return hasSelfAppointmentLock(state, appointerId);
 }
 
 function getSelectablePlayers(state, selectedId, options = {}) {
@@ -318,10 +317,10 @@ function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
 }
 
 function selfAppointmentNotice(state, appointerId) {
-  if (!selfAppointmentOnCooldown(state, appointerId)) return '';
-  return `<div class="self-appoint-lockout" title="You appointed yourself last round.">
+  if (!selfAppointmentLocked(state, appointerId)) return '';
+  return `<div class="self-appoint-lockout" title="You must appoint someone else before appointing yourself again.">
     <span class="self-appoint-lockout-icon">!</span>
-    <span>You cannot appoint yourself this round (you self-appointed last round).</span>
+    <span>You cannot appoint yourself again until you appoint someone else.</span>
   </div>`;
 }
 
@@ -1496,7 +1495,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += renderFoldSection(
     'court:appointments',
     'Appointments',
-    `<p class="section-hint">The Basileus appoints one minor title (Empress, Chief of Eunuchs, a Strategos or a Bishop). Each Domestic / Admiral appoints one Strategos in their region. The Patriarch appoints one Bishop. You cannot appoint yourself two rounds in a row.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
+    `<p class="section-hint">The Basileus appoints one minor title (Empress, Chief of Eunuchs, a Strategos or a Bishop). Each Domestic / Admiral appoints one Strategos in their region. The Patriarch appoints one Bishop. After appointing yourself, you must appoint someone else before appointing yourself again.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
     uiSectionState,
     {
       defaultOpen: true,
@@ -1952,9 +1951,9 @@ function renderBasileusAppointments(state, selectedProvinceId) {
   const selectableThemes = [...getOpenStrategosThemes(state), ...getOpenBishopThemes(state)];
   const defaultThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId);
   const appointerId = state.basileusId;
-  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
+  const selfLocked = selfAppointmentLocked(state, appointerId);
 
-  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
+  return `<div class="appointment-block${selfLocked ? ' has-self-lockout' : ''}">
     <span class="appt-label">Basileus: choose one court title or province office to appoint.</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
@@ -1967,7 +1966,7 @@ function renderBasileusAppointments(state, selectedProvinceId) {
           <div data-role="theme-choice-buttons"></div>
           <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
         </div>`,
-        renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: onCooldown ? appointerId : undefined })
+        renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: selfLocked ? appointerId : undefined })
       )}
       <button class="appt-btn" data-action="commit-basileus-appt">Appoint</button>
     </div>
@@ -1995,15 +1994,15 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     </div>`;
   }
 
-  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
+  const selfLocked = selfAppointmentLocked(state, appointerId);
 
-  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
+  return `<div class="appointment-block${selfLocked ? ' has-self-lockout' : ''}">
     <span class="appt-label">${title.name}: choose a province and appoint its Strategos.</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })
+        renderPlayerChoiceControl(state, null, undefined, { excludeId: selfLocked ? appointerId : undefined })
       )}
       <button class="appt-btn strategos-commit" data-titlekey="${titleKey}">Appoint</button>
     </div>
@@ -2028,15 +2027,15 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
     </div>`;
   }
 
-  const onCooldown = selfAppointmentOnCooldown(state, appointerId);
+  const selfLocked = selfAppointmentLocked(state, appointerId);
 
-  return `<div class="appointment-block${onCooldown ? ' has-self-lockout' : ''}">
+  return `<div class="appointment-block${selfLocked ? ' has-self-lockout' : ''}">
     <span class="appt-label">Patriarch: choose a province and appoint its Bishop.</span>
     ${selfAppointmentNotice(state, appointerId)}
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, undefined, { excludeId: onCooldown ? appointerId : undefined })
+        renderPlayerChoiceControl(state, null, undefined, { excludeId: selfLocked ? appointerId : undefined })
       )}
       <button class="appt-btn bishop-commit">Appoint</button>
     </div>
