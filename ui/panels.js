@@ -2556,12 +2556,3 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
 
   container.innerHTML = html;
 }
-ion(state);
-  }
-
-  html += `<div class="resolution-actions">
-    <button class="btn-continue" data-action="continue">Continue</button>
-  </div></div>`;
-
-  container.innerHTML = html;
-}
