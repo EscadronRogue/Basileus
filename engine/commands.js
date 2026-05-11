@@ -74,8 +74,8 @@ export function applyCourtAction(state, playerId, payload = {}) {
   }
 
   if (action === 'buy') {
-    const result = buyTheme(state, playerId, payload.themeId);
-    if (!result?.ok) return fail(result?.reason || 'Could not buy that estate.');
+    const result = buyTheme(state, playerId, payload.themeId, payload.amount);
+    if (!result?.ok) return fail(result?.reason || 'Could not bid on that estate.');
     return { ok: true };
   }
 
@@ -121,7 +121,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
 
   if (action === 'basileus-appoint') {
     if (playerId !== state.basileusId) return fail('Only the Basileus can use this appointment.');
-    if (state.courtActions?.basileusAppointed) return fail('The Basileus already made the mandatory appointment.');
 
     const titleType = payload.titleType;
     const appointeeId = Number(payload.appointeeId);

@@ -1,6 +1,5 @@
 import { createGameState, getPlayerThemes } from '../engine/state.js';
-import { runAdministration } from '../engine/cascade.js';
-import { computeFullWealth } from '../engine/actions.js';
+import { buildFinalScores as buildEngineFinalScores } from '../engine/scoring.js';
 import {
   createAIMeta,
   SUPPORTED_PLAYER_COUNTS,
@@ -243,25 +242,28 @@ function recordResolvedRound(state, meta, recordedRounds) {
 }
 
 function buildFinalScores(state, meta) {
-  const projectedAdministration = runAdministration(state);
-  const scores = state.players.map(player => {
-    const projectedIncome = projectedAdministration.income[player.id] || 0;
+  const finalScores = buildEngineFinalScores(state);
+  const scores = finalScores.scores.map(score => {
+    const player = score.player;
+    const projectedIncome = score.projectedIncome || 0;
     return {
       playerId: player.id,
       dynasty: player.dynasty,
       personalityId: meta.players[player.id].personalityId,
       gold: player.gold,
       projectedIncome,
-      wealth: computeFullWealth(state, player.id, projectedIncome),
+      wealth: score.points,
+      points: score.points,
+      categories: score.categories,
       themes: getPlayerThemes(state, player.id).length,
       majorTitles: player.majorTitles.slice(),
       minorTitles: getMinorTitleCount(state, player.id),
       professionalTroops: getPlayerProfessionalCount(player),
       basileus: state.basileusId === player.id,
     };
-  }).sort((left, right) => right.wealth - left.wealth);
+  });
 
-  const topWealth = scores[0]?.wealth ?? 0;
+  const topWealth = finalScores.topScore;
   const winners = scores.filter(score => score.wealth === topWealth);
   return { scores, winners, topWealth };
 }
@@ -609,7 +611,7 @@ function buildHighlights(report) {
 
   if (bestScenario) {
     highlights.push(
-      `Most resilient scenario: ${bestScenario.label} finished with only ${roundTo(bestScenario.empireFallRate * 100, 1)}% empire falls and an average winner wealth of ${roundTo(bestScenario.averageWinnerWealth, 1)}.`
+      `Most resilient scenario: ${bestScenario.label} finished with only ${roundTo(bestScenario.empireFallRate * 100, 1)}% empire falls and an average winner score of ${roundTo(bestScenario.averageWinnerWealth, 1)}.`
     );
   }
 

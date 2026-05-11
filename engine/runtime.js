@@ -219,6 +219,7 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
     courtMode: options.finalize ? 'finish' : (options.courtMode || 'react'),
     pendingAiTitleAssignment: context.pendingAiTitleAssignment,
   }));
+  if (!aiMeta) maybeAdvanceCourt(state, aiMeta);
   return { ...result, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 
@@ -234,6 +235,7 @@ export function handleHumanCourtConfirmation(state, aiMeta, context = {}, player
     courtMode: 'finish',
     pendingAiTitleAssignment: context.pendingAiTitleAssignment,
   }));
+  if (!aiMeta) maybeAdvanceCourt(state, aiMeta);
   return { ...result, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 

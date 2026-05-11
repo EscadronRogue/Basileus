@@ -1,7 +1,15 @@
 ﻿// ui/panels.js â€” Interactive UI panels: Court, Orders, player dashboard
 import { MAJOR_TITLES } from '../data/titles.js';
 import { runAdministration } from '../engine/cascade.js';
-import { canGrantTaxExemption, canRecruitProfessional, suggestMajorTitleAssignments } from '../engine/actions.js';
+import {
+  canGrantTaxExemption,
+  canPayAppointmentCost,
+  canRecruitProfessional,
+  getLandAuction,
+  getMinimumLandBid,
+  getNextAppointmentCost,
+  suggestMajorTitleAssignments,
+} from '../engine/actions.js';
 import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
@@ -20,7 +28,6 @@ import {
   getOfficeMercenaryCount,
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
-  hasSelfAppointmentLock,
   MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
 import { summarizeDealClause } from '../engine/deals.js';
@@ -52,16 +59,38 @@ function renderThemeChoiceButtons(state, themes, selectedId) {
   `).join('');
 }
 
+function getDraftBucket(uiState, state, scope, playerId) {
+  if (!uiState) return {};
+  if (!uiState.drafts) uiState.drafts = {};
+  const key = `${scope}:${state.round}:${playerId}`;
+  if (!uiState.drafts[key]) uiState.drafts[key] = {};
+  return uiState.drafts[key];
+}
+
+function ensureNestedDraft(draft, key) {
+  if (!draft[key] || typeof draft[key] !== 'object') draft[key] = {};
+  return draft[key];
+}
+
+function pickStableThemeId(themes, draft, key) {
+  if (!themes.length) return '';
+  if (themes.some((theme) => theme.id === draft?.[key])) return draft[key];
+  const picked = themes[Math.floor(Math.random() * themes.length)]?.id || themes[0].id;
+  if (draft) draft[key] = picked;
+  return picked;
+}
+
 function renderThemeChoiceControl(state, themes, inputId, selectedId, options = {}) {
   const fallbackId = themes[0]?.id || '';
   const normalizedSelectedId = themes.some((theme) => theme.id === selectedId) ? selectedId : fallbackId;
   const inputIdAttr = inputId ? ` id="${inputId}"` : '';
   const extraClass = options.className ? ` ${options.className}` : '';
   const hidden = options.hidden ? ' style="display:none"' : '';
+  const draftField = options.draftField ? ` data-draft-field="${options.draftField}"` : '';
   return `
     <div class="province-choice-grid${extraClass}" data-theme-choice-group${hidden}>
       ${renderThemeChoiceButtons(state, themes, normalizedSelectedId)}
-      <input type="hidden"${inputIdAttr} class="appt-theme-select" value="${normalizedSelectedId}">
+      <input type="hidden"${inputIdAttr}${draftField} class="appt-theme-select" value="${normalizedSelectedId}">
     </div>`;
 }
 
@@ -288,11 +317,6 @@ function countMinorTitles(state, playerId) {
   return count;
 }
 
-function selfAppointmentLocked(state, appointerId) {
-  if (appointerId == null) return false;
-  return hasSelfAppointmentLock(state, appointerId);
-}
-
 function getSelectablePlayers(state, selectedId, options = {}) {
   const excludeId = options.excludeId;
   const players = state.players.filter((player) => excludeId == null || player.id !== excludeId);
@@ -314,14 +338,6 @@ function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
       `).join('')}
       <input type="hidden"${inputIdAttr} class="appt-player-select" value="${normalizedSelectedId}">
     </div>`;
-}
-
-function selfAppointmentNotice(state, appointerId) {
-  if (!selfAppointmentLocked(state, appointerId)) return '';
-  return `<div class="self-appoint-lockout" title="You must appoint someone else before appointing yourself again.">
-    <span class="self-appoint-lockout-icon">!</span>
-    <span>You cannot appoint yourself again until you appoint someone else.</span>
-  </div>`;
 }
 
 function renderAppointmentColumn(label, bodyHtml) {
@@ -373,8 +389,13 @@ function getProvinceSummary(state, provinceId) {
   };
 }
 
-function getSuggestedThemeId(themes, selectedProvinceId) {
-  return themes.some(theme => theme.id === selectedProvinceId) ? selectedProvinceId : '';
+function getSuggestedThemeId(themes, selectedProvinceId, draft = null, draftKey = 'themeId') {
+  if (themes.some(theme => theme.id === draft?.[draftKey])) return draft[draftKey];
+  if (themes.some(theme => theme.id === selectedProvinceId)) {
+    if (draft) draft[draftKey] = selectedProvinceId;
+    return selectedProvinceId;
+  }
+  return pickStableThemeId(themes, draft, draftKey);
 }
 
 function getOpenStrategosThemes(state, region = null) {
@@ -715,7 +736,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     'dashboard:finance',
     'Finances',
     `
-      <p class="section-hint">Gold on hand at game-end (plus your final projected income) decides the winner. Estate income comes from provinces you own; office income comes from titles via the tax cascade.</p>
+      <p class="section-hint">Final points come from rank in four shares: church income, estate income, tax income, and gold reserves.</p>
       <div class="finance-grid">
         <div class="finance-card" title="Gold currently in your treasury.">
           <span class="finance-label">Current gold</span>
@@ -1133,6 +1154,47 @@ function serializeDealRow(row) {
   };
 }
 
+function createDefaultDealClause(playerId) {
+  return {
+    kind: 'gold',
+    direction: 'give',
+    startTriggerType: 'immediate',
+    triggerPlayerId: '',
+    amount: 1,
+    durationTurns: 1,
+    troopCount: 1,
+    candidateId: playerId,
+    themeId: '',
+    appointmentCount: 1,
+  };
+}
+
+function normalizeDealDraft(dealDraft, playerId, eligibleIds) {
+  if (!dealDraft || typeof dealDraft !== 'object') {
+    return {
+      mode: 'send',
+      threadId: '',
+      expectedRevision: '',
+      counterpartyId: eligibleIds[0] ?? '',
+      clauses: [createDefaultDealClause(playerId)],
+    };
+  }
+
+  const counterpartyId = eligibleIds.some((id) => String(id) === String(dealDraft.counterpartyId))
+    ? dealDraft.counterpartyId
+    : eligibleIds[0] ?? '';
+  const mode = dealDraft.mode === 'counter' ? 'counter' : 'send';
+  const clauses = Array.isArray(dealDraft.clauses) && dealDraft.clauses.length
+    ? dealDraft.clauses
+    : [createDefaultDealClause(playerId)];
+  dealDraft.mode = mode;
+  dealDraft.threadId = mode === 'counter' ? dealDraft.threadId || '' : '';
+  dealDraft.expectedRevision = mode === 'counter' ? dealDraft.expectedRevision || '' : '';
+  dealDraft.counterpartyId = counterpartyId;
+  dealDraft.clauses = clauses;
+  return dealDraft;
+}
+
 function renderDealToggle(fieldName, options, selectedValue) {
   return `
     <div class="deal-toggle" data-deal-toggle="${fieldName}">
@@ -1331,11 +1393,13 @@ function renderDealThreadGroup(state, playerId, threads, label, disabled, option
   `;
 }
 
-function renderDealsSection(state, playerId, privateData, courtAlreadyConfirmed) {
+function renderDealsSection(state, playerId, privateData, courtAlreadyConfirmed, dealDraft = {}) {
   const dealThreads = Array.isArray(privateData?.dealThreads) ? privateData.dealThreads : [];
   const eligibleIds = Array.isArray(privateData?.dealEligiblePlayerIds) ? privateData.dealEligiblePlayerIds : [];
   const counts = privateData?.dealCounts || { pendingInbox: 0, pendingOutbox: 0, activeObligations: 0 };
-  const initialCounterpartyId = eligibleIds[0] ?? '';
+  const normalizedDraft = normalizeDealDraft(dealDraft, playerId, eligibleIds);
+  const initialCounterpartyId = normalizedDraft.counterpartyId;
+  const isCounterMode = normalizedDraft.mode === 'counter';
   const groups = groupDealThreads(dealThreads, playerId);
 
   const threadsHtml = dealThreads.length
@@ -1358,27 +1422,27 @@ function renderDealsSection(state, playerId, privateData, courtAlreadyConfirmed)
     <p class="section-hint">Negotiate binding multi-clause deals during Court. Each clause adds one promise; both sides must agree before anything fires.</p>
     ${renderDealStatusPills(counts)}
     ${threadsHtml}
-    <div class="deal-composer" data-deal-composer data-composer-mode="send" data-composer-thread-id="" data-composer-expected-revision="">
+    <div class="deal-composer" data-deal-composer data-composer-mode="${normalizedDraft.mode}" data-composer-thread-id="${normalizedDraft.threadId || ''}" data-composer-expected-revision="${normalizedDraft.expectedRevision || ''}">
       <div class="deal-composer-head">
-        <span class="dashboard-list-title" data-deal-composer-title>New Offer</span>
+        <span class="dashboard-list-title" data-deal-composer-title>${isCounterMode ? `Counter Offer to ${getDealCounterpartyLabel(state, Number(initialCounterpartyId))}` : 'New Offer'}</span>
         <button type="button" class="btn-secondary-link" data-action="deal-reset-composer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Clear</button>
       </div>
       <div class="deal-form-grid deal-counterparty-row">
         <label class="deal-field">
           <span>Deal with</span>
-          <select class="appt-select" data-deal-composer-counterparty ${courtAlreadyConfirmed ? 'disabled' : ''}>
+          <select class="appt-select" data-deal-composer-counterparty ${courtAlreadyConfirmed || isCounterMode ? 'disabled' : ''}>
             ${eligibleIds.map((eligibleId) => `
-              <option value="${eligibleId}">${getDealCounterpartyLabel(state, eligibleId)}</option>
+              <option value="${eligibleId}" ${String(eligibleId) === String(initialCounterpartyId) ? 'selected' : ''}>${getDealCounterpartyLabel(state, eligibleId)}</option>
             `).join('')}
           </select>
         </label>
       </div>
       <div class="deal-clause-editor-list" data-deal-clause-list>
-        ${renderDealClauseEditorRow(state, playerId, 0, null, initialCounterpartyId)}
+        ${buildCounterClauseRowsHtml(state, playerId, normalizedDraft.clauses, initialCounterpartyId)}
       </div>
       <div class="deal-composer-actions">
         <button class="btn-recruit" data-action="deal-add-clause" ${courtAlreadyConfirmed ? 'disabled' : ''}>Add Clause</button>
-        <button class="appt-btn deal-submit" data-action="deal-submit-offer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Send Offer</button>
+        <button class="appt-btn deal-submit" data-action="deal-submit-offer" ${courtAlreadyConfirmed ? 'disabled' : ''}>${isCounterMode ? 'Send Counter' : 'Send Offer'}</button>
       </div>
     </div>
   `;
@@ -1414,16 +1478,19 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   const selectedProvinceId = options.selectedProvinceId || null;
   const uiSectionState = options.uiState || null;
   const privateData = options.privateData || null;
+  const courtDraft = getDraftBucket(uiSectionState, state, 'court', activePlayerId);
+  const appointmentDraft = ensureNestedDraft(courtDraft, 'appointments');
+  const landBidDraft = ensureNestedDraft(courtDraft, 'landBids');
 
   const appointmentParts = [];
   if (isBasileus) {
-    appointmentParts.push(renderBasileusAppointments(state, selectedProvinceId));
+    appointmentParts.push(renderBasileusAppointments(state, selectedProvinceId, appointmentDraft.basileus || (appointmentDraft.basileus = {})));
   }
   for (const titleKey of player.majorTitles) {
     if (titleKey === 'PATRIARCH') {
-      appointmentParts.push(renderPatriarchAppointment(state, selectedProvinceId, activePlayerId));
+      appointmentParts.push(renderPatriarchAppointment(state, selectedProvinceId, activePlayerId, appointmentDraft.patriarch || (appointmentDraft.patriarch = {})));
     } else {
-      appointmentParts.push(renderStrategosAppointment(state, titleKey, selectedProvinceId, activePlayerId));
+      appointmentParts.push(renderStrategosAppointment(state, titleKey, selectedProvinceId, activePlayerId, appointmentDraft[titleKey] || (appointmentDraft[titleKey] = {})));
     }
   }
 
@@ -1432,17 +1499,31 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   const taxExemptionThemes = getTaxExemptionCandidates(state, activePlayerId);
   const courtAlreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
   const estatesBody = `
-    <p class="section-hint">Buy a free province for 2&times;P (its profit). The owner collects P each Administration and the province raises one fewer levy.</p>
+    <p class="section-hint">Bid on free provinces. The first bid must be at least 2&times;P; later bids must be higher. Gold is paid into escrow immediately and refunded if another dynasty overbids you.</p>
     ${availableThemes.length ? `
       <div class="theme-market">
         ${availableThemes.map((theme) => {
-          const cost = getThemeLandPrice(theme);
-          const canAfford = player.gold >= cost;
-          return `<button class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}"
-            data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
+          const auction = getLandAuction(state, theme.id);
+          const minimumBid = getMinimumLandBid(state, theme.id);
+          const draftAmount = Number(landBidDraft[theme.id]);
+          const bidAmount = Number.isFinite(draftAmount) && draftAmount >= minimumBid ? draftAmount : minimumBid;
+          landBidDraft[theme.id] = bidAmount;
+          const dueNow = auction?.bidderId === activePlayerId ? bidAmount - auction.amount : bidAmount;
+          const canAfford = player.gold >= dueNow;
+          const highBid = auction
+            ? `<span class="market-bid">High bid: ${formatGold(auction.amount)} by ${renderPlayerRoleNameById(state, auction.bidderId, 'Unknown')}</span>`
+            : '<span class="market-bid">No bids yet</span>';
+          return `<div class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}">
             <span class="market-name">${renderProvinceBadge(state, theme, { showValues: true })}</span>
-            <span class="market-cost">${formatGold(cost)}</span>
-          </button>`;
+            ${highBid}
+            <label class="market-bid-control">
+              <span>Bid</span>
+              <input class="market-bid-input" type="number" min="${minimumBid}" step="1" value="${bidAmount}" data-bid-theme="${theme.id}">
+            </label>
+            <button class="market-bid-btn ${canAfford ? '' : 'disabled'}" data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
+              Offer ${formatGold(dueNow)} now
+            </button>
+          </div>`;
         }).join('')}
       </div>
     ` : '<div class="dashboard-empty">No free estates are available to buy right now.</div>'}
@@ -1483,7 +1564,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   }
 
   if (isBasileus) {
-    privilegeParts.push(renderRevocationOptions(state));
+    privilegeParts.push(renderRevocationOptions(state, courtDraft));
   }
 
   let courtHtml = `<div class="court-panel">
@@ -1495,7 +1576,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += renderFoldSection(
     'court:appointments',
     'Appointments',
-    `<p class="section-hint">The Basileus appoints one minor title (Empress, Chief of Eunuchs, a Strategos or a Bishop). Each Domestic / Admiral appoints one Strategos in their region. The Patriarch appoints one Bishop. After appointing yourself, you must appoint someone else before appointing yourself again.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
+    `<p class="section-hint">The first appointment to each recipient is free each round. Repeat appointments to the same recipient cost 1 troop, then 2, and so on, spent from offices you control.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
     uiSectionState,
     {
       defaultOpen: true,
@@ -1535,7 +1616,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += renderFoldSection(
     'court:deals',
     'Deals',
-    renderDealsSection(state, activePlayerId, privateData, courtAlreadyConfirmed),
+    renderDealsSection(state, activePlayerId, privateData, courtAlreadyConfirmed, courtDraft.deals || (courtDraft.deals = {})),
     uiSectionState,
     {
       defaultOpen: false,
@@ -1565,13 +1646,13 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += `</div>`;
   container.innerHTML = courtHtml;
 
-  bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData);
+  bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData, courtDraft);
   return;
 
 }
 
 
-function bindThemeChoiceControls(root) {
+function bindThemeChoiceControls(root, appointmentDraft = null) {
   root.querySelectorAll('[data-theme-choice]').forEach((button) => {
     if (button.dataset.bound === 'true') return;
     button.dataset.bound = 'true';
@@ -1582,11 +1663,20 @@ function bindThemeChoiceControls(root) {
       group.querySelectorAll('[data-theme-choice]').forEach((other) => other.classList.remove('selected'));
       button.classList.add('selected');
       input.value = button.dataset.themeChoice;
+      const block = button.closest('[data-appt-key]');
+      const key = block?.dataset.apptKey;
+      const field = input.dataset.draftField || 'themeId';
+      if (appointmentDraft && key) {
+        if (!appointmentDraft[key]) appointmentDraft[key] = {};
+        appointmentDraft[key][field] = button.dataset.themeChoice;
+      }
     });
   });
 }
 
-function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData = null) {
+function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData = null, courtDraft = {}) {
+  const appointmentDraft = ensureNestedDraft(courtDraft, 'appointments');
+  const landBidDraft = ensureNestedDraft(courtDraft, 'landBids');
   container.querySelectorAll('[data-player-choice]').forEach((button) => {
     button.addEventListener('click', () => {
       const group = button.closest('[data-player-choice-group]');
@@ -1595,15 +1685,30 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       group.querySelectorAll('[data-player-choice]').forEach((other) => other.classList.remove('selected'));
       button.classList.add('selected');
       input.value = button.dataset.playerChoice;
+      const block = button.closest('[data-appt-key]');
+      const key = block?.dataset.apptKey;
+      if (key) {
+        if (!appointmentDraft[key]) appointmentDraft[key] = {};
+        appointmentDraft[key].appointeeId = Number(button.dataset.playerChoice);
+      }
     });
   });
 
-  bindThemeChoiceControls(container);
+  bindThemeChoiceControls(container, appointmentDraft);
+
+  container.querySelectorAll('[data-bid-theme]').forEach((input) => {
+    input.addEventListener('input', () => {
+      landBidDraft[input.dataset.bidTheme] = Number(input.value) || 0;
+    });
+  });
 
   // Buy land
   container.querySelectorAll('[data-action="buy"]').forEach(btn => {
     btn.addEventListener('click', () => {
-      callbacks.buy?.(btn.dataset.theme);
+      const input = container.querySelector(`[data-bid-theme="${btn.dataset.theme}"]`);
+      const amount = Number(input?.value || landBidDraft[btn.dataset.theme] || 0);
+      landBidDraft[btn.dataset.theme] = amount;
+      callbacks.buy?.(btn.dataset.theme, { amount });
     });
   });
 
@@ -1656,17 +1761,19 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
   if (basileusTypeSelect && basileusThemeChoiceGroup && basileusThemeButtons && basileusThemeSelect) {
     const refreshThemeOptions = () => {
       const appointmentType = basileusTypeSelect.value;
+      if (!appointmentDraft.basileus) appointmentDraft.basileus = {};
+      appointmentDraft.basileus.titleType = appointmentType;
       const themes = appointmentType === 'STRATEGOS'
         ? getOpenStrategosThemes(state)
         : appointmentType === 'BISHOP'
           ? getOpenBishopThemes(state)
           : [];
-      const suggestedThemeId = getSuggestedThemeId(themes, selectedProvinceId);
+      const suggestedThemeId = getSuggestedThemeId(themes, selectedProvinceId, appointmentDraft.basileus, 'themeId');
 
       basileusThemeButtons.innerHTML = renderThemeChoiceButtons(state, themes, suggestedThemeId);
       basileusThemeSelect.value = suggestedThemeId || '';
       basileusThemeChoiceGroup.style.display = (appointmentType === 'STRATEGOS' || appointmentType === 'BISHOP') ? '' : 'none';
-      bindThemeChoiceControls(basileusThemeChoiceGroup);
+      bindThemeChoiceControls(basileusThemeChoiceGroup, appointmentDraft);
     };
 
     basileusTypeSelect.addEventListener('change', refreshThemeOptions);
@@ -1683,6 +1790,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       const apptType = typeSelect.value;
       const appointeeId = playerSelect ? parseInt(playerSelect.value) : activePlayerId;
       const themeId = themeSelect ? themeSelect.value : null;
+      appointmentDraft.basileus = { ...(appointmentDraft.basileus || {}), titleType: apptType, appointeeId, themeId };
       callbacks['basileus-appoint']?.(apptType, appointeeId, themeId);
     });
   });
@@ -1695,6 +1803,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       const playerSelect = block.querySelector('.appt-player-select');
       const titleKey = btn.dataset.titlekey;
       if (themeSelect?.value && playerSelect?.value) {
+        appointmentDraft[titleKey] = { ...(appointmentDraft[titleKey] || {}), themeId: themeSelect.value, appointeeId: parseInt(playerSelect.value) };
         callbacks['appoint-strategos']?.(titleKey, themeSelect.value, parseInt(playerSelect.value));
       }
     });
@@ -1707,6 +1816,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       const themeSelect = block.querySelector('.appt-theme-select');
       const playerSelect = block.querySelector('.appt-player-select');
       if (themeSelect?.value && playerSelect?.value) {
+        appointmentDraft.patriarch = { ...(appointmentDraft.patriarch || {}), themeId: themeSelect.value, appointeeId: parseInt(playerSelect.value) };
         callbacks['appoint-bishop']?.(themeSelect.value, parseInt(playerSelect.value));
       }
     });
@@ -1722,6 +1832,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       btn.classList.add('selected');
       const hidden = group.querySelector('.revoke-select');
       if (hidden) hidden.value = btn.dataset.revokeValue || '';
+      courtDraft.revocationValue = btn.dataset.revokeValue || '';
     });
   });
   container.querySelectorAll('[data-action="commit-revoke"]').forEach(btn => {
@@ -1733,7 +1844,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
     });
   });
 
-  bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData);
+  bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData, courtDraft.deals || (courtDraft.deals = {}));
 }
 
 function refreshDealClauseEditor(row, state, playerId, counterpartyId) {
@@ -1759,7 +1870,7 @@ function refreshDealRowIndices(root) {
   });
 }
 
-function bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData = null) {
+function bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData = null, dealDraft = {}) {
   const composer = container.querySelector('[data-deal-composer]');
   if (!composer) return;
 
@@ -1769,9 +1880,17 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
   const submitButton = composer.querySelector('[data-action="deal-submit-offer"]');
 
   const getSelectedCounterpartyId = () => counterpartySelect?.value || '';
+  const syncDraft = (rows = null) => {
+    dealDraft.mode = composer.dataset.composerMode || 'send';
+    dealDraft.threadId = composer.dataset.composerThreadId || '';
+    dealDraft.expectedRevision = composer.dataset.composerExpectedRevision || '';
+    dealDraft.counterpartyId = getSelectedCounterpartyId();
+    dealDraft.clauses = rows || Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((row) => serializeDealRow(row));
+  };
 
   const rerenderRows = (rows = null) => {
     const drafts = rows || Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((row) => serializeDealRow(row));
+    syncDraft(drafts);
     clauseList.innerHTML = buildCounterClauseRowsHtml(state, activePlayerId, drafts, getSelectedCounterpartyId());
     clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
     refreshDealRowIndices(clauseList);
@@ -1798,6 +1917,7 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
           rerenderSingleRow(row);
           return;
         }
+        syncDraft();
         refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
       });
     });
@@ -1810,7 +1930,10 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
           if (hidden) hidden.value = btn.dataset.dealToggleValue || '';
           toggle.querySelectorAll('.deal-toggle-btn').forEach((other) => other.classList.toggle('selected', other === btn));
           if (rerenderFields.has(fieldName)) rerenderSingleRow(row);
-          else refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
+          else {
+            syncDraft();
+            refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
+          }
         });
       });
     });
@@ -1821,6 +1944,7 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
         clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
       }
       refreshDealRowIndices(clauseList);
+      syncDraft();
     });
     refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
   };
@@ -1832,36 +1956,14 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
     if (titleEl) titleEl.textContent = 'New Offer';
     if (submitButton) submitButton.textContent = 'Send Offer';
     if (counterpartySelect) counterpartySelect.disabled = false;
-    rerenderRows([{
-      kind: 'gold',
-      direction: 'give',
-      startTriggerType: 'immediate',
-      triggerPlayerId: '',
-      amount: 1,
-      durationTurns: 1,
-      troopCount: 1,
-      candidateId: activePlayerId,
-      themeId: '',
-      appointmentCount: 1,
-    }]);
+    rerenderRows([createDefaultDealClause(activePlayerId)]);
   };
   const serializeRows = () => Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((row) => serializeDealRow(row));
 
   composer.querySelector('[data-action="deal-add-clause"]')?.addEventListener('click', () => {
     rerenderRows([
       ...serializeRows(),
-      {
-        kind: 'gold',
-        direction: 'give',
-        startTriggerType: 'immediate',
-        triggerPlayerId: '',
-        amount: 1,
-        durationTurns: 1,
-        troopCount: 1,
-        candidateId: activePlayerId,
-        themeId: '',
-        appointmentCount: 1,
-      },
+      createDefaultDealClause(activePlayerId),
     ]);
   });
 
@@ -1870,6 +1972,7 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
   });
 
   counterpartySelect?.addEventListener('change', () => {
+    syncDraft();
     rerenderRows();
   });
 
@@ -1878,6 +1981,7 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
       counterpartyId: counterpartySelect?.value,
       clauses: serializeRows(),
     };
+    syncDraft(payload.clauses);
     const mode = composer.dataset.composerMode || 'send';
     if (mode === 'counter') {
       callbacks['deal-counter']?.({
@@ -1927,20 +2031,11 @@ function bindDealComposerEvents(container, state, activePlayerId, callbacks, pri
 
   clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
   refreshDealRowIndices(clauseList);
-  if (privateData?.dealThreads?.every((thread) => thread.status !== 'open')) {
-    resetComposer();
-  }
+  syncDraft();
 }
 
 // â”€â”€â”€ Basileus appointment: can appoint ANY minor title to ANY player â”€â”€â”€
-function renderBasileusAppointments(state, selectedProvinceId) {
-  const already = state.courtActions?.basileusAppointed;
-  if (already) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">Done: the Basileus made this round's appointment.</span>
-    </div>`;
-  }
-
+function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
   const titleTypes = getOpenBasileusMinorTitleTypes(state);
   if (!titleTypes.length) {
     return `<div class="appointment-block done">
@@ -1949,44 +2044,42 @@ function renderBasileusAppointments(state, selectedProvinceId) {
   }
 
   const selectableThemes = [...getOpenStrategosThemes(state), ...getOpenBishopThemes(state)];
-  const defaultThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId);
+  const defaultThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId, draft, 'themeId');
   const appointerId = state.basileusId;
-  const selfLocked = selfAppointmentLocked(state, appointerId);
+  const selectedTitleType = titleTypes.some((type) => type.value === draft.titleType) ? draft.titleType : '';
+  const selectedAppointeeId = state.players.some((candidate) => candidate.id === Number(draft.appointeeId)) ? Number(draft.appointeeId) : appointerId;
+  const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
+  const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
+  const label = state.courtActions?.basileusAppointed
+    ? 'Basileus: optionally appoint another court title or province office.'
+    : 'Basileus: choose one court title or province office to appoint.';
 
-  return `<div class="appointment-block${selfLocked ? ' has-self-lockout' : ''}">
-    <span class="appt-label">Basileus: choose one court title or province office to appoint.</span>
-    ${selfAppointmentNotice(state, appointerId)}
+  return `<div class="appointment-block" data-appt-key="basileus">
+    <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
         `<select id="basileusApptType" class="appt-select">
           <option value="">Choose title type...</option>
-          ${titleTypes.map((type) => `<option value="${type.value}">${type.label}</option>`).join('')}
+          ${titleTypes.map((type) => `<option value="${type.value}" ${type.value === selectedTitleType ? 'selected' : ''}>${type.label}</option>`).join('')}
         </select>
         <div id="basileusApptThemeChoices" class="province-choice-grid" data-theme-choice-group style="display:none">
           <div data-role="theme-choice-buttons"></div>
           <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
         </div>`,
-        renderPlayerChoiceControl(state, 'basileusApptPlayer', undefined, { excludeId: selfLocked ? appointerId : undefined })
+        renderPlayerChoiceControl(state, 'basileusApptPlayer', selectedAppointeeId)
       )}
-      <button class="appt-btn" data-action="commit-basileus-appt">Appoint</button>
+      <button class="appt-btn" data-action="commit-basileus-appt" ${paymentCheck.ok ? '' : 'disabled'}>Appoint${nextCost > 0 ? ` (${nextCost} troop${nextCost === 1 ? '' : 's'})` : ''}</button>
     </div>
   </div>`;
 }
 
 // â”€â”€â”€ Strategos appointment: Domestic/Admiral picks theme + player â”€â”€â”€
-function renderStrategosAppointment(state, titleKey, selectedProvinceId, appointerId) {
+function renderStrategosAppointment(state, titleKey, selectedProvinceId, appointerId, draft = {}) {
   const title = MAJOR_TITLES[titleKey];
   if (!title) return '';
   const region = title.region;
   const themes = getOpenStrategosThemes(state, region);
-  const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId);
-
-  const already = state.courtActions?.[`${titleKey}_appointed`];
-  if (already) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">Done: ${title.name} appointed a Strategos this round.</span>
-    </div>`;
-  }
+  const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
 
   if (!themes.length) {
     return `<div class="appointment-block done">
@@ -1994,32 +2087,29 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     </div>`;
   }
 
-  const selfLocked = selfAppointmentLocked(state, appointerId);
+  const selectedAppointeeId = state.players.some((candidate) => candidate.id === Number(draft.appointeeId)) ? Number(draft.appointeeId) : appointerId;
+  const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
+  const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
+  const label = state.courtActions?.[`${titleKey}_appointed`]
+    ? `${title.name}: optionally appoint another Strategos.`
+    : `${title.name}: choose a province and appoint its Strategos.`;
 
-  return `<div class="appointment-block${selfLocked ? ' has-self-lockout' : ''}">
-    <span class="appt-label">${title.name}: choose a province and appoint its Strategos.</span>
-    ${selfAppointmentNotice(state, appointerId)}
+  return `<div class="appointment-block" data-appt-key="${titleKey}">
+    <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, undefined, { excludeId: selfLocked ? appointerId : undefined })
+        renderPlayerChoiceControl(state, null, selectedAppointeeId)
       )}
-      <button class="appt-btn strategos-commit" data-titlekey="${titleKey}">Appoint</button>
+      <button class="appt-btn strategos-commit" data-titlekey="${titleKey}" ${paymentCheck.ok ? '' : 'disabled'}>Appoint${nextCost > 0 ? ` (${nextCost} troop${nextCost === 1 ? '' : 's'})` : ''}</button>
     </div>
   </div>`;
 }
 
 // â”€â”€â”€ Patriarch appointment: picks theme + player for Bishop â”€â”€â”€
-function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
+function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draft = {}) {
   const themes = getOpenBishopThemes(state);
-  const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId);
-
-  const already = state.courtActions?.patriarchAppointed;
-  if (already) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">Done: the Patriarch appointed a Bishop this round.</span>
-    </div>`;
-  }
+  const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
 
   if (!themes.length) {
     return `<div class="appointment-block done">
@@ -2027,23 +2117,27 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId) {
     </div>`;
   }
 
-  const selfLocked = selfAppointmentLocked(state, appointerId);
+  const selectedAppointeeId = state.players.some((candidate) => candidate.id === Number(draft.appointeeId)) ? Number(draft.appointeeId) : appointerId;
+  const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
+  const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
+  const label = state.courtActions?.patriarchAppointed
+    ? 'Patriarch: optionally appoint another Bishop.'
+    : 'Patriarch: choose a province and appoint its Bishop.';
 
-  return `<div class="appointment-block${selfLocked ? ' has-self-lockout' : ''}">
-    <span class="appt-label">Patriarch: choose a province and appoint its Bishop.</span>
-    ${selfAppointmentNotice(state, appointerId)}
+  return `<div class="appointment-block" data-appt-key="patriarch">
+    <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, undefined, { excludeId: selfLocked ? appointerId : undefined })
+        renderPlayerChoiceControl(state, null, selectedAppointeeId)
       )}
-      <button class="appt-btn bishop-commit">Appoint</button>
+      <button class="appt-btn bishop-commit" ${paymentCheck.ok ? '' : 'disabled'}>Appoint${nextCost > 0 ? ` (${nextCost} troop${nextCost === 1 ? '' : 's'})` : ''}</button>
     </div>
   </div>`;
 }
 
 // â”€â”€â”€ Revocation: cartouche grid (same grammar as appointment) â”€â”€â”€
-function renderRevocationOptions(state) {
+function renderRevocationOptions(state, courtDraft = {}) {
   const groups = collectRevocationGroups(state);
 
   const used = state.courtActions?.basileusRevocationsUsed || 0;
@@ -2058,7 +2152,7 @@ function renderRevocationOptions(state) {
           <div class="revocation-group-label">${group.label}</div>
           <div class="revocation-choice-grid">
             ${group.items.map((item) => `
-              <button type="button" class="revocation-choice-btn" data-revoke-value="${item.value}" ${canAfford ? '' : 'disabled'}>
+              <button type="button" class="revocation-choice-btn ${courtDraft.revocationValue === item.value ? 'selected' : ''}" data-revoke-value="${item.value}" ${canAfford ? '' : 'disabled'}>
                 ${item.body}
               </button>
             `).join('')}
@@ -2072,7 +2166,7 @@ function renderRevocationOptions(state) {
     <p class="section-hint">Only the Basileus can revoke. Each revocation this round costs more troops from imperial offices: 1 for the first, 2 for the second, 3 for the third... Levies are spent before professionals; suspended professionals return next round. Bishoprics granted by church gift cannot be revoked.</p>
     <div class="revocation-shell" data-revocation-group>
       ${body}
-      <input type="hidden" class="revoke-select" value="">
+      <input type="hidden" class="revoke-select" value="${courtDraft.revocationValue || ''}">
     </div>
     <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${canAfford && totalItems ? '' : 'disabled'}>Revoke (${nextCost} troop${nextCost === 1 ? '' : 's'})</button>
   </div>`;
@@ -2217,6 +2311,8 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
     getPlayerMercenaryAssignments(state, playerId).map((entry) => [entry.officeKey, entry.count])
   );
   const uiSectionState = options.uiState || null;
+  const ordersDraft = getDraftBucket(uiSectionState, state, 'orders', playerId);
+  if (!ordersDraft.deployments || typeof ordersDraft.deployments !== 'object') ordersDraft.deployments = {};
   const alreadyLocked = state.allOrders?.[playerId] != null;
 
   let html = `<div class="orders-panel">
@@ -2261,6 +2357,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
 
       if (capitalLocked || dealLockedDestination) {
         const lockedDestination = dealLockedDestination || 'capital';
+        ordersDraft.deployments[office.key] = lockedDestination;
         const lockedLabel = capitalLocked && !dealLockedDestination
           ? 'Capital (locked)'
           : `${lockedDestination.charAt(0).toUpperCase()}${lockedDestination.slice(1)} (deal locked)`;
@@ -2281,8 +2378,8 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
           <span class="troop-count">${formatTroops(total)}</span>
           <span class="section-hint">${troopLine}</span>
           <div class="deploy-toggle" data-office="${office.key}">
-            <button class="toggle-btn active" data-dest="frontier">Frontier</button>
-            <button class="toggle-btn" data-dest="capital">Capital</button>
+            <button class="toggle-btn ${(ordersDraft.deployments[office.key] || 'frontier') === 'frontier' ? 'active' : ''}" data-dest="frontier">Frontier</button>
+            <button class="toggle-btn ${(ordersDraft.deployments[office.key] || 'frontier') === 'capital' ? 'active' : ''}" data-dest="capital">Capital</button>
           </div>
         </div>`;
     }).join('');
@@ -2303,13 +2400,16 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       `
         <p class="section-hint">All your Capital troops back this candidate. Most votes wins the throne; ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles among the other players.${orderLocks?.candidateId != null ? ` Your claimant is locked to ${getDealCounterpartyLabel(state, orderLocks.candidateId)} by an accepted deal.` : ''}</p>
         <div class="candidate-grid">
-          ${state.players.map((candidatePlayer) => `
-            <button class="candidate-btn ${candidatePlayer.id === state.basileusId ? 'current-bas' : ''} ${candidatePlayer.id === (orderLocks?.candidateId ?? playerId) ? 'selected' : ''}" data-candidate="${candidatePlayer.id}" style="${getPlayerStyleAttr(state, candidatePlayer.id)}" ${orderLocks?.candidateId != null ? 'disabled' : ''}>
+          ${(() => {
+            const selectedCandidateId = orderLocks?.candidateId ?? (Number.isInteger(ordersDraft.candidateId) ? ordersDraft.candidateId : playerId);
+            return state.players.map((candidatePlayer) => `
+            <button class="candidate-btn ${candidatePlayer.id === state.basileusId ? 'current-bas' : ''} ${candidatePlayer.id === selectedCandidateId ? 'selected' : ''}" data-candidate="${candidatePlayer.id}" style="${getPlayerStyleAttr(state, candidatePlayer.id)}" ${orderLocks?.candidateId != null ? 'disabled' : ''}>
               <span class="candidate-crest" style="background: ${candidatePlayer.color}">${candidatePlayer.dynasty.charAt(0)}</span>
               <span>${renderPlayerRoleName(state, candidatePlayer)}</span>
               ${candidatePlayer.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}
             </button>
-          `).join('')}
+          `).join('');
+          })()}
         </div>
       `,
       uiSectionState,
@@ -2351,6 +2451,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       const row = btn.closest('.deploy-toggle');
       row.querySelectorAll('.toggle-btn').forEach((other) => other.classList.remove('active'));
       btn.classList.add('active');
+      ordersDraft.deployments[row.dataset.office] = btn.dataset.dest;
     });
   });
 
@@ -2358,6 +2459,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
     btn.addEventListener('click', () => {
       container.querySelectorAll('.candidate-btn').forEach((other) => other.classList.remove('selected'));
       btn.classList.add('selected');
+      ordersDraft.candidateId = parseInt(btn.dataset.candidate, 10);
     });
   });
 

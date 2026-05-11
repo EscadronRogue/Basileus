@@ -692,7 +692,7 @@ export class MultiplayerController {
 
   createCourtHandlers() {
     return {
-      buy: (themeId) => this.send('court_action', { action: 'buy', themeId }),
+      buy: (themeId, data = {}) => this.send('court_action', { action: 'buy', themeId, amount: data.amount }),
       gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
       exempt: (themeId) => this.send('court_action', { action: 'exempt', themeId }),
       recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),

@@ -75,6 +75,108 @@ test('orders panel contains only deployments, claimant choice, and order locking
   assert.doesNotMatch(container.innerHTML, /mercTotalCost/);
 });
 
+test('court panel reuses local appointment and land bid drafts on rerender', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 9 });
+  const playerId = state.basileusId;
+  const otherId = state.players.find((player) => player.id !== playerId).id;
+  state.phase = 'court';
+  state.players[playerId].gold = 10;
+  const freeTheme = Object.values(state.themes).find((theme) => !theme.occupied && theme.id !== 'CPL' && theme.owner === null);
+  const uiState = {
+    drafts: {
+      [`court:${state.round}:${playerId}`]: {
+        appointments: {
+          basileus: {
+            titleType: 'STRATEGOS',
+            themeId: freeTheme.id,
+            appointeeId: otherId,
+          },
+        },
+        landBids: {
+          [freeTheme.id]: 7,
+        },
+      },
+    },
+  };
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, playerId, {}, { uiState });
+
+  assert.match(container.innerHTML, new RegExp(`data-player-choice="${otherId}"[^>]*selected|selected[^>]*data-player-choice="${otherId}"`));
+  assert.match(container.innerHTML, new RegExp(`id="basileusApptTheme"[^>]*value="${freeTheme.id}"`));
+  assert.match(container.innerHTML, new RegExp(`data-bid-theme="${freeTheme.id}"[^>]*value="7"|value="7"[^>]*data-bid-theme="${freeTheme.id}"`));
+});
+
+test('orders panel reuses local deployment and claimant drafts on rerender', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 10 });
+  const playerId = state.basileusId;
+  const otherId = state.players.find((player) => player.id !== playerId).id;
+  state.phase = 'orders';
+  state.currentLevies = { BASILEUS: 2 };
+  const uiState = {
+    drafts: {
+      [`orders:${state.round}:${playerId}`]: {
+        deployments: { BASILEUS: 'capital' },
+        candidateId: otherId,
+      },
+    },
+  };
+
+  const container = makePanelContainer();
+  renderOrdersPanel(container, state, playerId, {}, { uiState });
+
+  assert.match(container.innerHTML, /data-office="BASILEUS"[\s\S]*data-dest="capital">Capital/);
+  assert.match(container.innerHTML, new RegExp(`data-candidate="${otherId}"[^>]*selected|selected[^>]*data-candidate="${otherId}"`));
+});
+
+test('court panel reuses local deal composer drafts on rerender', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 11 });
+  const playerId = state.basileusId;
+  const counterpartyId = state.players.find((player) => player.id !== playerId).id;
+  state.phase = 'court';
+  const uiState = {
+    drafts: {
+      [`court:${state.round}:${playerId}`]: {
+        deals: {
+          counterpartyId,
+          clauses: [
+            {
+              kind: 'coup_support',
+              direction: 'give',
+              startTriggerType: 'immediate',
+              triggerPlayerId: '',
+              amount: 1,
+              durationTurns: 2,
+              troopCount: 3,
+              candidateId: counterpartyId,
+              themeId: '',
+              appointmentCount: 1,
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, playerId, {}, {
+    uiState,
+    privateData: {
+      dealEligiblePlayerIds: [counterpartyId],
+      dealThreads: [],
+      dealCounts: {
+        pendingInbox: 0,
+        pendingOutbox: 0,
+        activeObligations: 0,
+      },
+    },
+  });
+
+  assert.match(container.innerHTML, /Back a claimant in the coup/);
+  assert.match(container.innerHTML, /value="3"[^>]*data-deal-field="troops"|data-deal-field="troops"[^>]*value="3"/);
+  assert.match(container.innerHTML, new RegExp(`value="${counterpartyId}"[^>]*selected|selected[^>]*value="${counterpartyId}"`));
+});
+
 test('player tabs use compact reserve, income, and upkeep formatting', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
   const player = state.players[state.basileusId];

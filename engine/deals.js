@@ -4,7 +4,6 @@ import {
   getOfficeDisplayName,
   getPlayer,
   getPlayerMercenaryTroops,
-  hasSelfAppointmentLock,
   MERCENARY_COMPANY_KEY,
 } from './state.js';
 
@@ -1049,13 +1048,8 @@ export function validateAppointmentPromiseChoice(state, appointerId, appointeeId
   ));
   if (!obligation) return { ok: true };
 
-  const beneficiaryId = obligation.receiverId;
-  const beneficiarySelfLocked = Number(beneficiaryId) === Number(appointerId)
-    && hasSelfAppointmentLock(state, appointerId);
-  if (beneficiarySelfLocked) return { ok: true };
-
-  if (Number(appointeeId) !== Number(beneficiaryId)) {
-    return fail(`${playerName(state, appointerId)} owes the next legal appointment to ${playerName(state, beneficiaryId)} under an accepted deal.`);
+  if (Number(appointeeId) !== Number(obligation.receiverId)) {
+    return fail(`${playerName(state, appointerId)} owes the next legal appointment to ${playerName(state, obligation.receiverId)} under an accepted deal.`);
   }
   return { ok: true };
 }
@@ -1069,9 +1063,6 @@ export function consumeAppointmentPromise(state, appointerId, appointeeId) {
   ));
   if (!obligation) return;
   if (Number(obligation.receiverId) !== Number(appointeeId)) return;
-  const beneficiarySelfLocked = Number(obligation.receiverId) === Number(appointerId)
-    && hasSelfAppointmentLock(state, appointerId);
-  if (beneficiarySelfLocked) return;
   obligation.remainingAppointments = Math.max(0, (Number(obligation.remainingAppointments) || 0) - 1);
   if (obligation.remainingAppointments <= 0) {
     obligation.status = 'completed';

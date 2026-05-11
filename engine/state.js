@@ -212,6 +212,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     dealParticipantIds: [],
     dealThreadSeq: 0,
     dealObligationSeq: 0,
+    landAuctions: {},
 
     // Resolution results (for animation/display)
     lastCoupResult: null,
@@ -232,19 +233,15 @@ export function getPlayer(state, id) {
 }
 
 export function hasSelfAppointmentLock(state, playerId) {
-  const marker = getPlayer(state, playerId)?.appointmentCooldown?.__SELF_ANY;
-  return marker === true || marker === state.round || marker === state.round - 1;
+  void state;
+  void playerId;
+  return false;
 }
 
 export function recordAppointmentChoice(state, appointerId, appointeeId) {
-  const appointer = getPlayer(state, appointerId);
-  if (!appointer) return;
-  if (!appointer.appointmentCooldown) appointer.appointmentCooldown = {};
-  if (Number(appointerId) === Number(appointeeId)) {
-    appointer.appointmentCooldown.__SELF_ANY = true;
-  } else {
-    delete appointer.appointmentCooldown.__SELF_ANY;
-  }
+  void state;
+  void appointerId;
+  void appointeeId;
 }
 
 // Returns "FirstName Dynasty" if the player has a first name attached, else just the dynasty.

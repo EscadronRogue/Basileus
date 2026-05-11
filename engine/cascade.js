@@ -148,11 +148,21 @@ export function runAdministration(state) {
   let churchPool = 0;
   let basileusRegionalGold = 0;
   const income = {};
+  const incomeBreakdown = {
+    estate: {},
+    tax: {},
+    church: {},
+  };
   const levies = {};
 
   const addIncome = (playerId, amount) => {
     if (playerId == null || amount <= 0) return;
     income[playerId] = (income[playerId] || 0) + amount;
+  };
+  const addCategorizedIncome = (category, playerId, amount) => {
+    if (playerId == null || amount <= 0) return;
+    addIncome(playerId, amount);
+    incomeBreakdown[category][playerId] = (incomeBreakdown[category][playerId] || 0) + amount;
   };
 
   const addLevy = (officeKey, amount) => {
@@ -173,11 +183,11 @@ export function runAdministration(state) {
     }
 
     if (theme.owner !== null) {
-      addIncome(theme.owner, getThemeOwnerIncome(theme));
+      addCategorizedIncome('estate', theme.owner, getThemeOwnerIncome(theme));
     }
 
     if (theme.strategos !== null) {
-      addIncome(theme.strategos, taxGold);
+      addCategorizedIncome('tax', theme.strategos, taxGold);
       addLevy(`STRAT_${theme.id}`, levyCount);
       continue;
     }
@@ -193,7 +203,7 @@ export function runAdministration(state) {
 
     for (const [playerId, amount] of Object.entries(taxResult.income)) {
       if (Number(playerId) === state.basileusId) continue;
-      addIncome(Number(playerId), amount);
+      addCategorizedIncome('tax', Number(playerId), amount);
     }
 
     const levyResult = computeRegionalLevyCascade(state, region, regionalLevyPools[region]);
@@ -204,12 +214,12 @@ export function runAdministration(state) {
 
   const cplIncome = computeCPLCascade(state, basileusRegionalGold);
   for (const [playerId, amount] of Object.entries(cplIncome)) {
-    addIncome(Number(playerId), amount);
+    addCategorizedIncome('tax', Number(playerId), amount);
   }
 
   const churchIncome = computeChurchCascade(state, churchPool);
   for (const [playerId, amount] of Object.entries(churchIncome)) {
-    addIncome(Number(playerId), amount);
+    addCategorizedIncome('church', Number(playerId), amount);
   }
 
   // Capital-locked levies from court titles. Each title grants 2 levies that may only
@@ -226,5 +236,5 @@ export function runAdministration(state) {
     addLevy('PATRIARCH', CAPITAL_LOCKED_TITLE_LEVIES);
   }
 
-  return { income, levies };
+  return { income, incomeBreakdown, levies };
 }

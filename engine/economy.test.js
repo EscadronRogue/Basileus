@@ -12,9 +12,12 @@ import {
   buyTheme,
   canRecruitProfessional,
   grantTaxExemption,
+  getNextAppointmentCost,
   hireMercenaries,
   recruitProfessional,
+  settleLandAuctions,
 } from './actions.js';
+import { buildFinalScores } from './scoring.js';
 import {
   acceptDealOffer,
   buildOrderLocksForPlayer,
@@ -33,6 +36,7 @@ import {
 } from './rules.js';
 import { normalizeHumanOrders } from './orders.js';
 import { applyCourtAction, confirmCourt } from './commands.js';
+import { handleHumanCourtConfirmation } from './runtime.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -271,7 +275,7 @@ test('tax exemption costs 2T, pays the Basileus, and grants profit plus tax to t
 });
 
 
-test('buying private land reduces provincial levy by 1', () => {
+test('settled land auctions reduce provincial levy by 1', () => {
   const state = makeState(
     [makeTheme('SAM')],
     {
@@ -281,9 +285,44 @@ test('buying private land reduces provincial levy by 1', () => {
 
   const result = buyTheme(state, 1, 'SAM');
   assert.equal(result.ok, true);
+  assert.equal(state.themes.SAM.owner, null);
+  assert.equal(state.players[1].gold, 3);
+  assert.equal(state.landAuctions.SAM.bidderId, 1);
+  assert.equal(state.landAuctions.SAM.amount, 2);
+
+  settleLandAuctions(state);
   assert.equal(state.themes.SAM.owner, 1);
-  assert.equal(state.themes.SAM.L, 1);
+  assert.equal(state.themes.SAM.L, province('SAM').L - 1);
   assert.equal(state.themes.SAM.privateLevyReduced, true);
+});
+
+test('land auctions require higher bids, pay immediately, and refund overbid players', () => {
+  const state = makeState(
+    [makeTheme('SAM')],
+    {
+      1: { gold: 5 },
+      2: { gold: 8 },
+    },
+  );
+
+  const opening = buyTheme(state, 1, 'SAM', 4);
+  assert.equal(opening.ok, true);
+  assert.equal(state.players[1].gold, 1);
+
+  const tooLow = buyTheme(state, 2, 'SAM', 4);
+  assert.equal(tooLow.ok, false);
+  assert.match(tooLow.reason, /higher/i);
+
+  const overbid = buyTheme(state, 2, 'SAM', 6);
+  assert.equal(overbid.ok, true);
+  assert.equal(state.players[1].gold, 5);
+  assert.equal(state.players[2].gold, 2);
+  assert.equal(state.landAuctions.SAM.bidderId, 2);
+  assert.equal(state.landAuctions.SAM.amount, 6);
+
+  settleLandAuctions(state);
+  assert.equal(state.themes.SAM.owner, 2);
+  assert.equal(state.landAuctions.SAM, undefined);
 });
 
 test('major military offices start with 2 professional troops and Patriarch starts with none', () => {
@@ -557,35 +596,36 @@ test('appointment promises carry forward until a legal appointment is made to th
   assert.equal(state.activeDealObligations.length, 0);
 });
 
-test('self appointments stay locked until the appointer appoints someone else', () => {
-  const state = makeDealState([makeTheme('OPS')]);
+test('repeat appointments cost troops only when appointing the same recipient again', () => {
+  const state = makeDealState([makeTheme('OPS'), makeTheme('ANT')], {
+    0: { professionalArmies: { BASILEUS: 2 } },
+  });
+  state.currentLevies = { BASILEUS: 1 };
 
   const firstSelf = appointCourtTitle(state, 'EMPRESS', 0);
   assert.equal(firstSelf.ok, true);
+  assert.equal(getNextAppointmentCost(state, 0, 0), 1);
+  assert.equal(state.currentLevies.BASILEUS, 1);
 
-  state.round = 2;
   const secondSelf = appointCourtTitle(state, 'CHIEF_EUNUCHS', 0);
-  assert.equal(secondSelf.ok, false);
-  assert.match(secondSelf.reason, /until you appoint someone else/i);
+  assert.equal(secondSelf.ok, true);
+  assert.equal(state.currentLevies.BASILEUS, 0);
+  assert.equal(getNextAppointmentCost(state, 0, 0), 2);
 
-  const otherCourtTitle = appointCourtTitle(state, 'CHIEF_EUNUCHS', 1);
-  assert.equal(otherCourtTitle.ok, true);
+  const firstOther = appointStrategos(state, 0, 'OPS', 1);
+  assert.equal(firstOther.ok, true);
+  assert.equal(getNextAppointmentCost(state, 0, 1), 1);
+  assert.equal(state.players[0].professionalArmies.BASILEUS, 2);
 
-  const selfStrategos = appointStrategos(state, 0, 'OPS', 0);
-  assert.equal(selfStrategos.ok, true);
-
-  const sameTurnSelfBishop = appointBishop(state, 0, 'OPS', 0);
-  assert.equal(sameTurnSelfBishop.ok, false);
-  assert.match(sameTurnSelfBishop.reason, /until you appoint someone else/i);
-
-  const otherBishop = appointBishop(state, 0, 'OPS', 2);
-  assert.equal(otherBishop.ok, true);
-  assert.equal(state.players[0].appointmentCooldown.__SELF_ANY, undefined);
+  const secondOther = appointBishop(state, 0, 'ANT', 1);
+  assert.equal(secondOther.ok, true);
+  assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
+  assert.equal(state.suspendedProfessionals[0].BASILEUS, 1);
+  assert.equal(getNextAppointmentCost(state, 0, 1), 2);
 });
 
-test('self appointment promises wait while self is locked and consume once legal', () => {
+test('self appointment promises enforce the promised beneficiary immediately', () => {
   const state = makeDealState();
-  state.players[0].appointmentCooldown.__SELF_ANY = true;
   state.activeDealObligations = [{
     kind: 'appointment_promise',
     status: 'active',
@@ -594,17 +634,50 @@ test('self appointment promises wait while self is locked and consume once legal
     remainingAppointments: 1,
   }];
 
-  const clearingAppointment = appointCourtTitle(state, 'EMPRESS', 1);
-  assert.equal(clearingAppointment.ok, true);
-  assert.equal(state.activeDealObligations[0].remainingAppointments, 1);
-
-  const wrongAppointee = appointCourtTitle(state, 'CHIEF_EUNUCHS', 2);
+  const wrongAppointee = appointCourtTitle(state, 'EMPRESS', 1);
   assert.equal(wrongAppointee.ok, false);
   assert.match(wrongAppointee.reason, /owes the next legal appointment/i);
 
-  const selfAppointment = appointCourtTitle(state, 'CHIEF_EUNUCHS', 0);
+  const selfAppointment = appointCourtTitle(state, 'EMPRESS', 0);
   assert.equal(selfAppointment.ok, true);
   assert.equal(state.activeDealObligations.length, 0);
+});
+
+test('final scoring ranks shares across church, estates, taxes, and gold with full tie points', () => {
+  const state = makeState([], {
+    0: { gold: 5 },
+    1: { gold: 5 },
+    2: { gold: 1 },
+  });
+
+  const finalScores = buildFinalScores(state);
+  const byPlayer = Object.fromEntries(finalScores.scores.map((score) => [score.playerId, score]));
+  const gold0 = byPlayer[0].categories.find((category) => category.key === 'gold');
+  const gold1 = byPlayer[1].categories.find((category) => category.key === 'gold');
+  const gold2 = byPlayer[2].categories.find((category) => category.key === 'gold');
+
+  assert.equal(gold0.points, 3);
+  assert.equal(gold1.points, 3);
+  assert.equal(gold2.points, 1);
+  assert.deepEqual(finalScores.winners.map((winner) => winner.playerId).sort(), [0, 1]);
+});
+
+test('all-human court advances only after each player confirms', () => {
+  const state = makeState([makeTheme('OPS')]);
+  state.courtActions = {
+    basileusAppointed: true,
+    domesticEastAppointed: true,
+    domesticWestAppointed: true,
+    admiralAppointed: true,
+    patriarchAppointed: true,
+    basileusRevocationsUsed: 0,
+    appointmentsByRecipient: {},
+    playerConfirmed: new Set([0, 1]),
+  };
+
+  const result = handleHumanCourtConfirmation(state, null, {}, 2);
+  assert.equal(result.ok, true);
+  assert.equal(state.phase, 'orders');
 });
 
 test('accepted non-revocation promises block Basileus title revocations', () => {

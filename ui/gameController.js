@@ -184,7 +184,7 @@ export class GameController {
     };
 
     return {
-      buy: (themeId) => dispatch({ action: 'buy', themeId }),
+      buy: (themeId, data = {}) => dispatch({ action: 'buy', themeId, amount: data.amount }),
       gift: (themeId) => dispatch({ action: 'gift', themeId }),
       exempt: (themeId) => dispatch({ action: 'exempt', themeId }),
       recruit: (_, data) => dispatch({ action: 'recruit', office: data.office }),

@@ -4,7 +4,7 @@
 
 import { runAdministration } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
-import { resolveCoup, payMaintenance, restoreSuspendedProfessionals } from './actions.js';
+import { resolveCoup, payMaintenance, restoreSuspendedProfessionals, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
 import {
@@ -198,8 +198,10 @@ export function phaseCourt(state) {
     // Number of revocations the Basileus has performed this round. Each costs more
     // troops than the last (1 troop for the first, 2 for the second, ...).
     basileusRevocationsUsed: 0,
+    appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };
+  state.landAuctions = {};
 }
 
 export function isCourtComplete(state) {
@@ -211,6 +213,7 @@ export function isCourtComplete(state) {
 
 // ─── Phase: Orders (secret, simultaneous — requires player input) ───
 export function phaseOrders(state) {
+  settleLandAuctions(state);
   state.phase = 'orders';
   state.allOrders = {};
   // Each player must submit: deployments, candidate

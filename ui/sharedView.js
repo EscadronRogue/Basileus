@@ -1,8 +1,7 @@
-import { computeFullWealth } from '../engine/actions.js';
+import { buildFinalScores } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { runAdministration } from '../engine/cascade.js';
 import { getPlayer } from '../engine/state.js';
-import { formatGold } from '../engine/presentation.js';
 import {
   renderCourtPanel,
   renderHistoryPanel,
@@ -21,6 +20,7 @@ export function createDefaultUiState() {
     },
     sections: {},
     dashboardFocus: null,
+    drafts: {},
   };
 }
 
@@ -84,11 +84,11 @@ export const PHASE_TOOLTIPS = {
   setup: 'Provinces, titles and starting gold are dealt out.',
   invasion: 'A new invasion is drawn. Its route shows which provinces are at risk.',
   administration: 'Provinces pay out gold and raise levies automatically.',
-  court: 'Buy estates, appoint officers, recruit troops, then confirm.',
+  court: 'Bid on estates, appoint officers, recruit troops, then confirm.',
   orders: 'Each player privately sends every troop to the Capital (coup) or Frontier (war), and picks who to back for the throne.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
   cleanup: 'Pay 1 gold per professional troop. Levies and mercenaries disband.',
-  scoring: 'Highest gold (current + projected next income) wins.',
+  scoring: 'Rank first in church income, estates, taxes, and gold reserves to score the most points.',
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
@@ -113,7 +113,7 @@ export function renderTopBar(state) {
 
   if (roundEl) {
     roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
-    roundEl.title = `Game ends after ${state.maxRounds} invasions, or sooner if Constantinople falls. Highest gold (on hand + projected next income) wins.`;
+    roundEl.title = `Game ends after ${state.maxRounds} invasions, or sooner if Constantinople falls. Highest total points across income shares and gold reserves wins.`;
   }
   if (phaseEl) {
     if (state.gameOver?.type === 'fall') {
@@ -153,7 +153,7 @@ export function renderEmpireFallenBanner(state) {
     topBar.insertBefore(banner, invasionEl || null);
   }
 
-  banner.innerHTML = '<strong>Empire Fallen</strong><span>Constantinople has been sacked. The game ends now &mdash; the richest dynasty wins.</span>';
+  banner.innerHTML = '<strong>Empire Fallen</strong><span>Constantinople has been sacked. The game ends now; the highest-scoring dynasty wins.</span>';
 }
 
 function getPlayerMaintenance(player) {
@@ -251,16 +251,12 @@ export function renderSpectatorPanel(panel, state, playerId, message) {
 }
 
 export function buildScores(state) {
-  const adminResult = runAdministration(state);
-  return state.players.map((player) => {
-    const projected = adminResult.income[player.id] || 0;
-    const wealth = computeFullWealth(state, player.id, projected);
-    return { player, wealth, gold: player.gold, projected };
-  }).sort((left, right) => right.wealth - left.wealth);
+  return buildFinalScores(state).scores;
 }
 
 export function renderScoringHtml(state, options = {}) {
   const scores = buildScores(state);
+  const topScore = scores[0]?.points ?? 0;
   const newGameButton = options.includeNewGame
     ? '<button class="btn-new-game" onclick="location.reload()">New Game</button>'
     : '';
@@ -268,16 +264,18 @@ export function renderScoringHtml(state, options = {}) {
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Highest total wins. Total = current gold on hand + the income you would receive at the next Administration phase.</p>
+      <p class="section-hint">Highest point total wins. Each category ranks dynasties by share: Church income, Estate income, Tax income, and Gold reserves. Ties receive the same rank points.</p>
       <div class="score-list">
-        ${scores.map((score, index) => `
-          <div class="score-row ${index === 0 ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
-            <span class="score-rank">${index === 0 ? '1' : index + 1}</span>
+        ${scores.map((score) => {
+          const rank = scores.filter((other) => other.points > score.points).length + 1;
+          return `
+          <div class="score-row ${score.points === topScore ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
+            <span class="score-rank">${rank}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
-            <span class="score-breakdown">${formatGold(score.gold)} on hand + ${formatGold(score.projected, { signed: true })} next income</span>
-            <span class="score-total">${score.wealth}</span>
-          </div>
-        `).join('')}
+            <span class="score-breakdown">${score.categories.map((category) => `${category.label}: ${category.points}`).join(' | ')}</span>
+            <span class="score-total">${score.points}</span>
+          </div>`;
+        }).join('')}
       </div>
       ${newGameButton}
     </div>

@@ -7,11 +7,10 @@ import {
   getOfficeDisplayName,
   getPlayerMercenaryTotal,
   getPlayerMercenaryTroops,
-  hasSelfAppointmentLock,
   MERCENARY_COMPANY_KEY,
-  recordAppointmentChoice,
 } from './state.js';
 import { recordHistoryEvent } from './history.js';
+import { getPlayerFinalScore } from './scoring.js';
 import {
   consumeAppointmentPromise,
   getSpendableGold,
@@ -31,14 +30,6 @@ const PROFESSIONAL_BANNED_OFFICES = new Set(['PATRIARCH', 'EMPRESS', 'CHIEF_EUNU
 
 function canOfficeHoldProfessionals(officeKey) {
   return !PROFESSIONAL_BANNED_OFFICES.has(officeKey);
-}
-
-function validateGenericSelfAppointment(state, appointerId, appointeeId) {
-  if (Number(appointerId) !== Number(appointeeId)) return { ok: true };
-  if (hasSelfAppointmentLock(state, appointerId)) {
-    return { ok: false, reason: 'Cannot appoint yourself again until you appoint someone else.' };
-  }
-  return { ok: true };
 }
 
 function playerName(state, playerId) {
@@ -86,43 +77,241 @@ function transferOfficeArmy(state, officeKey, playerId, minimumCount = 0) {
   return assignOfficeArmy(state, officeKey, playerId, total);
 }
 
+function ensureCourtActionState(state) {
+  if (!state.courtActions) state.courtActions = {};
+  if (!state.courtActions.appointmentsByRecipient) state.courtActions.appointmentsByRecipient = {};
+  return state.courtActions;
+}
+
+function getOfficeHolder(state, officeKey) {
+  if (officeKey === MERCENARY_COMPANY_KEY) return null;
+  if (officeKey === 'BASILEUS') return state.basileusId;
+  if (officeKey === 'DOM_EAST' || officeKey === 'DOM_WEST' || officeKey === 'ADMIRAL' || officeKey === 'PATRIARCH') {
+    return findTitleHolder(state, officeKey);
+  }
+  if (officeKey === 'EMPRESS') return state.empress ?? null;
+  if (officeKey === 'CHIEF_EUNUCHS') return state.chiefEunuchs ?? null;
+  if (String(officeKey).startsWith('STRAT_')) {
+    const themeId = String(officeKey).replace('STRAT_', '');
+    return state.themes[themeId]?.strategos ?? null;
+  }
+  return null;
+}
+
+function getPlayerControlledOfficeKeys(state, playerId) {
+  const keys = new Set();
+  for (const officeKey of Object.keys(state.currentLevies || {})) {
+    if (getOfficeHolder(state, officeKey) === playerId) keys.add(officeKey);
+  }
+  const player = getPlayer(state, playerId);
+  for (const officeKey of Object.keys(player?.professionalArmies || {})) {
+    if (getOfficeHolder(state, officeKey) === playerId) keys.add(officeKey);
+  }
+  return [...keys];
+}
+
+export function getPlayerAvailableAppointmentTroops(state, playerId) {
+  const player = getPlayer(state, playerId);
+  let levies = 0;
+  let professionals = 0;
+  for (const officeKey of getPlayerControlledOfficeKeys(state, playerId)) {
+    levies += state.currentLevies?.[officeKey] || 0;
+    professionals += player?.professionalArmies?.[officeKey] || 0;
+  }
+  return { levies, professionals, total: levies + professionals };
+}
+
+export function getNextAppointmentCost(state, appointerId, appointeeId) {
+  const courtActions = ensureCourtActionState(state);
+  const byAppointer = courtActions.appointmentsByRecipient[appointerId] || {};
+  return Math.max(0, Number(byAppointer[appointeeId]) || 0);
+}
+
+export function canPayAppointmentCost(state, appointerId, appointeeId) {
+  const cost = getNextAppointmentCost(state, appointerId, appointeeId);
+  if (cost <= 0) return { ok: true, cost, available: getPlayerAvailableAppointmentTroops(state, appointerId).total };
+  const { total } = getPlayerAvailableAppointmentTroops(state, appointerId);
+  return total >= cost
+    ? { ok: true, cost, available: total }
+    : { ok: false, cost, available: total, reason: `Not enough troops to appoint (need ${cost}, have ${total}).` };
+}
+
+function payAppointmentCost(state, appointerId, appointeeId) {
+  const check = canPayAppointmentCost(state, appointerId, appointeeId);
+  if (!check.ok) return check;
+  const cost = check.cost;
+  if (cost <= 0) return { ok: true, cost, leviesSpent: 0, professionalsSpent: 0 };
+
+  const player = getPlayer(state, appointerId);
+  const offices = getPlayerControlledOfficeKeys(state, appointerId);
+  let remaining = cost;
+  let leviesSpent = 0;
+  let professionalsSpent = 0;
+
+  for (const officeKey of offices) {
+    if (remaining <= 0) break;
+    const available = state.currentLevies?.[officeKey] || 0;
+    if (available <= 0) continue;
+    const take = Math.min(available, remaining);
+    state.currentLevies[officeKey] = available - take;
+    remaining -= take;
+    leviesSpent += take;
+  }
+
+  if (remaining > 0) {
+    if (!state.suspendedProfessionals) state.suspendedProfessionals = {};
+    if (!state.suspendedProfessionals[appointerId]) state.suspendedProfessionals[appointerId] = {};
+    for (const officeKey of offices) {
+      if (remaining <= 0) break;
+      const available = player?.professionalArmies?.[officeKey] || 0;
+      if (available <= 0) continue;
+      const take = Math.min(available, remaining);
+      player.professionalArmies[officeKey] = available - take;
+      if (player.professionalArmies[officeKey] === 0) delete player.professionalArmies[officeKey];
+      state.suspendedProfessionals[appointerId][officeKey] =
+        (state.suspendedProfessionals[appointerId][officeKey] || 0) + take;
+      remaining -= take;
+      professionalsSpent += take;
+    }
+  }
+
+  return { ok: true, cost, leviesSpent, professionalsSpent };
+}
+
+function recordAppointmentCostUse(state, appointerId, appointeeId) {
+  const courtActions = ensureCourtActionState(state);
+  if (!courtActions.appointmentsByRecipient[appointerId]) {
+    courtActions.appointmentsByRecipient[appointerId] = {};
+  }
+  const byRecipient = courtActions.appointmentsByRecipient[appointerId];
+  byRecipient[appointeeId] = (Number(byRecipient[appointeeId]) || 0) + 1;
+}
+
+function describeAppointmentCost(payment) {
+  return {
+    cost: payment?.cost || 0,
+    leviesSpent: payment?.leviesSpent || 0,
+    professionalsSpent: payment?.professionalsSpent || 0,
+  };
+}
+
 // ─── Land Purchase ───
-export function canBuyTheme(state, playerId, themeId) {
+function ensureLandAuctions(state) {
+  if (!state.landAuctions || typeof state.landAuctions !== 'object') state.landAuctions = {};
+  return state.landAuctions;
+}
+
+export function getLandAuction(state, themeId) {
+  return ensureLandAuctions(state)[themeId] || null;
+}
+
+export function getMinimumLandBid(state, themeId) {
+  const theme = state.themes[themeId];
+  const current = getLandAuction(state, themeId);
+  return current ? current.amount + 1 : getThemeLandPrice(theme);
+}
+
+export function canBuyTheme(state, playerId, themeId, amount = null) {
   const theme = state.themes[themeId];
   if (!theme) return { ok: false, reason: 'Theme not found' };
   if (theme.occupied) return { ok: false, reason: 'Theme is occupied' };
   if (theme.owner !== null) return { ok: false, reason: 'Theme already owned' };
   if (theme.id === 'CPL') return { ok: false, reason: 'Cannot buy Constantinople' };
-  const cost = getThemeLandPrice(theme);
+  const current = getLandAuction(state, themeId);
+  const minimumBid = current ? current.amount + 1 : getThemeLandPrice(theme);
+  const cost = amount == null ? minimumBid : Number(amount);
+  if (!Number.isFinite(cost) || cost < minimumBid) {
+    return {
+      ok: false,
+      reason: current
+        ? `Bid must be higher than ${formatGold(current.amount)}.`
+        : `Bid must be at least ${formatGold(minimumBid)}.`,
+      cost,
+      minimumBid,
+      current,
+    };
+  }
+  const existingOwnBid = current?.bidderId === playerId ? current.amount : 0;
+  const dueNow = cost - existingOwnBid;
   const spendableGold = getSpendableGold(state, playerId);
-  if (spendableGold < cost) return { ok: false, reason: `Need ${formatGold(cost)} of unreserved gold, have ${formatGold(spendableGold)}.` };
-  return { ok: true, cost };
+  if (spendableGold < dueNow) {
+    return {
+      ok: false,
+      reason: `Need ${formatGold(dueNow)} of unreserved gold, have ${formatGold(spendableGold)}.`,
+      cost,
+      dueNow,
+      minimumBid,
+      current,
+    };
+  }
+  return { ok: true, cost, dueNow, minimumBid, current };
 }
 
-export function buyTheme(state, playerId, themeId) {
-  const check = canBuyTheme(state, playerId, themeId);
+export function buyTheme(state, playerId, themeId, amount = null) {
+  const check = canBuyTheme(state, playerId, themeId, amount);
   if (!check.ok) return check;
   const player = getPlayer(state, playerId);
-  player.gold -= check.cost;
-  const theme = state.themes[themeId];
-  theme.owner = playerId;
-  if (!theme.privateLevyReduced) {
-    theme.L = Math.max(0, (Number(theme.L) || 0) - 1);
-    theme.privateLevyReduced = true;
+  const auctions = ensureLandAuctions(state);
+  const previous = auctions[themeId] || null;
+  if (previous && previous.bidderId !== playerId) {
+    const previousBidder = getPlayer(state, previous.bidderId);
+    if (previousBidder) previousBidder.gold += previous.amount;
   }
-  state.log.push({ type: 'buy', player: playerId, theme: themeId, cost: check.cost, round: state.round });
+  player.gold -= check.dueNow;
+  auctions[themeId] = {
+    themeId,
+    bidderId: playerId,
+    amount: check.cost,
+    round: state.round,
+  };
+  state.log.push({ type: 'land_bid', player: playerId, theme: themeId, bid: check.cost, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
-    type: 'buy_theme',
+    type: 'land_bid',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} buys ${themeName(state, themeId)} for ${formatGold(check.cost)}.`,
+    summary: `${playerName(state, playerId)} bids ${formatGold(check.cost)} for ${themeName(state, themeId)}.`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
-      cost: check.cost,
+      bid: check.cost,
+      minimumBid: check.minimumBid,
+      previousBidderId: previous?.bidderId ?? null,
+      previousBid: previous?.amount ?? null,
     },
   });
   return { ok: true, historyId: historyEvent?.id || null };
+}
+
+export function settleLandAuctions(state) {
+  const auctions = ensureLandAuctions(state);
+  for (const [themeId, auction] of Object.entries(auctions)) {
+    const theme = state.themes[themeId];
+    const winner = getPlayer(state, Number(auction.bidderId));
+    if (!theme || !winner || theme.occupied || theme.owner !== null || theme.id === 'CPL') {
+      if (winner) winner.gold += Number(auction.amount) || 0;
+      delete auctions[themeId];
+      continue;
+    }
+
+    theme.owner = winner.id;
+    if (!theme.privateLevyReduced) {
+      theme.L = Math.max(0, (Number(theme.L) || 0) - 1);
+      theme.privateLevyReduced = true;
+    }
+    state.log.push({ type: 'buy', player: winner.id, theme: themeId, cost: auction.amount, round: state.round });
+    recordHistoryEvent(state, {
+      category: 'court',
+      type: 'buy_theme',
+      actorId: winner.id,
+      summary: `${playerName(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(auction.amount)}.`,
+      details: {
+        themeId,
+        themeName: themeName(state, themeId),
+        cost: auction.amount,
+      },
+    });
+    delete auctions[themeId];
+  }
 }
 
 // ─── Gift Theme to Church ───
@@ -212,16 +401,16 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
     return { ok: false, reason: 'Not the Domestic/Admiral of this region' };
   }
 
-  const selfAppointmentCheck = validateGenericSelfAppointment(state, appointerId, appointeeId);
-  if (!selfAppointmentCheck.ok) return selfAppointmentCheck;
   const dealCheck = validateAppointmentPromiseChoice(state, appointerId, appointeeId);
   if (!dealCheck.ok) return dealCheck;
+  const payment = payAppointmentCost(state, appointerId, appointeeId);
+  if (!payment.ok) return { ok: false, reason: payment.reason };
 
   const officeKey = `STRAT_${themeId}`;
   theme.strategos = appointeeId;
   transferOfficeArmy(state, officeKey, appointeeId, 1);
   consumeAppointmentPromise(state, appointerId, appointeeId);
-  recordAppointmentChoice(state, appointerId, appointeeId);
+  recordAppointmentCostUse(state, appointerId, appointeeId);
   state.log.push({ type: 'appoint_strategos', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -233,6 +422,7 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
       appointeeName: playerName(state, appointeeId),
       themeId,
       themeName: themeName(state, themeId),
+      appointmentCost: describeAppointmentCost(payment),
     },
   });
   return { ok: true, historyId: historyEvent?.id || null };
@@ -252,14 +442,14 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
     return { ok: false, reason: 'This bishopric was granted by church donation and is protected' };
   }
 
-  const selfAppointmentCheck = validateGenericSelfAppointment(state, appointerId, appointeeId);
-  if (!selfAppointmentCheck.ok) return selfAppointmentCheck;
   const dealCheck = validateAppointmentPromiseChoice(state, appointerId, appointeeId);
   if (!dealCheck.ok) return dealCheck;
+  const payment = payAppointmentCost(state, appointerId, appointeeId);
+  if (!payment.ok) return { ok: false, reason: payment.reason };
 
   theme.bishop = appointeeId;
   consumeAppointmentPromise(state, appointerId, appointeeId);
-  recordAppointmentChoice(state, appointerId, appointeeId);
+  recordAppointmentCostUse(state, appointerId, appointeeId);
   state.log.push({ type: 'appoint_bishop', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -271,29 +461,32 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
       appointeeName: playerName(state, appointeeId),
       themeId,
       themeName: themeName(state, themeId),
+      appointmentCost: describeAppointmentCost(payment),
     },
   });
   return { ok: true, historyId: historyEvent?.id || null };
 }
 
 export function appointCourtTitle(state, titleType, appointeeId) {
-  const selfAppointmentCheck = validateGenericSelfAppointment(state, state.basileusId, appointeeId);
-  if (!selfAppointmentCheck.ok) return selfAppointmentCheck;
   const dealCheck = validateAppointmentPromiseChoice(state, state.basileusId, appointeeId);
   if (!dealCheck.ok) return dealCheck;
 
   if (titleType === 'EMPRESS') {
     if (state.empress !== null) return { ok: false, reason: 'The Empress title is already appointed' };
-    state.empress = appointeeId;
   } else if (titleType === 'CHIEF_EUNUCHS') {
     if (state.chiefEunuchs !== null) return { ok: false, reason: 'The Chief of Eunuchs title is already appointed' };
-    state.chiefEunuchs = appointeeId;
   } else {
     return { ok: false, reason: 'Invalid court title' };
   }
 
+  const payment = payAppointmentCost(state, state.basileusId, appointeeId);
+  if (!payment.ok) return { ok: false, reason: payment.reason };
+
+  if (titleType === 'EMPRESS') state.empress = appointeeId;
+  else state.chiefEunuchs = appointeeId;
+
   consumeAppointmentPromise(state, state.basileusId, appointeeId);
-  recordAppointmentChoice(state, state.basileusId, appointeeId);
+  recordAppointmentCostUse(state, state.basileusId, appointeeId);
   state.log.push({ type: 'appoint_court', title: titleType, appointee: appointeeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
@@ -305,6 +498,7 @@ export function appointCourtTitle(state, titleType, appointeeId) {
       titleName: courtTitleName(titleType),
       appointeeId,
       appointeeName: playerName(state, appointeeId),
+      appointmentCost: describeAppointmentCost(payment),
     },
   });
   return { ok: true, historyId: historyEvent?.id || null };
@@ -895,9 +1089,10 @@ export function payMaintenance(state, playerId) {
 
 // ─── Scoring ───
 export function computeWealth(state, playerId) {
-  return getPlayer(state, playerId).gold;
+  return getPlayerFinalScore(state, playerId)?.points ?? getPlayer(state, playerId).gold;
 }
 
 export function computeFullWealth(state, playerId, projectedIncome) {
-  return getPlayer(state, playerId).gold + (projectedIncome || 0);
+  void projectedIncome;
+  return computeWealth(state, playerId);
 }

@@ -1429,12 +1429,31 @@ function markCourtMandatoryActionPassed(state, meta, flagKey, label) {
   return true;
 }
 
+function getMandatoryAppointmentHolderId(state, flagKey) {
+  if (flagKey === 'basileusAppointed') return state.basileusId;
+  const titleKeyByFlag = {
+    domesticEastAppointed: 'DOM_EAST',
+    domesticWestAppointed: 'DOM_WEST',
+    admiralAppointed: 'ADMIRAL',
+    patriarchAppointed: 'PATRIARCH',
+  };
+  const titleKey = titleKeyByFlag[flagKey];
+  if (!titleKey) return null;
+  return state.players.find(player => player.majorTitles.includes(titleKey))?.id ?? null;
+}
+
+function markAiMandatoryActionPassed(state, meta, flagKey, label) {
+  const holderId = getMandatoryAppointmentHolderId(state, flagKey);
+  if (holderId != null && !isAIPlayer(meta, holderId)) return false;
+  return markCourtMandatoryActionPassed(state, meta, flagKey, label);
+}
+
 function finalizeCourtAutomation(state, meta, aiOrder) {
-  markCourtMandatoryActionPassed(state, meta, 'basileusAppointed', 'The Basileus appointment');
-  markCourtMandatoryActionPassed(state, meta, 'domesticEastAppointed', 'The Domestic of the East appointment');
-  markCourtMandatoryActionPassed(state, meta, 'domesticWestAppointed', 'The Domestic of the West appointment');
-  markCourtMandatoryActionPassed(state, meta, 'admiralAppointed', 'The Admiral appointment');
-  markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch appointment');
+  markAiMandatoryActionPassed(state, meta, 'basileusAppointed', 'The Basileus appointment');
+  markAiMandatoryActionPassed(state, meta, 'domesticEastAppointed', 'The Domestic of the East appointment');
+  markAiMandatoryActionPassed(state, meta, 'domesticWestAppointed', 'The Domestic of the West appointment');
+  markAiMandatoryActionPassed(state, meta, 'admiralAppointed', 'The Admiral appointment');
+  markAiMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch appointment');
 
   for (const playerId of aiOrder) {
     runMercenaryStrategy(state, meta, playerId);
