@@ -1462,6 +1462,54 @@ body::before {
   overflow-wrap: anywhere;
 }
 
+.auction-list {
+  gap: var(--sp-2);
+}
+
+.auction-row {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.auction-row.selected {
+  border-color: var(--gold-1);
+  background: rgba(200,146,30,0.08);
+  box-shadow: 0 0 0 1px rgba(168,116,32,0.16);
+}
+
+.auction-row.disabled {
+  opacity: 0.62;
+}
+
+.auction-main {
+  min-width: min(100%, 210px);
+  flex: 1 1 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auction-controls {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.auction-bid-control {
+  flex: 0 1 100px;
+}
+
+.market-bid-input {
+  width: 100%;
+}
+
+.market-bid-btn {
+  align-self: flex-end;
+}
+
 
 /* ── Appointment blocks ──────────────────────────────────────────── */
 .appointment-block { margin-bottom: var(--sp-4); }
@@ -1546,28 +1594,37 @@ body::before {
 }
 .appt-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 
-/* Appt cooldown notice */
-.appointment-block.has-self-lockout {
-  padding: 8px;
-  border: 1px solid rgba(160,48,48,0.20);
+.appt-cost-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(168,116,32,0.14);
   border-radius: var(--r-sm);
-  background: rgba(160,48,48,0.04);
+  background: rgba(255,252,240,0.72);
+  color: var(--umber-2);
+  font-size: 12px;
 }
 
-.self-appoint-lockout {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  margin: 4px 0 7px;
-  padding: 6px 8px;
-  border: 1px solid rgba(160,48,48,0.25);
-  border-radius: var(--r-sm);
-  background: rgba(160,48,48,0.07);
-  color: var(--crimson-1);
-  font-size: 12px;
-  line-height: 1.4;
+.appt-cost-line strong {
+  font-family: var(--font-display);
+  color: var(--gold-1);
+  font-size: 13px;
 }
-.self-appoint-lockout-icon { font-weight: 700; flex-shrink: 0; }
+
+.appt-cost-line small {
+  color: var(--umber-3);
+}
+
+.appt-cost-line.blocked {
+  border-color: rgba(160,48,48,0.22);
+  background: rgba(160,48,48,0.05);
+}
+
+.appt-cost-line.blocked strong {
+  color: var(--crimson-1);
+}
 
 /* ── Army Management ─────────────────────────────────────────────── */
 .army-grid {
@@ -3493,6 +3550,14 @@ button.merc-button {
   .deploy-toggle,
   .merc-controls { margin-left: 0; width: 100%; }
   .toggle-btn { flex: 1; min-height: 38px; }
+
+  .auction-main,
+  .auction-controls,
+  .auction-bid-control,
+  .market-bid-btn {
+    width: 100%;
+    flex-basis: 100%;
+  }
 
   .army-controls,
   .army-dismiss {

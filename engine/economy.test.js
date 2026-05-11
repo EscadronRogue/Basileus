@@ -37,6 +37,7 @@ import {
 import { normalizeHumanOrders } from './orders.js';
 import { applyCourtAction, confirmCourt } from './commands.js';
 import { handleHumanCourtConfirmation } from './runtime.js';
+import { createAIMeta } from '../ai/brain.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -676,6 +677,61 @@ test('all-human court advances only after each player confirms', () => {
   };
 
   const result = handleHumanCourtConfirmation(state, null, {}, 2);
+  assert.equal(result.ok, true);
+  assert.equal(state.phase, 'orders');
+});
+
+test('court confirmation passes only the confirming players own mandatory appointments', () => {
+  const state = makeState([makeTheme('OPS'), makeTheme('THS'), makeTheme('AEG')], {
+    0: { majorTitles: ['DOM_EAST'] },
+    1: { majorTitles: ['DOM_WEST'] },
+    2: { majorTitles: ['PATRIARCH'] },
+  });
+  state.courtActions = {
+    basileusAppointed: false,
+    domesticEastAppointed: false,
+    domesticWestAppointed: false,
+    admiralAppointed: true,
+    patriarchAppointed: false,
+    basileusRevocationsUsed: 0,
+    appointmentsByRecipient: {},
+    playerConfirmed: new Set(),
+  };
+
+  const result = confirmCourt(state, 0);
+  assert.equal(result.ok, true);
+  assert.equal(state.courtActions.basileusAppointed, true);
+  assert.equal(state.courtActions.domesticEastAppointed, true);
+  assert.equal(state.courtActions.domesticWestAppointed, false);
+  assert.equal(state.courtActions.patriarchAppointed, false);
+  assert.equal(state.courtActions.playerConfirmed.has(0), true);
+  assert.equal(state.phase, 'court');
+});
+
+test('solo court confirmation can pass without taking optional mandatory actions', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 21 });
+  state.phase = 'court';
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  state.players.forEach((player) => {
+    player.majorTitles = [];
+  });
+  state.players[1].majorTitles = ['DOM_EAST'];
+  state.players[2].majorTitles = ['DOM_WEST', 'PATRIARCH'];
+  state.players[3].majorTitles = ['ADMIRAL'];
+  state.courtActions = {
+    basileusAppointed: false,
+    domesticEastAppointed: false,
+    domesticWestAppointed: false,
+    admiralAppointed: false,
+    patriarchAppointed: false,
+    basileusRevocationsUsed: 0,
+    appointmentsByRecipient: {},
+    playerConfirmed: new Set(),
+  };
+  const aiMeta = createAIMeta(state, { humanPlayerIds: [0] });
+
+  const result = handleHumanCourtConfirmation(state, aiMeta, {}, 0);
   assert.equal(result.ok, true);
   assert.equal(state.phase, 'orders');
 });

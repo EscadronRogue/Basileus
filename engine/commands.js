@@ -50,6 +50,27 @@ function playerLabel(state, playerId) {
   return formatPlayerLabel(player) || `Player ${Number(playerId) + 1}`;
 }
 
+function passMandatoryAppointmentsForPlayer(state, playerId) {
+  const player = getPlayer(state, playerId);
+  if (!player || !state.courtActions) return;
+  if (playerId === state.basileusId) state.courtActions.basileusAppointed = true;
+  if (player.majorTitles.includes('DOM_EAST')) {
+    state.courtActions.domesticEastAppointed = true;
+    state.courtActions.DOM_EAST_appointed = true;
+  }
+  if (player.majorTitles.includes('DOM_WEST')) {
+    state.courtActions.domesticWestAppointed = true;
+    state.courtActions.DOM_WEST_appointed = true;
+  }
+  if (player.majorTitles.includes('ADMIRAL')) {
+    state.courtActions.admiralAppointed = true;
+    state.courtActions.ADMIRAL_appointed = true;
+  }
+  if (player.majorTitles.includes('PATRIARCH')) {
+    state.courtActions.patriarchAppointed = true;
+  }
+}
+
 // ─── Court actions ─────────────────────────────────────────────────────────
 // Returns { ok, reason?, observation? }.
 // observation is an AI-relations payload to be fed to observeCourtAction when
@@ -253,6 +274,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
 export function confirmCourt(state, playerId) {
   if (state.phase !== 'court') return fail('Court confirmation is not available right now.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  passMandatoryAppointmentsForPlayer(state, playerId);
   state.courtActions.playerConfirmed.add(playerId);
   autoRefuseAwaitingDeals(state, playerId);
   recordHistoryEvent(state, {

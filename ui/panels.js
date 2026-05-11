@@ -340,6 +340,24 @@ function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
     </div>`;
 }
 
+function formatAppointmentCost(cost) {
+  return `${cost} troop${cost === 1 ? '' : 's'}`;
+}
+
+function renderAppointmentCostLine(state, appointerId, appointeeId) {
+  const paymentCheck = canPayAppointmentCost(state, appointerId, appointeeId);
+  const helper = paymentCheck.ok
+    ? `${formatAppointmentCost(paymentCheck.available || 0)} available`
+    : `Need ${formatAppointmentCost(paymentCheck.cost)}, have ${formatAppointmentCost(paymentCheck.available || 0)}`;
+  return `
+    <div class="appt-cost-line ${paymentCheck.ok ? '' : 'blocked'}" data-appointment-cost>
+      <span>Selected cost</span>
+      <strong data-appointment-cost-value>${formatAppointmentCost(paymentCheck.cost)}</strong>
+      <small data-appointment-cost-help>${helper}</small>
+    </div>
+  `;
+}
+
 function renderAppointmentColumn(label, bodyHtml) {
   return `<div class="appt-column">
     <span class="appt-column-label">${label}</span>
@@ -1501,7 +1519,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   const estatesBody = `
     <p class="section-hint">Bid on free provinces. The first bid must be at least 2&times;P; later bids must be higher. Gold is paid into escrow immediately and refunded if another dynasty overbids you.</p>
     ${availableThemes.length ? `
-      <div class="theme-market">
+      <div class="dashboard-list compact auction-list">
         ${availableThemes.map((theme) => {
           const auction = getLandAuction(state, theme.id);
           const minimumBid = getMinimumLandBid(state, theme.id);
@@ -1510,19 +1528,28 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
           landBidDraft[theme.id] = bidAmount;
           const dueNow = auction?.bidderId === activePlayerId ? bidAmount - auction.amount : bidAmount;
           const canAfford = player.gold >= dueNow;
+          const isRaisingOwnBid = auction?.bidderId === activePlayerId;
           const highBid = auction
-            ? `<span class="market-bid">High bid: ${formatGold(auction.amount)} by ${renderPlayerRoleNameById(state, auction.bidderId, 'Unknown')}</span>`
-            : '<span class="market-bid">No bids yet</span>';
-          return `<div class="market-item ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}">
-            <span class="market-name">${renderProvinceBadge(state, theme, { showValues: true })}</span>
-            ${highBid}
-            <label class="market-bid-control">
+            ? `High bid ${formatGold(auction.amount)} by ${renderPlayerRoleNameById(state, auction.bidderId, 'Unknown')}`
+            : `Opening bid ${formatGold(minimumBid)}`;
+          const buttonLabel = isRaisingOwnBid
+            ? `Raise to ${formatGold(bidAmount)} (pay ${formatGold(Math.max(0, dueNow))})`
+            : `Offer ${formatGold(bidAmount)} now`;
+          const statusLabel = canAfford
+            ? `Minimum ${formatGold(minimumBid)}`
+            : `Need ${formatGold(dueNow)}, have ${formatGold(player.gold)}`;
+          return `<div class="dashboard-list-row auction-row ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}" data-auction-row data-min-bid="${minimumBid}" data-own-bid="${isRaisingOwnBid ? auction.amount : 0}" data-available-gold="${player.gold}">
+            <div class="auction-main">
+              <span class="auction-province">${renderProvinceBadge(state, theme, { showValues: true })}</span>
+              <span class="dashboard-list-note market-bid" data-bid-status>${highBid} | ${statusLabel}</span>
+            </div>
+            <div class="auction-controls">
+              <label class="deal-field auction-bid-control">
               <span>Bid</span>
               <input class="market-bid-input" type="number" min="${minimumBid}" step="1" value="${bidAmount}" data-bid-theme="${theme.id}">
-            </label>
-            <button class="market-bid-btn ${canAfford ? '' : 'disabled'}" data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>
-              Offer ${formatGold(dueNow)} now
-            </button>
+              </label>
+              <button class="appt-btn market-bid-btn ${canAfford ? '' : 'disabled'}" data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>${buttonLabel}</button>
+            </div>
           </div>`;
         }).join('')}
       </div>
@@ -1674,6 +1701,61 @@ function bindThemeChoiceControls(root, appointmentDraft = null) {
   });
 }
 
+function refreshAppointmentCostDisplay(state, block) {
+  const appointerId = Number(block?.dataset?.appointerId);
+  const appointeeId = Number(block?.querySelector('.appt-player-select')?.value);
+  if (!Number.isInteger(appointerId) || !Number.isInteger(appointeeId)) return;
+
+  const paymentCheck = canPayAppointmentCost(state, appointerId, appointeeId);
+  const costValue = block.querySelector('[data-appointment-cost-value]');
+  const costHelp = block.querySelector('[data-appointment-cost-help]');
+  const costLine = block.querySelector('[data-appointment-cost]');
+  const submitButton = block.querySelector('[data-appointment-submit]');
+  if (costValue) costValue.textContent = formatAppointmentCost(paymentCheck.cost);
+  if (costHelp) {
+    costHelp.textContent = paymentCheck.ok
+      ? `${formatAppointmentCost(paymentCheck.available || 0)} available`
+      : `Need ${formatAppointmentCost(paymentCheck.cost)}, have ${formatAppointmentCost(paymentCheck.available || 0)}`;
+  }
+  costLine?.classList.toggle('blocked', !paymentCheck.ok);
+  if (submitButton) {
+    submitButton.textContent = `Appoint (${formatAppointmentCost(paymentCheck.cost)})`;
+    submitButton.disabled = !paymentCheck.ok;
+    submitButton.classList.toggle('disabled', !paymentCheck.ok);
+  }
+}
+
+function refreshLandBidDisplay(row, input) {
+  const minimumBid = Number(row?.dataset?.minBid) || 0;
+  const ownBid = Number(row?.dataset?.ownBid) || 0;
+  const availableGold = Number(row?.dataset?.availableGold) || 0;
+  const bidAmount = Number(input?.value);
+  const displayAmount = Number.isFinite(bidAmount) ? bidAmount : minimumBid;
+  const validBid = Number.isFinite(bidAmount) && bidAmount >= minimumBid;
+  const dueNow = Math.max(0, displayAmount - ownBid);
+  const canAfford = validBid && dueNow <= availableGold;
+  const button = row?.querySelector('[data-action="buy"]');
+  const status = row?.querySelector('[data-bid-status]');
+
+  if (button) {
+    button.textContent = ownBid > 0
+      ? `Raise to ${formatGold(displayAmount)} (pay ${formatGold(dueNow)})`
+      : `Offer ${formatGold(displayAmount)} now`;
+    button.disabled = !canAfford;
+    button.classList.toggle('disabled', !canAfford);
+  }
+  row?.classList.toggle('disabled', !canAfford);
+  if (status) {
+    const note = !validBid
+      ? `Minimum ${formatGold(minimumBid)}`
+      : canAfford
+        ? `Minimum ${formatGold(minimumBid)}`
+        : `Need ${formatGold(dueNow)}, have ${formatGold(availableGold)}`;
+    const current = status.textContent.split('|')[0]?.trim() || '';
+    status.textContent = `${current} | ${note}`;
+  }
+}
+
 function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData = null, courtDraft = {}) {
   const appointmentDraft = ensureNestedDraft(courtDraft, 'appointments');
   const landBidDraft = ensureNestedDraft(courtDraft, 'landBids');
@@ -1690,6 +1772,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       if (key) {
         if (!appointmentDraft[key]) appointmentDraft[key] = {};
         appointmentDraft[key].appointeeId = Number(button.dataset.playerChoice);
+        refreshAppointmentCostDisplay(state, block);
       }
     });
   });
@@ -1699,6 +1782,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
   container.querySelectorAll('[data-bid-theme]').forEach((input) => {
     input.addEventListener('input', () => {
       landBidDraft[input.dataset.bidTheme] = Number(input.value) || 0;
+      refreshLandBidDisplay(input.closest('[data-auction-row]'), input);
     });
   });
 
@@ -1708,6 +1792,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       const input = container.querySelector(`[data-bid-theme="${btn.dataset.theme}"]`);
       const amount = Number(input?.value || landBidDraft[btn.dataset.theme] || 0);
       landBidDraft[btn.dataset.theme] = amount;
+      if (input) refreshLandBidDisplay(input.closest('[data-auction-row]'), input);
       callbacks.buy?.(btn.dataset.theme, { amount });
     });
   });
@@ -2054,7 +2139,7 @@ function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
     ? 'Basileus: optionally appoint another court title or province office.'
     : 'Basileus: choose one court title or province office to appoint.';
 
-  return `<div class="appointment-block" data-appt-key="basileus">
+  return `<div class="appointment-block" data-appt-key="basileus" data-appointer-id="${appointerId}">
     <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
@@ -2068,7 +2153,8 @@ function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
         </div>`,
         renderPlayerChoiceControl(state, 'basileusApptPlayer', selectedAppointeeId)
       )}
-      <button class="appt-btn" data-action="commit-basileus-appt" ${paymentCheck.ok ? '' : 'disabled'}>Appoint${nextCost > 0 ? ` (${nextCost} troop${nextCost === 1 ? '' : 's'})` : ''}</button>
+      ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
+      <button class="appt-btn" data-appointment-submit data-action="commit-basileus-appt" ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
     </div>
   </div>`;
 }
@@ -2094,14 +2180,15 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     ? `${title.name}: optionally appoint another Strategos.`
     : `${title.name}: choose a province and appoint its Strategos.`;
 
-  return `<div class="appointment-block" data-appt-key="${titleKey}">
+  return `<div class="appointment-block" data-appt-key="${titleKey}" data-appointer-id="${appointerId}">
     <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
         renderPlayerChoiceControl(state, null, selectedAppointeeId)
       )}
-      <button class="appt-btn strategos-commit" data-titlekey="${titleKey}" ${paymentCheck.ok ? '' : 'disabled'}>Appoint${nextCost > 0 ? ` (${nextCost} troop${nextCost === 1 ? '' : 's'})` : ''}</button>
+      ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
+      <button class="appt-btn strategos-commit" data-appointment-submit data-titlekey="${titleKey}" ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
     </div>
   </div>`;
 }
@@ -2124,14 +2211,15 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draf
     ? 'Patriarch: optionally appoint another Bishop.'
     : 'Patriarch: choose a province and appoint its Bishop.';
 
-  return `<div class="appointment-block" data-appt-key="patriarch">
+  return `<div class="appointment-block" data-appt-key="patriarch" data-appointer-id="${appointerId}">
     <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
         renderPlayerChoiceControl(state, null, selectedAppointeeId)
       )}
-      <button class="appt-btn bishop-commit" ${paymentCheck.ok ? '' : 'disabled'}>Appoint${nextCost > 0 ? ` (${nextCost} troop${nextCost === 1 ? '' : 's'})` : ''}</button>
+      ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
+      <button class="appt-btn bishop-commit" data-appointment-submit ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
     </div>
   </div>`;
 }

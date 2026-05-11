@@ -105,6 +105,48 @@ test('court panel reuses local appointment and land bid drafts on rerender', () 
   assert.match(container.innerHTML, new RegExp(`data-player-choice="${otherId}"[^>]*selected|selected[^>]*data-player-choice="${otherId}"`));
   assert.match(container.innerHTML, new RegExp(`id="basileusApptTheme"[^>]*value="${freeTheme.id}"`));
   assert.match(container.innerHTML, new RegExp(`data-bid-theme="${freeTheme.id}"[^>]*value="7"|value="7"[^>]*data-bid-theme="${freeTheme.id}"`));
+  assert.match(container.innerHTML, /Appoint \(0 troops\)/);
+  assert.match(container.innerHTML, /Offer 7 gold now/);
+});
+
+test('court panel prices repeat appointments for the selected recipient', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 9 });
+  const playerId = state.basileusId;
+  const otherId = state.players.find((player) => player.id !== playerId).id;
+  state.phase = 'court';
+  state.currentLevies = { BASILEUS: 1 };
+  state.courtActions = {
+    ...(state.courtActions || {}),
+    appointmentsByRecipient: {
+      [playerId]: {
+        [playerId]: 1,
+      },
+    },
+    playerConfirmed: new Set(),
+  };
+  const uiState = {
+    drafts: {
+      [`court:${state.round}:${playerId}`]: {
+        appointments: {
+          basileus: {
+            appointeeId: playerId,
+          },
+        },
+      },
+    },
+  };
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, playerId, {}, { uiState });
+
+  assert.match(container.innerHTML, /Selected cost[\s\S]*1 troop/);
+  assert.match(container.innerHTML, /Appoint \(1 troop\)/);
+
+  uiState.drafts[`court:${state.round}:${playerId}`].appointments.basileus.appointeeId = otherId;
+  renderCourtPanel(container, state, playerId, {}, { uiState });
+
+  assert.match(container.innerHTML, /Selected cost[\s\S]*0 troops/);
+  assert.match(container.innerHTML, /Appoint \(0 troops\)/);
 });
 
 test('orders panel reuses local deployment and claimant drafts on rerender', () => {
