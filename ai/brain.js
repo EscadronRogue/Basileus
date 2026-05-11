@@ -17,9 +17,15 @@ import {
   appointStrategos,
   applyCoupTitleReassignment,
   buyTheme,
+  canGrantTaxExemption,
+  canPayAppointmentCost,
   dismissProfessional,
   canRecruitProfessional,
+  getLandAuction,
+  getMinimumLandBid,
+  getNextAppointmentCost,
   giftToChurch,
+  grantTaxExemption,
   hireMercenaries,
   recruitProfessional,
   revokeMajorTitle,
@@ -34,9 +40,12 @@ import {
 import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
+  getNormalTaxIncome,
+  getTaxExemptOwnerIncome,
   getThemeLandPrice,
   getThemeOwnerIncome,
 } from '../engine/rules.js';
+import { buildFinalScores, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import {
   DEFAULT_META_PARAMS,
@@ -142,6 +151,7 @@ function getFastCache(state, meta) {
     totalThemeCount,
     threatLevel: null,
     empireDanger: null,
+    finalScores: null,
     standings: null,
     standingSnapshots: new Map(),
   };
@@ -505,13 +515,50 @@ function getEmpireDanger(state, meta = null) {
   return danger;
 }
 
+function getFinalScoreModel(state, meta) {
+  const cache = getFastCache(state, meta);
+  if (cache?.finalScores) return cache.finalScores;
+  const finalScores = buildFinalScores(state);
+  if (cache) cache.finalScores = finalScores;
+  return finalScores;
+}
+
+function getFinalScoreEntry(state, meta, playerId) {
+  return getFinalScoreModel(state, meta).scores.find(score => score.playerId === playerId) || null;
+}
+
+function getCategoryScoreEntry(state, meta, playerId, categoryKey) {
+  return getFinalScoreEntry(state, meta, playerId)?.categories.find(category => category.key === categoryKey) || null;
+}
+
+function getCategoryThresholdPressure(state, meta, playerId, categoryKey) {
+  const category = getCategoryScoreEntry(state, meta, playerId, categoryKey);
+  if (!category) return 0;
+  const share = Math.max(0, Number(category.share) || 0);
+  const points = Math.max(0, Number(category.points) || 0);
+  const nextThreshold = SCORE_SHARE_THRESHOLDS[points] ?? null;
+  const gainPressure = nextThreshold == null
+    ? 0.25
+    : clamp(1 - ((nextThreshold - share) / 0.25), 0, 1.25);
+  const currentThreshold = points > 0 ? SCORE_SHARE_THRESHOLDS[points - 1] : 0;
+  const defensePressure = points > 0 ? clamp(1 - ((share - currentThreshold) / 0.12), 0, 1) * 0.45 : 0;
+  return gainPressure + defensePressure;
+}
+
 function getVictoryPositionScore(state, meta, playerId) {
   const player = getPlayer(state, playerId);
   const remainingRounds = getRemainingRounds(state);
   const landIncome = getPlayerIncomePotential(state, playerId, meta);
   const threatenedLoss = getPlayerThreatenedLandValue(state, playerId, meta);
+  const finalScore = getFinalScoreEntry(state, meta, playerId);
+  const thresholdPressure = ['church', 'estate', 'tax', 'gold'].reduce(
+    (total, categoryKey) => total + getCategoryThresholdPressure(state, meta, playerId, categoryKey),
+    0,
+  );
   return (
-    player.gold +
+    ((finalScore?.points || 0) * 9) +
+    (thresholdPressure * 1.4) +
+    (player.gold * 0.35) +
     (landIncome * (0.8 + (remainingRounds * 0.35))) +
     (getCachedProfessionalCount(state, meta, playerId) * 1.05) +
     (player.majorTitles.length * 1.45) +
@@ -778,22 +825,47 @@ function buildLandPurchaseDecision(state, meta, playerId, action) {
   const leaderThemeCount = getPlayerThemes(state, standing.leaderId).length;
   const routeRisk = getThemeRouteRisk(state, theme.id);
   const empireDanger = getEmpireDanger(state, meta);
-  const cost = getThemeLandPrice(theme);
+  const auction = getLandAuction(state, theme.id);
+  const bid = getMinimumLandBid(state, theme.id);
+  const dueNow = auction?.bidderId === playerId ? Math.max(0, bid - auction.amount) : bid;
   const ownerIncome = getNormalOwnerIncome(theme);
-  const goldAfter = getPlayer(state, playerId).gold - cost;
+  const goldAfter = getPlayer(state, playerId).gold - dueNow;
 
   return {
     title: 'AI reasoning',
     factors: [
       factor('Income horizon', `${theme.name} is P${theme.P} T${theme.T} L${theme.L}, yielding ${ownerIncome}g to the owner each round under normal taxation.`, 'for', action.score),
+      factor('Auction price', auction
+        ? `The current high bid was ${auction.amount}g, so the legal raise was ${bid}g with ${dueNow}g due now.`
+        : `The opening bid was ${bid}g.`, dueNow > getThemeLandPrice(theme) ? 'against' : 'neutral', bid),
       factor('Catch-up pressure', leaderThemeCount > ownedThemeCount
         ? `${publicActor(state, playerId)} was behind the land leader and needed to close the gap.`
         : `${publicActor(state, playerId)} still valued land growth even without trailing in estates.`, leaderThemeCount > ownedThemeCount ? 'for' : 'neutral'),
-      factor('Reserve after purchase', `${goldAfter}g would remain after paying ${cost}g.`, goldAfter < 2 ? 'against' : 'neutral', goldAfter),
+      factor('Reserve after bid', `${goldAfter}g would remain after the escrow payment.`, goldAfter < 2 ? 'against' : 'neutral', goldAfter),
       factor('Route risk', `${theme.name} sits at route risk ${roundTo(routeRisk, 2)} while empire danger is ${roundTo(empireDanger, 2)}.`, routeRisk > 0.55 && empireDanger > 1 ? 'against' : 'neutral', routeRisk),
       factor('Estate scarcity', ownedThemeCount === 0
         ? 'Owning no land made the first purchase especially urgent.'
         : `${publicActor(state, playerId)} already held ${ownedThemeCount} theme${ownedThemeCount === 1 ? '' : 's'}.`, ownedThemeCount === 0 ? 'for' : 'neutral'),
+    ],
+  };
+}
+
+function buildTaxExemptionDecision(state, meta, playerId, action) {
+  const theme = action.theme;
+  const currentOwnerIncome = action.currentOwnerIncome ?? getThemeOwnerIncome(theme);
+  const exemptOwnerIncome = action.exemptOwnerIncome ?? getTaxExemptOwnerIncome(theme);
+  const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate');
+  const goldPressure = getCategoryThresholdPressure(state, meta, playerId, 'gold');
+
+  return {
+    title: 'AI reasoning',
+    factors: [
+      factor('Estate threshold pressure', `${publicActor(state, playerId)} valued a larger estate-income share at pressure ${roundTo(estatePressure, 2)}.`, estatePressure > 0.7 ? 'for' : 'neutral', estatePressure),
+      factor('Income gain', `${theme.name} rises from ${currentOwnerIncome}g private income to ${exemptOwnerIncome}g while no longer paying provincial tax.`, 'for', exemptOwnerIncome - currentOwnerIncome),
+      factor('Gold threshold pressure', `Spending ${action.cost}g could weaken gold-reserve scoring pressure ${roundTo(goldPressure, 2)}.`, goldPressure > 0.7 ? 'against' : 'neutral', goldPressure),
+      factor('Basileus payment', state.basileusId === playerId
+        ? 'The Basileus cannot exempt his own estate.'
+        : `${action.cost}g flows to ${publicActor(state, state.basileusId)}.`, state.basileusId === playerId ? 'against' : 'neutral', action.cost),
     ],
   };
 }
@@ -1049,6 +1121,8 @@ export function createAIMeta(state, options = {}) {
       stats: {
         landBuys: 0,
         themesGifted: 0,
+        taxExemptions: 0,
+        taxExemptionSpend: 0,
         recruits: 0,
         recruitOpportunities: 0,
         revocations: 0,
@@ -1096,6 +1170,8 @@ export function createAIMeta(state, options = {}) {
     totals: {
       landBuys: 0,
       gifts: 0,
+      taxExemptions: 0,
+      taxExemptionSpend: 0,
       recruits: 0,
       recruitOpportunities: 0,
       revocations: 0,
@@ -1487,6 +1563,11 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
   const appointeeOwesActor = getObligation(meta, appointeeId, actorId);
   const sharedCandidate = actorPact && appointeePact && actorPact.candidateId === appointeePact.candidateId;
   const supportLeverage = getPlayerInfluence(state, meta, appointeeId) * 0.16;
+  const appointmentCost = getNextAppointmentCost(state, actorId, appointeeId);
+  const recipientPressure =
+    (getCategoryThresholdPressure(state, meta, appointeeId, 'tax') * 0.45) +
+    (getCategoryThresholdPressure(state, meta, appointeeId, 'church') * 0.35) +
+    (getCategoryThresholdPressure(state, meta, appointeeId, 'gold') * 0.15);
 
   let slotValue = 1.5;
   if (type === 'EMPRESS' || type === 'CHIEF_EUNUCHS') {
@@ -1506,13 +1587,13 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
 
   const sharedCoalitionBonus = sharedCandidate ? 0.9 : -0.18;
   const debtRepayment = actorOwesAppointee * 1.25;
-  const leverageGain = supportLeverage * 0.6 + appointeePact?.capitalBias * 0.25;
+  const leverageGain = (supportLeverage * 0.6) + ((appointeePact?.capitalBias || 0) * 0.25);
   const patronageRetention = appointeeOwesActor * 0.22;
   const selfBias = appointeeId === actorId ? actorProfile.weights.selfAppointment * 0.85 : 0;
   const controlBias = actorProfile.weights.loyalty * appointeeAffinity;
   const riskPenalty = appointeeAmbition * 0.32;
 
-  return slotValue + sharedCoalitionBonus + debtRepayment + leverageGain + patronageRetention + selfBias + controlBias - riskPenalty;
+  return slotValue + sharedCoalitionBonus + debtRepayment + leverageGain + patronageRetention + selfBias + controlBias + recipientPressure - riskPenalty - (appointmentCost * 1.15);
 }
 
 function registerFavor(meta, actorId, recipientId, amount) {
@@ -1543,6 +1624,7 @@ function handleBasileusAppointment(state, meta) {
   }
 
   const ranked = options
+    .filter(option => canPayAppointmentCost(state, actorId, option.appointeeId).ok)
     .map(option => ({
       ...option,
       score: scoreMinorSlot(state, meta, actorId, option.type, option.themeId ? state.themes[option.themeId] : null, option.appointeeId),
@@ -1619,6 +1701,7 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
   }
 
   const ranked = options
+    .filter(option => canPayAppointmentCost(state, actorId, option.appointeeId).ok)
     .map(option => ({
       ...option,
       score: scoreMinorSlot(state, meta, actorId, 'STRATEGOS', state.themes[option.themeId], option.appointeeId),
@@ -1674,6 +1757,7 @@ function handlePatriarchAppointment(state, meta) {
   }
 
   const ranked = options
+    .filter(option => canPayAppointmentCost(state, actorId, option.appointeeId).ok)
     .map(option => ({
       ...option,
       score: scoreMinorSlot(state, meta, actorId, 'BISHOP', state.themes[option.themeId], option.appointeeId),
@@ -1710,7 +1794,10 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const standing = getStandingSnapshot(state, meta, playerId);
   const ownedThemeCount = getPlayerThemes(state, playerId).length;
   const leaderThemeCount = getPlayerThemes(state, standing.leaderId).length;
-  const cost = getThemeLandPrice(theme);
+  const minimumBid = getMinimumLandBid(state, theme.id);
+  const auction = getLandAuction(state, theme.id);
+  const ownBid = auction?.bidderId === playerId ? auction.amount : 0;
+  const dueNow = Math.max(0, minimumBid - ownBid);
   const ownerIncome = getNormalOwnerIncome(theme);
   const player = getPlayer(state, playerId);
   const privateValue = (ownerIncome * (1.8 + (remainingRounds * 0.56))) + (theme.L * 0.25) + (remainingRounds * profile.weights.wealth * 0.18);
@@ -1719,11 +1806,14 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const scarcityBonus = ownedThemeCount === 0 ? 4.5 : Math.max(0, 2 - ownedThemeCount) * 1.6;
   const catchUpBonus = Math.max(0, leaderThemeCount - ownedThemeCount) * 0.55;
   const churchOptionality = profile.weights.church * theme.P * 0.08;
-  const reservePenalty = (player.gold - cost) < 2 ? 0.9 + (empireDanger * 0.25) : 0;
+  const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate') * 1.15;
+  const goldPressure = getCategoryThresholdPressure(state, meta, playerId, 'gold') * 0.35;
+  const overbidPenalty = auction && auction.bidderId !== playerId ? (minimumBid - getThemeLandPrice(theme)) * 0.35 : 0;
+  const reservePenalty = (player.gold - dueNow) < 2 ? 0.9 + (empireDanger * 0.25) : 0;
   const riskPenalty = routeRisk * (empireDanger < 1 ? 0.45 : 0.85);
   const selfProtection = exposure > 0 ? theme.L * 0.15 : 0;
   const zeroIncomeRelief = getPlayerIncomePotential(state, playerId, meta) === 0 ? 2.2 : 0;
-  return privateValue + landControl + cheapness + scarcityBonus + catchUpBonus + churchOptionality + selfProtection + zeroIncomeRelief - (cost * 0.7) - reservePenalty - riskPenalty - (profile.weights.frontier * 0.15);
+  return privateValue + landControl + cheapness + scarcityBonus + catchUpBonus + churchOptionality + selfProtection + zeroIncomeRelief + estatePressure - (dueNow * 0.7) - overbidPenalty - reservePenalty - riskPenalty - goldPressure - (profile.weights.frontier * 0.15);
 }
 
 function scoreChurchGift(state, meta, playerId, theme) {
@@ -1743,7 +1833,45 @@ function scoreChurchGift(state, meta, playerId, theme) {
   const bishopLockBonus = 0.35 + (profile.weights.church * 0.28);
   const routeRiskRelief = getThemeRouteRisk(state, theme.id) * (empireDanger < 1 ? 1.05 : 0.35);
   const reservePenalty = temperament.churchReserve * (1.25 + (threatenedValue * 0.02));
-  return churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief - keepsValue - reservePenalty;
+  const churchPressure = getCategoryThresholdPressure(state, meta, playerId, 'church') * 1.35;
+  const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate') * 0.9;
+  return churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief + churchPressure - keepsValue - reservePenalty - estatePressure;
+}
+
+function scoreTaxExemption(state, meta, playerId, theme) {
+  const check = canGrantTaxExemption(state, playerId, theme.id);
+  if (!check.ok) return null;
+  const profile = getPersonalityProfile(meta, playerId);
+  const remainingRounds = getRemainingRounds(state);
+  const empireDanger = getEmpireDanger(state, meta);
+  const routeRisk = getThemeRouteRisk(state, theme.id);
+  const currentOwnerIncome = getThemeOwnerIncome(theme);
+  const exemptOwnerIncome = getTaxExemptOwnerIncome(theme);
+  const incomeGain = Math.max(0, exemptOwnerIncome - currentOwnerIncome);
+  const taxValue = getNormalTaxIncome(theme);
+  const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate');
+  const goldPressure = getCategoryThresholdPressure(state, meta, playerId, 'gold');
+  const taxPressure = getCategoryThresholdPressure(state, meta, playerId, 'tax');
+  const lostOwnTaxValue = theme.strategos === playerId ? taxValue * (0.8 + taxPressure) : 0;
+  const basileusStanding = getStandingSnapshot(state, meta, state.basileusId);
+  const paymentToLeaderPenalty = state.basileusId !== playerId && basileusStanding.rank === 1 ? check.cost * 0.25 : 0;
+  const riskPenalty = routeRisk * (empireDanger > 0.9 ? 0.85 : 0.35);
+  return {
+    kind: 'exempt',
+    theme,
+    cost: check.cost,
+    currentOwnerIncome,
+    exemptOwnerIncome,
+    score:
+      (incomeGain * (remainingRounds + 0.75)) +
+      (profile.weights.land * 0.35) +
+      (estatePressure * 2.25) -
+      (check.cost * 0.62) -
+      (goldPressure * 0.7) -
+      lostOwnTaxValue -
+      paymentToLeaderPenalty -
+      riskPenalty,
+  };
 }
 
 function findBestRecruitmentAction(state, meta, playerId) {
@@ -1880,7 +2008,15 @@ function findBestLandPurchaseAction(state, meta, playerId) {
   const player = getPlayer(state, playerId);
   return getFreeThemes(state)
     .map(theme => ({ kind: 'buy', theme, score: scoreLandPurchase(state, meta, playerId, theme) }))
-    .filter(entry => getThemeLandPrice(entry.theme) <= player.gold)
+    .filter(entry => getLandAuction(state, entry.theme.id)?.bidderId !== playerId)
+    .filter(entry => getMinimumLandBid(state, entry.theme.id) <= player.gold)
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+function findBestTaxExemptionAction(state, meta, playerId) {
+  return getPlayerThemes(state, playerId)
+    .map(theme => scoreTaxExemption(state, meta, playerId, theme))
+    .filter(Boolean)
     .sort((left, right) => right.score - left.score)[0] || null;
 }
 
@@ -1893,6 +2029,7 @@ function runLandStrategy(state, meta, playerId, plannedAction = null) {
   const threshold = getMetaForPlayer(meta, playerId, 'landPurchaseThreshold');
   if (!action || action.score <= threshold) return false;
 
+  const bidAmount = getMinimumLandBid(state, action.theme.id);
   const result = buyTheme(state, playerId, action.theme.id);
   if (!result?.ok) return false;
 
@@ -1901,8 +2038,27 @@ function runLandStrategy(state, meta, playerId, plannedAction = null) {
   meta.players[playerId].stats.landBuys++;
   meta.totals.landBuys++;
   applyDecisionToResult(state, result, buildLandPurchaseDecision(state, meta, playerId, action));
-  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys ${action.theme.id} for ${getThemeLandPrice(action.theme)}g (score ${roundTo(action.score, 2)}).`);
-  logPublic(meta, `${publicActor(state, playerId)} buys ${action.theme.id}.`);
+  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} bids for ${action.theme.id} at ${bidAmount}g (score ${roundTo(action.score, 2)}).`);
+  logPublic(meta, `${publicActor(state, playerId)} bids for ${action.theme.id}.`);
+  return true;
+}
+
+function runTaxExemptionStrategy(state, meta, playerId, plannedAction = null) {
+  const action = plannedAction || findBestTaxExemptionAction(state, meta, playerId);
+  const threshold = getMetaForPlayer(meta, playerId, 'landPurchaseThreshold') + 0.35;
+  if (!action || action.score <= threshold) return false;
+
+  const result = grantTaxExemption(state, playerId, action.theme.id);
+  if (!result?.ok) return false;
+
+  invalidateRoundContext(meta);
+  meta.players[playerId].stats.taxExemptions++;
+  meta.players[playerId].stats.taxExemptionSpend += result.cost || action.cost || 0;
+  meta.totals.taxExemptions++;
+  meta.totals.taxExemptionSpend += result.cost || action.cost || 0;
+  applyDecisionToResult(state, result, buildTaxExemptionDecision(state, meta, playerId, action));
+  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys tax exemption for ${action.theme.id} (score ${roundTo(action.score, 2)}).`);
+  logPublic(meta, `${publicActor(state, playerId)} buys tax exemption for ${action.theme.id}.`);
   return true;
 }
 
@@ -1945,6 +2101,7 @@ function takeOneStrategicCourtAction(state, meta, playerId) {
   const options = [
     findBestRecruitmentAction(state, meta, playerId),
     findBestLandPurchaseAction(state, meta, playerId),
+    findBestTaxExemptionAction(state, meta, playerId),
     findBestChurchGiftAction(state, meta, playerId),
     findBestDismissalAction(state, meta, playerId),
   ].filter(Boolean).sort((left, right) => right.score - left.score);
@@ -1953,6 +2110,7 @@ function takeOneStrategicCourtAction(state, meta, playerId) {
   if (!best) return false;
   if (best.kind === 'recruit') return runRecruitmentStrategy(state, meta, playerId, best);
   if (best.kind === 'buy') return runLandStrategy(state, meta, playerId, best);
+  if (best.kind === 'exempt') return runTaxExemptionStrategy(state, meta, playerId, best);
   if (best.kind === 'gift') return runChurchGiftStrategy(state, meta, playerId, best);
   if (best.kind === 'dismiss') return runDismissalStrategy(state, meta, playerId, best);
   return false;
@@ -1972,11 +2130,15 @@ function buildRevocationOptions(state, meta, basileusId) {
       for (const candidate of state.players) {
         if (candidate.id === basileusId || candidate.id === player.id) continue;
         const targetThreat = getPlayerStrength(state, meta, player.id) - basileusStrength;
+        const targetScorePressure = ['church', 'estate', 'tax', 'gold'].reduce(
+          (total, key) => total + getCategoryThresholdPressure(state, meta, player.id, key),
+          0,
+        );
         const loyaltyGain = getAffinityScore(meta, basileusId, candidate.id) * 1.2;
         const stability = titleKey === 'PATRIARCH'
           ? getPersonalityProfile(meta, candidate.id).weights.church
           : getCompetenceScore(state, meta, candidate.id);
-        let score = (targetThreat * 0.22) + (profile.weights.revocation * 1.3) + loyaltyGain + (stability * 0.32) - (getAmbitionScore(meta, candidate.id) * 0.42);
+        let score = (targetThreat * 0.22) + (targetScorePressure * 0.35) + (profile.weights.revocation * 1.3) + loyaltyGain + (stability * 0.32) - (getAmbitionScore(meta, candidate.id) * 0.42);
         score -= getObligation(meta, basileusId, player.id) * 1.6;
         score -= getObligation(meta, candidate.id, basileusId) * 0.2;
         if (context.pactByPlayer[player.id]?.candidateId === basileusId) score -= 2.4;
@@ -1993,7 +2155,7 @@ function buildRevocationOptions(state, meta, basileusId) {
 
     const wealthLead = getPlayer(state, player.id).gold - getPlayer(state, basileusId).gold;
     for (const theme of getPlayerThemes(state, player.id)) {
-      let score = (wealthLead * 0.35) + profile.weights.revocation + (theme.P * 0.25) + (theme.L * 0.25);
+      let score = (wealthLead * 0.35) + profile.weights.revocation + (theme.P * 0.25) + (theme.L * 0.25) + (getCategoryThresholdPressure(state, meta, player.id, 'estate') * 1.3);
       score -= getObligation(meta, basileusId, player.id) * 1.25;
       if (context.pactByPlayer[player.id]?.candidateId === basileusId) score -= 1.8;
       if (getThemeRouteRisk(state, theme.id) > 0.6 && threat > 0.75) score -= 0.7;
@@ -2009,7 +2171,7 @@ function buildRevocationOptions(state, meta, basileusId) {
   for (const theme of Object.values(state.themes)) {
     if (theme.occupied) continue;
     if (theme.strategos != null) {
-      let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + profile.weights.revocation + theme.L;
+      let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + profile.weights.revocation + theme.L + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 1.1);
       score -= getObligation(meta, basileusId, theme.strategos) * 1.15;
       if (context.pactByPlayer[theme.strategos]?.candidateId === basileusId) score -= 1.7;
       options.push({
@@ -2021,7 +2183,7 @@ function buildRevocationOptions(state, meta, basileusId) {
       });
     }
     if (theme.bishop != null) {
-      let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.P * 0.8);
+      let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.P * 0.8) + (getCategoryThresholdPressure(state, meta, theme.bishop, 'church') * 1.1);
       score -= getObligation(meta, basileusId, theme.bishop) * 1.1;
       if (context.pactByPlayer[theme.bishop]?.candidateId === basileusId) score -= 1.5;
       options.push({
@@ -2033,10 +2195,11 @@ function buildRevocationOptions(state, meta, basileusId) {
       });
     }
     if (theme.taxExempt) {
+      const ownerId = Number.isInteger(theme.owner) ? theme.owner : null;
       options.push({
         kind: 'exempt',
         themeId: theme.id,
-        score: profile.weights.revocation + (theme.P * 0.8),
+        score: profile.weights.revocation + (theme.P * 0.8) + (ownerId == null ? 0 : getCategoryThresholdPressure(state, meta, ownerId, 'estate') * 1.2),
       });
     }
   }

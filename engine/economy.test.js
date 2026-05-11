@@ -37,7 +37,7 @@ import {
 import { normalizeHumanOrders } from './orders.js';
 import { applyCourtAction, confirmCourt } from './commands.js';
 import { handleHumanCourtConfirmation } from './runtime.js';
-import { createAIMeta } from '../ai/brain.js';
+import { createAIMeta, runAICourtAutomation } from '../ai/brain.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -92,6 +92,7 @@ function makeState(themes, playerOverrides = {}) {
     currentInvasion: null,
     invasionDeck: [{ id: 'test-invasion' }],
     maxRounds: 9,
+    rng: makeRng(1),
     recruitedThisRound: {},
     pendingTitleReassignment: false,
     lastCoupResult: null,
@@ -324,6 +325,46 @@ test('land auctions require higher bids, pay immediately, and refund overbid pla
   settleLandAuctions(state);
   assert.equal(state.themes.SAM.owner, 2);
   assert.equal(state.landAuctions.SAM, undefined);
+});
+
+test('AI can buy a legal tax exemption when estate value justifies it', () => {
+  const state = makeState(
+    [makeTheme('OPS', { owner: 1 })],
+    {
+      1: { gold: 10 },
+    },
+  );
+  const aiMeta = createAIMeta(state, { humanPlayerIds: [0, 2] });
+
+  const result = runAICourtAutomation(state, aiMeta, { mode: 'react' });
+
+  assert.equal(result.actionsTaken, 1);
+  assert.equal(state.themes.OPS.taxExempt, true);
+  assert.equal(state.players[1].gold, 6);
+  assert.equal(aiMeta.players[1].stats.taxExemptions, 1);
+  assert.equal(aiMeta.players[1].stats.taxExemptionSpend, 4);
+  assert.equal(aiMeta.totals.taxExemptions, 1);
+});
+
+test('AI raises land auctions at the legal minimum instead of underbidding', () => {
+  const state = makeState(
+    [makeTheme('SAM')],
+    {
+      1: { gold: 10 },
+      2: { gold: 0 },
+    },
+  );
+  state.landAuctions = {
+    SAM: { bidderId: 2, amount: 2 },
+  };
+  const aiMeta = createAIMeta(state, { humanPlayerIds: [0, 2] });
+
+  const result = runAICourtAutomation(state, aiMeta, { mode: 'react' });
+
+  assert.equal(result.actionsTaken, 1);
+  assert.equal(state.landAuctions.SAM.bidderId, 1);
+  assert.equal(state.landAuctions.SAM.amount, 3);
+  assert.equal(state.players[1].gold, 7);
 });
 
 test('major military offices start with 2 professional troops and Patriarch starts with none', () => {
@@ -644,7 +685,43 @@ test('self appointment promises enforce the promised beneficiary immediately', (
   assert.equal(state.activeDealObligations.length, 0);
 });
 
-test('final scoring ranks shares across church, estates, taxes, and gold with full tie points', () => {
+test('final scoring awards threshold points for category shares', () => {
+  const belowQuarter = makeState([], {
+    0: { gold: 249 },
+    1: { gold: 751 },
+    2: { gold: 0 },
+  });
+  let byPlayer = Object.fromEntries(buildFinalScores(belowQuarter).scores.map((score) => [score.playerId, score]));
+  assert.equal(byPlayer[0].categories.find((category) => category.key === 'gold').points, 0);
+
+  const exactQuarter = makeState([], {
+    0: { gold: 25 },
+    1: { gold: 75 },
+    2: { gold: 0 },
+  });
+  byPlayer = Object.fromEntries(buildFinalScores(exactQuarter).scores.map((score) => [score.playerId, score]));
+  assert.equal(byPlayer[0].categories.find((category) => category.key === 'gold').points, 1);
+  assert.equal(byPlayer[1].categories.find((category) => category.key === 'gold').points, 3);
+
+  const exactHalf = makeState([], {
+    0: { gold: 50 },
+    1: { gold: 50 },
+    2: { gold: 0 },
+  });
+  byPlayer = Object.fromEntries(buildFinalScores(exactHalf).scores.map((score) => [score.playerId, score]));
+  assert.equal(byPlayer[0].categories.find((category) => category.key === 'gold').points, 2);
+  assert.equal(byPlayer[1].categories.find((category) => category.key === 'gold').points, 2);
+
+  const aboveThreeQuarters = makeState([], {
+    0: { gold: 90 },
+    1: { gold: 10 },
+    2: { gold: 0 },
+  });
+  byPlayer = Object.fromEntries(buildFinalScores(aboveThreeQuarters).scores.map((score) => [score.playerId, score]));
+  assert.equal(byPlayer[0].categories.find((category) => category.key === 'gold').points, 3);
+});
+
+test('final scoring gives zero points for empty categories and ties highest totals', () => {
   const state = makeState([], {
     0: { gold: 5 },
     1: { gold: 5 },
@@ -656,10 +733,12 @@ test('final scoring ranks shares across church, estates, taxes, and gold with fu
   const gold0 = byPlayer[0].categories.find((category) => category.key === 'gold');
   const gold1 = byPlayer[1].categories.find((category) => category.key === 'gold');
   const gold2 = byPlayer[2].categories.find((category) => category.key === 'gold');
+  const church0 = byPlayer[0].categories.find((category) => category.key === 'church');
 
-  assert.equal(gold0.points, 3);
-  assert.equal(gold1.points, 3);
-  assert.equal(gold2.points, 1);
+  assert.equal(gold0.points, 1);
+  assert.equal(gold1.points, 1);
+  assert.equal(gold2.points, 0);
+  assert.equal(church0.points, 0);
   assert.deepEqual(finalScores.winners.map((winner) => winner.playerId).sort(), [0, 1]);
 });
 

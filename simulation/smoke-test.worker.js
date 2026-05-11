@@ -9,13 +9,18 @@ function buildSnapshot(game) {
     roundsPlayed: game.roundsPlayed,
     startingBasileusId: game.startingBasileusId,
     winners: (game.winners || []).map(winner => winner.playerId).sort((left, right) => left - right),
+    topScore: game.topScore,
     topWealth: game.topWealth,
     totalRevocations: game.totalRevocations || 0,
     playerMetrics: (game.playerMetrics || [])
       .map(metric => ({
         playerId: metric.playerId,
+        finalScore: metric.finalScore,
         finalWealth: metric.finalWealth,
+        finalCategoryPoints: metric.finalCategoryPoints,
+        finalCategoryShares: metric.finalCategoryShares,
         finalGold: metric.finalGold,
+        taxExemptions: metric.taxExemptions,
         frontierTroops: metric.frontierTroops,
         capitalTroops: metric.capitalTroops,
         throneCaptures: metric.throneCaptures,

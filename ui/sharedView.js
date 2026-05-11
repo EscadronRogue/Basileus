@@ -88,7 +88,7 @@ export const PHASE_TOOLTIPS = {
   orders: 'Each player privately sends every troop to the Capital (coup) or Frontier (war), and picks who to back for the throne.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
   cleanup: 'Pay 1 gold per professional troop. Levies and mercenaries disband.',
-  scoring: 'Rank first in church income, estates, taxes, and gold reserves to score the most points.',
+  scoring: 'Each 25% share of church income, estate income, tax income, and gold reserves scores 1 point, up to 3 per category.',
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
@@ -113,7 +113,7 @@ export function renderTopBar(state) {
 
   if (roundEl) {
     roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
-    roundEl.title = `Game ends after ${state.maxRounds} invasions, or sooner if Constantinople falls. Highest total points across income shares and gold reserves wins.`;
+    roundEl.title = `Game ends after ${state.maxRounds} invasions, or sooner if Constantinople falls. Each 25% category share scores 1 point, up to 3; highest total wins.`;
   }
   if (phaseEl) {
     if (state.gameOver?.type === 'fall') {
@@ -254,6 +254,10 @@ export function buildScores(state) {
   return buildFinalScores(state).scores;
 }
 
+function formatScoreShare(share) {
+  return `${Math.round((Number(share) || 0) * 100)}%`;
+}
+
 export function renderScoringHtml(state, options = {}) {
   const scores = buildScores(state);
   const topScore = scores[0]?.points ?? 0;
@@ -264,7 +268,7 @@ export function renderScoringHtml(state, options = {}) {
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Highest point total wins. Each category ranks dynasties by share: Church income, Estate income, Tax income, and Gold reserves. Ties receive the same rank points.</p>
+      <p class="section-hint">Highest point total wins. Each 25% share of Church income, Estate income, Tax income, and Gold reserves is worth 1 point, up to 3 per category.</p>
       <div class="score-list">
         ${scores.map((score) => {
           const rank = scores.filter((other) => other.points > score.points).length + 1;
@@ -272,7 +276,7 @@ export function renderScoringHtml(state, options = {}) {
           <div class="score-row ${score.points === topScore ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
             <span class="score-rank">${rank}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
-            <span class="score-breakdown">${score.categories.map((category) => `${category.label}: ${category.points}`).join(' | ')}</span>
+            <span class="score-breakdown">${score.categories.map((category) => `${category.label}: ${formatScoreShare(category.share)} -> ${category.points}`).join(' | ')}</span>
             <span class="score-total">${score.points}</span>
           </div>`;
         }).join('')}

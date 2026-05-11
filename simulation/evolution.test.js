@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { estimateTrainingMatches, normalizeTrainingConfig } from './evolution.js';
+import { estimateTrainingMatches, FITNESS_TUNING_FIELDS, normalizeTrainingConfig } from './evolution.js';
 
 test('training config preserves user-provided upper values for trainer sizing', () => {
   const config = normalizeTrainingConfig({
@@ -61,4 +61,12 @@ test('training match estimates use the full requested trainer sizes', () => {
   });
 
   assert.equal(total, (1000 * 1000 * (128 + 96)) + (600 * 512));
+});
+
+test('training UI metadata labels final score reward without breaking the wealth key', () => {
+  const field = FITNESS_TUNING_FIELDS.find((entry) => entry.key === 'wealthReward');
+
+  assert.ok(field);
+  assert.equal(field.label, 'Score Reward');
+  assert.match(field.hint, /final score/i);
 });

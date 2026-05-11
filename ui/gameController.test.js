@@ -5,7 +5,7 @@ import { createGameState } from '../engine/state.js';
 import { GameController } from './gameController.js';
 import { MultiplayerController } from './multiplayerController.js';
 import { renderCourtPanel, renderOrdersPanel } from './panels.js';
-import { getPlayerTabEconomy, renderPlayerTabFinance } from './sharedView.js';
+import { getPlayerTabEconomy, renderPlayerTabFinance, renderScoringHtml } from './sharedView.js';
 
 function makePanelContainer() {
   return {
@@ -44,13 +44,41 @@ test('court panel groups army information and mercenary hiring under Armies', ()
   assert.doesNotMatch(container.innerHTML, /Phase Guide/);
   assert.match(container.innerHTML, /Appointments/);
   assert.match(container.innerHTML, /Estates/);
-  assert.match(container.innerHTML, /Privileges And Church/);
+  assert.match(container.innerHTML, /Tax Exemptions/);
+  assert.match(container.innerHTML, /Church Gifts/);
+  assert.match(container.innerHTML, /Revocation/);
   assert.match(container.innerHTML, /Armies/);
   assert.match(container.innerHTML, /Confirm/);
   assert.match(container.innerHTML, /Mercenary Company/);
   assert.match(container.innerHTML, /Professional troops 2 \| 3 levies \| 0 mercenaries/);
   assert.match(container.innerHTML, /1 mercenary \| No levies \| No professional troops/);
   assert.match(container.innerHTML, /Hire 1 mercenary \(2 gold\)/);
+});
+
+test('court panel splits tax, church, and revocation folds by role', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  const nonBasileus = state.players.find((player) => player.id !== state.basileusId).id;
+  state.phase = 'court';
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, nonBasileus, {}, { uiState: null });
+
+  assert.match(container.innerHTML, /Tax Exemptions/);
+  assert.match(container.innerHTML, /Church Gifts/);
+  assert.doesNotMatch(container.innerHTML, /Revocation/);
+  assert.doesNotMatch(container.innerHTML, /Privileges And Church/);
+});
+
+test('final scoring view shows threshold share points', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  state.players.forEach((player) => {
+    player.gold = player.id < 2 ? 50 : 0;
+  });
+
+  const html = renderScoringHtml(state);
+
+  assert.match(html, /Each 25% share/);
+  assert.match(html, /Gold Reserves: 50% -> 2/);
 });
 
 test('orders panel contains only deployments, claimant choice, and order locking', () => {

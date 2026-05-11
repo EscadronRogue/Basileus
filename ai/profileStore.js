@@ -209,7 +209,7 @@ function safeRecord(value) {
 
 function dominantWeightLabels(weights) {
   const labels = {
-    wealth: 'wealth',
+    wealth: 'score pressure',
     land: 'land',
     frontier: 'frontier defense',
     capital: 'capital intrigue',
@@ -284,7 +284,8 @@ function normalizeTrainingMetadata(rawTraining = {}) {
   const winShare = clamp(safeNumber(rawTraining.winShare, matches ? wins / matches : 0), 0, 1);
   const averageFitness = safeNumber(rawTraining.averageFitness, 0);
   const championScore = safeNumber(rawTraining.championScore, rawTraining.rankingScore ?? averageFitness);
-  const averageWealth = safeNumber(rawTraining.averageWealth, 0);
+  const averageScore = safeNumber(rawTraining.averageScore, rawTraining.averageWealth ?? 0);
+  const averageWealth = safeNumber(rawTraining.averageWealth, averageScore);
   const empireFallRate = clamp(safeNumber(rawTraining.empireFallRate, 0), 0, 1);
   const fitnessVariance = Math.max(0, safeNumber(rawTraining.fitnessVariance, 0));
   const trainedAt = rawTraining.trainedAt ? String(rawTraining.trainedAt) : new Date().toISOString();
@@ -297,6 +298,7 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     winShare: roundTo(winShare, 4),
     championScore: roundTo(championScore, 3),
     averageFitness: roundTo(averageFitness, 3),
+    averageScore: roundTo(averageScore, 2),
     averageWealth: roundTo(averageWealth, 2),
     empireFallRate: roundTo(empireFallRate, 4),
     fitnessVariance: roundTo(fitnessVariance, 4),
@@ -315,6 +317,9 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     trainEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.trainEmpireFallRate, 0), 0, 1), 4),
     validationEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.validationEmpireFallRate, 0), 0, 1), 4),
     holdoutEmpireFallRate: roundTo(clamp(safeNumber(rawTraining.holdoutEmpireFallRate, 0), 0, 1), 4),
+    trainScorePercentile: roundTo(clamp(safeNumber(rawTraining.trainScorePercentile, rawTraining.trainWealthPercentile ?? 0), 0, 1), 4),
+    validationScorePercentile: roundTo(clamp(safeNumber(rawTraining.validationScorePercentile, rawTraining.validationWealthPercentile ?? 0), 0, 1), 4),
+    holdoutScorePercentile: roundTo(clamp(safeNumber(rawTraining.holdoutScorePercentile, rawTraining.holdoutWealthPercentile ?? 0), 0, 1), 4),
     trainWealthPercentile: roundTo(clamp(safeNumber(rawTraining.trainWealthPercentile, 0), 0, 1), 4),
     validationWealthPercentile: roundTo(clamp(safeNumber(rawTraining.validationWealthPercentile, 0), 0, 1), 4),
     holdoutWealthPercentile: roundTo(clamp(safeNumber(rawTraining.holdoutWealthPercentile, 0), 0, 1), 4),
@@ -331,6 +336,8 @@ function normalizeTrainingMetadata(rawTraining = {}) {
       frontierTroopShare: roundTo(clamp(safeNumber(behaviorProfile.frontierTroopShare, 0), 0, 1), 4),
       capitalTroopShare: roundTo(clamp(safeNumber(behaviorProfile.capitalTroopShare, 0), 0, 1), 4),
       averageLandBuys: roundTo(Math.max(0, safeNumber(behaviorProfile.averageLandBuys, 0)), 4),
+      averageTaxExemptions: roundTo(Math.max(0, safeNumber(behaviorProfile.averageTaxExemptions, 0)), 4),
+      averageTaxExemptionSpend: roundTo(Math.max(0, safeNumber(behaviorProfile.averageTaxExemptionSpend, 0)), 4),
       averageChurchGifts: roundTo(Math.max(0, safeNumber(behaviorProfile.averageChurchGifts, 0)), 4),
       averageRevocations: roundTo(Math.max(0, safeNumber(behaviorProfile.averageRevocations, 0)), 4),
       averageThroneCaptures: roundTo(Math.max(0, safeNumber(behaviorProfile.averageThroneCaptures, 0)), 4),

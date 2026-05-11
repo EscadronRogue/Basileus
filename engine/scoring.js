@@ -24,49 +24,55 @@ export const SCORE_CATEGORIES = [
   },
 ];
 
+export const SCORE_SHARE_THRESHOLDS = [0.25, 0.5, 0.75];
+const SCORE_EPSILON = 1e-9;
+
 function readCategoryValue(state, administration, playerId, categoryKey) {
   if (categoryKey === 'gold') return Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
   return Math.max(0, Number(administration.incomeBreakdown?.[categoryKey]?.[playerId]) || 0);
 }
 
-function rankCategory(state, administration, category) {
-  const playerCount = state.players.length;
+export function getScorePointsForShare(share) {
+  const normalized = Math.max(0, Number(share) || 0);
+  return SCORE_SHARE_THRESHOLDS.reduce(
+    (points, threshold) => (normalized + SCORE_EPSILON >= threshold ? points + 1 : points),
+    0,
+  );
+}
+
+function scoreCategory(state, administration, category) {
   const totalValue = state.players.reduce(
     (total, player) => total + readCategoryValue(state, administration, player.id, category.key),
     0,
   );
-  const values = state.players.map((player) => ({
-    playerId: player.id,
-    value: readCategoryValue(state, administration, player.id, category.key),
-  }));
 
-  return values.map((entry) => {
-    const higherCount = values.filter((other) => other.value > entry.value).length;
-    const rank = higherCount + 1;
+  return state.players.map((player) => {
+    const value = readCategoryValue(state, administration, player.id, category.key);
+    const share = totalValue > 0 ? value / totalValue : 0;
     return {
       ...category,
-      playerId: entry.playerId,
-      value: entry.value,
-      share: totalValue > 0 ? entry.value / totalValue : 0,
-      rank,
-      points: Math.max(1, playerCount - rank + 1),
+      playerId: player.id,
+      value,
+      totalValue,
+      share,
+      points: totalValue > 0 ? getScorePointsForShare(share) : 0,
     };
   });
 }
 
 export function buildFinalScores(state) {
   const administration = runAdministration(state);
-  const categoryRanks = new Map();
+  const categoryScores = new Map();
 
   for (const category of SCORE_CATEGORIES) {
-    for (const entry of rankCategory(state, administration, category)) {
-      if (!categoryRanks.has(entry.playerId)) categoryRanks.set(entry.playerId, []);
-      categoryRanks.get(entry.playerId).push(entry);
+    for (const entry of scoreCategory(state, administration, category)) {
+      if (!categoryScores.has(entry.playerId)) categoryScores.set(entry.playerId, []);
+      categoryScores.get(entry.playerId).push(entry);
     }
   }
 
   const scores = state.players.map((player) => {
-    const categories = categoryRanks.get(player.id) || [];
+    const categories = categoryScores.get(player.id) || [];
     const points = categories.reduce((total, category) => total + category.points, 0);
     const projectedIncome = administration.income[player.id] || 0;
     return {

@@ -16,7 +16,7 @@ const TACTIC_MAX = 2.4;
 const OBJECTIVE_KEYS = [
   'survivalRate',
   'winShare',
-  'wealthPercentile',
+  'scorePercentile',
   'legacyWinRate',
   'scriptedWinRate',
   'hallOfFameWinRate',
@@ -56,7 +56,7 @@ export const FITNESS_PROFILES = {
   balanced: {
     id: 'balanced',
     name: 'Balanced',
-    summary: 'Outcome-only fitness: survival, placement, wealth, and outright wins.',
+    summary: 'Outcome-only fitness: survival, placement, final score, and outright wins.',
     weights: { ...DEFAULT_FITNESS_WEIGHTS },
   },
   aggressive: {
@@ -105,7 +105,7 @@ export const FITNESS_TUNING_FIELDS = [
   { key: 'survivalBonus', label: 'Survival Bonus', step: 0.1, min: 0, max: 20, group: 'Outcome', hint: 'Flat reward when the empire survives to scoring.' },
   { key: 'winReward', label: 'Win Reward', step: 0.1, min: 0, max: 30, group: 'Outcome', hint: 'Reward for outright winning a surviving game.' },
   { key: 'placementReward', label: 'Placement Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for finishing high even without an outright win.' },
-  { key: 'wealthReward', label: 'Wealth Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for ending wealth relative to the table mean.' },
+  { key: 'wealthReward', label: 'Score Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for final score relative to the table mean.' },
 ];
 
 function clamp(value, min, max) {
@@ -264,7 +264,7 @@ function createInternalProfile(candidate) {
 function buildChampionName(candidate, rank) {
   const [primaryKey, secondaryKey] = dominantWeightKeys(candidate.weights, 2);
   const epithets = {
-    wealth: 'Treasury',
+    wealth: 'Score',
     land: 'Estate',
     frontier: 'Aegis',
     capital: 'Palace',
@@ -699,15 +699,21 @@ function buildMatchSeatProfiles(candidate, matchSpec, population, hallOfFame, pl
 }
 
 function computePlacementScore(game, playerMetric) {
-  const orderedWealth = game.playerMetrics.map(metric => metric.finalWealth).sort((left, right) => right - left);
-  const placement = orderedWealth.findIndex(wealth => wealth === playerMetric.finalWealth);
+  const orderedScores = game.playerMetrics.map(metric => metric.finalScore ?? metric.finalWealth).sort((left, right) => right - left);
+  const playerScore = playerMetric.finalScore ?? playerMetric.finalWealth;
+  const placement = orderedScores.findIndex(score => score === playerScore);
   if (placement === -1) return 0;
   return (game.playerMetrics.length - placement - 1) / Math.max(1, game.playerMetrics.length - 1);
 }
 
+function computeScoreRatio(game, playerMetric) {
+  const meanScore = average(game.playerMetrics.map(metric => metric.finalScore ?? metric.finalWealth));
+  const playerScore = playerMetric.finalScore ?? playerMetric.finalWealth;
+  return meanScore > 0 ? playerScore / meanScore : 1;
+}
+
 function computeWealthRatio(game, playerMetric) {
-  const meanWealth = average(game.playerMetrics.map(metric => metric.finalWealth));
-  return meanWealth > 0 ? playerMetric.finalWealth / meanWealth : 1;
+  return computeScoreRatio(game, playerMetric);
 }
 
 function getWarContribution(war, playerId) {
@@ -754,13 +760,13 @@ function computeFitness(game, playerMetric, fitnessWeights) {
 
   const placementScore = computePlacementScore(game, playerMetric);
   const winnerBonus = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
-  const wealthRatio = computeWealthRatio(game, playerMetric);
+  const scoreRatio = computeScoreRatio(game, playerMetric);
 
   return roundTo(
     fitnessWeights.survivalBonus +
     (winnerBonus * fitnessWeights.winReward) +
     (placementScore * fitnessWeights.placementReward) +
-    (Math.min(wealthRatio, 3) * fitnessWeights.wealthReward),
+    (Math.min(scoreRatio, 3) * fitnessWeights.wealthReward),
     4
   );
 }
@@ -788,6 +794,9 @@ function createEvaluationAccumulator(candidate, generation, scope) {
     weightedWins: 0,
     fitnessTotal: 0,
     fitnessSamples: [],
+    scoreTotal: 0,
+    scorePercentileTotal: 0,
+    scoreRatioTotal: 0,
     wealthTotal: 0,
     wealthPercentileTotal: 0,
     wealthRatioTotal: 0,
@@ -800,6 +809,8 @@ function createEvaluationAccumulator(candidate, generation, scope) {
       frontierShare: 0,
       capitalShare: 0,
       landBuys: 0,
+      taxExemptions: 0,
+      taxExemptionSpend: 0,
       churchGifts: 0,
       revocations: 0,
       throneCaptures: 0,
@@ -867,6 +878,8 @@ function buildBehaviorVector(summary) {
     clamp(behavior.frontierTroopShare, 0, 1),
     clamp(behavior.capitalTroopShare, 0, 1),
     clamp(behavior.averageLandBuys / 3, 0, 1),
+    clamp(behavior.averageTaxExemptions / 3, 0, 1),
+    clamp(behavior.averageTaxExemptionSpend / 12, 0, 1),
     clamp(behavior.averageChurchGifts / 3, 0, 1),
     clamp(behavior.averageRevocations / 2, 0, 1),
     clamp(behavior.averageThroneCaptures / 2, 0, 1),
@@ -908,6 +921,9 @@ function finalizeEvaluationSummary(accumulator) {
     wins: roundTo(accumulator.weightedWins, 4),
     winShare: roundTo(accumulator.weightedWins / Math.max(1, accumulator.matches), 4),
     averageFitness: roundTo(accumulator.fitnessTotal / Math.max(1, accumulator.matches), 4),
+    averageScore: roundTo(accumulator.scoreTotal / Math.max(1, accumulator.matches), 2),
+    scorePercentile: roundTo(accumulator.scorePercentileTotal / Math.max(1, accumulator.matches), 4),
+    scoreRatio: roundTo(accumulator.scoreRatioTotal / Math.max(1, accumulator.matches), 4),
     averageWealth: roundTo(accumulator.wealthTotal / Math.max(1, accumulator.matches), 2),
     wealthPercentile: roundTo(accumulator.wealthPercentileTotal / Math.max(1, accumulator.matches), 4),
     wealthRatio: roundTo(accumulator.wealthRatioTotal / Math.max(1, accumulator.matches), 4),
@@ -926,6 +942,8 @@ function finalizeEvaluationSummary(accumulator) {
       frontierTroopShare: roundTo(accumulator.behaviorTotals.frontierShare / totalTroopShare, 4),
       capitalTroopShare: roundTo(accumulator.behaviorTotals.capitalShare / totalTroopShare, 4),
       averageLandBuys: roundTo(accumulator.behaviorTotals.landBuys / Math.max(1, accumulator.matches), 4),
+      averageTaxExemptions: roundTo(accumulator.behaviorTotals.taxExemptions / Math.max(1, accumulator.matches), 4),
+      averageTaxExemptionSpend: roundTo(accumulator.behaviorTotals.taxExemptionSpend / Math.max(1, accumulator.matches), 4),
       averageChurchGifts: roundTo(accumulator.behaviorTotals.churchGifts / Math.max(1, accumulator.matches), 4),
       averageRevocations: roundTo(accumulator.behaviorTotals.revocations / Math.max(1, accumulator.matches), 4),
       averageThroneCaptures: roundTo(accumulator.behaviorTotals.throneCaptures / Math.max(1, accumulator.matches), 4),
@@ -970,7 +988,8 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     const winCredit = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
     const fitness = computeFitness(game, playerMetric, fitnessWeights);
     const placementScore = computePlacementScore(game, playerMetric);
-    const wealthRatio = computeWealthRatio(game, playerMetric);
+    const scoreRatio = computeScoreRatio(game, playerMetric);
+    const finalScore = playerMetric.finalScore ?? playerMetric.finalWealth;
     const totalTroops = Math.max(0, playerMetric.frontierTroops) + Math.max(0, playerMetric.capitalTroops);
     const frontierShare = totalTroops > 0 ? playerMetric.frontierTroops / totalTroops : 0;
     const capitalShare = totalTroops > 0 ? playerMetric.capitalTroops / totalTroops : 0;
@@ -983,17 +1002,18 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     const selfSupportRate = playerMetric.coupVotes > 0
       ? playerMetric.supportSelfVotes / playerMetric.coupVotes
       : 0;
-    const goldHoardingRate = playerMetric.finalWealth > 0
-      ? playerMetric.finalGold / playerMetric.finalWealth
-      : 0;
+    const goldHoardingRate = clamp(Number(playerMetric.finalCategoryShares?.gold) || 0, 0, 1);
 
     accumulator.matches++;
     accumulator.weightedWins += winCredit;
     accumulator.fitnessTotal += fitness;
     accumulator.fitnessSamples.push(fitness);
-    accumulator.wealthTotal += playerMetric.finalWealth;
+    accumulator.scoreTotal += finalScore;
+    accumulator.scorePercentileTotal += placementScore;
+    accumulator.scoreRatioTotal += scoreRatio;
+    accumulator.wealthTotal += finalScore;
     accumulator.wealthPercentileTotal += placementScore;
-    accumulator.wealthRatioTotal += wealthRatio;
+    accumulator.wealthRatioTotal += scoreRatio;
     if (game.empireFall) accumulator.empireFalls++;
     if (game.guardTriggered) accumulator.guardAborts++;
 
@@ -1020,6 +1040,8 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     accumulator.behaviorTotals.frontierShare += frontierShare;
     accumulator.behaviorTotals.capitalShare += capitalShare;
     accumulator.behaviorTotals.landBuys += playerMetric.landBuys;
+    accumulator.behaviorTotals.taxExemptions += playerMetric.taxExemptions || 0;
+    accumulator.behaviorTotals.taxExemptionSpend += playerMetric.taxExemptionSpend || 0;
     accumulator.behaviorTotals.churchGifts += playerMetric.themesGifted;
     accumulator.behaviorTotals.revocations += playerMetric.revocations;
     accumulator.behaviorTotals.throneCaptures += playerMetric.throneCaptures;
@@ -1114,7 +1136,7 @@ function computeDisplayScore(summary, noveltyScore) {
   return roundTo(
     (summary.winShare * 10) +
     ((1 - summary.empireFallRate - summary.guardRate) * 8) +
-    (summary.wealthPercentile * 4) +
+    ((summary.scorePercentile ?? summary.wealthPercentile) * 4) +
     (getClassWinRate(summary, 'scripted') * 4) +
     (getClassWinRate(summary, 'hof') * 4) +
     (noveltyScore * 2) -
@@ -1136,6 +1158,7 @@ function buildSelectionEntry(candidate, generation, trainSummary, validationSumm
     objectives: {
       survivalRate: roundTo(1 - validationSummary.empireFallRate - validationSummary.guardRate, 4),
       winShare: validationSummary.winShare,
+      scorePercentile: validationSummary.scorePercentile ?? validationSummary.wealthPercentile,
       wealthPercentile: validationSummary.wealthPercentile,
       legacyWinRate: getClassWinRate(validationSummary, 'legacy'),
       scriptedWinRate: getClassWinRate(validationSummary, 'scripted'),
@@ -1275,13 +1298,14 @@ function describeBehaviorProfile(summary) {
   const levels = [];
   levels.push(`${behavior.frontierTroopShare >= 0.58 ? 'high' : behavior.frontierTroopShare <= 0.35 ? 'low' : 'moderate'} frontier defense`);
   levels.push(`${behavior.averageLandBuys >= 1.2 ? 'high' : behavior.averageLandBuys <= 0.4 ? 'low' : 'moderate'} land buying`);
+  levels.push(`${behavior.averageTaxExemptions >= 1 ? 'high' : behavior.averageTaxExemptions <= 0.2 ? 'low' : 'moderate'} tax exemption`);
   levels.push(`${behavior.averageRevocations >= 0.6 ? 'high' : behavior.averageRevocations <= 0.15 ? 'low' : 'moderate'} revocation`);
   return levels.join(', ');
 }
 
 function buildChampionSummary(candidate, holdoutSummary) {
   const traitLabels = {
-    wealth: 'wealth extraction',
+    wealth: 'score pressure',
     land: 'land acquisition',
     frontier: 'frontier defense',
     capital: 'capital intrigue',
@@ -1449,6 +1473,7 @@ async function evaluateHoldoutPopulation({
         objectives: {
           survivalRate: roundTo(1 - holdoutSummary.empireFallRate - holdoutSummary.guardRate, 4),
           winShare: holdoutSummary.winShare,
+          scorePercentile: holdoutSummary.scorePercentile ?? holdoutSummary.wealthPercentile,
           wealthPercentile: holdoutSummary.wealthPercentile,
           legacyWinRate: getClassWinRate(holdoutSummary, 'legacy'),
           scriptedWinRate: getClassWinRate(holdoutSummary, 'scripted'),
@@ -1499,6 +1524,7 @@ async function evaluateHoldoutPopulation({
       objectives: {
         survivalRate: roundTo(1 - holdoutSummary.empireFallRate - holdoutSummary.guardRate, 4),
         winShare: holdoutSummary.winShare,
+        scorePercentile: holdoutSummary.scorePercentile ?? holdoutSummary.wealthPercentile,
         wealthPercentile: holdoutSummary.wealthPercentile,
         legacyWinRate: getClassWinRate(holdoutSummary, 'legacy'),
         scriptedWinRate: getClassWinRate(holdoutSummary, 'scripted'),
@@ -1537,6 +1563,7 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       winShare: holdoutSummary.winShare,
       championScore: computeDisplayScore(holdoutSummary, entry.noveltyScore),
       averageFitness: holdoutSummary.averageFitness,
+      averageScore: holdoutSummary.averageScore,
       averageWealth: holdoutSummary.averageWealth,
       empireFallRate: holdoutSummary.empireFallRate,
       fitnessVariance: holdoutSummary.fitnessVariance,
@@ -1560,6 +1587,9 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       trainWealthPercentile: entry.trainSummary.wealthPercentile,
       validationWealthPercentile: entry.validationSummary.wealthPercentile,
       holdoutWealthPercentile: holdoutSummary.wealthPercentile,
+      trainScorePercentile: entry.trainSummary.scorePercentile,
+      validationScorePercentile: entry.validationSummary.scorePercentile,
+      holdoutScorePercentile: holdoutSummary.scorePercentile,
       guardRate: holdoutSummary.guardRate,
       paretoFront: entry.paretoRank,
       crowdingDistance: roundTo(entry.crowdingDistance, 4),
@@ -1689,6 +1719,7 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       validationWinShare: rankedEntries[0]?.validationSummary?.winShare || 0,
       validationEmpireFallRate: rankedEntries[0]?.validationSummary?.empireFallRate || 0,
       validationGuardRate: rankedEntries[0]?.validationSummary?.guardRate || 0,
+      validationScorePercentile: rankedEntries[0]?.validationSummary?.scorePercentile || 0,
       validationWealthPercentile: rankedEntries[0]?.validationSummary?.wealthPercentile || 0,
       leaderNovelty: rankedEntries[0]?.noveltyScore || 0,
       averageValidationWinShare: roundTo(average(rankedEntries.map(entry => entry.validationSummary.winShare)), 4),
@@ -1785,6 +1816,7 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       parallelWorkers: Math.max(generationWorkerCount, holdoutWorkerCount),
       selectionMethod: 'pareto-crowding',
       bestFitness: finalChampions[0]?.displayScore || 0,
+      bestAverageScore: finalChampions[0]?.holdoutSummary?.averageScore || 0,
       bestAverageWealth: finalChampions[0]?.holdoutSummary?.averageWealth || 0,
       bestEmpireFallRate: finalChampions[0]?.holdoutSummary?.empireFallRate || 0,
       bestRobustnessVariance: finalChampions[0]?.holdoutSummary?.opponentVariance || 0,

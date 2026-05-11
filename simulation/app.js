@@ -257,7 +257,7 @@ function renderMetricCards(report) {
     { label: 'Games', value: formatInteger(report.overview.games) },
     { label: 'Empire Falls', value: formatPercent(report.overview.empireFallRate) },
     { label: 'Avg Rounds', value: formatNumber(report.overview.averageRounds, 2) },
-    { label: 'Winner Score', value: formatNumber(report.overview.averageWinnerWealth, 1) },
+    { label: 'Winner Score', value: formatNumber(report.overview.averageWinnerScore ?? report.overview.averageWinnerWealth, 1) },
     { label: 'Frontier Share', value: formatPercent(report.overview.frontierShare) },
     { label: 'Runtime', value: `${formatNumber(report.runtimeMs / 1000, 2)}s` },
   ];
@@ -378,7 +378,8 @@ function renderSimulationReport(report) {
     games: entry.games,
     fallRate: formatPercent(entry.empireFallRate),
     rounds: formatNumber(entry.averageRounds, 2),
-    wealth: formatNumber(entry.averageWinnerWealth, 1),
+    score: formatNumber(entry.averageWinnerScore ?? entry.averageWinnerWealth, 1),
+    exemptions: formatNumber(entry.averageTaxExemptions ?? 0, 2),
     coups: formatNumber(entry.averageThroneChanges, 2),
     frontier: formatPercent(entry.frontierShare),
   }));
@@ -388,7 +389,7 @@ function renderSimulationReport(report) {
     games: entry.games,
     fallRate: formatPercent(entry.empireFallRate),
     rounds: formatNumber(entry.averageRounds, 2),
-    wealth: formatNumber(entry.averageWinnerWealth, 1),
+    score: formatNumber(entry.averageWinnerScore ?? entry.averageWinnerWealth, 1),
     frontier: formatPercent(entry.frontierShare),
   }));
 
@@ -397,7 +398,7 @@ function renderSimulationReport(report) {
     games: entry.games,
     fallRate: formatPercent(entry.empireFallRate),
     rounds: formatNumber(entry.averageRounds, 2),
-    wealth: formatNumber(entry.averageWinnerWealth, 1),
+    score: formatNumber(entry.averageWinnerScore ?? entry.averageWinnerWealth, 1),
     frontier: formatPercent(entry.frontierShare),
   }));
 
@@ -405,10 +406,11 @@ function renderSimulationReport(report) {
     label: entry.name,
     seats: entry.seats,
     winShare: formatPercent(entry.winShare),
-    wealth: formatNumber(entry.averageWealth, 1),
+    score: formatNumber(entry.averageScore ?? entry.averageWealth, 1),
     frontier: formatPercent(entry.frontierShare),
     mercSpend: formatNumber(entry.averageMercSpend, 1),
     landBuys: formatNumber(entry.averageLandBuys, 2),
+    exemptions: formatNumber(entry.averageTaxExemptions ?? 0, 2),
     recruitment: formatPercent(entry.recruitmentUtilization),
   }));
 
@@ -430,7 +432,8 @@ function renderSimulationReport(report) {
       { label: 'Games', render: row => row.games },
       { label: 'Empire Fall', render: row => row.fallRate },
       { label: 'Avg Rounds', render: row => row.rounds },
-      { label: 'Winner Score', render: row => row.wealth },
+      { label: 'Winner Score', render: row => row.score },
+      { label: 'Tax Exemptions', render: row => row.exemptions },
       { label: 'Throne Changes', render: row => row.coups },
       { label: 'Frontier Share', render: row => row.frontier },
     ], scenarioRows),
@@ -439,7 +442,7 @@ function renderSimulationReport(report) {
       { label: 'Games', render: row => row.games },
       { label: 'Empire Fall', render: row => row.fallRate },
       { label: 'Avg Rounds', render: row => row.rounds },
-      { label: 'Winner Score', render: row => row.wealth },
+      { label: 'Winner Score', render: row => row.score },
       { label: 'Frontier Share', render: row => row.frontier },
     ], playerCountRows),
     renderTable('By Deck Length', [
@@ -447,17 +450,18 @@ function renderSimulationReport(report) {
       { label: 'Games', render: row => row.games },
       { label: 'Empire Fall', render: row => row.fallRate },
       { label: 'Avg Rounds', render: row => row.rounds },
-      { label: 'Winner Score', render: row => row.wealth },
+      { label: 'Winner Score', render: row => row.score },
       { label: 'Frontier Share', render: row => row.frontier },
     ], deckRows),
     renderTable('Trained AI Performance', [
       { label: 'Profile', render: row => row.label },
       { label: 'Seats', render: row => row.seats },
       { label: 'Win Share', render: row => row.winShare },
-      { label: 'Avg Score', render: row => row.wealth },
+      { label: 'Avg Score', render: row => row.score },
       { label: 'Frontier Share', render: row => row.frontier },
       { label: 'Merc Spend', render: row => row.mercSpend },
       { label: 'Land Buys', render: row => row.landBuys },
+      { label: 'Tax Exemptions', render: row => row.exemptions },
       { label: 'Recruit Util.', render: row => row.recruitment },
     ], personalityRows),
     renderTable('Invasion Pressure', [
@@ -485,7 +489,7 @@ function renderTrainingResult(result) {
     ['Survival bonus', formatNumber(result.config.fitness.survivalBonus, 2)],
     ['Win reward', formatNumber(result.config.fitness.winReward, 2)],
     ['Placement reward', formatNumber(result.config.fitness.placementReward, 2)],
-    ['Wealth reward', formatNumber(result.config.fitness.wealthReward, 2)],
+    ['Score reward', formatNumber(result.config.fitness.wealthReward, 2)],
     ['Validation matches', formatInteger(result.config.validationMatchesPerCandidate ?? 0)],
     ['Holdout matches', formatInteger(result.config.holdoutMatchesPerChampion ?? 0)],
     ['Selection', result.overview.selectionMethod || 'pareto-crowding'],
@@ -498,7 +502,7 @@ function renderTrainingResult(result) {
     { label: 'Workers', value: formatInteger(result.overview.parallelWorkers || 1) },
     { label: 'Best Score', value: formatNumber(result.overview.bestFitness, 3) },
     { label: 'Best Holdout Win', value: formatPercent(result.overview.bestHoldoutWinShare || 0) },
-    { label: 'Best Wealth', value: formatNumber(result.overview.bestAverageWealth, 2) },
+    { label: 'Best Holdout Score', value: formatNumber(result.overview.bestAverageScore ?? result.overview.bestAverageWealth, 2) },
     { label: 'Best Fall Rate', value: formatPercent(result.overview.bestEmpireFallRate) },
     { label: 'Best Guard Rate', value: formatPercent(result.overview.bestGuardRate || 0) },
     { label: 'Best Variance', value: formatNumber(result.overview.bestRobustnessVariance ?? 0, 3) },
@@ -517,7 +521,7 @@ function renderTrainingResult(result) {
           <span class="meta-chip">Train ${formatPercent(profile.training.trainWinShare || 0)}</span>
           <span class="meta-chip">Validation ${formatPercent(profile.training.validationWinShare || 0)}</span>
           <span class="meta-chip">Holdout ${formatPercent(profile.training.holdoutWinShare || profile.training.winShare || 0)}</span>
-          <span class="meta-chip">Wealth ${formatNumber(profile.training.averageWealth, 2)}</span>
+          <span class="meta-chip">Avg Score ${formatNumber(profile.training.averageScore ?? profile.training.averageWealth, 2)}</span>
           <span class="meta-chip">Fall ${formatPercent(profile.training.empireFallRate)}</span>
           <span class="meta-chip">Guard ${formatPercent(profile.training.guardRate || 0)}</span>
         </div>

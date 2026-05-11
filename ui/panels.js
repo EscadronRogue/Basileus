@@ -754,7 +754,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     'dashboard:finance',
     'Finances',
     `
-      <p class="section-hint">Final points come from rank in four shares: church income, estate income, tax income, and gold reserves.</p>
+      <p class="section-hint">Final points come from share thresholds: each 25% of church income, estate income, tax income, or gold reserves is worth 1 point, up to 3 per category.</p>
       <div class="finance-grid">
         <div class="finance-card" title="Gold currently in your treasury.">
           <span class="finance-label">Current gold</span>
@@ -1556,43 +1556,32 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     ` : '<div class="dashboard-empty">No free estates are available to buy right now.</div>'}
   `;
 
-  const privilegeParts = [];
-  if (taxExemptionThemes.length > 0) {
-    privilegeParts.push(`
-      <div class="court-section">
-        <h4>Tax Exemptions</h4>
-        <p class="section-hint">Pay 2&times;T to the Basileus. The province then pays no tax to the empire and you keep P+T instead of P. The Basileus cannot exempt his own land.</p>
-        <div class="gift-options">
-          ${taxExemptionThemes.map((theme) => {
-            const check = canGrantTaxExemption(state, activePlayerId, theme.id);
-            return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="exempt" data-theme="${theme.id}">
-              ${renderProvinceBadge(state, theme, { showValues: true })} for ${formatGold(check.cost)} -> owner keeps ${formatGold(getTaxExemptOwnerIncome(theme))}
-            </button>`;
-          }).join('')}
-        </div>
+  const taxExemptionsBody = `
+    <p class="section-hint">Pay 2&times;T to the Basileus. The province then pays no tax to the empire and you keep P+T instead of P. The Basileus cannot exempt his own land.</p>
+    ${taxExemptionThemes.length ? `
+      <div class="gift-options">
+        ${taxExemptionThemes.map((theme) => {
+          const check = canGrantTaxExemption(state, activePlayerId, theme.id);
+          return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="exempt" data-theme="${theme.id}">
+            ${renderProvinceBadge(state, theme, { showValues: true })} for ${formatGold(check.cost)} -> owner keeps ${formatGold(getTaxExemptOwnerIncome(theme))}
+          </button>`;
+        }).join('')}
       </div>
-    `);
-  }
+    ` : '<div class="dashboard-empty">No eligible estate can receive a tax exemption right now.</div>'}
+  `;
 
-  if (playerOwnedThemes.length > 0) {
-    privilegeParts.push(`
-      <div class="court-section">
-        <h4>Church Gifts</h4>
-        <p class="section-hint">You lose ownership of the land but become its Bishop for life &mdash; this bishopric cannot be revoked. Church tax goes 2 to the Patriarch, then 1 to each Bishop in turn.</p>
-        <div class="gift-options">
-          ${playerOwnedThemes.map((theme) => `
-            <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
-              ${renderProvinceBadge(state, theme, { showValues: true })} -> church receives ${formatGold(getNormalTaxIncome(theme))} in province tax
-            </button>
-          `).join('')}
-        </div>
+  const churchGiftsBody = `
+    <p class="section-hint">You lose ownership of the land but become its Bishop for life &mdash; this bishopric cannot be revoked. Church tax goes 2 to the Patriarch, then 1 to each Bishop in turn.</p>
+    ${playerOwnedThemes.length ? `
+      <div class="gift-options">
+        ${playerOwnedThemes.map((theme) => `
+          <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
+            ${renderProvinceBadge(state, theme, { showValues: true })} -> church receives ${formatGold(getNormalTaxIncome(theme))} in province tax
+          </button>
+        `).join('')}
       </div>
-    `);
-  }
-
-  if (isBasileus) {
-    privilegeParts.push(renderRevocationOptions(state, courtDraft));
-  }
+    ` : '<div class="dashboard-empty">No owned estate is available to gift to the church right now.</div>'}
+  `;
 
   let courtHtml = `<div class="court-panel">
     <div class="phase-header">
@@ -1621,14 +1610,38 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   );
 
   courtHtml += renderFoldSection(
-    'court:privileges',
-    'Privileges And Church',
-    privilegeParts.join('') || '<div class="dashboard-empty">No privilege, church, or revocation actions are available right now.</div>',
+    'court:tax-exemptions',
+    'Tax Exemptions',
+    taxExemptionsBody,
     uiSectionState,
     {
       defaultOpen: false,
+      badge: taxExemptionThemes.length ? `${taxExemptionThemes.length} available` : null,
     }
   );
+
+  courtHtml += renderFoldSection(
+    'court:church-gifts',
+    'Church Gifts',
+    churchGiftsBody,
+    uiSectionState,
+    {
+      defaultOpen: false,
+      badge: playerOwnedThemes.length ? `${playerOwnedThemes.length} estate${playerOwnedThemes.length === 1 ? '' : 's'}` : null,
+    }
+  );
+
+  if (isBasileus) {
+    courtHtml += renderFoldSection(
+      'court:revocation',
+      'Revocation',
+      renderRevocationOptions(state, courtDraft),
+      uiSectionState,
+      {
+        defaultOpen: false,
+      }
+    );
+  }
 
   courtHtml += renderFoldSection(
     'court:armies',
@@ -2249,8 +2262,7 @@ function renderRevocationOptions(state, courtDraft = {}) {
       `).join('')
     : '<p class="section-hint">Nothing currently revocable.</p>';
 
-  return `<div class="court-section revocation">
-    <h4>Imperial Revocation</h4>
+  return `<div class="revocation">
     <p class="section-hint">Only the Basileus can revoke. Each revocation this round costs more troops from imperial offices: 1 for the first, 2 for the second, 3 for the third... Levies are spent before professionals; suspended professionals return next round. Bishoprics granted by church gift cannot be revoked.</p>
     <div class="revocation-shell" data-revocation-group>
       ${body}
