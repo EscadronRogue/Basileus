@@ -423,7 +423,3 @@ export function renderGameFrame({
   bindUiChrome({ uiState, render: rerender || (() => {}) });
   if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
 }
-erActionPanel?.();
-  bindUiChrome({ uiState, render: rerender || (() => {}) });
-  if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
-}
