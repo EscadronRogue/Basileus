@@ -9,12 +9,14 @@ import {
   renderPlayerDashboard,
   renderResolutionPanelDetailed,
 } from './panels.js';
+import { renderBalancePanel } from './balancePanel.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
 
 export function createDefaultUiState() {
   return {
     panels: {
       dashboard: false,
+      balance: true,
       history: false,
       action: true,
     },
@@ -414,9 +416,14 @@ export function renderGameFrame({
     selectedProvinceId,
     { aiMeta, uiState },
   );
+  renderBalancePanel(document.getElementById('balancePanel'), state, { uiState });
   renderHistoryPanel(document.getElementById('historyPanel'), state, { aiMeta, uiState });
   renderTabs?.();
   renderActionPanel?.();
+  bindUiChrome({ uiState, render: rerender || (() => {}) });
+  if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
+}
+erActionPanel?.();
   bindUiChrome({ uiState, render: rerender || (() => {}) });
   if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
 }

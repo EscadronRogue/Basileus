@@ -105,3 +105,70 @@ export function buildFinalScores(state) {
 export function getPlayerFinalScore(state, playerId) {
   return buildFinalScores(state).scores.find((score) => score.playerId === playerId) || null;
 }
+
+// Value of each category sitting outside player hands ("free citizens" share).
+// Only estate income is meaningfully held by free citizens — unowned, unoccupied
+// land pays its profit to nobody, so it counts toward the citizens' slice in
+// the balance-of-power pie. Tax and church revenue are extracted from citizens
+// rather than retained by them, and gold reserves are dynastic only.
+function getFreeCitizensCategoryValue(state, categoryKey) {
+  if (categoryKey !== 'estate') return 0;
+  return Object.values(state.themes).reduce((total, theme) => {
+    if (!theme || theme.id === 'CPL' || theme.occupied) return total;
+    if (theme.owner !== null) return total;
+    return total + Math.max(0, Number(theme.P) || 0);
+  }, 0);
+}
+
+// Per-category share breakdown used by the Balance of Power panel. Points
+// follow the official scoring rule (share of the player-only pool), so the
+// pie's denominator (player + free citizens) is purely informational — it
+// shows the dynasties how much of each category is still up for grabs.
+export function buildBalanceOfPower(state) {
+  const final = buildFinalScores(state);
+  const scoreByPlayer = new Map(final.scores.map((entry) => [entry.playerId, entry]));
+
+  const categories = SCORE_CATEGORIES.map((category) => {
+    const playerEntries = state.players.map((player) => (
+      scoreByPlayer.get(player.id)?.categories.find((c) => c.key === category.key) || null
+    )).filter(Boolean);
+
+    const playerTotal = playerEntries[0]?.totalValue || 0;
+    const freeCitizens = getFreeCitizensCategoryValue(state, category.key);
+    const total = playerTotal + freeCitizens;
+
+    const slices = playerEntries.map((entry) => ({
+      kind: 'player',
+      playerId: entry.playerId,
+      value: entry.value,
+      share: total > 0 ? entry.value / total : 0,
+      playerShare: entry.share,
+      points: entry.points,
+    }));
+
+    if (freeCitizens > 0) {
+      slices.push({
+        kind: 'free',
+        value: freeCitizens,
+        share: total > 0 ? freeCitizens / total : 0,
+      });
+    }
+
+    return {
+      key: category.key,
+      label: category.label,
+      description: category.description,
+      total,
+      playerTotal,
+      freeCitizens,
+      slices,
+    };
+  });
+
+  return {
+    categories,
+    scores: final.scores,
+    winners: final.winners,
+    topScore: final.topScore,
+  };
+}
