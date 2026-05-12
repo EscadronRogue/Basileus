@@ -811,6 +811,7 @@ function createEvaluationAccumulator(candidate, generation, scope) {
       landBuys: 0,
       churchGifts: 0,
       revocations: 0,
+      defenderRewards: 0,
       throneCaptures: 0,
       incumbentSupportRate: 0,
       selfSupportRate: 0,
@@ -876,10 +877,9 @@ function buildBehaviorVector(summary) {
     clamp(behavior.frontierTroopShare, 0, 1),
     clamp(behavior.capitalTroopShare, 0, 1),
     clamp(behavior.averageLandBuys / 3, 0, 1),
-    clamp(behavior.averageTaxExemptions / 3, 0, 1),
-    clamp(behavior.averageTaxExemptionSpend / 12, 0, 1),
     clamp(behavior.averageChurchGifts / 3, 0, 1),
     clamp(behavior.averageRevocations / 2, 0, 1),
+    clamp(behavior.averageDefenderRewards / 3, 0, 1),
     clamp(behavior.averageThroneCaptures / 2, 0, 1),
     clamp(behavior.incumbentSupportRate, 0, 1),
     clamp(behavior.selfSupportRate, 0, 1),
@@ -942,6 +942,7 @@ function finalizeEvaluationSummary(accumulator) {
       averageLandBuys: roundTo(accumulator.behaviorTotals.landBuys / Math.max(1, accumulator.matches), 4),
       averageChurchGifts: roundTo(accumulator.behaviorTotals.churchGifts / Math.max(1, accumulator.matches), 4),
       averageRevocations: roundTo(accumulator.behaviorTotals.revocations / Math.max(1, accumulator.matches), 4),
+      averageDefenderRewards: roundTo(accumulator.behaviorTotals.defenderRewards / Math.max(1, accumulator.matches), 4),
       averageThroneCaptures: roundTo(accumulator.behaviorTotals.throneCaptures / Math.max(1, accumulator.matches), 4),
       incumbentSupportRate: roundTo(accumulator.behaviorTotals.incumbentSupportRate / Math.max(1, accumulator.matches), 4),
       selfSupportRate: roundTo(accumulator.behaviorTotals.selfSupportRate / Math.max(1, accumulator.matches), 4),
@@ -1038,6 +1039,7 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     accumulator.behaviorTotals.landBuys += playerMetric.landBuys;
     accumulator.behaviorTotals.churchGifts += playerMetric.themesGifted;
     accumulator.behaviorTotals.revocations += playerMetric.revocations;
+    accumulator.behaviorTotals.defenderRewards += playerMetric.defenderRewards || 0;
     accumulator.behaviorTotals.throneCaptures += playerMetric.throneCaptures;
     accumulator.behaviorTotals.incumbentSupportRate += incumbentSupportRate;
     accumulator.behaviorTotals.selfSupportRate += selfSupportRate;

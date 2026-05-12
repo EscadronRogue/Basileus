@@ -756,7 +756,7 @@ function buildMapCartouche(province, centroid) {
   g.appendChild(inner);
 
   appendCartLine(g, 'map-cart-name', province.name);
-  appendCartLine(g, 'map-cart-values', `P${province.P} T${province.T} L${province.L}`);
+  appendCartLine(g, 'map-cart-values', `P${province.P} T${province.T} L${province.L} C${Number(province.C) || 0}`);
 
   return g;
 }

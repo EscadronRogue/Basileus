@@ -1149,6 +1149,7 @@ export function createAIMeta(state, options = {}) {
       recruits: 0,
       recruitOpportunities: 0,
       revocations: 0,
+      defenderRewards: 0,
       throneChanges: 0,
       mercSpend: 0,
     },
@@ -1198,7 +1199,7 @@ function estimateCandidateRewardPotential(state, meta, candidateId, beneficiaryI
   if (candidateId === state.basileusId) {
     value += 0.95;
     if (!state.courtActions?.basileusAppointed) value += 0.55;
-    const revocationsUsed = state.courtActions?.basileusRevocationsUsed || 0;
+    const revocationsUsed = state.courtActions?.revocationsUsed?.[candidateId] || 0;
     if (revocationsUsed === 0) value += 0.2;
   } else {
     value += beneficiaryTitleNeed * 0.75;
@@ -2091,8 +2092,7 @@ function buildRevocationOptions(state, meta, basileusId) {
   }
 
   for (const theme of Object.values(state.themes)) {
-    if (theme.occupied) continue;
-    if (theme.strategos != null) {
+    if (!theme.occupied && theme.strategos != null) {
       let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + profile.weights.revocation + theme.L + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 1.1);
       score -= getObligation(meta, basileusId, theme.strategos) * 1.15;
       if (context.pactByPlayer[theme.strategos]?.candidateId === basileusId) score -= 1.7;
@@ -2247,7 +2247,7 @@ function buildTitleHolderRevocationOptions(state, meta, playerId) {
 
   if (player.majorTitles.includes('PATRIARCH')) {
     for (const theme of Object.values(state.themes)) {
-      if (theme.occupied || theme.bishop == null) continue;
+      if (theme.bishop == null) continue;
       if (theme.bishop === playerId) continue;
       let score = (getPlayerStrength(state, meta, theme.bishop) - playerStrength) * 0.18
         + profile.weights.revocation + (Number(theme.C) || 0) * 0.6

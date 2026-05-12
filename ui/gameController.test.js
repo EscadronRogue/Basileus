@@ -44,7 +44,6 @@ test('court panel groups army information and mercenary hiring under Armies', ()
   assert.doesNotMatch(container.innerHTML, /Phase Guide/);
   assert.match(container.innerHTML, /Appointments/);
   assert.match(container.innerHTML, /Estates/);
-  assert.match(container.innerHTML, /Tax Exemptions/);
   assert.match(container.innerHTML, /Church Gifts/);
   assert.match(container.innerHTML, /Revocation/);
   assert.match(container.innerHTML, /Armies/);
@@ -55,17 +54,17 @@ test('court panel groups army information and mercenary hiring under Armies', ()
   assert.match(container.innerHTML, /Hire 1 mercenary \(2 gold\)/);
 });
 
-test('court panel splits tax, church, and revocation folds by role', () => {
+test('court panel splits church and revocation folds by role', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
-  const nonBasileus = state.players.find((player) => player.id !== state.basileusId).id;
+  const nonBasileus = state.players.find((player) => player.majorTitles.includes('PATRIARCH')).id;
   state.phase = 'court';
+  state.themes.OPS.bishop = state.basileusId;
 
   const container = makePanelContainer();
   renderCourtPanel(container, state, nonBasileus, {}, { uiState: null });
 
-  assert.match(container.innerHTML, /Tax Exemptions/);
   assert.match(container.innerHTML, /Church Gifts/);
-  assert.doesNotMatch(container.innerHTML, /Revocation/);
+  assert.match(container.innerHTML, /Revocation/);
   assert.doesNotMatch(container.innerHTML, /Privileges And Church/);
 });
 

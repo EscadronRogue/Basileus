@@ -30,6 +30,7 @@ export function formatProvinceYield(theme, options = {}) {
   const profit = Math.max(0, Number(theme?.P) || 0);
   const tax = Math.max(0, Number(theme?.T) || 0);
   const levies = Math.max(0, Number(theme?.L) || 0);
-  if (options.compact) return `P${profit} / T${tax} / L${levies}`;
-  return `Profit ${profit} / Tax ${tax} / Levies ${levies}`;
+  const church = Math.max(0, Number(theme?.C) || 0);
+  if (options.compact) return `P${profit} / T${tax} / L${levies} / C${church}`;
+  return `Profit ${profit} / Tax ${tax} / Levies ${levies} / Church ${church}`;
 }

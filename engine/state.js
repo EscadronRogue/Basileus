@@ -221,6 +221,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     // Resolution results (for animation/display)
     lastCoupResult: null,
     lastWarResult: null,
+    pendingDefenderRewards: [],
 
     // Game over
     gameOver: null,    // null | { type: 'victory', winner } | { type: 'fall' }

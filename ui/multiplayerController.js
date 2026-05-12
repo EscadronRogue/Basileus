@@ -585,6 +585,11 @@ export class MultiplayerController {
       && state.nextBasileusId !== state.basileusId
       && controlledSeatId === state.nextBasileusId
       && !this.privateSnapshot?.pendingAiTitleAssignment;
+    const seats = this.roomSnapshot?.seats || [];
+    const pendingHumanDefenderReward = state.pendingDefenderRewards?.some((reward) => (
+      !reward.resolved
+      && seats.some((seat) => seat.seatId === reward.defenderId && seat.kind === 'human')
+    ));
 
     const resolution = {};
     if (canAssignTitles) {
@@ -593,11 +598,14 @@ export class MultiplayerController {
       resolution.submitTitleAssignments = (assignments) => this.send('reassign_major_titles', { assignments });
     } else if (waitingForHumanReassignment) {
       resolution.disabledText = 'Waiting For New Basileus';
+    } else if (pendingHumanDefenderReward) {
+      resolution.disabledText = 'Resolve Rewards';
     } else if (!this.isHost() && state.phase === 'resolution') {
       resolution.disabledText = 'Host Continues';
     } else {
       resolution.continue = () => this.send('continue_after_resolution');
     }
+    resolution.defenderRewardChoice = (rewardId, choice) => this.send('defender_reward_choice', { rewardId, choice });
 
     const body = renderGameActionPanel({
       panel: document.getElementById('actionPanel'),
@@ -694,7 +702,6 @@ export class MultiplayerController {
     return {
       buy: (themeId, data = {}) => this.send('court_action', { action: 'buy', themeId, amount: data.amount }),
       gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
-      exempt: (themeId) => this.send('court_action', { action: 'exempt', themeId }),
       recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),
       hireMercenaries: (_, data) => this.send('court_action', { action: 'hire-mercenaries', office: data.office, count: data.count }),
       dismiss: (_, data) => this.send('court_action', { action: 'dismiss', office: data.office, count: data.count }),

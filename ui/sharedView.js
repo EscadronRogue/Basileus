@@ -353,6 +353,12 @@ export function renderGameActionPanel({
     case 'resolution': {
       renderResolutionPanelDetailed(shell, state, {
         allowManualTitleReassignment: Boolean(resolution.allowManualTitleReassignment),
+        activePlayerId,
+      });
+      shell.querySelectorAll('[data-defender-reward-choice]').forEach((button) => {
+        button.addEventListener('click', () => {
+          resolution.defenderRewardChoice?.(button.dataset.rewardId, button.dataset.choice);
+        });
       });
       const continueButton = shell.querySelector('[data-action="continue"]');
       if (!continueButton) break;

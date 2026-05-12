@@ -3,10 +3,12 @@ import { MAJOR_TITLES } from '../data/titles.js';
 import { runAdministration } from '../engine/cascade.js';
 import {
   canPayAppointmentCost,
+  canPayRevocationCost,
   canRecruitProfessional,
   getLandAuction,
   getMinimumLandBid,
   getNextAppointmentCost,
+  getPlayerAvailableRevocationTroops,
   suggestMajorTitleAssignments,
 } from '../engine/actions.js';
 import {
@@ -1600,11 +1602,12 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     }
   );
 
-  if (isBasileus) {
+  const revocationGroups = collectRevocationGroups(state, activePlayerId);
+  if (revocationGroups.some((group) => group.items.length > 0)) {
     courtHtml += renderFoldSection(
       'court:revocation',
       'Revocation',
-      renderRevocationOptions(state, courtDraft),
+      renderRevocationOptions(state, activePlayerId, courtDraft, revocationGroups),
       uiSectionState,
       {
         defaultOpen: false,
@@ -2201,13 +2204,18 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draf
 }
 
 // â”€â”€â”€ Revocation: cartouche grid (same grammar as appointment) â”€â”€â”€
-function renderRevocationOptions(state, courtDraft = {}) {
-  const groups = collectRevocationGroups(state);
-
-  const used = state.courtActions?.basileusRevocationsUsed || 0;
-  const nextCost = used + 1;
-  const available = getBasileusAvailableTroopCount(state);
-  const canAfford = available >= nextCost;
+function renderRevocationOptions(state, actorId, courtDraft = {}, groups = collectRevocationGroups(state, actorId)) {
+  const costCheck = canPayRevocationCost(state, actorId);
+  const nextCost = costCheck.cost || 1;
+  const available = costCheck.available ?? getPlayerAvailableRevocationTroops(state, actorId).total;
+  const canAfford = costCheck.ok;
+  const isBasileus = actorId === state.basileusId;
+  const player = getPlayer(state, actorId);
+  const authorityLabel = isBasileus
+    ? 'The Basileus can revoke titles and estates.'
+    : player.majorTitles.includes('PATRIARCH')
+      ? 'The Patriarch can revoke bishops.'
+      : 'Regional commanders can revoke strategoi in their jurisdiction.';
 
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0);
   const body = totalItems
@@ -2226,7 +2234,7 @@ function renderRevocationOptions(state, courtDraft = {}) {
     : '<p class="section-hint">Nothing currently revocable.</p>';
 
   return `<div class="revocation">
-    <p class="section-hint">Only the Basileus can revoke. Each revocation this round costs more troops from imperial offices: 1 for the first, 2 for the second, 3 for the third... Levies are spent before professionals; suspended professionals return next round. Bishoprics granted by church gift cannot be revoked.</p>
+    <p class="section-hint">${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... Levies are spent before professionals; mission professionals still pay upkeep and return next round.</p>
     <div class="revocation-shell" data-revocation-group>
       ${body}
       <input type="hidden" class="revoke-select" value="${courtDraft.revocationValue || ''}">
@@ -2238,75 +2246,68 @@ function renderRevocationOptions(state, courtDraft = {}) {
 // Build the cartouche rows for each revocable category. The button body
 // is the visual signature ("what gets revoked"); the value is the same
 // colon-encoded token the existing event handler already understands.
-function collectRevocationGroups(state) {
+function collectRevocationGroups(state, actorId = state.basileusId) {
+  const actor = getPlayer(state, actorId);
+  const isBasileus = actorId === state.basileusId;
   const major = [];
-  for (const player of state.players) {
-    if (player.id === state.basileusId) continue;
-    for (const titleKey of player.majorTitles) {
-      major.push({
-        value: `major:${player.id}:${titleKey}`,
-        body: renderTitleBadge(state, titleKey, { holderId: player.id, compact: true }),
-      });
+  if (isBasileus) {
+    for (const player of state.players) {
+      if (player.id === state.basileusId) continue;
+      for (const titleKey of player.majorTitles) {
+        major.push({
+          value: `major:${player.id}:${titleKey}`,
+          body: renderTitleBadge(state, titleKey, { holderId: player.id, compact: true }),
+        });
+      }
     }
   }
 
   const minor = [];
   for (const t of Object.values(state.themes)) {
-    if (t.occupied) continue;
-    if (t.strategos !== null) {
+    const canRevokeStrategos = isBasileus
+      || (t.region === 'east' && actor?.majorTitles?.includes('DOM_EAST'))
+      || (t.region === 'west' && actor?.majorTitles?.includes('DOM_WEST'))
+      || (t.region === 'sea' && actor?.majorTitles?.includes('ADMIRAL'));
+    if (!t.occupied && t.strategos !== null && canRevokeStrategos) {
       minor.push({
         value: `minor:${t.id}:strategos`,
         body: renderThemeOfficeBadge(state, 'STRATEGOS', t.id),
       });
     }
-    if (t.bishop !== null) {
+    if (t.bishop !== null && (isBasileus || actor?.majorTitles?.includes('PATRIARCH'))) {
       minor.push({
         value: `minor:${t.id}:bishop`,
         body: renderThemeOfficeBadge(state, 'BISHOP', t.id),
       });
     }
   }
-  if (state.empress !== null) {
+  if (isBasileus && state.empress !== null) {
     minor.push({
       value: 'court:EMPRESS',
       body: renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true }),
     });
   }
-  if (state.chiefEunuchs !== null) {
+  if (isBasileus && state.chiefEunuchs !== null) {
     minor.push({
       value: 'court:CHIEF_EUNUCHS',
       body: renderTitleBadge(state, 'CHIEF_EUNUCHS', { holderId: state.chiefEunuchs, compact: true }),
     });
   }
 
-  const estates = Object.values(state.themes)
-    .filter((t) => t.owner !== null && t.owner !== 'church' && !t.occupied)
-    .map((t) => ({
-      value: `theme:${t.id}`,
-      body: renderProvinceBadge(state, t, { compact: true }),
-    }));
+  const estates = isBasileus
+    ? Object.values(state.themes)
+      .filter((t) => t.owner !== null && t.owner !== 'church' && !t.occupied)
+      .map((t) => ({
+        value: `theme:${t.id}`,
+        body: renderProvinceBadge(state, t, { compact: true }),
+      }))
+    : [];
 
   return [
     { label: 'Major Titles', items: major },
     { label: 'Minor Titles', items: minor },
     { label: 'Estates', items: estates },
   ];
-}
-
-function getBasileusAvailableTroopCount(state) {
-  const basileusId = state.basileusId;
-  const basileus = state.players?.find(p => p.id === basileusId);
-  if (!basileus) return 0;
-  const officeKeys = new Set(['BASILEUS']);
-  if (state.empress === basileusId) officeKeys.add('EMPRESS');
-  if (state.chiefEunuchs === basileusId) officeKeys.add('CHIEF_EUNUCHS');
-  for (const titleKey of basileus.majorTitles || []) officeKeys.add(titleKey);
-  let total = 0;
-  for (const key of officeKeys) {
-    total += state.currentLevies?.[key] || 0;
-    total += basileus.professionalArmies?.[key] || 0;
-  }
-  return total;
 }
 
 // â”€â”€â”€ Army Management with recruitment limit â”€â”€â”€
@@ -2323,7 +2324,13 @@ function renderArmyManagement(state, playerId) {
         const totalTroops = professionalTroops + levies + mercenaries;
         const recruitCheck = office.mercenaryOnly ? { ok: false, reason: 'Mercenary row' } : canRecruitProfessional(state, playerId, office.key);
         const canRecruit = recruitCheck.ok;
-        const recruitLabel = canRecruit ? 'Recruit +1 professional troop' : (recruitCheck.reason?.includes('cannot hold') ? 'No professional troops here' : 'Already recruited this round');
+        const recruitLabel = canRecruit
+          ? 'Recruit +1 professional troop'
+          : (recruitCheck.reason?.includes('cannot hold')
+            ? 'No professional troops here'
+            : recruitCheck.reason?.includes('debt')
+              ? 'No recruiting while in debt'
+              : 'Already recruited this round');
         const canAffordMercenary = player.gold >= nextMercCost;
         const hireLabel = `Hire 1 mercenary (${formatGold(nextMercCost)})`;
         return `<div class="army-row">
@@ -2564,6 +2571,40 @@ function renderMajorTitleReassignmentSection(state) {
   </div>`;
 }
 
+function renderDefenderRewardSection(state, activePlayerId = null) {
+  const rewards = Array.isArray(state.pendingDefenderRewards)
+    ? state.pendingDefenderRewards
+    : (Array.isArray(state.lastWarResult?.defenderRewards) ? state.lastWarResult.defenderRewards : []);
+  if (!rewards.length) return '';
+
+  return `<div class="resolution-section defender-rewards">
+    <h4>Best Defender Rewards</h4>
+    <p class="section-hint">Top frontier contributors choose in rank order: take the reconquered land as a private estate, or take 2&times;P gold.</p>
+    <div class="dashboard-list compact">
+      ${rewards.map((reward) => {
+        const theme = state.themes[reward.themeId];
+        const isActor = activePlayerId === reward.defenderId;
+        const resolved = Boolean(reward.resolved);
+        const ownerLabel = reward.choice === 'land'
+          ? `${renderPlayerRoleNameById(state, reward.defenderId)} claimed the land`
+          : reward.choice === 'gold'
+            ? `${renderPlayerRoleNameById(state, reward.defenderId)} took ${formatGold(reward.gold || reward.goldValue || 0)}`
+            : `${renderPlayerRoleNameById(state, reward.defenderId)} chooses`;
+        return `<div class="dashboard-list-row reward-row ${resolved ? 'resolved' : ''}">
+          <div class="auction-main">
+            <span class="dashboard-list-title">${renderProvinceBadge(state, theme || reward.themeId, { compact: true, showValues: true })}</span>
+            <span class="dashboard-list-note">${ownerLabel} | Rank #${reward.rank || 1} with ${formatTroops(reward.troops || 0)}</span>
+          </div>
+          ${resolved ? '' : `<div class="auction-controls">
+            <button class="appt-btn" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="land" ${isActor ? '' : 'disabled'}>Take Land</button>
+            <button class="btn-recruit" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold" ${isActor ? '' : 'disabled'}>Take ${formatGold(reward.goldValue || 0)}</button>
+          </div>`}
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
 // â”€â”€â”€ Resolution Summary Panel â”€â”€â”€
 export function renderResolutionPanel(container, state, options = {}) {
   const coup = state.lastCoupResult;
@@ -2626,6 +2667,8 @@ export function renderResolutionPanel(container, state, options = {}) {
       </div>
     </div>`;
   }
+
+  html += renderDefenderRewardSection(state, options.activePlayerId ?? null);
 
   if (options.allowManualTitleReassignment !== false && state.nextBasileusId !== null && state.nextBasileusId !== state.basileusId) {
     html += renderMajorTitleReassignmentSection(state);
@@ -2701,6 +2744,8 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
       </div>
     </div>`;
   }
+
+  html += renderDefenderRewardSection(state, options.activePlayerId ?? null);
 
   if (options.allowManualTitleReassignment !== false && state.nextBasileusId !== null && state.nextBasileusId !== state.basileusId) {
     html += renderMajorTitleReassignmentSection(state);

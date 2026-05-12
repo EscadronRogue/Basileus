@@ -673,6 +673,15 @@ export function revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId, 
 export function revokeMinorTitle(state, themeId, titleType, revokerId = state.basileusId) {
   const theme = state.themes[themeId];
   if (!theme) return { ok: false };
+  if (titleType !== 'strategos' && titleType !== 'bishop') {
+    return { ok: false, reason: 'Invalid minor title.' };
+  }
+  if (titleType === 'strategos' && theme.strategos == null) {
+    return { ok: false, reason: 'That strategos title is already vacant.' };
+  }
+  if (titleType === 'bishop' && theme.bishop == null) {
+    return { ok: false, reason: 'That bishop title is already vacant.' };
+  }
 
   // Authority check: Basileus may revoke either; regional commanders revoke
   // their strategoi; the Patriarch revokes bishops.
@@ -689,7 +698,7 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   if (titleType === 'strategos') {
     extractOfficeArmy(state, `STRAT_${themeId}`);
     theme.strategos = null;
-  } else if (titleType === 'bishop') {
+  } else {
     theme.bishop = null;
     theme.bishopIsDonor = false;
     removeBishopAppointment(state, themeId);
@@ -1102,8 +1111,16 @@ export function applyDebtDisbanding(state, playerId, rng = state.rng) {
   const drawOne = () => {
     const entries = Object.entries(player.professionalArmies).filter(([, count]) => count > 0);
     if (entries.length === 0) return false;
-    const idx = Math.floor((rng ? rng() : Math.random()) * entries.length);
-    const [officeKey] = entries[idx];
+    const totalTroops = entries.reduce((total, [, count]) => total + (Number(count) || 0), 0);
+    let pick = Math.floor((rng ? rng() : Math.random()) * totalTroops);
+    let officeKey = entries[0][0];
+    for (const [candidateOffice, count] of entries) {
+      pick -= Number(count) || 0;
+      if (pick < 0) {
+        officeKey = candidateOffice;
+        break;
+      }
+    }
     player.professionalArmies[officeKey] = Math.max(0, (player.professionalArmies[officeKey] || 0) - 1);
     if (player.professionalArmies[officeKey] === 0) delete player.professionalArmies[officeKey];
     lost[officeKey] = (lost[officeKey] || 0) + 1;

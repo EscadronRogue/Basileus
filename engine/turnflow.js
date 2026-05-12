@@ -215,8 +215,6 @@ export function phaseCourt(state) {
     // costs n troops (Basileus, Patriarch, regional commanders all share the same
     // escalating-cost rule per player).
     revocationsUsed: {},
-    // Best-defender choices waiting on the player after a successful invasion repulse.
-    pendingDefenderRewards: [],
     appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };
@@ -345,7 +343,8 @@ export function phaseResolution(state) {
     // After a successful repulse, top contributors are offered a reward: take a
     // reconquered estate or receive 2× its profit in gold. Cycles back through the
     // contributor list if more lands were recovered than there were defenders.
-    warResult.defenderRewards = applyDefenderRewards(state, warResult, frontierContributions);
+    state.pendingDefenderRewards = createDefenderRewardQueue(state, warResult, frontierContributions);
+    warResult.defenderRewards = state.pendingDefenderRewards;
     state.lastWarResult = warResult;
 
     state.log.push({
@@ -407,59 +406,116 @@ function claimReconqueredLand(state, themeId, playerId) {
   return true;
 }
 
-function chooseDefenderReward(state, themeId, defenderId) {
-  // Default policy: a defender claims the estate if they can use it, otherwise
-  // takes the gold compensation. The hook is intentionally simple; UI integrations
-  // can call applyDefenderRewardChoice instead to override per-defender.
-  const theme = state.themes[themeId];
-  const taken = claimReconqueredLand(state, themeId, defenderId);
-  if (taken) return { themeId, defenderId, choice: 'land' };
-  const reward = getDefenderRewardGold(theme);
-  const player = state.players.find(p => p.id === defenderId);
-  if (player) player.gold += reward;
-  return { themeId, defenderId, choice: 'gold', gold: reward };
-}
-
-export function applyDefenderRewards(state, warResult, contributions) {
+export function createDefenderRewardQueue(state, warResult, contributions) {
   const themes = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
   const defenders = rankedDefenders(contributions);
   if (themes.length === 0 || defenders.length === 0) return [];
 
-  const awards = [];
-  for (let i = 0; i < themes.length; i++) {
+  return themes.map((themeId, i) => {
     const defender = defenders[i % defenders.length];
-    const themeId = themes[i];
-    const award = chooseDefenderReward(state, themeId, defender.playerId);
-    awards.push({ ...award, defenderName: defender.playerName, troops: defender.troops });
-    state.log.push({
-      type: 'defender_reward',
-      player: defender.playerId,
-      theme: themeId,
-      choice: award.choice,
-      gold: award.gold || 0,
-      round: state.round,
-    });
     const theme = state.themes[themeId];
-    recordHistoryEvent(state, {
-      category: 'resolution',
-      type: 'defender_reward',
-      actorId: defender.playerId,
-      summary: award.choice === 'land'
-        ? `${defender.playerName} claims ${theme?.name || themeId} as best defender (rank #${(i % defenders.length) + 1}).`
-        : `${defender.playerName} takes ${formatGold(award.gold || 0)} instead of ${theme?.name || themeId} (rank #${(i % defenders.length) + 1}).`,
-      details: {
-        themeId,
-        themeName: theme?.name || themeId,
-        defenderId: defender.playerId,
-        rank: (i % defenders.length) + 1,
-        contribution: defender.troops,
-        choice: award.choice,
-        gold: award.gold || 0,
-        profit: getThemeProfitValue(theme),
-      },
-    });
+    return {
+      id: `${state.round}:${i}:${themeId}:${defender.playerId}`,
+      themeId,
+      themeName: theme?.name || themeId,
+      defenderId: defender.playerId,
+      defenderName: defender.playerName,
+      rank: (i % defenders.length) + 1,
+      troops: defender.troops,
+      goldValue: getDefenderRewardGold(theme),
+      resolved: false,
+      choice: null,
+      gold: 0,
+    };
+  });
+}
+
+export function getPendingDefenderRewards(state, playerId = null) {
+  const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards : [];
+  return rewards.filter((reward) => (
+    !reward.resolved && (playerId == null || reward.defenderId === playerId)
+  ));
+}
+
+export function hasPendingDefenderRewards(state) {
+  return getPendingDefenderRewards(state).length > 0;
+}
+
+export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'land') {
+  const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards : [];
+  const reward = rewards.find((entry) => entry.id === rewardId);
+  if (!reward) return { ok: false, reason: 'No such defender reward.' };
+  if (reward.resolved) return { ok: false, reason: 'That defender reward is already resolved.' };
+  if (reward.defenderId !== playerId) return { ok: false, reason: 'Only the rewarded defender may choose this reward.' };
+
+  const theme = state.themes[reward.themeId];
+  if (!theme) return { ok: false, reason: 'Rewarded province no longer exists.' };
+
+  const normalizedChoice = choice === 'gold' ? 'gold' : 'land';
+  if (normalizedChoice === 'land') {
+    if (!claimReconqueredLand(state, reward.themeId, playerId)) {
+      return { ok: false, reason: 'That province can no longer be claimed.' };
+    }
+    reward.choice = 'land';
+    reward.gold = 0;
+  } else {
+    const player = getPlayer(state, playerId);
+    const gold = getDefenderRewardGold(theme);
+    if (player) player.gold += gold;
+    reward.choice = 'gold';
+    reward.gold = gold;
   }
-  return awards;
+
+  reward.resolved = true;
+  state.log.push({
+    type: 'defender_reward',
+    player: playerId,
+    theme: reward.themeId,
+    choice: reward.choice,
+    gold: reward.gold || 0,
+    round: state.round,
+  });
+  recordHistoryEvent(state, {
+    category: 'resolution',
+    type: 'defender_reward',
+    actorId: playerId,
+    summary: reward.choice === 'land'
+      ? `${playerName(state, playerId)} claims ${theme?.name || reward.themeId} as best defender.`
+      : `${playerName(state, playerId)} takes ${formatGold(reward.gold || 0)} instead of ${theme?.name || reward.themeId}.`,
+    details: {
+      themeId: reward.themeId,
+      themeName: theme?.name || reward.themeId,
+      defenderId: playerId,
+      rank: reward.rank,
+      contribution: reward.troops,
+      choice: reward.choice,
+      gold: reward.gold || 0,
+      profit: getThemeProfitValue(theme),
+    },
+  });
+
+  if (state.lastWarResult?.defenderRewards) {
+    const linked = state.lastWarResult.defenderRewards.find((entry) => entry.id === reward.id);
+    if (linked && linked !== reward) Object.assign(linked, reward);
+  }
+
+  return { ok: true, reward };
+}
+
+export function autoResolveDefenderRewards(state, shouldResolvePlayer = () => true) {
+  const resolved = [];
+  for (const reward of getPendingDefenderRewards(state)) {
+    if (!shouldResolvePlayer(reward.defenderId, reward)) continue;
+    const result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, 'land');
+    if (result.ok) resolved.push(result.reward);
+  }
+  return resolved;
+}
+
+export function applyDefenderRewards(state, warResult, contributions) {
+  state.pendingDefenderRewards = createDefenderRewardQueue(state, warResult, contributions);
+  if (warResult) warResult.defenderRewards = state.pendingDefenderRewards;
+  return autoResolveDefenderRewards(state);
 }
 
 // ─── Phase: Cleanup ───
@@ -516,6 +572,7 @@ export function phaseCleanup(state) {
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;
+  state.pendingDefenderRewards = [];
 }
 
 // ─── Helper: who holds an office ───
@@ -576,8 +633,7 @@ export function advanceToNextInteractivePhase(state) {
     }
 
     if (state.phase === 'resolution') {
-      phaseCleanup(state);
-      continue;
+      return; // Resolution requires explicit continuation/reward choices.
     }
 
     break;

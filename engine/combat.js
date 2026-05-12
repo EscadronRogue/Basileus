@@ -9,15 +9,6 @@ function clearStrategosArmy(state, themeId) {
   }
 }
 
-function removeBishopAppointmentEntry(state, themeId) {
-  if (!Array.isArray(state.bishopAppointments)) return;
-  for (let i = state.bishopAppointments.length - 1; i >= 0; i--) {
-    if (state.bishopAppointments[i].themeId === themeId) {
-      state.bishopAppointments.splice(i, 1);
-    }
-  }
-}
-
 /**
  * Resolve the frontier battle.
  * @param {object} state - game state
@@ -110,8 +101,9 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
  * Lost provinces lose their owner and strategos but keep their bishop: the bishop
  * stays appointed (and continues to receive a share of the church pool) even
  * though the lost province no longer contributes its church value.
- * Recovered provinces are fully reset (no owner, no minor titles). The defender
- * reward step in turnflow then assigns a new owner to whoever claimed the land.
+ * Recovered provinces become ownerless but keep any bishop who remained attached
+ * during occupation. The defender reward step in turnflow may then assign a new
+ * private owner to whoever claims the land.
  */
 export function applyInvasionResult(state, result) {
   for (const themeId of result.themesLost) {
@@ -133,9 +125,6 @@ export function applyInvasionResult(state, result) {
     theme.occupied = false;
     theme.owner = null;
     theme.strategos = null;
-    theme.bishop = null;
-    theme.bishopIsDonor = false;
-    removeBishopAppointmentEntry(state, themeId);
   }
 
   if (result.reachedCPL) {

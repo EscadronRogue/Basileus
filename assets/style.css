@@ -2309,11 +2309,6 @@ body::before {
   border: 1px solid var(--parch-2);
   color: var(--umber-1);
 }
-.theme-chip.exempt {
-  border-color: rgba(168,116,32,0.40);
-  background: rgba(200,146,30,0.08);
-  color: var(--gold-1);
-}
 .theme-values { color: var(--umber-3); margin-left: 3px; }
 
 /* Dashboard province */
@@ -2373,9 +2368,6 @@ body::before {
   fill: color-mix(in srgb, var(--owner-color, #888) 52%, rgba(240,228,195,0.48) 48%);
   fill-opacity: 1;
 }
-.province-shape.tax-exempt {
-  filter: drop-shadow(0 0 1px rgba(154,112,16,0.65));
-}
 .province-shape.capital {
   /* Deep gold for Constantinople */
   fill: var(--capital-fill);
@@ -2404,7 +2396,6 @@ body::before {
 .province-shape.occupied,
 .province-shape.church,
 .province-shape.owned,
-.province-shape.tax-exempt,
 .province-shape.capital,
 .province-shape.free,
 .province-shape.selected { stroke: none; }
@@ -2460,8 +2451,6 @@ body::before {
   stroke: rgba(240,200,90,0.55);
   stroke-width: 0.12;
 }
-.map-cartouche.tax-exempt .map-cart-inner { stroke: rgba(240,200,90,0.85); stroke-width: 0.18; }
-
 .map-cart-id,
 .map-cart-name,
 .map-cart-values {
@@ -2682,15 +2671,6 @@ body::before {
 
 /* State variants */
 .province-token.occupied { opacity: 0.78; filter: saturate(0.6); }
-.province-token.tax-exempt {
-  /* extra outer gold ring — like a wax sigil over the cartouche */
-  box-shadow:
-    inset 0 0 0 1px rgba(240,200,90,0.70),
-    inset 0 1px 0 rgba(255,250,228,0.18),
-    inset 0 -1px 0 rgba(20,8,0,0.24),
-    0 0 0 1.5px rgba(240,200,90,0.40),
-    0 1px 2px rgba(46,30,15,0.20);
-}
 .province-token.church {
   /* church land is black-on-black; lean on the gold hairline for legibility */
   color: #ffffff;

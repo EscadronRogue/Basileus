@@ -4,16 +4,20 @@ import assert from 'node:assert/strict';
 import { PROVINCES } from '../data/provinces.js';
 import { createGameState, makeRng, MERCENARY_COMPANY_KEY, rollInvasionStrength } from './state.js';
 import { runAdministration } from './cascade.js';
-import { phaseAdministration, phaseCleanup, phaseInvasion, phaseResolution, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
+import { applyDefenderRewardChoice, phaseAdministration, phaseCleanup, phaseInvasion, phaseResolution, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
 import {
+  applyDebtDisbanding,
   appointBishop,
   appointCourtTitle,
   appointStrategos,
   buyTheme,
   canRecruitProfessional,
+  giftToChurch,
   getNextAppointmentCost,
   hireMercenaries,
+  payMaintenance,
   recruitProfessional,
+  revokeMinorTitle,
   settleLandAuctions,
 } from './actions.js';
 import { buildFinalScores } from './scoring.js';
@@ -30,6 +34,7 @@ import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
   getNormalTaxIncome,
+  getThemeChurchValue,
   getThemeLandPrice,
 } from './rules.js';
 import { normalizeHumanOrders } from './orders.js';
@@ -176,25 +181,25 @@ test('first administration grants every dynasty the fixed starting gold', () => 
   assert.deepEqual(secondAdmin.income, expectedSecondIncome);
 });
 
-test('theme pricing and split-income helpers follow the new rules', () => {
+test('theme pricing, income, and church-value helpers follow the current rules', () => {
   const anti = province('ANT');
   const kol = province('KOL');
   const sam = province('SAM');
 
   assert.equal(getThemeLandPrice(anti), 4);
-  assert.equal(getTaxExemptionCost(anti), 4);
   assert.equal(getNormalOwnerIncome(anti), 2);
   assert.equal(getNormalTaxIncome(anti), 2);
+  assert.equal(getThemeChurchValue(anti), 1);
 
   assert.equal(getThemeLandPrice(kol), 2);
-  assert.equal(getTaxExemptionCost(kol), 0);
   assert.equal(getNormalOwnerIncome(kol), 1);
   assert.equal(getNormalTaxIncome(kol), 0);
+  assert.equal(getThemeChurchValue(kol), 0);
 
   assert.equal(getThemeLandPrice(sam), 2);
-  assert.equal(getTaxExemptionCost(sam), 2);
   assert.equal(getNormalOwnerIncome(sam), 1);
   assert.equal(getNormalTaxIncome(sam), 1);
+  assert.equal(getThemeChurchValue(sam), 2);
 });
 
 test('administration gives strategoi only their own theme tax and levies', () => {
@@ -224,15 +229,16 @@ test('administration gives strategoi only their own theme tax and levies', () =>
   assert.equal(samAdmin.levies.STRAT_SAM, 2);
 });
 
-test('church land sends tax to the church cascade and levy to the regional pool', () => {
+test('church land sends church value to the church cascade and levy to the regional pool', () => {
   const state = makeState(
-    [makeTheme('KYP', { owner: 'church', bishop: 2 })],
+    [makeTheme('KYP', { owner: 'church', P: 0, T: 0, C: 4, bishop: 2 })],
     {
       2: { majorTitles: ['PATRIARCH'] },
     },
   );
   const admin = runAdministration(state);
-  assert.equal(admin.income[2], 2);
+  assert.equal(admin.income[2], 4);
+  assert.equal(admin.incomeBreakdown.church[2], 4);
   assert.equal(admin.levies.ADMIRAL || 0, 0);
   assert.equal(admin.levies.BASILEUS || 0, 1);
 });
@@ -255,23 +261,29 @@ test('Empress, Patriarch, and Chief of Eunuchs receive 2 free capital levies eac
   assert.equal(secondAdmin.levies.CHIEF_EUNUCHS, 2);
 });
 
-test('tax exemption costs 2T, pays the Basileus, and grants profit plus tax to the owner', () => {
+test('gifting an estate to the church converts profit and tax into church value', () => {
   const state = makeState(
     [makeTheme('ANT', { owner: 1 })],
     {
+      0: { majorTitles: ['PATRIARCH'] },
       1: { gold: 12 },
     },
   );
 
-  const result = grantTaxExemption(state, 1, 'ANT');
+  const result = giftToChurch(state, 1, 'ANT');
   assert.equal(result.ok, true);
-  assert.equal(result.cost, 4);
-  assert.equal(state.players[1].gold, 8);
-  assert.equal(state.players[0].gold, 4);
-  assert.equal(state.themes.ANT.taxExempt, true);
+  assert.equal(state.themes.ANT.owner, 'church');
+  assert.equal(state.themes.ANT.P, 0);
+  assert.equal(state.themes.ANT.T, 0);
+  assert.equal(state.themes.ANT.C, 4);
+  assert.equal(state.themes.ANT.bishop, 1);
+  assert.deepEqual(state.bishopAppointments, [{ themeId: 'ANT', playerId: 1 }]);
 
   const admin = runAdministration(state);
-  assert.equal(admin.income[1], 4);
+  assert.equal(admin.income[0], 3);
+  assert.equal(admin.income[1], 1);
+  assert.equal(admin.incomeBreakdown.church[0], 3);
+  assert.equal(admin.incomeBreakdown.church[1], 1);
 });
 
 
@@ -325,23 +337,21 @@ test('land auctions require higher bids, pay immediately, and refund overbid pla
   assert.equal(state.landAuctions.SAM, undefined);
 });
 
-test('AI can buy a legal tax exemption when estate value justifies it', () => {
+test('bishops can only be appointed in provinces with church value', () => {
   const state = makeState(
-    [makeTheme('OPS', { owner: 1 })],
+    [makeTheme('KOL'), makeTheme('SAM')],
     {
-      1: { gold: 10 },
+      0: { majorTitles: ['PATRIARCH'] },
     },
   );
-  const aiMeta = createAIMeta(state, { humanPlayerIds: [0, 2] });
 
-  const result = runAICourtAutomation(state, aiMeta, { mode: 'react' });
+  const invalid = appointBishop(state, 0, 'KOL', 1);
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.reason, /church value/i);
 
-  assert.equal(result.actionsTaken, 1);
-  assert.equal(state.themes.OPS.taxExempt, true);
-  assert.equal(state.players[1].gold, 6);
-  assert.equal(aiMeta.players[1].stats.taxExemptions, 1);
-  assert.equal(aiMeta.players[1].stats.taxExemptionSpend, 4);
-  assert.equal(aiMeta.totals.taxExemptions, 1);
+  const valid = appointBishop(state, 0, 'SAM', 1);
+  assert.equal(valid.ok, true);
+  assert.equal(state.themes.SAM.bishop, 1);
 });
 
 test('AI raises land auctions at the legal minimum instead of underbidding', () => {
@@ -582,7 +592,6 @@ test('accepted estate deals transfer the estate immediately without disturbing i
   const state = makeDealState([
     makeTheme('OPS', {
       owner: 0,
-      taxExempt: true,
       strategos: 1,
       bishop: 2,
       privateLevyReduced: true,
@@ -603,7 +612,6 @@ test('accepted estate deals transfer the estate immediately without disturbing i
   });
   assert.equal(accepted.ok, true);
   assert.equal(state.themes.OPS.owner, 1);
-  assert.equal(state.themes.OPS.taxExempt, true);
   assert.equal(state.themes.OPS.strategos, 1);
   assert.equal(state.themes.OPS.bishop, 2);
   assert.equal(state.themes.OPS.privateLevyReduced, true);
@@ -662,6 +670,79 @@ test('repeat appointments cost troops only when appointing the same recipient ag
   assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
   assert.equal(state.suspendedProfessionals[0].BASILEUS, 1);
   assert.equal(getNextAppointmentCost(state, 0, 1), 2);
+});
+
+test('professional troops on appointment missions still pay upkeep', () => {
+  const state = makeDealState([makeTheme('OPS'), makeTheme('ANT')], {
+    0: { gold: 10, professionalArmies: { BASILEUS: 2 } },
+  });
+
+  assert.equal(appointStrategos(state, 0, 'OPS', 1).ok, true);
+  assert.equal(appointBishop(state, 0, 'ANT', 1).ok, true);
+  assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
+  assert.equal(state.suspendedProfessionals[0].BASILEUS, 1);
+
+  const maintenance = payMaintenance(state, 0);
+  assert.equal(maintenance.cost, 2);
+  assert.equal(maintenance.onMission, 1);
+  assert.equal(state.players[0].gold, 8);
+});
+
+test('debt disbands one random professional troop per gold owed', () => {
+  const state = makeState([], {
+    0: { gold: -2, professionalArmies: { BASILEUS: 1, DOM_EAST: 2 } },
+  });
+
+  const result = applyDebtDisbanding(state, 0, () => 0);
+  assert.equal(result.disbanded, 2);
+  assert.equal(state.players[0].professionalArmies.BASILEUS || 0, 0);
+  assert.equal(state.players[0].professionalArmies.DOM_EAST, 1);
+});
+
+test('patriarch and regional commanders can revoke with any controlled army', () => {
+  const state = makeDealState([
+    makeTheme('OPS', { bishop: 2 }),
+    makeTheme('ANT', { strategos: 2 }),
+  ], {
+    0: { majorTitles: ['PATRIARCH'] },
+    1: { majorTitles: ['DOM_EAST'], professionalArmies: { DOM_EAST: 1 } },
+    2: {},
+  });
+  state.basileusId = 2;
+  state.currentLevies = { PATRIARCH: 1, DOM_EAST: 1 };
+
+  const patriarchRevoke = revokeMinorTitle(state, 'OPS', 'bishop', 0);
+  assert.equal(patriarchRevoke.ok, true);
+  assert.equal(state.themes.OPS.bishop, null);
+  assert.equal(state.currentLevies.PATRIARCH, 0);
+
+  const regionalRevoke = revokeMinorTitle(state, 'ANT', 'strategos', 1);
+  assert.equal(regionalRevoke.ok, true);
+  assert.equal(state.themes.ANT.strategos, null);
+  assert.equal(state.currentLevies.DOM_EAST, 0);
+});
+
+test('best defender reward can be taken as gold instead of land', () => {
+  const state = makeState([makeTheme('OPS', { occupied: false })], {
+    1: { gold: 0 },
+  });
+  state.phase = 'resolution';
+  state.pendingDefenderRewards = [{
+    id: 'reward-1',
+    themeId: 'OPS',
+    defenderId: 1,
+    rank: 1,
+    troops: 5,
+    goldValue: 4,
+    resolved: false,
+  }];
+  state.lastWarResult = { defenderRewards: state.pendingDefenderRewards };
+
+  const result = applyDefenderRewardChoice(state, 'reward-1', 1, 'gold');
+  assert.equal(result.ok, true);
+  assert.equal(state.players[1].gold, 4);
+  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(state.pendingDefenderRewards[0].resolved, true);
 });
 
 test('self appointment promises enforce the promised beneficiary immediately', () => {
@@ -748,7 +829,7 @@ test('all-human court advances only after each player confirms', () => {
     domesticWestAppointed: true,
     admiralAppointed: true,
     patriarchAppointed: true,
-    basileusRevocationsUsed: 0,
+    revocationsUsed: {},
     appointmentsByRecipient: {},
     playerConfirmed: new Set([0, 1]),
   };
@@ -770,7 +851,7 @@ test('court confirmation passes only the confirming players own mandatory appoin
     domesticWestAppointed: false,
     admiralAppointed: true,
     patriarchAppointed: false,
-    basileusRevocationsUsed: 0,
+    revocationsUsed: {},
     appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };
@@ -802,7 +883,7 @@ test('solo court confirmation can pass without taking optional mandatory actions
     domesticWestAppointed: false,
     admiralAppointed: false,
     patriarchAppointed: false,
-    basileusRevocationsUsed: 0,
+    revocationsUsed: {},
     appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };
@@ -983,15 +1064,16 @@ test('resolution totals include public mercenary hires and cleanup removes them'
   assert.deepEqual(state.currentMercenaryTroops, {});
 });
 
-test('the Basileus cannot buy tax exemption for his own estate', () => {
-  const state = makeState(
-    [makeTheme('OPS', { owner: 0 })],
-    {
-      0: { gold: 10 },
-    },
-  );
+test('players in debt cannot recruit professional troops', () => {
+  const state = makeState([], {
+    0: { gold: -1, professionalArmies: { BASILEUS: 1 } },
+  });
 
-  const result = grantTaxExemption(state, 0, 'OPS');
-  assert.equal(result.ok, false);
-  assert.match(result.reason, /Basileus/i);
+  const check = canRecruitProfessional(state, 0, 'BASILEUS');
+  assert.equal(check.ok, false);
+  assert.match(check.reason, /debt/i);
+
+  const recruit = recruitProfessional(state, 0, 'BASILEUS');
+  assert.equal(recruit.ok, false);
+  assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
 });

@@ -114,8 +114,15 @@ export function computeChurchCascade(state, regionalChurchPool) {
   let pool = Math.max(0, Number(regionalChurchPool) || 0);
   const patriarchId = findTitleHolder(state, 'PATRIARCH');
   const bishopOrder = Array.isArray(state.bishopAppointments) ? state.bishopAppointments : [];
+  const seenBishopThemes = new Set(bishopOrder.map((entry) => entry.themeId));
+  const fallbackBishops = Object.values(state.themes || {})
+    .filter((theme) => theme?.bishop != null && !seenBishopThemes.has(theme.id))
+    .map((theme) => ({ themeId: theme.id, playerId: theme.bishop }));
   // Filter to currently active bishops (the theme.bishop still matches the appointee).
-  const activeBishops = bishopOrder.filter((entry) => state.themes?.[entry.themeId]?.bishop === entry.playerId);
+  // Fallback entries keep older saves/tests with pre-registry bishops paying in
+  // stable province order after registered senior bishops.
+  const activeBishops = [...bishopOrder, ...fallbackBishops]
+    .filter((entry) => state.themes?.[entry.themeId]?.bishop === entry.playerId);
   const income = {};
 
   const addIncome = (playerId, amount) => {
@@ -214,7 +221,6 @@ export function runAdministration(state) {
 
   for (const region of regions) {
     const taxResult = computeRegionalTaxCascade(state, region, regionalTaxPools[region]);
-    churchPool += taxResult.churchPool;
     basileusRegionalGold += taxResult.income[state.basileusId] || 0;
 
     for (const [playerId, amount] of Object.entries(taxResult.income)) {

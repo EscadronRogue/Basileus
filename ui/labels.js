@@ -80,7 +80,7 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   if (!theme) return options.fallback || '';
   const churchValue = Math.max(0, Number(theme.C) || 0);
   const values = options.showValues
-    ? `<span class="province-token-values">P${theme.P} T${theme.T} L${theme.L}${churchValue > 0 ? ` C${churchValue}` : ''}</span>`
+    ? `<span class="province-token-values">P${theme.P} T${theme.T} L${theme.L} C${churchValue}</span>`
     : '';
   const classes = [
     'province-token',

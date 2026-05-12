@@ -5,7 +5,10 @@
 
 import {
   advanceToNextInteractivePhase,
+  applyDefenderRewardChoice,
+  autoResolveDefenderRewards,
   allOrdersSubmitted,
+  hasPendingDefenderRewards,
   isCourtComplete,
   phaseCleanup,
   phaseOrders,
@@ -47,6 +50,26 @@ function writePending(context, result) {
   return result;
 }
 
+function recordDefenderRewardsForTraining(meta, rewards = []) {
+  if (!meta || !Array.isArray(rewards)) return;
+  if (!meta.totals) meta.totals = {};
+  if (!Number.isFinite(meta.totals.defenderRewards)) meta.totals.defenderRewards = 0;
+  for (const reward of rewards) {
+    const playerMeta = meta.players?.[reward.defenderId];
+    if (!playerMeta) continue;
+    if (!playerMeta.stats) playerMeta.stats = {};
+    playerMeta.stats.defenderRewards = (Number(playerMeta.stats.defenderRewards) || 0) + 1;
+    meta.totals.defenderRewards += 1;
+  }
+}
+
+function autoResolveAiDefenderRewards(state, meta) {
+  if (!state || !meta) return [];
+  const resolved = autoResolveDefenderRewards(state, (playerId) => isAIPlayer(meta, playerId));
+  recordDefenderRewardsForTraining(meta, resolved);
+  return resolved;
+}
+
 // Auto-resolves mandatory court appointments that cannot be filled — e.g. when
 // no eligible target exists for a Strategos slot the player holds. It is always
 // scoped to the acting human player. Multiplayer must not sweep every human seat
@@ -68,6 +91,7 @@ export function autoResolveUnavailableHumanAppointments(state, playerId) {
     && theme.id !== 'CPL'
     && !theme.bishopIsDonor
     && theme.bishop === null
+    && (Number(theme.C) || 0) >= 1
   );
 
   if (playerId === state.basileusId && !state.courtActions?.basileusAppointed) {
@@ -177,6 +201,10 @@ export function continueAfterResolution(state, aiMeta, pendingAiTitleAssignment 
   }
 
   applyPendingAiTitleAssignment(state, aiMeta, pendingAiTitleAssignment);
+  autoResolveAiDefenderRewards(state, aiMeta);
+  if (hasPendingDefenderRewards(state)) {
+    return { ok: false, reason: 'Resolve all best-defender rewards before continuing.', pendingAiTitleAssignment };
+  }
 
   phaseCleanup(state);
   advanceToNextInteractivePhase(state);
@@ -265,6 +293,15 @@ export function handleManualTitleReassignment(state, aiMeta, context = {}, playe
   if (!result.ok) return result;
   context.pendingAiTitleAssignment = null;
   return { ok: true, pendingAiTitleAssignment: null };
+}
+
+export function handleDefenderRewardChoice(state, aiMeta, context = {}, playerId, rewardId, choice) {
+  ensureRuntimeContext(context);
+  if (!state || state.phase !== 'resolution') return fail('Defender rewards are only available during resolution.');
+  const result = applyDefenderRewardChoice(state, String(rewardId || ''), playerId, choice);
+  if (!result.ok) return result;
+  recordDefenderRewardsForTraining(aiMeta, [result.reward]);
+  return { ok: true, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 
 export function resolvePendingTitleReassignment(state, aiMeta, context = {}, assignments = null) {

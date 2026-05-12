@@ -3,6 +3,7 @@ import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js'
 import {
   autoResolveUnavailableHumanAppointments,
   handleContinueAfterResolution,
+  handleDefenderRewardChoice,
   handleHumanCourtAction,
   handleHumanCourtConfirmation,
   handleHumanOrders,
@@ -145,6 +146,9 @@ export class GameController {
     const spectatorMessage = state.phase === 'orders'
       ? 'Switch back to your dynasty to continue.'
       : 'This dynasty is AI-controlled.';
+    const pendingHumanDefenderReward = state.pendingDefenderRewards?.some((reward) => (
+      !reward.resolved && (!this.aiMeta || this.isHumanPlayer(reward.defenderId))
+    ));
 
     renderGameActionPanel({
       panel: document.getElementById('actionPanel'),
@@ -162,6 +166,18 @@ export class GameController {
       },
       resolution: {
         allowManualTitleReassignment: !this.pendingAiTitleAssignment,
+        disabledText: pendingHumanDefenderReward
+          && this.state.nextBasileusId === this.state.basileusId
+          ? 'Resolve Rewards'
+          : null,
+        defenderRewardChoice: (rewardId, choice) => {
+          const result = handleDefenderRewardChoice(this.state, this.aiMeta, this, this.activePlayer, rewardId, choice);
+          if (!result.ok) {
+            this.render();
+            return;
+          }
+          this.render();
+        },
         continue: (shell) => {
           const reassignment = this.tryResolveTitleReassignment(shell);
           if (!reassignment.ok) return;
@@ -186,7 +202,6 @@ export class GameController {
     return {
       buy: (themeId, data = {}) => dispatch({ action: 'buy', themeId, amount: data.amount }),
       gift: (themeId) => dispatch({ action: 'gift', themeId }),
-      exempt: (themeId) => dispatch({ action: 'exempt', themeId }),
       recruit: (_, data) => dispatch({ action: 'recruit', office: data.office }),
       hireMercenaries: (_, data) => dispatch({ action: 'hire-mercenaries', office: data.office, count: data.count }),
       dismiss: (_, data) => dispatch({ action: 'dismiss', office: data.office, count: data.count }),

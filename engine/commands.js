@@ -264,6 +264,9 @@ export function applyCourtAction(state, playerId, payload = {}) {
       observation = { ...observation, targetPlayerId };
     } else if (kind === 'theme') {
       const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
+      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
+        return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
+      }
       const result = revokeTheme(state, parts[1], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that estate.');
       observation = { ...observation, targetPlayerId };
