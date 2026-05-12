@@ -154,6 +154,16 @@ test('province table matches the profit-tax-levy economy constraints', () => {
   }
 });
 
+test('province table uses the configured church-value distribution', () => {
+  const churchTwo = new Set(['THR', 'ANT', 'KAP', 'SAM', 'THS', 'BUL', 'KYP']);
+  const churchOne = new Set(['OPS', 'OPT', 'BOU', 'THK', 'MES', 'CIL', 'HEL', 'PEL', 'ITA', 'ANA', 'CHD']);
+
+  for (const theme of PROVINCES) {
+    const expected = churchTwo.has(theme.id) ? 2 : churchOne.has(theme.id) ? 1 : 0;
+    assert.equal(Number(theme.C) || 0, expected, `${theme.name} church value mismatch.`);
+  }
+});
+
 test('new games start every dynasty at 0 gold', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
   for (const player of state.players) {
@@ -189,7 +199,7 @@ test('theme pricing, income, and church-value helpers follow the current rules',
   assert.equal(getThemeLandPrice(anti), 4);
   assert.equal(getNormalOwnerIncome(anti), 2);
   assert.equal(getNormalTaxIncome(anti), 2);
-  assert.equal(getThemeChurchValue(anti), 1);
+  assert.equal(getThemeChurchValue(anti), 2);
 
   assert.equal(getThemeLandPrice(kol), 2);
   assert.equal(getNormalOwnerIncome(kol), 1);
@@ -645,7 +655,7 @@ test('appointment promises carry forward until a legal appointment is made to th
 });
 
 test('repeat appointments cost troops only when appointing the same recipient again', () => {
-  const state = makeDealState([makeTheme('OPS'), makeTheme('ANT')], {
+  const state = makeDealState([makeTheme('OPS'), makeTheme('SAM')], {
     0: { professionalArmies: { BASILEUS: 2 } },
   });
   state.currentLevies = { BASILEUS: 1 };
@@ -665,7 +675,7 @@ test('repeat appointments cost troops only when appointing the same recipient ag
   assert.equal(getNextAppointmentCost(state, 0, 1), 1);
   assert.equal(state.players[0].professionalArmies.BASILEUS, 2);
 
-  const secondOther = appointBishop(state, 0, 'ANT', 1);
+  const secondOther = appointBishop(state, 0, 'SAM', 1);
   assert.equal(secondOther.ok, true);
   assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
   assert.equal(state.suspendedProfessionals[0].BASILEUS, 1);
@@ -673,12 +683,12 @@ test('repeat appointments cost troops only when appointing the same recipient ag
 });
 
 test('professional troops on appointment missions still pay upkeep', () => {
-  const state = makeDealState([makeTheme('OPS'), makeTheme('ANT')], {
+  const state = makeDealState([makeTheme('OPS'), makeTheme('SAM')], {
     0: { gold: 10, professionalArmies: { BASILEUS: 2 } },
   });
 
   assert.equal(appointStrategos(state, 0, 'OPS', 1).ok, true);
-  assert.equal(appointBishop(state, 0, 'ANT', 1).ok, true);
+  assert.equal(appointBishop(state, 0, 'SAM', 1).ok, true);
   assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
   assert.equal(state.suspendedProfessionals[0].BASILEUS, 1);
 
@@ -697,6 +707,28 @@ test('debt disbands one random professional troop per gold owed', () => {
   assert.equal(result.disbanded, 2);
   assert.equal(state.players[0].professionalArmies.BASILEUS || 0, 0);
   assert.equal(state.players[0].professionalArmies.DOM_EAST, 1);
+});
+
+test('debt disbanding waits until administration income is paid', () => {
+  const state = makeState([
+    makeTheme('KOL', { owner: 0 }),
+  ], {
+    0: { gold: -1, professionalArmies: { BASILEUS: 1 } },
+    1: { gold: -2, professionalArmies: { DOM_EAST: 2 } },
+  });
+  state.round = 2;
+  state.startingAdministrationResolved = true;
+
+  const result = phaseAdministration(state);
+
+  assert.equal(result.income[0], 1);
+  assert.equal(state.players[0].gold, 0);
+  assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
+  assert.equal(result.debtDisbands[0], undefined);
+
+  assert.equal(state.players[1].gold, -2);
+  assert.equal(state.players[1].professionalArmies.DOM_EAST || 0, 0);
+  assert.equal(result.debtDisbands[1].disbanded, 2);
 });
 
 test('patriarch and regional commanders can revoke with any controlled army', () => {

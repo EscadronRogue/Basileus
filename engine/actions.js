@@ -1097,9 +1097,9 @@ export function payMaintenance(state, playerId) {
   };
 }
 
-// At the start of each player's turn (or game-wide at round-start), if a player
-// is in debt they automatically lose 1 random professional troop per gold of
-// debt. The discarded troops come from anywhere in their professional army.
+// During automatic administration, after income is paid, a player still in debt
+// automatically loses 1 random professional troop per gold owed. The discarded
+// troops come from anywhere in their professional army.
 export function applyDebtDisbanding(state, playerId, rng = state.rng) {
   const player = getPlayer(state, playerId);
   if (!player) return { disbanded: 0, lost: {} };

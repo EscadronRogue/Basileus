@@ -1,5 +1,5 @@
 import { PROVINCES } from '../data/provinces.js';
-import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
+import { formatProvinceValuesText, getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_SVG } from './svgAssets.js';
 
@@ -62,6 +62,7 @@ let invasionOrigins = {};
 let provinceSelectHandler = null;
 let hoveredProvinceId = null;
 let viewportLayer = null;
+let latestMapState = null;
 let mapView = { zoom: 1, panX: 0, panY: 0 };
 let gestureState = createGestureState();
 
@@ -74,6 +75,7 @@ export async function createMapSVG(containerId, options = {}) {
   invasionOrigins = {};
   hoveredProvinceId = null;
   viewportLayer = null;
+  latestMapState = null;
   mapView = { zoom: 1, panX: 0, panY: 0 };
   gestureState = createGestureState();
 
@@ -716,7 +718,7 @@ function parseFiniteNumber(value) {
 
 // Map labels are stacked SVG cartouches that mirror the HTML
 // .province-token grammar: outline = region color, fill = owner color,
-// gold inner hairline. Two lines per cartouche: name / profit-tax-levy.
+// gold inner hairline. Two lines per cartouche: name / current profit-tax-levy-church.
 const MAP_CART_PAD_X = 1.0;
 const MAP_CART_MIN_WIDTH = 7.8;
 const MAP_CART_HEIGHT = 4.7;
@@ -731,13 +733,14 @@ function addProvinceLabels(layer) {
     const centroid = provinceCentroids[province.id];
     if (!centroid) continue;
 
-    const g = buildMapCartouche(province, centroid);
+    const theme = latestMapState?.themes?.[province.id] || province;
+    const g = buildMapCartouche(province, centroid, theme);
     layer.appendChild(g);
     layoutMapCartouche(g);
   }
 }
 
-function buildMapCartouche(province, centroid) {
+function buildMapCartouche(province, centroid, theme = province) {
   const isCapital = province.id === 'CPL';
   const g = document.createElementNS(SVG_NS, 'g');
   g.setAttribute('class', `map-cartouche${isCapital ? ' is-capital' : ''}`);
@@ -755,8 +758,8 @@ function buildMapCartouche(province, centroid) {
   inner.setAttribute('class', 'map-cart-inner');
   g.appendChild(inner);
 
-  appendCartLine(g, 'map-cart-name', province.name);
-  appendCartLine(g, 'map-cart-values', `P${province.P} T${province.T} L${province.L} C${Number(province.C) || 0}`);
+  appendCartLine(g, 'map-cart-name', theme.name || province.name);
+  appendCartLine(g, 'map-cart-values', formatProvinceValuesText(theme));
 
   return g;
 }
@@ -839,24 +842,49 @@ function estimateTextWidth(text, fontSize) {
   return units * fontSize;
 }
 
+function updateMapCartoucheValues(cart, theme) {
+  if (!cart || !theme) return;
+
+  const nameText = cart.querySelector('.map-cart-name');
+  const valuesText = cart.querySelector('.map-cart-values');
+  let changed = false;
+
+  const nextName = theme.name || theme.id || '';
+  if (nameText && nameText.textContent !== nextName) {
+    nameText.textContent = nextName;
+    changed = true;
+  }
+
+  const nextValues = formatProvinceValuesText(theme);
+  if (valuesText && valuesText.textContent !== nextValues) {
+    valuesText.textContent = nextValues;
+    changed = true;
+  }
+
+  if (changed) layoutMapCartouche(cart);
+}
+
 export function updateMapState(state) {
+  latestMapState = state;
   for (const [provinceId, theme] of Object.entries(state.themes)) {
     const shape = document.querySelector(`.province-shape[data-id="${provinceId}"]`);
     const cart = document.querySelector(`.map-cartouche[data-id="${provinceId}"]`);
-    if (!shape) continue;
 
     const ownership = resolveProvinceOwnership(state, provinceId, theme);
 
     // Province shape: low-saturation parchment-tinted fill via class.
-    shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')}`.trim();
-    if (ownership.ownerColor) {
-      shape.style.setProperty('--owner-color', ownership.ownerColor);
-    } else {
-      shape.style.removeProperty('--owner-color');
+    if (shape) {
+      shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')}`.trim();
+      if (ownership.ownerColor) {
+        shape.style.setProperty('--owner-color', ownership.ownerColor);
+      } else {
+        shape.style.removeProperty('--owner-color');
+      }
     }
 
     // Map cartouche: same class set drives full-saturation owner color.
     if (cart) {
+      updateMapCartoucheValues(cart, theme);
       const baseClasses = `map-cartouche${provinceId === 'CPL' ? ' is-capital' : ''}`;
       cart.className.baseVal = `${baseClasses} ${ownership.classes.join(' ')}`.trim();
       if (ownership.ownerColor) {
@@ -876,21 +904,22 @@ export function updateMapState(state) {
 // .province-token via data/style conventions).
 function resolveProvinceOwnership(state, provinceId, theme) {
   const ownerColor = getProvinceOwnerColor(state, theme);
+  const withChurchMarker = (classes) => (
+    (Number(theme.C) || 0) > 0 ? [...classes, 'has-church'] : classes
+  );
   if (theme.occupied) {
-    return { classes: ['occupied'], ownerColor };
+    return { classes: withChurchMarker(['occupied']), ownerColor };
   }
   if (theme.owner === 'church') {
-    return { classes: ['imperial', 'church'], ownerColor };
+    return { classes: withChurchMarker(['imperial', 'church']), ownerColor };
   }
   if (theme.owner !== null) {
-    const classes = ['imperial', 'owned'];
-    if ((Number(theme.C) || 0) > 0) classes.push('has-church');
-    return { classes, ownerColor };
+    return { classes: withChurchMarker(['imperial', 'owned']), ownerColor };
   }
   if (provinceId === 'CPL') {
-    return { classes: ['imperial', 'capital'], ownerColor };
+    return { classes: withChurchMarker(['imperial', 'capital']), ownerColor };
   }
-  return { classes: ['imperial', 'free'], ownerColor };
+  return { classes: withChurchMarker(['imperial', 'free']), ownerColor };
 }
 
 function updateThreatOverlay(state) {

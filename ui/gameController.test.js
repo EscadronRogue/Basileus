@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createGameState } from '../engine/state.js';
 import { GameController } from './gameController.js';
 import { MultiplayerController } from './multiplayerController.js';
+import { formatProvinceValuesText, renderProvinceBadge } from './labels.js';
 import { renderCourtPanel, renderOrdersPanel } from './panels.js';
 import { getPlayerTabEconomy, renderPlayerTabFinance, renderScoringHtml } from './sharedView.js';
 
@@ -66,6 +67,24 @@ test('court panel splits church and revocation folds by role', () => {
   assert.match(container.innerHTML, /Church Gifts/);
   assert.match(container.innerHTML, /Revocation/);
   assert.doesNotMatch(container.innerHTML, /Privileges And Church/);
+});
+
+test('province cartouche values render from live mutated province state', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  const theme = state.themes.OPS;
+
+  theme.owner = state.players[1].id;
+  theme.L = Math.max(0, theme.L - 1);
+  assert.equal(formatProvinceValuesText(theme), 'P2 T2 L0 C1');
+  assert.match(renderProvinceBadge(state, 'OPS', { showValues: true }), /P2 T2 L0 C1/);
+
+  theme.owner = 'church';
+  theme.C = (Number(theme.P) || 0) + (Number(theme.T) || 0);
+  theme.P = 0;
+  theme.T = 0;
+
+  assert.equal(formatProvinceValuesText(theme), 'P0 T0 L0 C4');
+  assert.match(renderProvinceBadge(state, 'OPS', { showValues: true }), /P0 T0 L0 C4/);
 });
 
 test('final scoring view shows threshold share points', () => {

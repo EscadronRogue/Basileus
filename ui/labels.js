@@ -62,6 +62,14 @@ export function getProvinceStyleAttr(state, theme) {
   return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; --province-region-color: ${getRegionColor(theme?.region)};`;
 }
 
+export function formatProvinceValuesText(theme) {
+  const profit = Math.max(0, Number(theme?.P) || 0);
+  const tax = Math.max(0, Number(theme?.T) || 0);
+  const levies = Math.max(0, Number(theme?.L) || 0);
+  const church = Math.max(0, Number(theme?.C) || 0);
+  return `P${profit} T${tax} L${levies} C${church}`;
+}
+
 
 // ── Cartouche renderers ───────────────────────────────────────────────
 
@@ -80,7 +88,7 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   if (!theme) return options.fallback || '';
   const churchValue = Math.max(0, Number(theme.C) || 0);
   const values = options.showValues
-    ? `<span class="province-token-values">P${theme.P} T${theme.T} L${theme.L} C${churchValue}</span>`
+    ? `<span class="province-token-values">${formatProvinceValuesText(theme)}</span>`
     : '';
   const classes = [
     'province-token',

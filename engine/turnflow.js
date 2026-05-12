@@ -116,15 +116,6 @@ export function phaseInvasion(state) {
   state.round++;
   state.phase = 'invasion';
 
-  // Players entering a new turn in debt automatically lose 1 random professional
-  // troop per gold of debt. Skipped on the very first round because nobody has
-  // received their starting administration income yet.
-  if (state.round > 1) {
-    for (const player of state.players) {
-      applyDebtDisbanding(state, player.id, state.rng);
-    }
-  }
-
   if (state.invasionDeck.length === 0) {
     // No more invasions → game ends
     state.phase = 'scoring';
@@ -170,10 +161,27 @@ export function phaseAdministration(state) {
   }
   state.startingAdministrationResolved = state.startingAdministrationResolved || state.round === 1;
 
+  // Debt is checked only after the turn's automatic income has been paid. A
+  // player who can climb back to zero or above from offices, land, or church
+  // income does not lose professional troops.
+  result.debtDisbands = {};
+  for (const player of state.players) {
+    const debtResult = applyDebtDisbanding(state, player.id, state.rng);
+    if (debtResult.disbanded > 0) {
+      result.debtDisbands[player.id] = debtResult;
+    }
+  }
+
   // Store levies for deployment phase
   state.currentLevies = result.levies;
 
-  state.log.push({ type: 'admin_complete', income: result.income, levies: result.levies, round: state.round });
+  state.log.push({
+    type: 'admin_complete',
+    income: result.income,
+    levies: result.levies,
+    debtDisbands: result.debtDisbands,
+    round: state.round,
+  });
   recordHistoryEvent(state, {
     category: 'system',
     type: 'administration',
@@ -188,6 +196,12 @@ export function phaseAdministration(state) {
         officeKey,
         officeName: officeName(state, officeKey),
         amount,
+      })),
+      debtDisbands: Object.entries(result.debtDisbands).map(([playerId, entry]) => ({
+        playerId: Number(playerId),
+        playerName: playerName(state, Number(playerId)),
+        disbanded: entry.disbanded,
+        lost: entry.lost,
       })),
     },
   });
@@ -529,9 +543,8 @@ export function phaseCleanup(state) {
     payMaintenance(state, player.id);
   }
 
-  // Professional troops the Basileus spent on revocations were "deleted" for this
-  // round only — restore them now (after maintenance) so they're available next round
-  // without paying maintenance for the round they were suspended.
+  // Professional troops sent on revocation or appointment missions return after
+  // maintenance, so they are paid for the round while unavailable for more actions.
   restoreSuspendedProfessionals(state);
 
   // 2. Levies expire, mercenaries disband (just clear the references)
