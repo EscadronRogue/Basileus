@@ -785,12 +785,45 @@ test('patriarch and regional commanders can revoke with any controlled army', ()
   const patriarchRevoke = revokeMinorTitle(state, 'OPS', 'bishop', 0);
   assert.equal(patriarchRevoke.ok, true);
   assert.equal(state.themes.OPS.bishop, null);
-  assert.equal(state.currentLevies.PATRIARCH, 0);
+  assert.equal(state.currentLevies.PATRIARCH, 1);
 
   const regionalRevoke = revokeMinorTitle(state, 'ANT', 'strategos', 1);
   assert.equal(regionalRevoke.ok, true);
   assert.equal(state.themes.ANT.strategos, null);
   assert.equal(state.currentLevies.DOM_EAST, 0);
+});
+
+test('Patriarch bishop revocations spend doubled gold by repeat target', () => {
+  const state = makeDealState([
+    makeTheme('OPS', { bishop: 2 }),
+    makeTheme('SAM', { bishop: 1 }),
+    makeTheme('ANT', { bishop: 2 }),
+  ], {
+    0: { gold: 5, majorTitles: ['PATRIARCH'], professionalArmies: { PATRIARCH: 2 } },
+    1: {},
+    2: {},
+  });
+  state.basileusId = 1;
+  state.currentLevies = { PATRIARCH: 2 };
+
+  const firstTarget = revokeMinorTitle(state, 'OPS', 'bishop', 0);
+  assert.equal(firstTarget.ok, true);
+  assert.equal(state.players[0].gold, 5);
+
+  const repeatedTargetLocked = revokeMinorTitle(state, 'ANT', 'bishop', 0);
+  assert.equal(repeatedTargetLocked.ok, false);
+  assert.match(repeatedTargetLocked.reason, /cannot revoke .* twice in a row/i);
+  assert.equal(state.players[0].gold, 5);
+
+  const otherTarget = revokeMinorTitle(state, 'SAM', 'bishop', 0);
+  assert.equal(otherTarget.ok, true);
+  assert.equal(state.players[0].gold, 5);
+
+  const repeatAfterOther = revokeMinorTitle(state, 'ANT', 'bishop', 0);
+  assert.equal(repeatAfterOther.ok, true);
+  assert.equal(state.players[0].gold, 3);
+  assert.equal(state.currentLevies.PATRIARCH, 2);
+  assert.equal(state.players[0].professionalArmies.PATRIARCH, 2);
 });
 
 test('a player cannot revoke the same target twice in a row', () => {

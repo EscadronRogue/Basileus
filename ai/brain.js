@@ -20,9 +20,11 @@ import {
   buyTheme,
   canPayAppointmentCost,
   canPayPatriarchBishopAppointmentCost,
+  canPayPatriarchBishopRevocationCost,
   dismissProfessional,
   canRecruitProfessional,
   getPatriarchBishopAppointmentGoldCost,
+  getPatriarchBishopRevocationGoldCost,
   getLandAuction,
   getMinimumLandBid,
   getNextAppointmentCost,
@@ -2186,8 +2188,8 @@ function handleBasileusRevocation(state, meta) {
 
 // ── Patriarch / regional revocations (non-Basileus authorities) ───────────────
 // The Patriarch may revoke any bishop. A Domestic of the East/West or the
-// Admiral may revoke a strategos in their region. Same escalating troop cost as
-// the Basileus, drawn from any office or army the revoker controls.
+// Admiral may revoke a strategos in their region. Patriarch bishop revocations
+// use doubled gold repeat-target costs; regional revocations use troops.
 const REGIONAL_REVOKE_REGIONS = { DOM_EAST: 'east', DOM_WEST: 'west', ADMIRAL: 'sea' };
 
 function buildTitleHolderRevocationOptions(state, meta, playerId) {
@@ -2251,13 +2253,26 @@ function handleTitleHolderRevocation(state, meta, playerId) {
     player.majorTitles.includes('DOM_WEST') ||
     player.majorTitles.includes('ADMIRAL');
   if (!eligible) return false;
-  const costCheck = canPayRevocationCost(state, playerId);
-  if (!costCheck.ok) return false;
-  const cost = costCheck.cost;
   const ranked = buildTitleHolderRevocationOptions(state, meta, playerId);
-  const threshold = getMetaForPlayer(meta, playerId, 'revocationThreshold') + (cost - 1) * 0.85;
+  const affordable = ranked
+    .map((option) => {
+      const goldRevocation = option.titleType === 'bishop' && player.majorTitles.includes('PATRIARCH');
+      const paymentCheck = goldRevocation
+        ? canPayPatriarchBishopRevocationCost(state, playerId, option.targetPlayerId)
+        : canPayRevocationCost(state, playerId);
+      if (!paymentCheck.ok) return null;
+      const costStep = goldRevocation
+        ? getPatriarchBishopRevocationGoldCost(state, playerId, option.targetPlayerId) / 2
+        : Math.max(0, paymentCheck.cost - 1);
+      return {
+        ...option,
+        paymentCheck,
+        threshold: getMetaForPlayer(meta, playerId, 'revocationThreshold') + costStep * 0.85,
+      };
+    })
+    .filter(Boolean);
   const temperature = getMetaForPlayer(meta, playerId, 'courtTemperature');
-  const plausible = ranked.filter(option => option.score > threshold).slice(0, 6);
+  const plausible = affordable.filter(option => option.score > option.threshold).slice(0, 6);
   const best = softmaxPick(plausible, temperature, state.rng);
   if (!best) return false;
 

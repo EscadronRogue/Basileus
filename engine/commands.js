@@ -25,6 +25,7 @@ import {
   appointCourtTitle,
   appointStrategos,
   buyTheme,
+  canPayPatriarchBishopRevocationCost,
   canPayRevocationCost,
   canPlayerRevokeBishop,
   canPlayerRevokeStrategos,
@@ -139,6 +140,9 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const titleType = payload.titleType;
     const appointeeId = Number(payload.appointeeId);
     const themeId = payload.themeId || null;
+    if (!Number.isInteger(appointeeId) || !getPlayer(state, appointeeId)) {
+      return fail('Choose an appointee.');
+    }
 
     let previousHolderId = null;
     if (titleType === 'EMPRESS') previousHolderId = state.empress;
@@ -173,6 +177,9 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const titleKey = String(payload.titleKey || '').trim();
     const themeId = String(payload.themeId || '').trim();
     const appointeeId = Number(payload.appointeeId);
+    if (!Number.isInteger(appointeeId) || !getPlayer(state, appointeeId)) {
+      return fail('Choose an appointee.');
+    }
     const region = { DOM_EAST: 'east', DOM_WEST: 'west', ADMIRAL: 'sea' }[titleKey];
     const theme = state.themes[themeId];
     if (!theme || theme.region !== region) return fail('Choose a valid strategos province.');
@@ -194,6 +201,9 @@ export function applyCourtAction(state, playerId, payload = {}) {
   if (action === 'appoint-bishop') {
     const themeId = String(payload.themeId || '').trim();
     const appointeeId = Number(payload.appointeeId);
+    if (!Number.isInteger(appointeeId) || !getPlayer(state, appointeeId)) {
+      return fail('Choose an appointee.');
+    }
     const previousHolderId = state.themes[themeId]?.bishop ?? null;
     const result = appointBishop(state, playerId, themeId, appointeeId);
     if (!result?.ok) return fail(result?.reason || 'Could not appoint that bishop.');
@@ -228,10 +238,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
       }
     }
 
-    const costCheck = canPayRevocationCost(state, playerId);
-    if (!costCheck.ok) {
-      return fail(`You need ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (have ${costCheck.available || 0}).`);
-    }
     let observation = { type: 'revocation', actorId: playerId };
 
     if (kind === 'minor') {
@@ -239,6 +245,13 @@ export function applyCourtAction(state, playerId, payload = {}) {
       const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
+      }
+      const patriarchGoldRevocation = !isBasileus && parts[2] === 'bishop' && canPlayerRevokeBishop(state, playerId);
+      const costCheck = patriarchGoldRevocation
+        ? canPayPatriarchBishopRevocationCost(state, playerId, targetPlayerId)
+        : canPayRevocationCost(state, playerId);
+      if (!costCheck.ok) {
+        return fail(costCheck.reason || `You need ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (have ${costCheck.available || 0}).`);
       }
       const result = revokeMinorTitle(state, parts[1], parts[2], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
@@ -248,6 +261,10 @@ export function applyCourtAction(state, playerId, payload = {}) {
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
+      const costCheck = canPayRevocationCost(state, playerId);
+      if (!costCheck.ok) {
+        return fail(`You need ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (have ${costCheck.available || 0}).`);
+      }
       const result = revokeCourtTitle(state, parts[1], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that court title.');
       observation = { ...observation, targetPlayerId };
@@ -255,6 +272,10 @@ export function applyCourtAction(state, playerId, payload = {}) {
       const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
+      }
+      const costCheck = canPayRevocationCost(state, playerId);
+      if (!costCheck.ok) {
+        return fail(`You need ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (have ${costCheck.available || 0}).`);
       }
       const result = revokeTheme(state, parts[1], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that estate.');

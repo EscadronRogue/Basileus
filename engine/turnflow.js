@@ -226,9 +226,10 @@ export function phaseCourt(state) {
     admiralAppointed: false,
     patriarchAppointed: false,
     // Per-player count of revocations this round. Each player's nth revocation
-    // costs n troops (Basileus, Patriarch, regional commanders all share the same
-    // escalating-cost rule per player).
+    // costs n troops unless the Patriarch is revoking bishops, which uses a
+    // doubled gold repeat-target cost.
     revocationsUsed: {},
+    revocationsByTarget: {},
     appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };

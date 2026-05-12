@@ -83,7 +83,12 @@ function transferOfficeArmy(state, officeKey, playerId, minimumCount = 0) {
 function ensureCourtActionState(state) {
   if (!state.courtActions) state.courtActions = {};
   if (!state.courtActions.appointmentsByRecipient) state.courtActions.appointmentsByRecipient = {};
+  if (!state.courtActions.revocationsByTarget) state.courtActions.revocationsByTarget = {};
   return state.courtActions;
+}
+
+function isValidPlayerId(state, playerId) {
+  return Number.isInteger(playerId) && Boolean(getPlayer(state, playerId));
 }
 
 function getOfficeHolder(state, officeKey) {
@@ -125,12 +130,16 @@ export function getPlayerAvailableAppointmentTroops(state, playerId) {
 }
 
 export function getNextAppointmentCost(state, appointerId, appointeeId) {
+  if (!isValidPlayerId(state, appointeeId)) return 0;
   const courtActions = ensureCourtActionState(state);
   const byAppointer = courtActions.appointmentsByRecipient[appointerId] || {};
   return Math.max(0, Number(byAppointer[appointeeId]) || 0);
 }
 
 export function canPayAppointmentCost(state, appointerId, appointeeId) {
+  if (!isValidPlayerId(state, appointeeId)) {
+    return { ok: false, cost: 0, available: getPlayerAvailableAppointmentTroops(state, appointerId).total, reason: 'Choose an appointee.' };
+  }
   const cost = getNextAppointmentCost(state, appointerId, appointeeId);
   const { total } = getPlayerAvailableAppointmentTroops(state, appointerId);
   if (appointeeId === appointerId && hasSelfAppointmentLock(state, appointerId)) {
@@ -152,6 +161,18 @@ export function getPatriarchBishopAppointmentGoldCost(state, appointerId, appoin
 }
 
 export function canPayPatriarchBishopAppointmentCost(state, appointerId, appointeeId) {
+  if (!isValidPlayerId(state, appointeeId)) {
+    const availableGold = getSpendableGold(state, appointerId);
+    return {
+      ok: false,
+      cost: 0,
+      goldCost: 0,
+      available: availableGold,
+      availableGold,
+      paymentType: 'gold',
+      reason: 'Choose an appointee.',
+    };
+  }
   const goldCost = getPatriarchBishopAppointmentGoldCost(state, appointerId, appointeeId);
   const availableGold = getSpendableGold(state, appointerId);
   if (appointeeId === appointerId && hasSelfAppointmentLock(state, appointerId)) {
@@ -228,6 +249,78 @@ function payPatriarchBishopAppointmentCost(state, appointerId, appointeeId) {
   if (!check.ok) return check;
   const cost = check.goldCost;
   if (cost > 0) getPlayer(state, appointerId).gold -= cost;
+  return {
+    ok: true,
+    cost,
+    goldCost: cost,
+    goldSpent: cost,
+    leviesSpent: 0,
+    professionalsSpent: 0,
+    paymentType: 'gold',
+  };
+}
+
+function recordPatriarchBishopRevocationCostUse(state, revokerId, targetPlayerId) {
+  const courtActions = ensureCourtActionState(state);
+  if (!courtActions.revocationsByTarget[revokerId]) {
+    courtActions.revocationsByTarget[revokerId] = {};
+  }
+  const byTarget = courtActions.revocationsByTarget[revokerId];
+  byTarget[targetPlayerId] = (Number(byTarget[targetPlayerId]) || 0) + 1;
+}
+
+export function getPatriarchBishopRevocationGoldCost(state, revokerId, targetPlayerId) {
+  if (!isValidPlayerId(state, targetPlayerId)) return 0;
+  const courtActions = ensureCourtActionState(state);
+  const byTarget = courtActions.revocationsByTarget[revokerId] || {};
+  return Math.max(0, Number(byTarget[targetPlayerId]) || 0) * 2;
+}
+
+export function canPayPatriarchBishopRevocationCost(state, revokerId, targetPlayerId) {
+  const availableGold = getSpendableGold(state, revokerId);
+  if (!isValidPlayerId(state, targetPlayerId)) {
+    return {
+      ok: false,
+      cost: 0,
+      goldCost: 0,
+      available: availableGold,
+      availableGold,
+      paymentType: 'gold',
+      reason: 'Choose a bishop to revoke.',
+    };
+  }
+  const targetCheck = checkRevocationTargetCooldown(state, revokerId, targetPlayerId);
+  const goldCost = getPatriarchBishopRevocationGoldCost(state, revokerId, targetPlayerId);
+  if (!targetCheck.ok) {
+    return {
+      ok: false,
+      cost: goldCost,
+      goldCost,
+      available: availableGold,
+      availableGold,
+      paymentType: 'gold',
+      reason: targetCheck.reason,
+    };
+  }
+  return availableGold >= goldCost
+    ? { ok: true, cost: goldCost, goldCost, available: availableGold, availableGold, paymentType: 'gold' }
+    : {
+        ok: false,
+        cost: goldCost,
+        goldCost,
+        available: availableGold,
+        availableGold,
+        paymentType: 'gold',
+        reason: `Not enough gold to revoke (need ${goldCost}, have ${availableGold}).`,
+      };
+}
+
+function payPatriarchBishopRevocationCost(state, revokerId, targetPlayerId) {
+  const check = canPayPatriarchBishopRevocationCost(state, revokerId, targetPlayerId);
+  if (!check.ok) return check;
+  const cost = check.goldCost;
+  if (cost > 0) getPlayer(state, revokerId).gold -= cost;
+  recordPatriarchBishopRevocationCostUse(state, revokerId, targetPlayerId);
   return {
     ok: true,
     cost,
@@ -442,6 +535,7 @@ export function giftToChurch(state, playerId, themeId) {
 export function appointStrategos(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
   if (!theme || theme.occupied || theme.id === 'CPL') return { ok: false, reason: 'Invalid theme' };
+  if (!isValidPlayerId(state, appointeeId)) return { ok: false, reason: 'Choose an appointee.' };
   if (theme.owner === 'church') return { ok: false, reason: 'Church land cannot receive a strategos' };
   if (theme.strategos !== null) return { ok: false, reason: 'This strategos title is already appointed' };
 
@@ -484,6 +578,7 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
 export function appointBishop(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
   if (!theme || theme.occupied || theme.id === 'CPL') return { ok: false, reason: 'Invalid theme' };
+  if (!isValidPlayerId(state, appointeeId)) return { ok: false, reason: 'Choose an appointee.' };
   if (theme.bishop !== null) return { ok: false, reason: 'This bishop title is already appointed' };
   if ((Number(theme.C) || 0) < 1) {
     return { ok: false, reason: 'A bishop can only be appointed in a province with at least 1 church value.' };
@@ -525,6 +620,7 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
 }
 
 export function appointCourtTitle(state, titleType, appointeeId) {
+  if (!isValidPlayerId(state, appointeeId)) return { ok: false, reason: 'Choose an appointee.' };
   const dealCheck = validateAppointmentPromiseChoice(state, state.basileusId, appointeeId);
   if (!dealCheck.ok) return dealCheck;
 
@@ -562,11 +658,11 @@ export function appointCourtTitle(state, titleType, appointeeId) {
 }
 
 // ─── Revocation Cost ───
-// Each revocation in the same round (per player) costs more troops: 1 for the first,
-// 2 for the second, 3 for the third, and so on. Levies are spent first; if those
-// run out the player's professional troops are suspended for this round and return
-// next round. Professional troops sent on a revocation/appointment mission still
-// count for upkeep (they are paid even while away from the office).
+// Most revocations in the same round (per player) cost more troops: 1 for the
+// first, 2 for the second, 3 for the third, and so on. Patriarch bishop
+// revocations instead use the doubled gold repeat-target cost, matching
+// Patriarch bishop appointments. Professional troops sent on a revocation or
+// appointment mission still count for upkeep.
 export function getNextRevocationCost(state, playerId = state.basileusId) {
   const counts = state.courtActions?.revocationsUsed || {};
   return (Number(counts[playerId]) || 0) + 1;
@@ -672,15 +768,23 @@ export function getPlayerProfessionalUpkeep(state, playerId) {
 // Major titles move only during the post-coup purge. During Court, the Basileus
 // can revoke minor titles or estates, the Patriarch can revoke bishops, and the
 // regional title-holders (Domestic of the East/West, Admiral) can revoke strategoi
-// inside their jurisdiction. All Court revocations follow the same escalating
-// troop-cost rule (1, 2, 3, ... per revocation per player per round).
+// inside their jurisdiction. Patriarch bishop revocations are paid in gold;
+// other Court revocations use the escalating troop-cost rule.
 function describeRevocationCost(payment) {
   if (!payment) return null;
   return {
     cost: payment.cost,
     leviesSpent: payment.leviesSpent || 0,
     professionalsSpent: payment.professionalsSpent || 0,
+    goldSpent: payment.goldSpent || 0,
+    paymentType: payment.paymentType || 'troops',
   };
+}
+
+function formatCourtCostSummary(payment) {
+  if (!payment) return '0 troops spent';
+  if (payment.paymentType === 'gold') return `${formatGold(payment.goldSpent || payment.cost || 0)} spent`;
+  return `${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent`;
 }
 
 function checkRevocationTargetCooldown(state, revokerId, targetPlayerId) {
@@ -740,7 +844,12 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   const targetCheck = checkRevocationTargetCooldown(state, revokerId, targetPlayerId);
   if (!targetCheck.ok) return targetCheck;
 
-  const payment = payRevocationCost(state, revokerId);
+  const patriarchGoldRevocation = titleType === 'bishop'
+    && revokerId !== state.basileusId
+    && getPlayer(state, revokerId)?.majorTitles?.includes('PATRIARCH');
+  const payment = patriarchGoldRevocation
+    ? payPatriarchBishopRevocationCost(state, revokerId, targetPlayerId)
+    : payRevocationCost(state, revokerId);
   if (!payment.ok) return { ok: false, reason: payment.reason };
 
   if (titleType === 'strategos') {
@@ -751,13 +860,21 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
     theme.bishopIsDonor = false;
     removeBishopAppointment(state, themeId);
   }
-  state.log.push({ type: 'revoke_minor', theme: themeId, titleType, round: state.round, troopCost: payment.cost, revokerId });
+  state.log.push({
+    type: 'revoke_minor',
+    theme: themeId,
+    titleType,
+    round: state.round,
+    troopCost: payment.paymentType === 'gold' ? 0 : payment.cost,
+    goldCost: payment.paymentType === 'gold' ? payment.cost : 0,
+    revokerId,
+  });
   recordRevocationChoice(state, revokerId, targetPlayerId);
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'revoke_minor_title',
     actorId: revokerId,
-    summary: `${playerName(state, revokerId)} revokes the ${titleType} of ${themeName(state, themeId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
+    summary: `${playerName(state, revokerId)} revokes the ${titleType} of ${themeName(state, themeId)} (${formatCourtCostSummary(payment)}).`,
     details: {
       themeId,
       themeName: themeName(state, themeId),

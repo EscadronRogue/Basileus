@@ -4,13 +4,13 @@ import { runAdministration } from '../engine/cascade.js';
 import {
   canPayAppointmentCost,
   canPayPatriarchBishopAppointmentCost,
+  canPayPatriarchBishopRevocationCost,
   canPayRevocationCost,
   canRecruitProfessional,
   getLandAuction,
   getMinimumLandBid,
   getNextAppointmentCost,
   getPatriarchBishopAppointmentGoldCost,
-  getPlayerAvailableRevocationTroops,
   getPlayerProfessionalUpkeep,
   suggestMajorTitleAssignments,
 } from '../engine/actions.js';
@@ -78,17 +78,8 @@ function ensureNestedDraft(draft, key) {
   return draft[key];
 }
 
-function pickStableThemeId(themes, draft, key) {
-  if (!themes.length) return '';
-  if (themes.some((theme) => theme.id === draft?.[key])) return draft[key];
-  const picked = themes[Math.floor(Math.random() * themes.length)]?.id || themes[0].id;
-  if (draft) draft[key] = picked;
-  return picked;
-}
-
 function renderThemeChoiceControl(state, themes, inputId, selectedId, options = {}) {
-  const fallbackId = themes[0]?.id || '';
-  const normalizedSelectedId = themes.some((theme) => theme.id === selectedId) ? selectedId : fallbackId;
+  const normalizedSelectedId = themes.some((theme) => theme.id === selectedId) ? selectedId : '';
   const inputIdAttr = inputId ? ` id="${inputId}"` : '';
   const extraClass = options.className ? ` ${options.className}` : '';
   const hidden = options.hidden ? ' style="display:none"' : '';
@@ -326,8 +317,7 @@ function countMinorTitles(state, playerId) {
 function getSelectablePlayers(state, selectedId, options = {}) {
   const excludeId = options.excludeId;
   const players = state.players.filter((player) => excludeId == null || player.id !== excludeId);
-  const fallbackId = players[0]?.id ?? '';
-  const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : fallbackId;
+  const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : '';
   return { players, selectedId: normalizedSelectedId };
 }
 
@@ -355,13 +345,19 @@ function resolveAppointmentAppointeeId(state, appointerId, draft = {}) {
   return getSelectablePlayers(state, Number(draft.appointeeId), options).selectedId;
 }
 
+function hasAppointmentAppointee(appointeeId) {
+  return Number.isInteger(Number(appointeeId)) && String(appointeeId) !== '';
+}
+
 function formatAppointmentCost(cost) {
   return `${cost} troop${cost === 1 ? '' : 's'}`;
 }
 
 function renderAppointmentCostLine(state, appointerId, appointeeId) {
   const paymentCheck = canPayAppointmentCost(state, appointerId, appointeeId);
-  const helper = paymentCheck.ok
+  const helper = paymentCheck.reason
+    ? paymentCheck.reason
+    : paymentCheck.ok
     ? `${formatAppointmentCost(paymentCheck.available || 0)} available`
     : `Need ${formatAppointmentCost(paymentCheck.cost)}, have ${formatAppointmentCost(paymentCheck.available || 0)}`;
   return `
@@ -375,7 +371,9 @@ function renderAppointmentCostLine(state, appointerId, appointeeId) {
 
 function renderGoldAppointmentCostLine(state, appointerId, appointeeId) {
   const paymentCheck = canPayPatriarchBishopAppointmentCost(state, appointerId, appointeeId);
-  const helper = paymentCheck.ok
+  const helper = paymentCheck.reason
+    ? paymentCheck.reason
+    : paymentCheck.ok
     ? `${formatGold(paymentCheck.availableGold || 0)} available`
     : `Need ${formatGold(paymentCheck.goldCost)}, have ${formatGold(paymentCheck.availableGold || 0)}`;
   return `
@@ -437,11 +435,7 @@ function getProvinceSummary(state, provinceId) {
 
 function getSuggestedThemeId(themes, selectedProvinceId, draft = null, draftKey = 'themeId') {
   if (themes.some(theme => theme.id === draft?.[draftKey])) return draft[draftKey];
-  if (themes.some(theme => theme.id === selectedProvinceId)) {
-    if (draft) draft[draftKey] = selectedProvinceId;
-    return selectedProvinceId;
-  }
-  return pickStableThemeId(themes, draft, draftKey);
+  return '';
 }
 
 function getOpenStrategosThemes(state, region = null) {
@@ -1694,7 +1688,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
 }
 
 
-function bindThemeChoiceControls(root, appointmentDraft = null) {
+function bindThemeChoiceControls(root, appointmentDraft = null, state = null) {
   root.querySelectorAll('[data-theme-choice]').forEach((button) => {
     if (button.dataset.bound === 'true') return;
     button.dataset.bound = 'true';
@@ -1712,14 +1706,16 @@ function bindThemeChoiceControls(root, appointmentDraft = null) {
         if (!appointmentDraft[key]) appointmentDraft[key] = {};
         appointmentDraft[key][field] = button.dataset.themeChoice;
       }
+      if (state) refreshAppointmentCostDisplay(state, block);
     });
   });
 }
 
 function refreshAppointmentCostDisplay(state, block) {
   const appointerId = Number(block?.dataset?.appointerId);
-  const appointeeId = Number(block?.querySelector('.appt-player-select')?.value);
-  if (!Number.isInteger(appointerId) || !Number.isInteger(appointeeId)) return;
+  const appointeeValue = block?.querySelector('.appt-player-select')?.value ?? '';
+  const appointeeId = appointeeValue === '' ? NaN : Number(appointeeValue);
+  if (!Number.isInteger(appointerId)) return;
 
   const paysGold = block?.dataset?.appointmentPayment === 'patriarch-bishop-gold';
   const paymentCheck = paysGold
@@ -1734,16 +1730,73 @@ function refreshAppointmentCostDisplay(state, block) {
   const submitButton = block.querySelector('[data-appointment-submit]');
   if (costValue) costValue.textContent = formatCost(cost);
   if (costHelp) {
-    costHelp.textContent = paymentCheck.ok
+    costHelp.textContent = paymentCheck.reason
+      ? paymentCheck.reason
+      : paymentCheck.ok
       ? `${formatCost(available || 0)} available`
       : `Need ${formatCost(cost)}, have ${formatCost(available || 0)}`;
   }
   costLine?.classList.toggle('blocked', !paymentCheck.ok);
   if (submitButton) {
     submitButton.textContent = `Appoint (${formatCost(cost)})`;
-    submitButton.disabled = !paymentCheck.ok;
-    submitButton.classList.toggle('disabled', !paymentCheck.ok);
+    const ready = isAppointmentBlockReady(block);
+    submitButton.disabled = !ready || !paymentCheck.ok;
+    submitButton.classList.toggle('disabled', !ready || !paymentCheck.ok);
   }
+}
+
+function isAppointmentBlockReady(block) {
+  if (!block) return false;
+  const appointeeValue = block.querySelector('.appt-player-select')?.value || '';
+  if (appointeeValue === '') return false;
+  const typeSelect = block.querySelector('#basileusApptType');
+  const titleType = typeSelect?.value || '';
+  if (typeSelect && titleType === '') return false;
+  const themeSelect = block.querySelector('.appt-theme-select');
+  const needsTheme = !typeSelect || titleType === 'STRATEGOS' || titleType === 'BISHOP';
+  return !needsTheme || Boolean(themeSelect?.value);
+}
+
+function getRevocationTargetPlayerId(state, value) {
+  const parts = String(value || '').split(':');
+  if (parts[0] === 'minor') {
+    const theme = state.themes?.[parts[1]];
+    return parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
+  }
+  if (parts[0] === 'court') return parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
+  if (parts[0] === 'theme') return state.themes?.[parts[1]]?.owner ?? null;
+  return null;
+}
+
+function isPatriarchGoldRevocationValue(state, actorId, value) {
+  const parts = String(value || '').split(':');
+  if (actorId === state.basileusId || parts[0] !== 'minor' || parts[2] !== 'bishop') return false;
+  return Boolean(getPlayer(state, actorId)?.majorTitles?.includes('PATRIARCH'));
+}
+
+function getRevocationPaymentCheck(state, actorId, value) {
+  const targetPlayerId = getRevocationTargetPlayerId(state, value);
+  if (isPatriarchGoldRevocationValue(state, actorId, value)) {
+    return canPayPatriarchBishopRevocationCost(state, actorId, targetPlayerId);
+  }
+  return canPayRevocationCost(state, actorId);
+}
+
+function formatRevocationPayment(check) {
+  if (check?.paymentType === 'gold') return formatGold(check.goldCost || check.cost || 0);
+  const cost = check?.cost || 0;
+  return `${cost} troop${cost === 1 ? '' : 's'}`;
+}
+
+function refreshRevocationCommitDisplay(state, actorId, shell) {
+  const hidden = shell?.querySelector('.revoke-select');
+  const value = hidden?.value || '';
+  const button = shell?.closest('.revocation')?.querySelector('[data-action="commit-revoke"]');
+  if (!button) return;
+  const check = value ? getRevocationPaymentCheck(state, actorId, value) : { ok: false, cost: 0 };
+  button.textContent = value ? `Revoke (${formatRevocationPayment(check)})` : 'Revoke';
+  button.disabled = !value || !check.ok;
+  button.classList.toggle('disabled', !value || !check.ok);
 }
 
 function refreshLandBidDisplay(row, input) {
@@ -1798,7 +1851,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
     });
   });
 
-  bindThemeChoiceControls(container, appointmentDraft);
+  bindThemeChoiceControls(container, appointmentDraft, state);
 
   container.querySelectorAll('[data-bid-theme]').forEach((input) => {
     input.addEventListener('input', () => {
@@ -1868,12 +1921,13 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
         : appointmentType === 'BISHOP'
           ? getOpenBishopThemes(state)
           : [];
-      const suggestedThemeId = getSuggestedThemeId(themes, selectedProvinceId, appointmentDraft.basileus, 'themeId');
+      const selectedThemeId = getSuggestedThemeId(themes, selectedProvinceId, appointmentDraft.basileus, 'themeId');
 
-      basileusThemeButtons.innerHTML = renderThemeChoiceButtons(state, themes, suggestedThemeId);
-      basileusThemeSelect.value = suggestedThemeId || '';
+      basileusThemeButtons.innerHTML = renderThemeChoiceButtons(state, themes, selectedThemeId);
+      basileusThemeSelect.value = selectedThemeId || '';
       basileusThemeChoiceGroup.style.display = (appointmentType === 'STRATEGOS' || appointmentType === 'BISHOP') ? '' : 'none';
-      bindThemeChoiceControls(basileusThemeChoiceGroup, appointmentDraft);
+      bindThemeChoiceControls(basileusThemeChoiceGroup, appointmentDraft, state);
+      refreshAppointmentCostDisplay(state, basileusTypeSelect.closest('[data-appt-key]'));
     };
 
     basileusTypeSelect.addEventListener('change', refreshThemeOptions);
@@ -1888,8 +1942,10 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       const themeSelect = container.querySelector('#basileusApptTheme');
       if (!typeSelect) return;
       const apptType = typeSelect.value;
-      const appointeeId = playerSelect ? parseInt(playerSelect.value) : activePlayerId;
+      const appointeeId = playerSelect?.value === '' ? NaN : parseInt(playerSelect.value);
       const themeId = themeSelect ? themeSelect.value : null;
+      const needsTheme = apptType === 'STRATEGOS' || apptType === 'BISHOP';
+      if (!apptType || !Number.isInteger(appointeeId) || (needsTheme && !themeId)) return;
       appointmentDraft.basileus = { ...(appointmentDraft.basileus || {}), titleType: apptType, appointeeId, themeId };
       callbacks['basileus-appoint']?.(apptType, appointeeId, themeId);
     });
@@ -1933,6 +1989,7 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
       const hidden = group.querySelector('.revoke-select');
       if (hidden) hidden.value = btn.dataset.revokeValue || '';
       courtDraft.revocationValue = btn.dataset.revokeValue || '';
+      refreshRevocationCommitDisplay(state, Number(group.dataset.revocationActor), group);
     });
   });
   container.querySelectorAll('[data-action="commit-revoke"]').forEach(btn => {
@@ -2144,13 +2201,18 @@ function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
   }
 
   const selectableThemes = [...getOpenStrategosThemes(state), ...getOpenBishopThemes(state)];
-  const defaultThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId, draft, 'themeId');
+  const selectedThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId, draft, 'themeId');
   const appointerId = state.basileusId;
   const selectedTitleType = titleTypes.some((type) => type.value === draft.titleType) ? draft.titleType : '';
   const playerChoiceOptions = getAppointmentChoiceOptions(state, appointerId);
   const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
   const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
   const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
+  const needsTheme = selectedTitleType === 'STRATEGOS' || selectedTitleType === 'BISHOP';
+  const canSubmit = Boolean(selectedTitleType)
+    && hasAppointmentAppointee(selectedAppointeeId)
+    && (!needsTheme || Boolean(selectedThemeId))
+    && paymentCheck.ok;
   const label = state.courtActions?.basileusAppointed
     ? 'Basileus: optionally appoint another court title or province office.'
     : 'Basileus: choose one court title or province office to appoint.';
@@ -2165,12 +2227,12 @@ function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
         </select>
         <div id="basileusApptThemeChoices" class="province-choice-grid" data-theme-choice-group style="display:none">
           <div data-role="theme-choice-buttons"></div>
-          <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
+          <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${selectedThemeId}">
         </div>`,
         renderPlayerChoiceControl(state, 'basileusApptPlayer', selectedAppointeeId, playerChoiceOptions)
       )}
       ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
-      <button class="appt-btn" data-appointment-submit data-action="commit-basileus-appt" ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
+      <button class="appt-btn" data-appointment-submit data-action="commit-basileus-appt" ${canSubmit ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
     </div>
   </div>`;
 }
@@ -2181,7 +2243,7 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
   if (!title) return '';
   const region = title.region;
   const themes = getOpenStrategosThemes(state, region);
-  const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
+  const selectedThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
 
   if (!themes.length) {
     return `<div class="appointment-block done">
@@ -2193,6 +2255,7 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
   const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
   const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
   const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
+  const canSubmit = Boolean(selectedThemeId) && hasAppointmentAppointee(selectedAppointeeId) && paymentCheck.ok;
   const label = state.courtActions?.[`${titleKey}_appointed`]
     ? `${title.name}: optionally appoint another Strategos.`
     : `${title.name}: choose a province and appoint its Strategos.`;
@@ -2201,11 +2264,11 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
-        renderThemeChoiceControl(state, themes, null, defaultThemeId),
+        renderThemeChoiceControl(state, themes, null, selectedThemeId),
         renderPlayerChoiceControl(state, null, selectedAppointeeId, playerChoiceOptions)
       )}
       ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
-      <button class="appt-btn strategos-commit" data-appointment-submit data-titlekey="${titleKey}" ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
+      <button class="appt-btn strategos-commit" data-appointment-submit data-titlekey="${titleKey}" ${canSubmit ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
     </div>
   </div>`;
 }
@@ -2213,7 +2276,7 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
 // â”€â”€â”€ Patriarch appointment: picks theme + player for Bishop â”€â”€â”€
 function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draft = {}) {
   const themes = getOpenBishopThemes(state);
-  const defaultThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
+  const selectedThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
 
   if (!themes.length) {
     return `<div class="appointment-block done">
@@ -2225,6 +2288,7 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draf
   const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
   const goldCost = getPatriarchBishopAppointmentGoldCost(state, appointerId, selectedAppointeeId);
   const paymentCheck = canPayPatriarchBishopAppointmentCost(state, appointerId, selectedAppointeeId);
+  const canSubmit = Boolean(selectedThemeId) && hasAppointmentAppointee(selectedAppointeeId) && paymentCheck.ok;
   const label = state.courtActions?.patriarchAppointed
     ? 'Patriarch: optionally appoint another Bishop.'
     : 'Patriarch: choose a province and appoint its Bishop.';
@@ -2233,27 +2297,31 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draf
     <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
-        renderThemeChoiceControl(state, themes, null, defaultThemeId),
+        renderThemeChoiceControl(state, themes, null, selectedThemeId),
         renderPlayerChoiceControl(state, null, selectedAppointeeId, playerChoiceOptions)
       )}
       ${renderGoldAppointmentCostLine(state, appointerId, selectedAppointeeId)}
-      <button class="appt-btn bishop-commit" data-appointment-submit ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatGold(goldCost)})</button>
+      <button class="appt-btn bishop-commit" data-appointment-submit ${canSubmit ? '' : 'disabled'}>Appoint (${formatGold(goldCost)})</button>
     </div>
   </div>`;
 }
 
 // â”€â”€â”€ Revocation: cartouche grid (same grammar as appointment) â”€â”€â”€
 function renderRevocationOptions(state, actorId, courtDraft = {}, groups = collectRevocationGroups(state, actorId)) {
-  const costCheck = canPayRevocationCost(state, actorId);
-  const nextCost = costCheck.cost || 1;
-  const available = costCheck.available ?? getPlayerAvailableRevocationTroops(state, actorId).total;
-  const canAfford = costCheck.ok;
+  const validValues = new Set(groups.flatMap((group) => group.items.map((item) => item.value)));
+  const selectedValue = validValues.has(courtDraft.revocationValue) ? courtDraft.revocationValue : '';
+  if (!selectedValue) courtDraft.revocationValue = '';
+  const selectedCostCheck = selectedValue ? getRevocationPaymentCheck(state, actorId, selectedValue) : { ok: false, cost: 0 };
   const isBasileus = actorId === state.basileusId;
   const player = getPlayer(state, actorId);
+  const hasPatriarch = Boolean(player?.majorTitles?.includes('PATRIARCH'));
+  const hasRegionalCommand = Boolean(player?.majorTitles?.some((titleKey) => ['DOM_EAST', 'DOM_WEST', 'ADMIRAL'].includes(titleKey)));
   const authorityLabel = isBasileus
     ? 'The Basileus can revoke minor titles and estates.'
-    : player.majorTitles.includes('PATRIARCH')
-      ? 'The Patriarch can revoke bishops.'
+    : hasPatriarch && hasRegionalCommand
+      ? 'The Patriarch can revoke bishops; regional commands can revoke strategoi in their jurisdiction.'
+      : hasPatriarch
+        ? 'The Patriarch can revoke bishops.'
       : 'Regional commanders can revoke strategoi in their jurisdiction.';
 
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0);
@@ -2262,23 +2330,29 @@ function renderRevocationOptions(state, actorId, courtDraft = {}, groups = colle
         <div class="revocation-group">
           <div class="revocation-group-label">${group.label}</div>
           <div class="revocation-choice-grid">
-            ${group.items.map((item) => `
-              <button type="button" class="revocation-choice-btn ${courtDraft.revocationValue === item.value ? 'selected' : ''}" data-revoke-value="${item.value}" ${canAfford ? '' : 'disabled'}>
+            ${group.items.map((item) => {
+              const itemCheck = getRevocationPaymentCheck(state, actorId, item.value);
+              return `
+              <button type="button" class="revocation-choice-btn ${selectedValue === item.value ? 'selected' : ''}" data-revoke-value="${item.value}" ${itemCheck.ok ? '' : 'disabled'}>
                 ${item.body}
               </button>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
         </div>
       `).join('')
     : '<p class="section-hint">Nothing currently revocable.</p>';
+  const ruleText = !isBasileus && hasPatriarch
+    ? `${authorityLabel} Patriarch bishop revocations use gold like Patriarch bishop appointments: first revocation of a target is free, then 2, 4, 6... gold for repeat revocations of that same target.${hasRegionalCommand ? ' Strategos revocations still use the normal escalating troop cost.' : ''} You cannot revoke the same player twice in a row.`
+    : `${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... You cannot revoke the same player twice in a row. Levies are spent before professionals; mission professionals still pay upkeep and return next round.`;
 
   return `<div class="revocation">
-    <p class="section-hint">${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... You cannot revoke the same player twice in a row. Levies are spent before professionals; mission professionals still pay upkeep and return next round.</p>
-    <div class="revocation-shell" data-revocation-group>
+    <p class="section-hint">${ruleText}</p>
+    <div class="revocation-shell" data-revocation-group data-revocation-actor="${actorId}">
       ${body}
-      <input type="hidden" class="revoke-select" value="${courtDraft.revocationValue || ''}">
+      <input type="hidden" class="revoke-select" value="${selectedValue}">
     </div>
-    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${canAfford && totalItems ? '' : 'disabled'}>Revoke (${nextCost} troop${nextCost === 1 ? '' : 's'})</button>
+    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${selectedValue && selectedCostCheck.ok && totalItems ? '' : 'disabled'}>${selectedValue ? `Revoke (${formatRevocationPayment(selectedCostCheck)})` : 'Revoke'}</button>
   </div>`;
 }
 

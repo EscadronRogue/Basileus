@@ -69,6 +69,41 @@ test('court panel splits church and revocation folds by role', () => {
   assert.doesNotMatch(container.innerHTML, /Privileges And Church/);
 });
 
+test('appointment panel starts with no default player or province selection', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  const playerId = state.basileusId;
+  state.phase = 'court';
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, playerId, {}, { uiState: createDefaultUiState() });
+
+  assert.doesNotMatch(container.innerHTML, /player-choice-btn selected/);
+  assert.match(container.innerHTML, /id="basileusApptPlayer" class="appt-player-select" value=""/);
+  assert.match(container.innerHTML, /id="basileusApptTheme" class="appt-theme-select" value=""/);
+  assert.match(container.innerHTML, /data-action="commit-basileus-appt" disabled/);
+});
+
+test('Patriarch revocation panel displays gold costs for selected bishop targets', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  const patriarchId = state.players.find((player) => player.majorTitles.includes('PATRIARCH')).id;
+  state.phase = 'court';
+  state.players[patriarchId].gold = 3;
+  state.themes.OPS.bishop = state.basileusId;
+  const uiState = {
+    drafts: {
+      [`court:${state.round}:${patriarchId}`]: {
+        revocationValue: 'minor:OPS:bishop',
+      },
+    },
+  };
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, patriarchId, {}, { uiState });
+
+  assert.match(container.innerHTML, /Revoke \(0 gold\)/);
+  assert.doesNotMatch(container.innerHTML, /Revoke \(1 troop\)/);
+});
+
 test('province cartouche values render from live mutated province state', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
   const theme = state.themes.OPS;
