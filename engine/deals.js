@@ -1354,7 +1354,7 @@ export function summarizeDealClause(state, clause, viewerId = null) {
   }
   if (clause.kind === DEAL_CLAUSE_KINDS.NON_REVOCATION) {
     const turns = Number(clause.durationTurns) || 1;
-    return `${playerName(state, clause.giverId)} promises not to revoke ${playerName(state, clause.receiverId)}'s titles for ${turns} turn${turns === 1 ? '' : 's'}${triggerText}.`;
+    return `${playerName(state, clause.giverId)} promises not to revoke ${playerName(state, clause.receiverId)}'s posts or estates for ${turns} turn${turns === 1 ? '' : 's'}${triggerText}.`;
   }
   return clause.kind;
 }

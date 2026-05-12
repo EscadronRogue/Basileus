@@ -6,7 +6,7 @@ import { GameController } from './gameController.js';
 import { MultiplayerController } from './multiplayerController.js';
 import { formatProvinceValuesText, renderProvinceBadge } from './labels.js';
 import { renderCourtPanel, renderOrdersPanel } from './panels.js';
-import { getPlayerTabEconomy, renderPlayerTabFinance, renderScoringHtml } from './sharedView.js';
+import { bindUiChrome, createDefaultUiState, getPlayerTabEconomy, renderPlayerTabFinance, renderScoringHtml } from './sharedView.js';
 
 function makePanelContainer() {
   return {
@@ -85,6 +85,38 @@ test('province cartouche values render from live mutated province state', () => 
 
   assert.equal(formatProvinceValuesText(theme), 'P0 T0 L0 C4');
   assert.match(renderProvinceBadge(state, 'OPS', { showValues: true }), /P0 T0 L0 C4/);
+});
+
+test('balance of power panel toggle is wired through shared chrome binding', () => {
+  const previousDocument = global.document;
+  const listeners = {};
+  const balanceButton = {
+    dataset: { uiPanelToggle: 'balance' },
+    addEventListener: (event, handler) => {
+      listeners[event] = handler;
+    },
+  };
+  const emptyContainer = {
+    querySelectorAll: () => [],
+  };
+  const balanceContainer = {
+    querySelectorAll: (selector) => (selector === '[data-ui-panel-toggle]' ? [balanceButton] : []),
+  };
+  global.document = {
+    getElementById: (id) => (id === 'balancePanel' ? balanceContainer : emptyContainer),
+  };
+
+  const uiState = createDefaultUiState();
+  let renders = 0;
+  try {
+    bindUiChrome({ uiState, render: () => { renders++; } });
+    listeners.click();
+  } finally {
+    global.document = previousDocument;
+  }
+
+  assert.equal(uiState.panels.balance, false);
+  assert.equal(renders, 1);
 });
 
 test('final scoring view shows threshold share points', () => {
@@ -279,6 +311,33 @@ test('player tabs use compact reserve, income, and upkeep formatting', () => {
   assert.match(html, />\+7</);
   assert.match(html, />-3</);
   assert.doesNotMatch(html, /gold/i);
+});
+
+test('player tabs include professional troops away on court missions in upkeep', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  const player = state.players[state.basileusId];
+  player.gold = 4;
+  player.professionalArmies.BASILEUS = 1;
+  state.suspendedProfessionals = { [player.id]: { BASILEUS: 2 } };
+
+  const economy = getPlayerTabEconomy(player, { income: { [player.id]: 7 } }, state);
+  const html = renderPlayerTabFinance(economy);
+
+  assert.match(html, />-3</);
+});
+
+test('Patriarch bishop appointment panel displays gold costs', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  state.phase = 'court';
+  const patriarchId = state.players.find((player) => player.id !== state.basileusId).id;
+  state.players[patriarchId].majorTitles = ['PATRIARCH'];
+  state.players[patriarchId].gold = 5;
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, patriarchId, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /Patriarch/);
+  assert.match(container.innerHTML, /Appoint \(0 gold\)/);
 });
 
 test('court panel renders the private deals fold when seat-local deal data exists', () => {

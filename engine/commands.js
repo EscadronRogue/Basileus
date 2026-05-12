@@ -33,7 +33,6 @@ import {
   hireMercenaries,
   recruitProfessional,
   revokeCourtTitle,
-  revokeMajorTitle,
   revokeMinorTitle,
   revokeTheme,
   validateMajorTitleAssignments,
@@ -211,7 +210,11 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const parts = value.split(':');
     const kind = parts[0];
 
-    // Authority: Basileus may revoke anything. Patriarch may revoke bishops.
+    if (kind === 'major') {
+      return fail('Major titles can only be reassigned during the post-coup purge.');
+    }
+
+    // Authority: Basileus may revoke minor titles and estates. Patriarch may revoke bishops.
     // Regional commanders (Domestic East/West, Admiral) may revoke strategoi in
     // their region. All other revocations are restricted to the Basileus.
     const isBasileus = playerId === state.basileusId;
@@ -231,21 +234,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     }
     let observation = { type: 'revocation', actorId: playerId };
 
-    if (kind === 'major') {
-      const revokedPlayerId = Number(parts[1]);
-      const titleKey = parts[2];
-      if (isPlayerProtectedFromRevocation(state, playerId, revokedPlayerId)) {
-        return fail(`${playerLabel(state, revokedPlayerId)} is protected by an accepted non-revocation deal.`);
-      }
-      const eligible = state.players.filter((candidate) =>
-        candidate.id !== state.basileusId && candidate.id !== revokedPlayerId
-      );
-      if (eligible.length === 0) return fail('No eligible recipient exists for that major office.');
-      const newHolderId = eligible[0].id;
-      const result = revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId, playerId);
-      if (!result?.ok) return fail(result?.reason || 'Could not revoke that major title.');
-      observation = { ...observation, targetPlayerId: revokedPlayerId, newHolderId };
-    } else if (kind === 'minor') {
+    if (kind === 'minor') {
       const theme = state.themes[parts[1]];
       const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {

@@ -18,6 +18,7 @@ import {
   payMaintenance,
   recruitProfessional,
   revokeMinorTitle,
+  revokeTheme,
   settleLandAuctions,
 } from './actions.js';
 import { buildFinalScores } from './scoring.js';
@@ -77,6 +78,7 @@ function makeState(themes, playerOverrides = {}) {
     professionalArmies: {},
     orders: null,
     appointmentCooldown: {},
+    revocationCooldown: {},
     ...(playerOverrides[id] || {}),
   }));
 
@@ -666,14 +668,20 @@ test('repeat appointments cost troops only when appointing the same recipient ag
   assert.equal(state.currentLevies.BASILEUS, 1);
 
   const secondSelf = appointCourtTitle(state, 'CHIEF_EUNUCHS', 0);
-  assert.equal(secondSelf.ok, true);
-  assert.equal(state.currentLevies.BASILEUS, 0);
-  assert.equal(getNextAppointmentCost(state, 0, 0), 2);
+  assert.equal(secondSelf.ok, false);
+  assert.match(secondSelf.reason, /cannot appoint yourself twice in a row/i);
+  assert.equal(state.currentLevies.BASILEUS, 1);
+  assert.equal(getNextAppointmentCost(state, 0, 0), 1);
 
   const firstOther = appointStrategos(state, 0, 'OPS', 1);
   assert.equal(firstOther.ok, true);
   assert.equal(getNextAppointmentCost(state, 0, 1), 1);
   assert.equal(state.players[0].professionalArmies.BASILEUS, 2);
+
+  const selfAfterOther = appointCourtTitle(state, 'CHIEF_EUNUCHS', 0);
+  assert.equal(selfAfterOther.ok, true);
+  assert.equal(state.currentLevies.BASILEUS, 0);
+  assert.equal(getNextAppointmentCost(state, 0, 0), 2);
 
   const secondOther = appointBishop(state, 0, 'SAM', 1);
   assert.equal(secondOther.ok, true);
@@ -696,6 +704,37 @@ test('professional troops on appointment missions still pay upkeep', () => {
   assert.equal(maintenance.cost, 2);
   assert.equal(maintenance.onMission, 1);
   assert.equal(state.players[0].gold, 8);
+});
+
+test('Patriarch bishop appointments spend doubled gold instead of troops', () => {
+  const state = makeDealState([makeTheme('OPS'), makeTheme('SAM'), makeTheme('ANT')], {
+    1: { gold: 10, majorTitles: ['PATRIARCH'], professionalArmies: { PATRIARCH: 2 } },
+  });
+  state.currentLevies = { PATRIARCH: 2 };
+
+  const firstSelf = appointBishop(state, 1, 'OPS', 1);
+  assert.equal(firstSelf.ok, true);
+  assert.equal(state.players[1].gold, 10);
+  assert.equal(state.currentLevies.PATRIARCH, 2);
+  assert.equal(state.players[1].professionalArmies.PATRIARCH, 2);
+  assert.equal(state.suspendedProfessionals?.[1], undefined);
+
+  const lockedSelf = appointBishop(state, 1, 'SAM', 1);
+  assert.equal(lockedSelf.ok, false);
+  assert.match(lockedSelf.reason, /cannot appoint yourself twice in a row/i);
+
+  const firstOther = appointBishop(state, 1, 'SAM', 2);
+  assert.equal(firstOther.ok, true);
+  assert.equal(state.players[1].gold, 10);
+  assert.equal(state.currentLevies.PATRIARCH, 2);
+
+  const secondSelf = appointBishop(state, 1, 'ANT', 1);
+  assert.equal(secondSelf.ok, true);
+  assert.equal(state.players[1].gold, 8);
+  assert.equal(state.currentLevies.PATRIARCH, 2);
+  assert.equal(state.players[1].professionalArmies.PATRIARCH, 2);
+  assert.equal(state.suspendedProfessionals?.[1], undefined);
+  assert.equal(getNextAppointmentCost(state, 1, 1), 2);
 });
 
 test('debt disbands one random professional troop per gold owed', () => {
@@ -752,6 +791,35 @@ test('patriarch and regional commanders can revoke with any controlled army', ()
   assert.equal(regionalRevoke.ok, true);
   assert.equal(state.themes.ANT.strategos, null);
   assert.equal(state.currentLevies.DOM_EAST, 0);
+});
+
+test('a player cannot revoke the same target twice in a row', () => {
+  const state = makeDealState([
+    makeTheme('OPS', { owner: 1 }),
+    makeTheme('ANT', { strategos: 1 }),
+    makeTheme('THS', { owner: 2 }),
+  ], {
+    0: { professionalArmies: { BASILEUS: 3 } },
+    1: {},
+    2: {},
+  });
+  state.currentLevies = { BASILEUS: 6 };
+
+  const firstTarget = revokeTheme(state, 'OPS', 0);
+  assert.equal(firstTarget.ok, true);
+
+  const repeatedTarget = revokeMinorTitle(state, 'ANT', 'strategos', 0);
+  assert.equal(repeatedTarget.ok, false);
+  assert.match(repeatedTarget.reason, /cannot revoke .* twice in a row/i);
+  assert.equal(state.themes.ANT.strategos, 1);
+  assert.equal(state.currentLevies.BASILEUS, 5);
+
+  const otherTarget = revokeTheme(state, 'THS', 0);
+  assert.equal(otherTarget.ok, true);
+
+  const targetAfterOther = revokeMinorTitle(state, 'ANT', 'strategos', 0);
+  assert.equal(targetAfterOther.ok, true);
+  assert.equal(state.themes.ANT.strategos, null);
 });
 
 test('best defender reward can be taken as gold instead of land', () => {
@@ -926,8 +994,8 @@ test('solo court confirmation can pass without taking optional mandatory actions
   assert.equal(state.phase, 'orders');
 });
 
-test('accepted non-revocation promises block Basileus title revocations', () => {
-  const state = makeDealState([], {
+test('accepted non-revocation promises block Basileus estate revocations', () => {
+  const state = makeDealState([makeTheme('OPS', { owner: 1 })], {
     0: { professionalArmies: { BASILEUS: 2 } },
     1: { majorTitles: ['DOM_EAST'] },
   });
@@ -943,10 +1011,25 @@ test('accepted non-revocation promises block Basileus title revocations', () => 
 
   const revoke = applyCourtAction(state, 0, {
     action: 'revoke',
-    value: 'major:1:DOM_EAST',
+    value: 'theme:OPS',
   });
   assert.equal(revoke.ok, false);
   assert.match(revoke.reason, /protected by an accepted non-revocation deal/i);
+});
+
+test('major titles cannot be revoked during court', () => {
+  const state = makeDealState([], {
+    0: { professionalArmies: { BASILEUS: 2 } },
+    1: { majorTitles: ['DOM_EAST'] },
+  });
+
+  const revoke = applyCourtAction(state, 0, {
+    action: 'revoke',
+    value: 'major:1:DOM_EAST',
+  });
+  assert.equal(revoke.ok, false);
+  assert.match(revoke.reason, /post-coup purge/i);
+  assert.deepEqual(state.players[1].majorTitles, ['DOM_EAST']);
 });
 
 test('conflicting troop deals are rejected before they can create incompatible claimant locks', () => {

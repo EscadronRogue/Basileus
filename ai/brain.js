@@ -8,6 +8,7 @@ import {
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
   hasSelfAppointmentLock,
+  hasRevocationTargetLock,
   MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
 import { recordHistoryEvent, updateHistoryEvent } from '../engine/history.js';
@@ -18,15 +19,17 @@ import {
   applyCoupTitleReassignment,
   buyTheme,
   canPayAppointmentCost,
+  canPayPatriarchBishopAppointmentCost,
   dismissProfessional,
   canRecruitProfessional,
+  getPatriarchBishopAppointmentGoldCost,
   getLandAuction,
   getMinimumLandBid,
   getNextAppointmentCost,
   giftToChurch,
+  getPlayerProfessionalUpkeep,
   hireMercenaries,
   recruitProfessional,
-  revokeMajorTitle,
   revokeMinorTitle,
   revokeTheme,
   revokeCourtTitle,
@@ -901,26 +904,26 @@ function buildDismissalDecision(state, meta, playerId, action) {
   };
 }
 
-function buildRevocationDecision(state, meta, basileusId, best) {
+function buildRevocationDecision(state, meta, actorId, best) {
   const threat = getThreatLevel(state, meta);
   const targetId = best.targetPlayerId ?? best.revokedPlayerId ?? null;
   const targetStrength = targetId == null ? 0 : getPlayerStrength(state, meta, targetId);
-  const basileusStrength = getPlayerStrength(state, meta, basileusId);
-  const obligation = targetId == null ? 0 : getObligation(meta, basileusId, targetId);
+  const actorStrength = getPlayerStrength(state, meta, actorId);
+  const obligation = targetId == null ? 0 : getObligation(meta, actorId, targetId);
 
   return {
     title: 'AI reasoning',
     factors: [
       factor('Target pressure', targetId == null
         ? 'This revocation hit a useful imperial lever rather than a specific dynasty.'
-        : `${publicActor(state, targetId)} looked dangerous enough to justify a crackdown.`, 'for', targetStrength - basileusStrength),
+        : `${publicActor(state, targetId)} looked dangerous enough to justify a crackdown.`, 'for', targetStrength - actorStrength),
       factor('Loyalty debt', obligation > 0
-        ? `The Basileus overrode an existing obligation because the revocation still scored higher.`
+        ? `${publicActor(state, actorId)} overrode an existing obligation because the revocation still scored higher.`
         : 'There was little reason to spare the target out of loyalty.', obligation > 0 ? 'against' : 'for', obligation),
       factor('Imperial danger', `Current invasion pressure sat at ${roundTo(threat, 2)}.`, threat > 0.85 ? 'against' : 'neutral', threat),
       factor('Replacement value', best.newHolderId != null
         ? `${publicActor(state, best.newHolderId)} looked like a safer replacement.`
-        : 'The Basileus preferred removing the asset outright instead of reassigning it.', best.newHolderId != null ? 'for' : 'neutral'),
+        : `${publicActor(state, actorId)} preferred removing the asset outright instead of reassigning it.`, best.newHolderId != null ? 'for' : 'neutral'),
     ],
   };
 }
@@ -1538,7 +1541,14 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
   const appointeeOwesActor = getObligation(meta, appointeeId, actorId);
   const sharedCandidate = actorPact && appointeePact && actorPact.candidateId === appointeePact.candidateId;
   const supportLeverage = getPlayerInfluence(state, meta, appointeeId) * 0.16;
-  const appointmentCost = getNextAppointmentCost(state, actorId, appointeeId);
+  const actor = getPlayer(state, actorId);
+  const bishopGoldAppointment = type === 'BISHOP'
+    && actorId !== state.basileusId
+    && actor?.majorTitles?.includes('PATRIARCH');
+  const appointmentCost = bishopGoldAppointment
+    ? getPatriarchBishopAppointmentGoldCost(state, actorId, appointeeId)
+    : getNextAppointmentCost(state, actorId, appointeeId);
+  const appointmentCostPenalty = bishopGoldAppointment ? appointmentCost * 0.7 : appointmentCost * 1.15;
   const recipientPressure =
     (getCategoryThresholdPressure(state, meta, appointeeId, 'tax') * 0.45) +
     (getCategoryThresholdPressure(state, meta, appointeeId, 'church') * 0.35) +
@@ -1568,7 +1578,7 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
   const controlBias = actorProfile.weights.loyalty * appointeeAffinity;
   const riskPenalty = appointeeAmbition * 0.32;
 
-  return slotValue + sharedCoalitionBonus + debtRepayment + leverageGain + patronageRetention + selfBias + controlBias + recipientPressure - riskPenalty - (appointmentCost * 1.15);
+  return slotValue + sharedCoalitionBonus + debtRepayment + leverageGain + patronageRetention + selfBias + controlBias + recipientPressure - riskPenalty - appointmentCostPenalty;
 }
 
 function registerFavor(meta, actorId, recipientId, amount) {
@@ -1740,7 +1750,7 @@ function handlePatriarchAppointment(state, meta) {
   }
 
   const ranked = options
-    .filter(option => canPayAppointmentCost(state, actorId, option.appointeeId).ok)
+    .filter(option => canPayPatriarchBishopAppointmentCost(state, actorId, option.appointeeId).ok)
     .map(option => ({
       ...option,
       score: scoreMinorSlot(state, meta, actorId, 'BISHOP', state.themes[option.themeId], option.appointeeId),
@@ -1886,7 +1896,7 @@ function estimateProjectedIncomeBuffer(state, playerId) {
 
 function findBestDismissalAction(state, meta, playerId) {
   const player = getPlayer(state, playerId);
-  const maintenance = getPlayerProfessionalCount(player);
+  const maintenance = getPlayerProfessionalUpkeep(state, playerId);
   if (maintenance <= 0) return null;
 
   const temperament = getAITemperament(meta, playerId);
@@ -2048,33 +2058,7 @@ function buildRevocationOptions(state, meta, basileusId) {
 
   for (const player of state.players) {
     if (player.id === basileusId) continue;
-
-    for (const titleKey of player.majorTitles) {
-      for (const candidate of state.players) {
-        if (candidate.id === basileusId || candidate.id === player.id) continue;
-        const targetThreat = getPlayerStrength(state, meta, player.id) - basileusStrength;
-        const targetScorePressure = ['church', 'estate', 'tax', 'gold'].reduce(
-          (total, key) => total + getCategoryThresholdPressure(state, meta, player.id, key),
-          0,
-        );
-        const loyaltyGain = getAffinityScore(meta, basileusId, candidate.id) * 1.2;
-        const stability = titleKey === 'PATRIARCH'
-          ? getPersonalityProfile(meta, candidate.id).weights.church
-          : getCompetenceScore(state, meta, candidate.id);
-        let score = (targetThreat * 0.22) + (targetScorePressure * 0.35) + (profile.weights.revocation * 1.3) + loyaltyGain + (stability * 0.32) - (getAmbitionScore(meta, candidate.id) * 0.42);
-        score -= getObligation(meta, basileusId, player.id) * 1.6;
-        score -= getObligation(meta, candidate.id, basileusId) * 0.2;
-        if (context.pactByPlayer[player.id]?.candidateId === basileusId) score -= 2.4;
-        if (threat > 0.85) score -= 0.9;
-        options.push({
-          kind: 'major',
-          revokedPlayerId: player.id,
-          newHolderId: candidate.id,
-          titleKey,
-          score,
-        });
-      }
-    }
+    if (hasRevocationTargetLock(state, basileusId, player.id)) continue;
 
     const wealthLead = getPlayer(state, player.id).gold - getPlayer(state, basileusId).gold;
     for (const theme of getPlayerThemes(state, player.id)) {
@@ -2092,7 +2076,7 @@ function buildRevocationOptions(state, meta, basileusId) {
   }
 
   for (const theme of Object.values(state.themes)) {
-    if (!theme.occupied && theme.strategos != null) {
+    if (!theme.occupied && theme.strategos != null && !hasRevocationTargetLock(state, basileusId, theme.strategos)) {
       let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + profile.weights.revocation + theme.L + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 1.1);
       score -= getObligation(meta, basileusId, theme.strategos) * 1.15;
       if (context.pactByPlayer[theme.strategos]?.candidateId === basileusId) score -= 1.7;
@@ -2104,7 +2088,7 @@ function buildRevocationOptions(state, meta, basileusId) {
         score,
       });
     }
-    if (theme.bishop != null) {
+    if (theme.bishop != null && !hasRevocationTargetLock(state, basileusId, theme.bishop)) {
       let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.P * 0.8) + (getCategoryThresholdPressure(state, meta, theme.bishop, 'church') * 1.1);
       score -= getObligation(meta, basileusId, theme.bishop) * 1.1;
       if (context.pactByPlayer[theme.bishop]?.candidateId === basileusId) score -= 1.5;
@@ -2118,7 +2102,7 @@ function buildRevocationOptions(state, meta, basileusId) {
     }
   }
 
-  if (state.empress != null) {
+  if (state.empress != null && !hasRevocationTargetLock(state, basileusId, state.empress)) {
     let score = profile.weights.revocation + (getPlayerStrength(state, meta, state.empress) - basileusStrength) * 0.15;
     score -= getObligation(meta, basileusId, state.empress) * 1.1;
     if (context.pactByPlayer[state.empress]?.candidateId === basileusId) score -= 1.6;
@@ -2129,7 +2113,7 @@ function buildRevocationOptions(state, meta, basileusId) {
       score,
     });
   }
-  if (state.chiefEunuchs != null) {
+  if (state.chiefEunuchs != null && !hasRevocationTargetLock(state, basileusId, state.chiefEunuchs)) {
     let score = profile.weights.revocation + (getPlayerStrength(state, meta, state.chiefEunuchs) - basileusStrength) * 0.15;
     score -= getObligation(meta, basileusId, state.chiefEunuchs) * 1.1;
     if (context.pactByPlayer[state.chiefEunuchs]?.candidateId === basileusId) score -= 1.6;
@@ -2163,17 +2147,7 @@ function handleBasileusRevocation(state, meta) {
   if (!best) return false;
 
   let result = null;
-  if (best.kind === 'major') {
-    result = revokeMajorTitle(state, best.revokedPlayerId, best.titleKey, best.newHolderId);
-    if (result?.ok) {
-      adjustRelation(meta, best.revokedPlayerId, basileusId, 0, 1.4);
-      adjustRelation(meta, best.newHolderId, basileusId, 0.7, 0);
-      addObligation(meta, best.newHolderId, basileusId, 0.9);
-      reduceObligation(meta, basileusId, best.revokedPlayerId, 0.8);
-      logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, basileusId)} revokes ${best.titleKey} from ${describeActor(state, meta, best.revokedPlayerId)} and hands it to ${describeActor(state, meta, best.newHolderId)}.`);
-      logPublic(meta, `${publicActor(state, basileusId)} revokes ${best.titleKey} from ${publicActor(state, best.revokedPlayerId)} and grants it to ${publicActor(state, best.newHolderId)}.`);
-    }
-  } else if (best.kind === 'minor') {
+  if (best.kind === 'minor') {
     result = revokeMinorTitle(state, best.themeId, best.titleType);
     if (result?.ok && best.targetPlayerId != null) {
       adjustRelation(meta, best.targetPlayerId, basileusId, 0, 0.95);
@@ -2227,6 +2201,7 @@ function buildTitleHolderRevocationOptions(state, meta, playerId) {
     for (const theme of Object.values(state.themes)) {
       if (theme.region !== region || theme.occupied || theme.strategos == null) continue;
       if (theme.strategos === playerId) continue;
+      if (hasRevocationTargetLock(state, playerId, theme.strategos)) continue;
       let score = (getPlayerStrength(state, meta, theme.strategos) - playerStrength) * 0.18
         + profile.weights.revocation + (theme.L * 0.4)
         + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 0.9);
@@ -2249,6 +2224,7 @@ function buildTitleHolderRevocationOptions(state, meta, playerId) {
     for (const theme of Object.values(state.themes)) {
       if (theme.bishop == null) continue;
       if (theme.bishop === playerId) continue;
+      if (hasRevocationTargetLock(state, playerId, theme.bishop)) continue;
       let score = (getPlayerStrength(state, meta, theme.bishop) - playerStrength) * 0.18
         + profile.weights.revocation + (Number(theme.C) || 0) * 0.6
         + (getCategoryThresholdPressure(state, meta, theme.bishop, 'church') * 0.95);

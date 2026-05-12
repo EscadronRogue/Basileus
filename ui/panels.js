@@ -3,12 +3,15 @@ import { MAJOR_TITLES } from '../data/titles.js';
 import { runAdministration } from '../engine/cascade.js';
 import {
   canPayAppointmentCost,
+  canPayPatriarchBishopAppointmentCost,
   canPayRevocationCost,
   canRecruitProfessional,
   getLandAuction,
   getMinimumLandBid,
   getNextAppointmentCost,
+  getPatriarchBishopAppointmentGoldCost,
   getPlayerAvailableRevocationTroops,
+  getPlayerProfessionalUpkeep,
   suggestMajorTitleAssignments,
 } from '../engine/actions.js';
 import {
@@ -29,6 +32,8 @@ import {
   getOfficeMercenaryCount,
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
+  hasSelfAppointmentLock,
+  hasRevocationTargetLock,
   MERCENARY_COMPANY_KEY,
 } from '../engine/state.js';
 import { summarizeDealClause } from '../engine/deals.js';
@@ -186,7 +191,7 @@ function getProjectedFinance(state, playerId) {
   const projectedIncome = administration.income[playerId] || 0;
   const privateIncome = getPrivateIncomeProjection(state, playerId);
   const officeIncome = projectedIncome - privateIncome;
-  const maintenance = getTotalProfessionalArmy(player);
+  const maintenance = getPlayerProfessionalUpkeep(state, playerId);
   const nextTreasury = player.gold + projectedIncome - maintenance;
   const officeKeys = new Set(getPlayerOffices(state, playerId).map((office) => office.key));
   const levyProjection = Object.entries(administration.levies || {}).reduce((total, [officeKey, count]) => (
@@ -341,6 +346,15 @@ function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
     </div>`;
 }
 
+function getAppointmentChoiceOptions(state, appointerId) {
+  return hasSelfAppointmentLock(state, appointerId) ? { excludeId: appointerId } : {};
+}
+
+function resolveAppointmentAppointeeId(state, appointerId, draft = {}) {
+  const options = getAppointmentChoiceOptions(state, appointerId);
+  return getSelectablePlayers(state, Number(draft.appointeeId), options).selectedId;
+}
+
 function formatAppointmentCost(cost) {
   return `${cost} troop${cost === 1 ? '' : 's'}`;
 }
@@ -354,6 +368,20 @@ function renderAppointmentCostLine(state, appointerId, appointeeId) {
     <div class="appt-cost-line ${paymentCheck.ok ? '' : 'blocked'}" data-appointment-cost>
       <span>Selected cost</span>
       <strong data-appointment-cost-value>${formatAppointmentCost(paymentCheck.cost)}</strong>
+      <small data-appointment-cost-help>${helper}</small>
+    </div>
+  `;
+}
+
+function renderGoldAppointmentCostLine(state, appointerId, appointeeId) {
+  const paymentCheck = canPayPatriarchBishopAppointmentCost(state, appointerId, appointeeId);
+  const helper = paymentCheck.ok
+    ? `${formatGold(paymentCheck.availableGold || 0)} available`
+    : `Need ${formatGold(paymentCheck.goldCost)}, have ${formatGold(paymentCheck.availableGold || 0)}`;
+  return `
+    <div class="appt-cost-line ${paymentCheck.ok ? '' : 'blocked'}" data-appointment-cost>
+      <span>Selected cost</span>
+      <strong data-appointment-cost-value>${formatGold(paymentCheck.goldCost)}</strong>
       <small data-appointment-cost-help>${helper}</small>
     </div>
   `;
@@ -1005,7 +1033,7 @@ function getDealKindOptions() {
     { value: 'coup_support', label: 'Back a claimant in the coup' },
     { value: 'frontier_support', label: 'Send troops to the frontier' },
     { value: 'appointment_promise', label: 'Promise future appointments' },
-    { value: 'non_revocation', label: 'Promise not to revoke titles' },
+    { value: 'non_revocation', label: 'Promise not to revoke posts or estates' },
   ];
 }
 
@@ -1062,7 +1090,7 @@ function getDealClauseHelpText(kind) {
     case 'appointment_promise':
       return 'This reserves future legal appointments. You are not naming a specific title yet.';
     case 'non_revocation':
-      return 'This stops the promiser from revoking the other dynasty\'s titles for a set time.';
+      return 'This stops the promiser from revoking the other dynasty\'s posts or estates for a set time.';
     default:
       return '';
   }
@@ -1147,8 +1175,8 @@ function summarizeDealDraft(state, playerId, counterpartyId, draft = {}) {
   }
   if (kind === 'non_revocation') {
     return direction === 'give'
-      ? `You promise not to revoke ${otherLabel}'s titles for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`
-      : `${otherLabel} promises not to revoke your titles for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`;
+      ? `You promise not to revoke ${otherLabel}'s posts or estates for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`
+      : `${otherLabel} promises not to revoke your posts or estates for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`;
   }
   return '';
 }
@@ -1574,7 +1602,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += renderFoldSection(
     'court:appointments',
     'Appointments',
-    `<p class="section-hint">The first appointment to each recipient is free each round. Repeat appointments to the same recipient cost 1 troop, then 2, and so on, spent from offices you control.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
+    `<p class="section-hint">The first appointment to each recipient is free each round. Repeat appointments to the same recipient cost 1 troop, then 2, and so on, spent from offices you control. Patriarch bishop appointments instead cost 0, 2, 4... gold. You cannot appoint yourself twice in a row.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
     uiSectionState,
     {
       defaultOpen: true,
@@ -1603,7 +1631,9 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   );
 
   const revocationGroups = collectRevocationGroups(state, activePlayerId);
-  if (revocationGroups.some((group) => group.items.length > 0)) {
+  const canOpenRevocations = isBasileus
+    || player.majorTitles.some((titleKey) => ['PATRIARCH', 'DOM_EAST', 'DOM_WEST', 'ADMIRAL'].includes(titleKey));
+  if (canOpenRevocations) {
     courtHtml += renderFoldSection(
       'court:revocation',
       'Revocation',
@@ -1691,20 +1721,26 @@ function refreshAppointmentCostDisplay(state, block) {
   const appointeeId = Number(block?.querySelector('.appt-player-select')?.value);
   if (!Number.isInteger(appointerId) || !Number.isInteger(appointeeId)) return;
 
-  const paymentCheck = canPayAppointmentCost(state, appointerId, appointeeId);
+  const paysGold = block?.dataset?.appointmentPayment === 'patriarch-bishop-gold';
+  const paymentCheck = paysGold
+    ? canPayPatriarchBishopAppointmentCost(state, appointerId, appointeeId)
+    : canPayAppointmentCost(state, appointerId, appointeeId);
+  const formatCost = paysGold ? formatGold : formatAppointmentCost;
+  const available = paysGold ? paymentCheck.availableGold : paymentCheck.available;
+  const cost = paysGold ? paymentCheck.goldCost : paymentCheck.cost;
   const costValue = block.querySelector('[data-appointment-cost-value]');
   const costHelp = block.querySelector('[data-appointment-cost-help]');
   const costLine = block.querySelector('[data-appointment-cost]');
   const submitButton = block.querySelector('[data-appointment-submit]');
-  if (costValue) costValue.textContent = formatAppointmentCost(paymentCheck.cost);
+  if (costValue) costValue.textContent = formatCost(cost);
   if (costHelp) {
     costHelp.textContent = paymentCheck.ok
-      ? `${formatAppointmentCost(paymentCheck.available || 0)} available`
-      : `Need ${formatAppointmentCost(paymentCheck.cost)}, have ${formatAppointmentCost(paymentCheck.available || 0)}`;
+      ? `${formatCost(available || 0)} available`
+      : `Need ${formatCost(cost)}, have ${formatCost(available || 0)}`;
   }
   costLine?.classList.toggle('blocked', !paymentCheck.ok);
   if (submitButton) {
-    submitButton.textContent = `Appoint (${formatAppointmentCost(paymentCheck.cost)})`;
+    submitButton.textContent = `Appoint (${formatCost(cost)})`;
     submitButton.disabled = !paymentCheck.ok;
     submitButton.classList.toggle('disabled', !paymentCheck.ok);
   }
@@ -2111,7 +2147,8 @@ function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
   const defaultThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId, draft, 'themeId');
   const appointerId = state.basileusId;
   const selectedTitleType = titleTypes.some((type) => type.value === draft.titleType) ? draft.titleType : '';
-  const selectedAppointeeId = state.players.some((candidate) => candidate.id === Number(draft.appointeeId)) ? Number(draft.appointeeId) : appointerId;
+  const playerChoiceOptions = getAppointmentChoiceOptions(state, appointerId);
+  const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
   const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
   const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
   const label = state.courtActions?.basileusAppointed
@@ -2130,7 +2167,7 @@ function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
           <div data-role="theme-choice-buttons"></div>
           <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${defaultThemeId}">
         </div>`,
-        renderPlayerChoiceControl(state, 'basileusApptPlayer', selectedAppointeeId)
+        renderPlayerChoiceControl(state, 'basileusApptPlayer', selectedAppointeeId, playerChoiceOptions)
       )}
       ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
       <button class="appt-btn" data-appointment-submit data-action="commit-basileus-appt" ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
@@ -2152,7 +2189,8 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     </div>`;
   }
 
-  const selectedAppointeeId = state.players.some((candidate) => candidate.id === Number(draft.appointeeId)) ? Number(draft.appointeeId) : appointerId;
+  const playerChoiceOptions = getAppointmentChoiceOptions(state, appointerId);
+  const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
   const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
   const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
   const label = state.courtActions?.[`${titleKey}_appointed`]
@@ -2164,7 +2202,7 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, selectedAppointeeId)
+        renderPlayerChoiceControl(state, null, selectedAppointeeId, playerChoiceOptions)
       )}
       ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
       <button class="appt-btn strategos-commit" data-appointment-submit data-titlekey="${titleKey}" ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
@@ -2183,22 +2221,23 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draf
     </div>`;
   }
 
-  const selectedAppointeeId = state.players.some((candidate) => candidate.id === Number(draft.appointeeId)) ? Number(draft.appointeeId) : appointerId;
-  const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
-  const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
+  const playerChoiceOptions = getAppointmentChoiceOptions(state, appointerId);
+  const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
+  const goldCost = getPatriarchBishopAppointmentGoldCost(state, appointerId, selectedAppointeeId);
+  const paymentCheck = canPayPatriarchBishopAppointmentCost(state, appointerId, selectedAppointeeId);
   const label = state.courtActions?.patriarchAppointed
     ? 'Patriarch: optionally appoint another Bishop.'
     : 'Patriarch: choose a province and appoint its Bishop.';
 
-  return `<div class="appointment-block" data-appt-key="patriarch" data-appointer-id="${appointerId}">
+  return `<div class="appointment-block" data-appt-key="patriarch" data-appointer-id="${appointerId}" data-appointment-payment="patriarch-bishop-gold">
     <span class="appt-label">${label}</span>
     <div class="appt-form">
       ${renderAppointmentGrid(
         renderThemeChoiceControl(state, themes, null, defaultThemeId),
-        renderPlayerChoiceControl(state, null, selectedAppointeeId)
+        renderPlayerChoiceControl(state, null, selectedAppointeeId, playerChoiceOptions)
       )}
-      ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
-      <button class="appt-btn bishop-commit" data-appointment-submit ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
+      ${renderGoldAppointmentCostLine(state, appointerId, selectedAppointeeId)}
+      <button class="appt-btn bishop-commit" data-appointment-submit ${paymentCheck.ok ? '' : 'disabled'}>Appoint (${formatGold(goldCost)})</button>
     </div>
   </div>`;
 }
@@ -2212,7 +2251,7 @@ function renderRevocationOptions(state, actorId, courtDraft = {}, groups = colle
   const isBasileus = actorId === state.basileusId;
   const player = getPlayer(state, actorId);
   const authorityLabel = isBasileus
-    ? 'The Basileus can revoke titles and estates.'
+    ? 'The Basileus can revoke minor titles and estates.'
     : player.majorTitles.includes('PATRIARCH')
       ? 'The Patriarch can revoke bishops.'
       : 'Regional commanders can revoke strategoi in their jurisdiction.';
@@ -2234,7 +2273,7 @@ function renderRevocationOptions(state, actorId, courtDraft = {}, groups = colle
     : '<p class="section-hint">Nothing currently revocable.</p>';
 
   return `<div class="revocation">
-    <p class="section-hint">${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... Levies are spent before professionals; mission professionals still pay upkeep and return next round.</p>
+    <p class="section-hint">${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... You cannot revoke the same player twice in a row. Levies are spent before professionals; mission professionals still pay upkeep and return next round.</p>
     <div class="revocation-shell" data-revocation-group>
       ${body}
       <input type="hidden" class="revoke-select" value="${courtDraft.revocationValue || ''}">
@@ -2249,45 +2288,32 @@ function renderRevocationOptions(state, actorId, courtDraft = {}, groups = colle
 function collectRevocationGroups(state, actorId = state.basileusId) {
   const actor = getPlayer(state, actorId);
   const isBasileus = actorId === state.basileusId;
-  const major = [];
-  if (isBasileus) {
-    for (const player of state.players) {
-      if (player.id === state.basileusId) continue;
-      for (const titleKey of player.majorTitles) {
-        major.push({
-          value: `major:${player.id}:${titleKey}`,
-          body: renderTitleBadge(state, titleKey, { holderId: player.id, compact: true }),
-        });
-      }
-    }
-  }
-
   const minor = [];
   for (const t of Object.values(state.themes)) {
     const canRevokeStrategos = isBasileus
       || (t.region === 'east' && actor?.majorTitles?.includes('DOM_EAST'))
       || (t.region === 'west' && actor?.majorTitles?.includes('DOM_WEST'))
       || (t.region === 'sea' && actor?.majorTitles?.includes('ADMIRAL'));
-    if (!t.occupied && t.strategos !== null && canRevokeStrategos) {
+    if (!t.occupied && t.strategos !== null && canRevokeStrategos && !hasRevocationTargetLock(state, actorId, t.strategos)) {
       minor.push({
         value: `minor:${t.id}:strategos`,
         body: renderThemeOfficeBadge(state, 'STRATEGOS', t.id),
       });
     }
-    if (t.bishop !== null && (isBasileus || actor?.majorTitles?.includes('PATRIARCH'))) {
+    if (t.bishop !== null && (isBasileus || actor?.majorTitles?.includes('PATRIARCH')) && !hasRevocationTargetLock(state, actorId, t.bishop)) {
       minor.push({
         value: `minor:${t.id}:bishop`,
         body: renderThemeOfficeBadge(state, 'BISHOP', t.id),
       });
     }
   }
-  if (isBasileus && state.empress !== null) {
+  if (isBasileus && state.empress !== null && !hasRevocationTargetLock(state, actorId, state.empress)) {
     minor.push({
       value: 'court:EMPRESS',
       body: renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true }),
     });
   }
-  if (isBasileus && state.chiefEunuchs !== null) {
+  if (isBasileus && state.chiefEunuchs !== null && !hasRevocationTargetLock(state, actorId, state.chiefEunuchs)) {
     minor.push({
       value: 'court:CHIEF_EUNUCHS',
       body: renderTitleBadge(state, 'CHIEF_EUNUCHS', { holderId: state.chiefEunuchs, compact: true }),
@@ -2297,6 +2323,7 @@ function collectRevocationGroups(state, actorId = state.basileusId) {
   const estates = isBasileus
     ? Object.values(state.themes)
       .filter((t) => t.owner !== null && t.owner !== 'church' && !t.occupied)
+      .filter((t) => !hasRevocationTargetLock(state, actorId, t.owner))
       .map((t) => ({
         value: `theme:${t.id}`,
         body: renderProvinceBadge(state, t, { compact: true }),
@@ -2304,7 +2331,6 @@ function collectRevocationGroups(state, actorId = state.basileusId) {
     : [];
 
   return [
-    { label: 'Major Titles', items: major },
     { label: 'Minor Titles', items: minor },
     { label: 'Estates', items: estates },
   ];

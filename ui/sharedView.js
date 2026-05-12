@@ -1,6 +1,7 @@
 import { buildFinalScores } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { runAdministration } from '../engine/cascade.js';
+import { getPlayerProfessionalUpkeep } from '../engine/actions.js';
 import { getPlayer } from '../engine/state.js';
 import {
   renderCourtPanel,
@@ -39,6 +40,7 @@ export function setPanelOpen(uiState, panelKey, open) {
 export function bindUiChrome({ uiState, render }) {
   const containers = [
     document.getElementById('playerDashboard'),
+    document.getElementById('balancePanel'),
     document.getElementById('historyPanel'),
     document.getElementById('actionPanel'),
   ].filter(Boolean);
@@ -158,7 +160,8 @@ export function renderEmpireFallenBanner(state) {
   banner.innerHTML = '<strong>Empire Fallen</strong><span>Constantinople has been sacked. The game ends now; the highest-scoring dynasty wins.</span>';
 }
 
-function getPlayerMaintenance(player) {
+function getPlayerMaintenance(player, state = null) {
+  if (state) return getPlayerProfessionalUpkeep(state, player.id);
   return Object.values(player?.professionalArmies || {}).reduce((total, count) => total + count, 0);
 }
 
@@ -171,9 +174,9 @@ function formatCompactValue(value, mode = 'plain') {
   return `${normalized}`;
 }
 
-export function getPlayerTabEconomy(player, administration) {
+export function getPlayerTabEconomy(player, administration, state = null) {
   const income = administration?.income?.[player.id] || 0;
-  const upkeep = getPlayerMaintenance(player);
+  const upkeep = getPlayerMaintenance(player, state);
   return {
     reserve: formatCompactValue(player.gold),
     income: formatCompactValue(income, 'plus'),
@@ -200,7 +203,7 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
   const administration = runAdministration(state);
 
   tabBar.innerHTML = state.players.map((player) => {
-    const economy = getPlayerTabEconomy(player, administration);
+    const economy = getPlayerTabEconomy(player, administration, state);
     const badges = typeof getBadges === 'function' ? getBadges(player) : [];
     const badgeHtml = badges.filter(Boolean).join('');
     const crown = player.id === state.basileusId ? '<span class="tab-crown" title="Basileus">B</span>' : '';

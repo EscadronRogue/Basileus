@@ -109,6 +109,8 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
       orders: null,
       // Tracks whether this player's latest appointment was to themselves.
       appointmentCooldown: {},
+      // Tracks the last player this dynasty revoked, to prevent repeat targeting.
+      revocationCooldown: {},
     });
   }
 
@@ -238,15 +240,34 @@ export function getPlayer(state, id) {
 }
 
 export function hasSelfAppointmentLock(state, playerId) {
-  void state;
-  void playerId;
-  return false;
+  const player = getPlayer(state, playerId);
+  return Boolean(player?.appointmentCooldown?.selfLocked);
 }
 
 export function recordAppointmentChoice(state, appointerId, appointeeId) {
-  void state;
-  void appointerId;
-  void appointeeId;
+  const player = getPlayer(state, appointerId);
+  if (!player) return;
+  if (!player.appointmentCooldown || typeof player.appointmentCooldown !== 'object') {
+    player.appointmentCooldown = {};
+  }
+  player.appointmentCooldown.lastAppointeeId = appointeeId;
+  player.appointmentCooldown.selfLocked = appointeeId === appointerId;
+}
+
+export function hasRevocationTargetLock(state, revokerId, targetPlayerId) {
+  if (!Number.isInteger(targetPlayerId)) return false;
+  const player = getPlayer(state, revokerId);
+  return player?.revocationCooldown?.lastRevokedPlayerId === targetPlayerId;
+}
+
+export function recordRevocationChoice(state, revokerId, targetPlayerId) {
+  if (!Number.isInteger(targetPlayerId)) return;
+  const player = getPlayer(state, revokerId);
+  if (!player) return;
+  if (!player.revocationCooldown || typeof player.revocationCooldown !== 'object') {
+    player.revocationCooldown = {};
+  }
+  player.revocationCooldown.lastRevokedPlayerId = targetPlayerId;
 }
 
 // Returns "FirstName Dynasty" if the player has a first name attached, else just the dynasty.
