@@ -1,8 +1,8 @@
 {
   "version": 2,
   "type": "basileus-trained-personality-export",
-  "exportedAt": "2026-05-12T01:48:19.983Z",
-  "runId": "2026-05-12T01-48-17-068Z_seed-20260429_g100_p100",
+  "exportedAt": "2026-05-12T18:17:18.776Z",
+  "runId": "2026-05-12T18-17-14-729Z_seed-20260429_g100_p100",
   "championCount": 10,
   "config": {
     "seed": 20260429,
@@ -18,7 +18,7 @@
     },
     "populationSize": 100,
     "generations": 100,
-    "matchesPerCandidate": 100,
+    "matchesPerCandidate": 10,
     "validationMatchesPerCandidate": 8,
     "holdoutMatchesPerChampion": 128,
     "champions": 10,
@@ -31,100 +31,100 @@
   "overview": {
     "generations": 100,
     "populationSize": 100,
-    "totalMatches": 1083840,
-    "trainingMatchesPerCandidate": 100,
+    "totalMatches": 183840,
+    "trainingMatchesPerCandidate": 10,
     "validationMatchesPerCandidate": 8,
     "holdoutMatchesPerChampion": 128,
     "parallelWorkers": 8,
     "selectionMethod": "pareto-crowding",
-    "bestFitness": 8.2434,
-    "bestAverageScore": 1.91,
-    "bestAverageWealth": 1.91,
-    "bestEmpireFallRate": 0.5859,
-    "bestRobustnessVariance": 0.0076,
-    "bestHoldoutWinShare": 0.1367,
+    "bestFitness": 11.926,
+    "bestAverageScore": 2.37,
+    "bestAverageWealth": 2.37,
+    "bestEmpireFallRate": 0.4063,
+    "bestRobustnessVariance": 0.0081,
+    "bestHoldoutWinShare": 0.2246,
     "bestGuardRate": 0
   },
   "files": [
     {
       "rank": 1,
-      "id": "menelaos",
-      "name": "Menelaos",
-      "file": "menelaos.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\menelaos.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\menelaos.json"
+      "id": "ionas",
+      "name": "Ionas",
+      "file": "ionas.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\ionas.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\ionas.json"
     },
     {
       "rank": 2,
-      "id": "yannos",
-      "name": "Yannos",
-      "file": "yannos.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\yannos.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\yannos.json"
+      "id": "thodoros",
+      "name": "Thodoros",
+      "file": "thodoros.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\thodoros.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\thodoros.json"
     },
     {
       "rank": 3,
-      "id": "trifonas",
-      "name": "Trifonas",
-      "file": "trifonas.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\trifonas.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\trifonas.json"
+      "id": "adam",
+      "name": "Adam",
+      "file": "adam.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\adam.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\adam.json"
     },
     {
       "rank": 4,
-      "id": "sia",
-      "name": "Sia",
-      "file": "sia.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\sia.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\sia.json"
+      "id": "tsitseka",
+      "name": "Tsitseka",
+      "file": "tsitseka.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\tsitseka.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\tsitseka.json"
     },
     {
       "rank": 5,
-      "id": "androula",
-      "name": "Androula",
-      "file": "androula.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\androula.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\androula.json"
+      "id": "laertis",
+      "name": "Laertis",
+      "file": "laertis.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\laertis.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\laertis.json"
     },
     {
       "rank": 6,
-      "id": "lina",
-      "name": "Lina",
-      "file": "lina.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\lina.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\lina.json"
+      "id": "eumenes",
+      "name": "Eumenes",
+      "file": "eumenes.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\eumenes.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\eumenes.json"
     },
     {
       "rank": 7,
-      "id": "makis",
-      "name": "Makis",
-      "file": "makis.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\makis.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\makis.json"
+      "id": "teti",
+      "name": "Teti",
+      "file": "teti.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\teti.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\teti.json"
     },
     {
       "rank": 8,
-      "id": "fidia",
-      "name": "Fidia",
-      "file": "fidia.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\fidia.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\fidia.json"
+      "id": "soula",
+      "name": "Soula",
+      "file": "soula.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\soula.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\soula.json"
     },
     {
       "rank": 9,
-      "id": "dora",
-      "name": "Dora",
-      "file": "dora.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\dora.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\dora.json"
+      "id": "viktoria",
+      "name": "Viktoria",
+      "file": "viktoria.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\viktoria.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\viktoria.json"
     },
     {
       "rank": 10,
-      "id": "thanasos",
-      "name": "Thanasos",
-      "file": "thanasos.json",
-      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T01-48-17-068Z_seed-20260429_g100_p100\\thanasos.json",
-      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\thanasos.json"
+      "id": "alexandrea",
+      "name": "Alexandrea",
+      "file": "alexandrea.json",
+      "runFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\runs\\2026-05-12T18-17-14-729Z_seed-20260429_g100_p100\\alexandrea.json",
+      "latestFile": "C:\\Users\\antoi\\Desktop\\Basileus\\trained-personalities\\latest\\alexandrea.json"
     }
   ],
   "loading": "folder-scan"

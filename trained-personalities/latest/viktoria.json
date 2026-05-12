@@ -1,0 +1,210 @@
+{
+  "id": "viktoria",
+  "name": "Viktoria",
+  "shortName": "Viktoria",
+  "theory": "Self-play champion",
+  "summary": "Self-play champion focused on frontier defense and self-promotion, with holdout behavior showing high frontier defense, high land buying, high church giving, high revocation.",
+  "source": "emergent-trained",
+  "basePersonalityId": null,
+  "weights": {
+    "wealth": 1.315,
+    "land": 2.414,
+    "frontier": 2.701,
+    "capital": 0.623,
+    "throne": 0.694,
+    "church": 1.95,
+    "loyalty": 1.618,
+    "retaliation": 1.276,
+    "selfAppointment": 2.605,
+    "mercenary": 0.941,
+    "revocation": 0.545
+  },
+  "tactics": {
+    "independence": 1.434,
+    "frontierAlarm": 1.326,
+    "churchReserve": 1.049,
+    "incumbencyGrip": 1.119
+  },
+  "meta": {
+    "affinitySlope": 0.3596,
+    "bandwagonStrength": 2.5983,
+    "independenceDamping": 0.8313,
+    "selfThroneBoost": 2.5363,
+    "incumbentGrip": 2.6606,
+    "coupGrievanceFactor": 0.548,
+    "incomeHorizonBase": 1.1627,
+    "incomeHorizonGrowth": 0.0102,
+    "mercenaryThreshold": 0.5528,
+    "frontierAlarmDanger": 1.4888,
+    "recruitThreshold": 1.4038,
+    "landPurchaseThreshold": 0.2207,
+    "churchGiftThreshold": 0.3693,
+    "dismissalThreshold": 0.8877,
+    "revocationThreshold": 3.8271,
+    "courtTemperature": 1.1493,
+    "orderTemperature": 0.888,
+    "supportTemperature": 0.1658,
+    "opponentLearnRate": 0.7442,
+    "opponentTrust": 0.7491
+  },
+  "training": {
+    "generation": 100,
+    "matches": 128,
+    "wins": 18.25,
+    "winShare": 0.1426,
+    "championScore": 9.738,
+    "averageFitness": -0.229,
+    "averageScore": 2.2,
+    "averageWealth": 2.2,
+    "empireFallRate": 0.4531,
+    "fitnessVariance": 152.4451,
+    "fitnessPresetId": "custom",
+    "playerCount": 5,
+    "deckSize": 9,
+    "populationPresetId": "emergent-self-play",
+    "seed": "20260429",
+    "trainedAt": "2026-05-12T18:17:14.729Z",
+    "trainMatches": 10,
+    "validationMatches": 8,
+    "holdoutMatches": 128,
+    "trainWinShare": 0.1,
+    "validationWinShare": 0.375,
+    "holdoutWinShare": 0.1426,
+    "trainEmpireFallRate": 0,
+    "validationEmpireFallRate": 0.125,
+    "holdoutEmpireFallRate": 0.4531,
+    "trainScorePercentile": 0.475,
+    "validationScorePercentile": 0.625,
+    "holdoutScorePercentile": 0.6426,
+    "trainWealthPercentile": 0.475,
+    "validationWealthPercentile": 0.625,
+    "holdoutWealthPercentile": 0.6426,
+    "guardRate": 0,
+    "paretoFront": 1,
+    "crowdingDistance": 1.3461,
+    "noveltyScore": 0.2418,
+    "noveltyPercentile": 0.3667,
+    "seatBias": 0.1127,
+    "bestMatchup": "hof:generation_bucket_2",
+    "worstMatchup": "hof:generation_bucket_9",
+    "mainBehavior": "high frontier defense, high land buying, high church giving, high revocation",
+    "behaviorProfile": {
+      "frontierTroopShare": 0.6438,
+      "capitalTroopShare": 0.3562,
+      "averageLandBuys": 10.1406,
+      "averageChurchGifts": 1.4922,
+      "averageRevocations": 1.8203,
+      "averageDefenderRewards": 2.1484,
+      "averageThroneCaptures": 0.9531,
+      "incumbentSupportRate": 0.3729,
+      "selfSupportRate": 0.3814,
+      "goldHoardingRate": 0.261,
+      "averageMercSpend": 17.4141,
+      "recruitmentUtilization": 0.7183
+    },
+    "perOpponentTypeWinRate": {
+      "scripted:always_coup_leader": {
+        "matches": 16,
+        "winRate": 0.1836,
+        "averageFitness": 0.7195
+      },
+      "hof:generation_bucket_9": {
+        "matches": 4,
+        "winRate": 0,
+        "averageFitness": -8.9097
+      },
+      "emergent:cluster_3": {
+        "matches": 4.5,
+        "winRate": 0.0556,
+        "averageFitness": -1.5396
+      },
+      "scripted:always_buy_land": {
+        "matches": 16,
+        "winRate": 0.0625,
+        "averageFitness": -3.3165
+      },
+      "hof:generation_bucket_4": {
+        "matches": 8,
+        "winRate": 0.2188,
+        "averageFitness": 3.4224
+      },
+      "scripted:always_gift_to_church": {
+        "matches": 16,
+        "winRate": 0.1016,
+        "averageFitness": -1.1778
+      },
+      "emergent:cluster_2": {
+        "matches": 8.5,
+        "winRate": 0.1397,
+        "averageFitness": 0.1465
+      },
+      "hof:generation_bucket_8": {
+        "matches": 6,
+        "winRate": 0.0833,
+        "averageFitness": -5.1111
+      },
+      "hof:generation_bucket_3": {
+        "matches": 6,
+        "winRate": 0.0833,
+        "averageFitness": 0.1819
+      },
+      "hof:generation_bucket_5": {
+        "matches": 4,
+        "winRate": 0.1875,
+        "averageFitness": 3.2808
+      },
+      "emergent:cluster_0": {
+        "matches": 14.5,
+        "winRate": 0.1638,
+        "averageFitness": 0.4778
+      },
+      "scripted:always_support_richest_rival": {
+        "matches": 16,
+        "winRate": 0.2227,
+        "averageFitness": 2.8582
+      },
+      "hof:generation_bucket_6": {
+        "matches": 2,
+        "winRate": 0.1563,
+        "averageFitness": 2.7153
+      },
+      "emergent:cluster_1": {
+        "matches": 4.5,
+        "winRate": 0.1667,
+        "averageFitness": -1.9063
+      },
+      "hof:generation_bucket_2": {
+        "matches": 2,
+        "winRate": 0.375,
+        "averageFitness": 5.9744
+      }
+    },
+    "perSeatWinRate": {
+      "0": {
+        "matches": 26,
+        "winRate": 0.0962,
+        "averageFitness": -3.2581
+      },
+      "1": {
+        "matches": 26,
+        "winRate": 0.1346,
+        "averageFitness": -2.1411
+      },
+      "2": {
+        "matches": 26,
+        "winRate": 0.1731,
+        "averageFitness": 0.423
+      },
+      "3": {
+        "matches": 25,
+        "winRate": 0.16,
+        "averageFitness": 1.7102
+      },
+      "4": {
+        "matches": 25,
+        "winRate": 0.15,
+        "averageFitness": 2.2919
+      }
+    }
+  }
+}
