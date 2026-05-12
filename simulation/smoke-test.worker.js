@@ -20,7 +20,7 @@ function buildSnapshot(game) {
         finalCategoryPoints: metric.finalCategoryPoints,
         finalCategoryShares: metric.finalCategoryShares,
         finalGold: metric.finalGold,
-        taxExemptions: metric.taxExemptions,
+        revocations: metric.revocations,
         frontierTroops: metric.frontierTroops,
         capitalTroops: metric.capitalTroops,
         throneCaptures: metric.throneCaptures,

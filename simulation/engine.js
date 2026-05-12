@@ -395,8 +395,6 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
     capitalTroops,
     totalLandBuys: meta.totals.landBuys,
     totalGifts: meta.totals.gifts,
-    totalTaxExemptions: meta.totals.taxExemptions || 0,
-    totalTaxExemptionSpend: meta.totals.taxExemptionSpend || 0,
     totalRecruits: meta.totals.recruits,
     totalRecruitOpportunities: meta.totals.recruitOpportunities,
     totalRevocations: meta.totals.revocations,
@@ -422,8 +420,6 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
         mercSpend: meta.players[player.id].stats.mercSpend,
         mercsHired: meta.players[player.id].stats.mercsHired,
         landBuys: meta.players[player.id].stats.landBuys,
-        taxExemptions: meta.players[player.id].stats.taxExemptions || 0,
-        taxExemptionSpend: meta.players[player.id].stats.taxExemptionSpend || 0,
         themesGifted: meta.players[player.id].stats.themesGifted,
         recruits: meta.players[player.id].stats.recruits,
         recruitOpportunities: meta.players[player.id].stats.recruitOpportunities,
@@ -486,8 +482,6 @@ function createBucket(key, label) {
     capitalTroopsTotal: 0,
     landBuysTotal: 0,
     giftsTotal: 0,
-    taxExemptionsTotal: 0,
-    taxExemptionSpendTotal: 0,
     recruitsTotal: 0,
     recruitOpportunitiesTotal: 0,
     occupiedThemesTotal: 0,
@@ -505,8 +499,6 @@ function applyGameToBucket(bucket, game) {
   bucket.capitalTroopsTotal += game.capitalTroops;
   bucket.landBuysTotal += game.totalLandBuys;
   bucket.giftsTotal += game.totalGifts;
-  bucket.taxExemptionsTotal += game.totalTaxExemptions || 0;
-  bucket.taxExemptionSpendTotal += game.totalTaxExemptionSpend || 0;
   bucket.recruitsTotal += game.totalRecruits;
   bucket.recruitOpportunitiesTotal += game.totalRecruitOpportunities;
   bucket.occupiedThemesTotal += game.occupiedThemesEnd;
@@ -534,8 +526,6 @@ function finalizeBucket(bucket) {
     frontierShare: totalTroops ? bucket.frontierTroopsTotal / totalTroops : 0,
     averageLandBuys: bucket.games ? bucket.landBuysTotal / bucket.games : 0,
     averageGifts: bucket.games ? bucket.giftsTotal / bucket.games : 0,
-    averageTaxExemptions: bucket.games ? bucket.taxExemptionsTotal / bucket.games : 0,
-    averageTaxExemptionSpend: bucket.games ? bucket.taxExemptionSpendTotal / bucket.games : 0,
     averageRecruits: bucket.games ? bucket.recruitsTotal / bucket.games : 0,
     recruitmentUtilization: bucket.recruitOpportunitiesTotal ? bucket.recruitsTotal / bucket.recruitOpportunitiesTotal : 0,
     averageOccupiedThemes: bucket.games ? bucket.occupiedThemesTotal / bucket.games : 0,
@@ -555,8 +545,6 @@ function createPersonalityBucket(profileId, name, theory) {
     mercSpendTotal: 0,
     landBuysTotal: 0,
     giftsTotal: 0,
-    taxExemptionsTotal: 0,
-    taxExemptionSpendTotal: 0,
     recruitsTotal: 0,
     recruitOpportunitiesTotal: 0,
     throneCapturesTotal: 0,
@@ -580,8 +568,6 @@ function finalizePersonalityBucket(bucket) {
     averageMercSpend: bucket.seats ? bucket.mercSpendTotal / bucket.seats : 0,
     averageLandBuys: bucket.seats ? bucket.landBuysTotal / bucket.seats : 0,
     averageGifts: bucket.seats ? bucket.giftsTotal / bucket.seats : 0,
-    averageTaxExemptions: bucket.seats ? bucket.taxExemptionsTotal / bucket.seats : 0,
-    averageTaxExemptionSpend: bucket.seats ? bucket.taxExemptionSpendTotal / bucket.seats : 0,
     averageRecruits: bucket.seats ? bucket.recruitsTotal / bucket.seats : 0,
     recruitmentUtilization: bucket.recruitOpportunitiesTotal ? bucket.recruitsTotal / bucket.recruitOpportunitiesTotal : 0,
     averageThroneCaptures: bucket.seats ? bucket.throneCapturesTotal / bucket.seats : 0,
@@ -771,8 +757,6 @@ export async function runSimulationBatch(rawConfig = {}, onProgress = null) {
       bucket.mercSpendTotal += playerMetric.mercSpend;
       bucket.landBuysTotal += playerMetric.landBuys;
       bucket.giftsTotal += playerMetric.themesGifted;
-      bucket.taxExemptionsTotal += playerMetric.taxExemptions || 0;
-      bucket.taxExemptionSpendTotal += playerMetric.taxExemptionSpend || 0;
       bucket.recruitsTotal += playerMetric.recruits;
       bucket.recruitOpportunitiesTotal += playerMetric.recruitOpportunities;
       bucket.throneCapturesTotal += playerMetric.throneCaptures;

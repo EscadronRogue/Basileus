@@ -123,15 +123,15 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
       P: p.P,
       T: p.T,
       L: p.L,
+      C: Number(p.C) || 0,   // Church contribution: 1 gold per point to the church pool
       region: p.region,
       cx: p.cx,
       cy: p.cy,
       owner: null,           // null = free citizens, playerId = player, 'church' = church
       occupied: !!p.startOccupied,
-      taxExempt: false,
       strategos: null,       // playerId or null
       bishop: null,          // playerId or null
-      bishopIsDonor: false,  // true if set by church donation (protected)
+      bishopIsDonor: false,  // true if set by church donation (kept for legacy/UI; no protection)
       privateLevyReduced: false, // true once private acquisition has reduced provincial levy by 1
     };
   }
@@ -194,6 +194,10 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     // Court titles
     empress: null,        // playerId
     chiefEunuchs: null,   // playerId
+
+    // Bishop seniority — ordered list of { themeId, playerId } in appointment order.
+    // The first entry is the most senior bishop. Used by the church cascade.
+    bishopAppointments: [],
 
     // Invasion state
     invasionDeck: deck,

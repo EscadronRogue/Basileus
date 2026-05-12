@@ -2,7 +2,6 @@
 import { MAJOR_TITLES } from '../data/titles.js';
 import { runAdministration } from '../engine/cascade.js';
 import {
-  canGrantTaxExemption,
   canPayAppointmentCost,
   canRecruitProfessional,
   getLandAuction,
@@ -14,7 +13,7 @@ import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
   getNormalTaxIncome,
-  getTaxExemptOwnerIncome,
+  getThemeChurchValue,
   getThemeLandPrice,
   getThemeOwnerIncome,
   isThemeThreatened,
@@ -392,17 +391,16 @@ function getProvinceSummary(state, provinceId) {
     ownerLabel,
     strategos,
     bishop,
-    taxExempt: theme.taxExempt,
     occupied: theme.occupied,
     profit: theme.P,
     tax: theme.T,
     levies: theme.L,
+    church: getThemeChurchValue(theme),
     threatened: isThemeThreatened(state, theme.id),
     landPrice: getThemeLandPrice(theme),
     normalOwnerIncome: getNormalOwnerIncome(theme),
     normalTaxIncome: getNormalTaxIncome(theme),
-    taxExemptIncome: getTaxExemptOwnerIncome(theme),
-    strategosTaxIncome: theme.taxExempt || theme.owner === 'church' ? 0 : getNormalTaxIncome(theme),
+    strategosTaxIncome: theme.owner === 'church' ? 0 : getNormalTaxIncome(theme),
     strategosLevyIncome: theme.owner === 'church' ? 0 : theme.L,
   };
 }
@@ -430,8 +428,8 @@ function getOpenBishopThemes(state, region = null) {
   return Object.values(state.themes).filter(theme =>
     !theme.occupied &&
     theme.id !== 'CPL' &&
-    !theme.bishopIsDonor &&
     theme.bishop === null &&
+    (Number(theme.C) || 0) >= 1 &&
     (region == null || theme.region === region)
   );
 }
@@ -443,10 +441,6 @@ function getOpenBasileusMinorTitleTypes(state) {
   if (getOpenStrategosThemes(state).length > 0) types.push({ value: 'STRATEGOS', label: 'Strategos' });
   if (getOpenBishopThemes(state).length > 0) types.push({ value: 'BISHOP', label: 'Bishop' });
   return types;
-}
-
-function getTaxExemptionCandidates(state, playerId) {
-  return getPlayerThemes(state, playerId).filter((theme) => canGrantTaxExemption(state, playerId, theme.id).ok);
 }
 
 function getPhaseLabel(phase) {
@@ -774,7 +768,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         </div>
       </div>
       <div class="dashboard-list compact">
-        <div class="dashboard-list-row" title="Profit (P) from each owned province; P+T if tax-exempt.">
+        <div class="dashboard-list-row" title="Profit (P) from each owned province.">
           <span>Estate income this round</span>
           <span class="dashboard-list-value">${formatGold(finance.privateIncome, { signed: true })}</span>
         </div>
@@ -809,7 +803,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           <div class="dashboard-list-row">
             <div>
               <div class="dashboard-list-title">${renderProvinceBadge(state, theme, { showValues: true })}</div>
-              <div class="dashboard-list-note">${formatProvinceYield(theme)}${theme.taxExempt ? ' | tax exempt' : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''}</div>
+              <div class="dashboard-list-note">${formatProvinceYield(theme)}${(Number(theme.C) || 0) > 0 ? ` | C${Number(theme.C) || 0}` : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''}</div>
             </div>
             <span class="dashboard-list-value">${formatGold(getThemeLandPrice(theme))}</span>
           </div>
@@ -879,7 +873,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         <div class="dashboard-province-head">
           ${renderProvinceBadge(state, selectedProvince.id, { showValues: true })}
         </div>
-        <div class="dashboard-province-meta">Price ${formatGold(selectedProvince.landPrice)}${selectedProvince.taxExempt ? ' | tax exempt' : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
+        <div class="dashboard-province-meta">Price ${formatGold(selectedProvince.landPrice)}${(Number(selectedProvince.church) || 0) > 0 ? ` | Church C${Number(selectedProvince.church) || 0}` : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
         <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
         <div class="dashboard-province-detail">Profit / Tax / Levies: ${formatProvinceYield(selectedProvince)}</div>
         <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos}</div>
@@ -1514,7 +1508,6 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
 
   const availableThemes = getFreeThemes(state);
   const playerOwnedThemes = getPlayerThemes(state, activePlayerId);
-  const taxExemptionThemes = getTaxExemptionCandidates(state, activePlayerId);
   const courtAlreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
   const estatesBody = `
     <p class="section-hint">Bid on free provinces. The first bid must be at least 2&times;P; later bids must be higher. Gold is paid into escrow immediately and refunded if another dynasty overbids you.</p>
@@ -1556,29 +1549,16 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     ` : '<div class="dashboard-empty">No free estates are available to buy right now.</div>'}
   `;
 
-  const taxExemptionsBody = `
-    <p class="section-hint">Pay 2&times;T to the Basileus. The province then pays no tax to the empire and you keep P+T instead of P. The Basileus cannot exempt his own land.</p>
-    ${taxExemptionThemes.length ? `
-      <div class="gift-options">
-        ${taxExemptionThemes.map((theme) => {
-          const check = canGrantTaxExemption(state, activePlayerId, theme.id);
-          return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="exempt" data-theme="${theme.id}">
-            ${renderProvinceBadge(state, theme, { showValues: true })} for ${formatGold(check.cost)} -> owner keeps ${formatGold(getTaxExemptOwnerIncome(theme))}
-          </button>`;
-        }).join('')}
-      </div>
-    ` : '<div class="dashboard-empty">No eligible estate can receive a tax exemption right now.</div>'}
-  `;
-
   const churchGiftsBody = `
-    <p class="section-hint">You lose ownership of the land but become its Bishop for life &mdash; this bishopric cannot be revoked. Church tax goes 2 to the Patriarch, then 1 to each Bishop in turn.</p>
+    <p class="section-hint">You lose ownership of the land and become its bishop. The province's profit and tax become 0; its church value becomes the old P+T. The church pool pays the Patriarch 2 shares first, then each bishop in seniority order.</p>
     ${playerOwnedThemes.length ? `
       <div class="gift-options">
-        ${playerOwnedThemes.map((theme) => `
-          <button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
-            ${renderProvinceBadge(state, theme, { showValues: true })} -> church receives ${formatGold(getNormalTaxIncome(theme))} in province tax
-          </button>
-        `).join('')}
+        ${playerOwnedThemes.map((theme) => {
+          const futureChurch = (Number(theme.P) || 0) + (Number(theme.T) || 0);
+          return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
+            ${renderProvinceBadge(state, theme, { showValues: true })} -> church value becomes ${futureChurch}
+          </button>`;
+        }).join('')}
       </div>
     ` : '<div class="dashboard-empty">No owned estate is available to gift to the church right now.</div>'}
   `;
@@ -1606,17 +1586,6 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
     uiSectionState,
     {
       defaultOpen: false,
-    }
-  );
-
-  courtHtml += renderFoldSection(
-    'court:tax-exemptions',
-    'Tax Exemptions',
-    taxExemptionsBody,
-    uiSectionState,
-    {
-      defaultOpen: false,
-      badge: taxExemptionThemes.length ? `${taxExemptionThemes.length} available` : null,
     }
   );
 
@@ -1814,12 +1783,6 @@ function bindCourtEvents(container, state, activePlayerId, callbacks, selectedPr
   container.querySelectorAll('[data-action="gift"]').forEach(btn => {
     btn.addEventListener('click', () => {
       callbacks.gift?.(btn.dataset.theme);
-    });
-  });
-
-  container.querySelectorAll('[data-action="exempt"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      callbacks.exempt?.(btn.dataset.theme);
     });
   });
 
@@ -2316,13 +2279,6 @@ function collectRevocationGroups(state) {
     });
   }
 
-  const exempt = Object.values(state.themes)
-    .filter((t) => t.taxExempt)
-    .map((t) => ({
-      value: `exempt:${t.id}`,
-      body: renderProvinceBadge(state, t, { compact: true }),
-    }));
-
   const estates = Object.values(state.themes)
     .filter((t) => t.owner !== null && t.owner !== 'church' && !t.occupied)
     .map((t) => ({
@@ -2333,7 +2289,6 @@ function collectRevocationGroups(state) {
   return [
     { label: 'Major Titles', items: major },
     { label: 'Minor Titles', items: minor },
-    { label: 'Tax Exemptions', items: exempt },
     { label: 'Estates', items: estates },
   ];
 }

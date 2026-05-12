@@ -809,8 +809,6 @@ function createEvaluationAccumulator(candidate, generation, scope) {
       frontierShare: 0,
       capitalShare: 0,
       landBuys: 0,
-      taxExemptions: 0,
-      taxExemptionSpend: 0,
       churchGifts: 0,
       revocations: 0,
       throneCaptures: 0,
@@ -942,8 +940,6 @@ function finalizeEvaluationSummary(accumulator) {
       frontierTroopShare: roundTo(accumulator.behaviorTotals.frontierShare / totalTroopShare, 4),
       capitalTroopShare: roundTo(accumulator.behaviorTotals.capitalShare / totalTroopShare, 4),
       averageLandBuys: roundTo(accumulator.behaviorTotals.landBuys / Math.max(1, accumulator.matches), 4),
-      averageTaxExemptions: roundTo(accumulator.behaviorTotals.taxExemptions / Math.max(1, accumulator.matches), 4),
-      averageTaxExemptionSpend: roundTo(accumulator.behaviorTotals.taxExemptionSpend / Math.max(1, accumulator.matches), 4),
       averageChurchGifts: roundTo(accumulator.behaviorTotals.churchGifts / Math.max(1, accumulator.matches), 4),
       averageRevocations: roundTo(accumulator.behaviorTotals.revocations / Math.max(1, accumulator.matches), 4),
       averageThroneCaptures: roundTo(accumulator.behaviorTotals.throneCaptures / Math.max(1, accumulator.matches), 4),
@@ -1040,8 +1036,6 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     accumulator.behaviorTotals.frontierShare += frontierShare;
     accumulator.behaviorTotals.capitalShare += capitalShare;
     accumulator.behaviorTotals.landBuys += playerMetric.landBuys;
-    accumulator.behaviorTotals.taxExemptions += playerMetric.taxExemptions || 0;
-    accumulator.behaviorTotals.taxExemptionSpend += playerMetric.taxExemptionSpend || 0;
     accumulator.behaviorTotals.churchGifts += playerMetric.themesGifted;
     accumulator.behaviorTotals.revocations += playerMetric.revocations;
     accumulator.behaviorTotals.throneCaptures += playerMetric.throneCaptures;
@@ -1298,7 +1292,7 @@ function describeBehaviorProfile(summary) {
   const levels = [];
   levels.push(`${behavior.frontierTroopShare >= 0.58 ? 'high' : behavior.frontierTroopShare <= 0.35 ? 'low' : 'moderate'} frontier defense`);
   levels.push(`${behavior.averageLandBuys >= 1.2 ? 'high' : behavior.averageLandBuys <= 0.4 ? 'low' : 'moderate'} land buying`);
-  levels.push(`${behavior.averageTaxExemptions >= 1 ? 'high' : behavior.averageTaxExemptions <= 0.2 ? 'low' : 'moderate'} tax exemption`);
+  levels.push(`${behavior.averageChurchGifts >= 0.4 ? 'high' : behavior.averageChurchGifts <= 0.1 ? 'low' : 'moderate'} church giving`);
   levels.push(`${behavior.averageRevocations >= 0.6 ? 'high' : behavior.averageRevocations <= 0.15 ? 'low' : 'moderate'} revocation`);
   return levels.join(', ');
 }

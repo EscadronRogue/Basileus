@@ -78,13 +78,14 @@ export function renderPlayerRoleNameById(state, playerId, fallback = null) {
 export function renderProvinceBadge(state, themeOrId, options = {}) {
   const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
   if (!theme) return options.fallback || '';
+  const churchValue = Math.max(0, Number(theme.C) || 0);
   const values = options.showValues
-    ? `<span class="province-token-values">P${theme.P} T${theme.T} L${theme.L}</span>`
+    ? `<span class="province-token-values">P${theme.P} T${theme.T} L${theme.L}${churchValue > 0 ? ` C${churchValue}` : ''}</span>`
     : '';
   const classes = [
     'province-token',
     options.compact ? 'compact' : '',
-    theme.taxExempt ? 'tax-exempt' : '',
+    churchValue > 0 ? 'has-church' : '',
     theme.occupied ? 'occupied' : '',
     theme.owner === 'church' ? 'church' : '',
   ].filter(Boolean).join(' ');

@@ -1,5 +1,6 @@
 import { REGIONS } from '../data/provinces.js';
 import {
+  getThemeChurchValue,
   getThemeTaxIncome,
   getThemeOwnerIncome,
 } from './rules.js';
@@ -17,12 +18,15 @@ function getRegionalDomesticKey(region) {
   return null;
 }
 
+// The church no longer takes from the regional tax pool. The Basileus and the
+// regional domestic/admiral alternate (Basileus first); if the regional title is
+// vacant, the Basileus collects every coin. The church is paid out of its own
+// pool (sourced from province C values and church-owned land — see runAdministration).
 export function computeRegionalTaxCascade(state, region, initialPool = 0) {
   let pool = Math.max(0, Number(initialPool) || 0);
   const domesticKey = getRegionalDomesticKey(region);
   const domesticId = findTitleHolder(state, domesticKey);
   const income = {};
-  let churchPool = 0;
 
   const addIncome = (playerId, amount) => {
     if (playerId == null || amount <= 0) return;
@@ -38,13 +42,9 @@ export function computeRegionalTaxCascade(state, region, initialPool = 0) {
       addIncome(domesticId, 1);
       pool--;
     }
-    if (pool <= 0) break;
-
-    churchPool++;
-    pool--;
   }
 
-  return { income, churchPool };
+  return { income, churchPool: 0 };
 }
 
 export function computeRegionalLevyCascade(state, region, initialPool = 0) {
@@ -106,10 +106,16 @@ export function computeCPLCascade(state, basileusRegionalGold) {
   return income;
 }
 
+// Distribute the church pool: the Patriarch takes 2 shares first, then each bishop
+// (by appointment seniority) takes 1 share. If gold remains, the cycle restarts.
+// A bishop whose province is occupied or lost keeps receiving their share — they
+// stay appointed even though the province no longer contributes to the pool.
 export function computeChurchCascade(state, regionalChurchPool) {
   let pool = Math.max(0, Number(regionalChurchPool) || 0);
   const patriarchId = findTitleHolder(state, 'PATRIARCH');
-  const bishops = Object.values(state.themes).filter((theme) => theme.bishop !== null && !theme.occupied);
+  const bishopOrder = Array.isArray(state.bishopAppointments) ? state.bishopAppointments : [];
+  // Filter to currently active bishops (the theme.bishop still matches the appointee).
+  const activeBishops = bishopOrder.filter((entry) => state.themes?.[entry.themeId]?.bishop === entry.playerId);
   const income = {};
 
   const addIncome = (playerId, amount) => {
@@ -118,16 +124,20 @@ export function computeChurchCascade(state, regionalChurchPool) {
   };
 
   while (pool > 0) {
+    // Patriarch: two shares, in sequence.
     for (let index = 0; index < 2 && pool > 0; index += 1) {
-      if (patriarchId !== null) addIncome(patriarchId, 1);
+      if (patriarchId != null) addIncome(patriarchId, 1);
       pool--;
     }
-
-    for (const bishop of bishops) {
+    // Bishops in seniority order: one share each.
+    for (const bishop of activeBishops) {
       if (pool <= 0) break;
-      addIncome(bishop.bishop, 1);
+      addIncome(bishop.playerId, 1);
       pool--;
     }
+    // If neither patriarch nor bishops exist, the pool is forfeited to avoid
+    // an infinite loop.
+    if (patriarchId == null && activeBishops.length === 0) break;
   }
 
   return income;
@@ -175,9 +185,15 @@ export function runAdministration(state) {
 
     const taxGold = getThemeTaxIncome(theme);
     const levyCount = Math.max(0, Number(theme.L) || 0);
+    const churchValue = getThemeChurchValue(theme);
+
+    // The province's church value adds to the church pool every round, regardless
+    // of who owns it (as long as the province is not occupied).
+    churchPool += churchValue;
 
     if (theme.owner === 'church') {
-      churchPool += taxGold;
+      // Church-owned land has zero profit/tax (set when gifted) but still raises
+      // levies for the regional pool. Its C already contributed above.
       regionalLevyPools[theme.region] += levyCount;
       continue;
     }

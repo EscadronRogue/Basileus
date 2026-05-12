@@ -68,13 +68,13 @@
           </ol>
 
           <h3>Provinces &amp; Money</h3>
-          <p>Each province has three numbers: <strong>P</strong> (profit to its private owner), <strong>T</strong> (tax to the empire), <strong>L</strong> (levies it raises).</p>
+          <p>Each province has four numbers: <strong>P</strong> (profit to its private owner), <strong>T</strong> (tax to the empire), <strong>L</strong> (levies it raises), <strong>C</strong> (gold to the church pool, most provinces are 0).</p>
           <ul>
             <li><strong>Buying land</strong> costs 2&times;P. The owner collects P every Administration. Privately owned land also raises one fewer levy.</li>
-            <li><strong>Tax exemption</strong> costs 2&times;T (paid to the Basileus). The owner then keeps P+T instead of P, and the province pays no tax to the empire.</li>
-            <li><strong>Tax cascade</strong> on regional tax: the first coin goes to the Basileus, the second to the regional Domestic or Admiral, the third to the Church, then the cycle repeats. Constantinople tax cycles Basileus &rarr; Empress &rarr; Chief of Eunuchs.</li>
+            <li><strong>Tax cascade</strong> on regional tax: the first coin goes to the Basileus, the second to the regional Domestic or Admiral, then the cycle repeats. The Church receives no share of provincial tax. Constantinople tax cycles Basileus &rarr; Empress &rarr; Chief of Eunuchs.</li>
             <li><strong>Strategos shortcut.</strong> A province with an appointed Strategos sends all its tax and levies straight to that Strategos, bypassing the cascade.</li>
-            <li><strong>Church gift.</strong> Donating your land to the church makes you its Bishop for life (no Patriarch can revoke it). Church tax goes 2 to the Patriarch, then 1 to each Bishop in turn.</li>
+            <li><strong>Church pool.</strong> Each province with C &gt; 0 sends C gold every round to the church pool. The Patriarch takes 2 shares first, then each Bishop in seniority order takes 1 share, cycling until the pool is empty.</li>
+            <li><strong>Church gift.</strong> Donating your land to the church sets its profit and tax to 0; its C value becomes the old P+T. You automatically become its Bishop. Bishops can only be appointed in provinces with C &ge; 1; lost provinces keep their bishop but stop contributing to the pool.</li>
           </ul>
 
           <h3>Titles &amp; Appointments</h3>
@@ -100,7 +100,13 @@
           </ul>
 
           <h3>Imperial Revocation</h3>
-          <p>The Basileus can revoke titles, tax exemptions, or estates by spending the troops attached to imperial offices. The first revocation per round costs 1 troop, the second 2, the third 3, etc. Levies are spent before professionals; suspended professionals return next round.</p>
+          <p>The Basileus can revoke any title or estate. The Patriarch can revoke Bishops. The Domestic of the East/West and the Admiral can revoke a Strategos in their region. Each revocation in the same round (per player) costs more troops than the last (1, 2, 3, ...), spent from any office or army the player controls. Levies are spent first; professionals are sent on the mission &mdash; they still pay upkeep this round and return next round. Appointments work the same way: the first appointment per recipient is free, then 1, 2, 3, ... troops for repeat appointments.</p>
+
+          <h3>Debt &amp; Defenders</h3>
+          <ul>
+            <li><strong>Debt.</strong> A player who enters a turn in debt automatically disbands 1 random professional troop per gold owed. Players in debt also cannot recruit new professional troops until they balance their books.</li>
+            <li><strong>Best defender.</strong> When the empire reconquers provinces, the top frontier contributors take turns claiming reconquered land. Each pick is "take the land (as if you bought it)" or "take 2&times;P gold instead". Defenders cycle in rank order, so if there are more reconquests than defenders the top contributor picks again.</li>
+          </ul>
         </div>
       </details>
 

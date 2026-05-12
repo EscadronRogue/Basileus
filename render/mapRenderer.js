@@ -884,7 +884,7 @@ function resolveProvinceOwnership(state, provinceId, theme) {
   }
   if (theme.owner !== null) {
     const classes = ['imperial', 'owned'];
-    if (theme.taxExempt) classes.push('tax-exempt');
+    if ((Number(theme.C) || 0) > 0) classes.push('has-church');
     return { classes, ownerColor };
   }
   if (provinceId === 'CPL') {

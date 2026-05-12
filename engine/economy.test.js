@@ -11,7 +11,6 @@ import {
   appointStrategos,
   buyTheme,
   canRecruitProfessional,
-  grantTaxExemption,
   getNextAppointmentCost,
   hireMercenaries,
   recruitProfessional,
@@ -31,7 +30,6 @@ import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
   getNormalTaxIncome,
-  getTaxExemptionCost,
   getThemeLandPrice,
 } from './rules.js';
 import { normalizeHumanOrders } from './orders.js';
@@ -51,11 +49,11 @@ function makeTheme(id, overrides = {}) {
     P: source.P,
     T: source.T,
     L: source.L,
+    C: Number(source.C) || 0,
     privateLevyReduced: false,
     region: source.region,
     owner: null,
     occupied: false,
-    taxExempt: false,
     strategos: null,
     bishop: null,
     bishopIsDonor: false,

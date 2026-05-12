@@ -26,15 +26,15 @@ import {
   appointStrategos,
   buyTheme,
   canPayRevocationCost,
+  canPlayerRevokeBishop,
+  canPlayerRevokeStrategos,
   dismissProfessional,
   giftToChurch,
-  grantTaxExemption,
   hireMercenaries,
   recruitProfessional,
   revokeCourtTitle,
   revokeMajorTitle,
   revokeMinorTitle,
-  revokeTaxExemption,
   revokeTheme,
   validateMajorTitleAssignments,
 } from './actions.js';
@@ -103,12 +103,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
   if (action === 'gift') {
     const result = giftToChurch(state, playerId, payload.themeId);
     if (!result?.ok) return fail(result?.reason || 'Could not gift that estate.');
-    return { ok: true };
-  }
-
-  if (action === 'exempt') {
-    const result = grantTaxExemption(state, playerId, payload.themeId);
-    if (!result?.ok) return fail(result?.reason || 'Could not buy that tax exemption.');
     return { ok: true };
   }
 
@@ -213,19 +207,34 @@ export function applyCourtAction(state, playerId, payload = {}) {
   }
 
   if (action === 'revoke') {
-    if (playerId !== state.basileusId) return fail('Only the Basileus can revoke titles or land.');
-    const costCheck = canPayRevocationCost(state);
-    if (!costCheck.ok) {
-      return fail(`The Basileus needs ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (has ${costCheck.available || 0}).`);
-    }
     const value = String(payload.value || '').trim();
     const parts = value.split(':');
-    let observation = { type: 'revocation', actorId: state.basileusId };
+    const kind = parts[0];
 
-    if (parts[0] === 'major') {
+    // Authority: Basileus may revoke anything. Patriarch may revoke bishops.
+    // Regional commanders (Domestic East/West, Admiral) may revoke strategoi in
+    // their region. All other revocations are restricted to the Basileus.
+    const isBasileus = playerId === state.basileusId;
+    if (!isBasileus) {
+      if (kind === 'minor' && parts[2] === 'bishop') {
+        if (!canPlayerRevokeBishop(state, playerId)) return fail('Only the Basileus or the Patriarch can revoke a bishop.');
+      } else if (kind === 'minor' && parts[2] === 'strategos') {
+        if (!canPlayerRevokeStrategos(state, playerId, parts[1])) return fail('You do not command this theme — only its regional title-holder or the Basileus can revoke its strategos.');
+      } else {
+        return fail('Only the Basileus can perform this revocation.');
+      }
+    }
+
+    const costCheck = canPayRevocationCost(state, playerId);
+    if (!costCheck.ok) {
+      return fail(`You need ${costCheck.cost} troop${costCheck.cost === 1 ? '' : 's'} to revoke (have ${costCheck.available || 0}).`);
+    }
+    let observation = { type: 'revocation', actorId: playerId };
+
+    if (kind === 'major') {
       const revokedPlayerId = Number(parts[1]);
       const titleKey = parts[2];
-      if (isPlayerProtectedFromRevocation(state, state.basileusId, revokedPlayerId)) {
+      if (isPlayerProtectedFromRevocation(state, playerId, revokedPlayerId)) {
         return fail(`${playerLabel(state, revokedPlayerId)} is protected by an accepted non-revocation deal.`);
       }
       const eligible = state.players.filter((candidate) =>
@@ -233,32 +242,29 @@ export function applyCourtAction(state, playerId, payload = {}) {
       );
       if (eligible.length === 0) return fail('No eligible recipient exists for that major office.');
       const newHolderId = eligible[0].id;
-      const result = revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId);
+      const result = revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId, playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that major title.');
       observation = { ...observation, targetPlayerId: revokedPlayerId, newHolderId };
-    } else if (parts[0] === 'minor') {
+    } else if (kind === 'minor') {
       const theme = state.themes[parts[1]];
       const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
-      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, state.basileusId, targetPlayerId)) {
+      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
-      const result = revokeMinorTitle(state, parts[1], parts[2]);
+      const result = revokeMinorTitle(state, parts[1], parts[2], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
       observation = { ...observation, targetPlayerId };
-    } else if (parts[0] === 'court') {
+    } else if (kind === 'court') {
       const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, state.basileusId, targetPlayerId)) {
+      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
-      const result = revokeCourtTitle(state, parts[1]);
+      const result = revokeCourtTitle(state, parts[1], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that court title.');
       observation = { ...observation, targetPlayerId };
-    } else if (parts[0] === 'exempt') {
-      const result = revokeTaxExemption(state, parts[1]);
-      if (!result?.ok) return fail(result?.reason || 'Could not revoke that tax exemption.');
-    } else if (parts[0] === 'theme') {
+    } else if (kind === 'theme') {
       const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
-      const result = revokeTheme(state, parts[1]);
+      const result = revokeTheme(state, parts[1], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that estate.');
       observation = { ...observation, targetPlayerId };
     } else {

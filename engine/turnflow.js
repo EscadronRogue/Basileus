@@ -4,7 +4,13 @@
 
 import { runAdministration } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
-import { resolveCoup, payMaintenance, restoreSuspendedProfessionals, settleLandAuctions } from './actions.js';
+import {
+  applyDebtDisbanding,
+  payMaintenance,
+  resolveCoup,
+  restoreSuspendedProfessionals,
+  settleLandAuctions,
+} from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
 import {
@@ -16,7 +22,8 @@ import {
   MERCENARY_COMPANY_KEY,
   rollInvasionStrength,
 } from './state.js';
-import { formatTroops } from './presentation.js';
+import { formatTroops, formatGold } from './presentation.js';
+import { getDefenderRewardGold, getThemeProfitValue } from './rules.js';
 
 export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
 export const STARTING_ADMINISTRATION_GOLD = 4;
@@ -109,6 +116,15 @@ export function phaseInvasion(state) {
   state.round++;
   state.phase = 'invasion';
 
+  // Players entering a new turn in debt automatically lose 1 random professional
+  // troop per gold of debt. Skipped on the very first round because nobody has
+  // received their starting administration income yet.
+  if (state.round > 1) {
+    for (const player of state.players) {
+      applyDebtDisbanding(state, player.id, state.rng);
+    }
+  }
+
   if (state.invasionDeck.length === 0) {
     // No more invasions → game ends
     state.phase = 'scoring';
@@ -195,9 +211,12 @@ export function phaseCourt(state) {
     domesticWestAppointed: false,
     admiralAppointed: false,
     patriarchAppointed: false,
-    // Number of revocations the Basileus has performed this round. Each costs more
-    // troops than the last (1 troop for the first, 2 for the second, ...).
-    basileusRevocationsUsed: 0,
+    // Per-player count of revocations this round. Each player's nth revocation
+    // costs n troops (Basileus, Patriarch, regional commanders all share the same
+    // escalating-cost rule per player).
+    revocationsUsed: {},
+    // Best-defender choices waiting on the player after a successful invasion repulse.
+    pendingDefenderRewards: [],
     appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };
@@ -323,6 +342,10 @@ export function phaseResolution(state) {
       contributions: frontierContributions,
     };
     applyInvasionResult(state, warResult);
+    // After a successful repulse, top contributors are offered a reward: take a
+    // reconquered estate or receive 2× its profit in gold. Cycles back through the
+    // contributor list if more lands were recovered than there were defenders.
+    warResult.defenderRewards = applyDefenderRewards(state, warResult, frontierContributions);
     state.lastWarResult = warResult;
 
     state.log.push({
@@ -358,6 +381,85 @@ export function phaseResolution(state) {
   }
 
   return { coupResult, warResult };
+}
+
+// ─── Best-defender reward ───
+// After a successful invasion repulse, top contributors (by frontier troops) each
+// get to claim one of the reconquered estates or take 2× its profit in gold instead.
+// Defenders cycle in rank order — if more lands than defenders, the top defender
+// picks again, and so on. Land is taken as if bought: ownership transfers and the
+// province's levy is reduced by 1 (the standard private-acquisition penalty).
+function rankedDefenders(contributions = []) {
+  return contributions
+    .filter(entry => (Number(entry.troops) || 0) > 0)
+    .slice()
+    .sort((a, b) => (b.troops - a.troops) || (a.playerId - b.playerId));
+}
+
+function claimReconqueredLand(state, themeId, playerId) {
+  const theme = state.themes[themeId];
+  if (!theme || theme.occupied || theme.owner !== null || theme.id === 'CPL') return false;
+  theme.owner = playerId;
+  if (!theme.privateLevyReduced) {
+    theme.L = Math.max(0, (Number(theme.L) || 0) - 1);
+    theme.privateLevyReduced = true;
+  }
+  return true;
+}
+
+function chooseDefenderReward(state, themeId, defenderId) {
+  // Default policy: a defender claims the estate if they can use it, otherwise
+  // takes the gold compensation. The hook is intentionally simple; UI integrations
+  // can call applyDefenderRewardChoice instead to override per-defender.
+  const theme = state.themes[themeId];
+  const taken = claimReconqueredLand(state, themeId, defenderId);
+  if (taken) return { themeId, defenderId, choice: 'land' };
+  const reward = getDefenderRewardGold(theme);
+  const player = state.players.find(p => p.id === defenderId);
+  if (player) player.gold += reward;
+  return { themeId, defenderId, choice: 'gold', gold: reward };
+}
+
+export function applyDefenderRewards(state, warResult, contributions) {
+  const themes = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
+  const defenders = rankedDefenders(contributions);
+  if (themes.length === 0 || defenders.length === 0) return [];
+
+  const awards = [];
+  for (let i = 0; i < themes.length; i++) {
+    const defender = defenders[i % defenders.length];
+    const themeId = themes[i];
+    const award = chooseDefenderReward(state, themeId, defender.playerId);
+    awards.push({ ...award, defenderName: defender.playerName, troops: defender.troops });
+    state.log.push({
+      type: 'defender_reward',
+      player: defender.playerId,
+      theme: themeId,
+      choice: award.choice,
+      gold: award.gold || 0,
+      round: state.round,
+    });
+    const theme = state.themes[themeId];
+    recordHistoryEvent(state, {
+      category: 'resolution',
+      type: 'defender_reward',
+      actorId: defender.playerId,
+      summary: award.choice === 'land'
+        ? `${defender.playerName} claims ${theme?.name || themeId} as best defender (rank #${(i % defenders.length) + 1}).`
+        : `${defender.playerName} takes ${formatGold(award.gold || 0)} instead of ${theme?.name || themeId} (rank #${(i % defenders.length) + 1}).`,
+      details: {
+        themeId,
+        themeName: theme?.name || themeId,
+        defenderId: defender.playerId,
+        rank: (i % defenders.length) + 1,
+        contribution: defender.troops,
+        choice: award.choice,
+        gold: award.gold || 0,
+        profit: getThemeProfitValue(theme),
+      },
+    });
+  }
+  return awards;
 }
 
 // ─── Phase: Cleanup ───

@@ -14,7 +14,7 @@ function testProfile(id) {
   };
 }
 
-test('single-game simulation exposes score category and tax-exemption metrics', () => {
+test('single-game simulation exposes score category and revocation metrics', () => {
   const game = runSingleSimulationGame({
     playerCount: 3,
     deckSize: 1,
@@ -30,14 +30,12 @@ test('single-game simulation exposes score category and tax-exemption metrics', 
   });
 
   assert.equal(typeof game.topScore, 'number');
-  assert.equal(typeof game.totalTaxExemptions, 'number');
-  assert.equal(typeof game.totalTaxExemptionSpend, 'number');
+  assert.equal(typeof game.totalRevocations, 'number');
   assert.ok(game.playerMetrics.length > 0);
 
   const metric = game.playerMetrics[0];
   assert.equal(typeof metric.finalScore, 'number');
   assert.equal(typeof metric.finalCategoryShares.gold, 'number');
   assert.equal(typeof metric.finalCategoryPoints.gold, 'number');
-  assert.equal(typeof metric.taxExemptions, 'number');
-  assert.equal(typeof metric.taxExemptionSpend, 'number');
+  assert.equal(typeof metric.revocations, 'number');
 });

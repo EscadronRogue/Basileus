@@ -379,7 +379,6 @@ function renderSimulationReport(report) {
     fallRate: formatPercent(entry.empireFallRate),
     rounds: formatNumber(entry.averageRounds, 2),
     score: formatNumber(entry.averageWinnerScore ?? entry.averageWinnerWealth, 1),
-    exemptions: formatNumber(entry.averageTaxExemptions ?? 0, 2),
     coups: formatNumber(entry.averageThroneChanges, 2),
     frontier: formatPercent(entry.frontierShare),
   }));
@@ -410,7 +409,6 @@ function renderSimulationReport(report) {
     frontier: formatPercent(entry.frontierShare),
     mercSpend: formatNumber(entry.averageMercSpend, 1),
     landBuys: formatNumber(entry.averageLandBuys, 2),
-    exemptions: formatNumber(entry.averageTaxExemptions ?? 0, 2),
     recruitment: formatPercent(entry.recruitmentUtilization),
   }));
 
@@ -433,7 +431,6 @@ function renderSimulationReport(report) {
       { label: 'Empire Fall', render: row => row.fallRate },
       { label: 'Avg Rounds', render: row => row.rounds },
       { label: 'Winner Score', render: row => row.score },
-      { label: 'Tax Exemptions', render: row => row.exemptions },
       { label: 'Throne Changes', render: row => row.coups },
       { label: 'Frontier Share', render: row => row.frontier },
     ], scenarioRows),
@@ -461,7 +458,6 @@ function renderSimulationReport(report) {
       { label: 'Frontier Share', render: row => row.frontier },
       { label: 'Merc Spend', render: row => row.mercSpend },
       { label: 'Land Buys', render: row => row.landBuys },
-      { label: 'Tax Exemptions', render: row => row.exemptions },
       { label: 'Recruit Util.', render: row => row.recruitment },
     ], personalityRows),
     renderTable('Invasion Pressure', [

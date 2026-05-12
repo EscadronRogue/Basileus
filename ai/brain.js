@@ -17,7 +17,6 @@ import {
   appointStrategos,
   applyCoupTitleReassignment,
   buyTheme,
-  canGrantTaxExemption,
   canPayAppointmentCost,
   dismissProfessional,
   canRecruitProfessional,
@@ -25,12 +24,10 @@ import {
   getMinimumLandBid,
   getNextAppointmentCost,
   giftToChurch,
-  grantTaxExemption,
   hireMercenaries,
   recruitProfessional,
   revokeMajorTitle,
   revokeMinorTitle,
-  revokeTaxExemption,
   revokeTheme,
   revokeCourtTitle,
   canPayRevocationCost,
@@ -41,7 +38,7 @@ import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
   getNormalTaxIncome,
-  getTaxExemptOwnerIncome,
+  getThemeChurchValue,
   getThemeLandPrice,
   getThemeOwnerIncome,
 } from '../engine/rules.js';
@@ -850,26 +847,6 @@ function buildLandPurchaseDecision(state, meta, playerId, action) {
   };
 }
 
-function buildTaxExemptionDecision(state, meta, playerId, action) {
-  const theme = action.theme;
-  const currentOwnerIncome = action.currentOwnerIncome ?? getThemeOwnerIncome(theme);
-  const exemptOwnerIncome = action.exemptOwnerIncome ?? getTaxExemptOwnerIncome(theme);
-  const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate');
-  const goldPressure = getCategoryThresholdPressure(state, meta, playerId, 'gold');
-
-  return {
-    title: 'AI reasoning',
-    factors: [
-      factor('Estate threshold pressure', `${publicActor(state, playerId)} valued a larger estate-income share at pressure ${roundTo(estatePressure, 2)}.`, estatePressure > 0.7 ? 'for' : 'neutral', estatePressure),
-      factor('Income gain', `${theme.name} rises from ${currentOwnerIncome}g private income to ${exemptOwnerIncome}g while no longer paying provincial tax.`, 'for', exemptOwnerIncome - currentOwnerIncome),
-      factor('Gold threshold pressure', `Spending ${action.cost}g could weaken gold-reserve scoring pressure ${roundTo(goldPressure, 2)}.`, goldPressure > 0.7 ? 'against' : 'neutral', goldPressure),
-      factor('Basileus payment', state.basileusId === playerId
-        ? 'The Basileus cannot exempt his own estate.'
-        : `${action.cost}g flows to ${publicActor(state, state.basileusId)}.`, state.basileusId === playerId ? 'against' : 'neutral', action.cost),
-    ],
-  };
-}
-
 function buildChurchGiftDecision(state, meta, playerId, action) {
   const theme = action.theme;
   const remainingRounds = getRemainingRounds(state);
@@ -1121,8 +1098,6 @@ export function createAIMeta(state, options = {}) {
       stats: {
         landBuys: 0,
         themesGifted: 0,
-        taxExemptions: 0,
-        taxExemptionSpend: 0,
         recruits: 0,
         recruitOpportunities: 0,
         revocations: 0,
@@ -1134,6 +1109,7 @@ export function createAIMeta(state, options = {}) {
         supportIncumbentVotes: 0,
         supportSelfVotes: 0,
         throneCaptures: 0,
+        defenderRewards: 0,
       },
     };
   }
@@ -1170,8 +1146,6 @@ export function createAIMeta(state, options = {}) {
     totals: {
       landBuys: 0,
       gifts: 0,
-      taxExemptions: 0,
-      taxExemptionSpend: 0,
       recruits: 0,
       recruitOpportunities: 0,
       revocations: 0,
@@ -1614,10 +1588,11 @@ function handleBasileusAppointment(state, meta) {
     options.push({ type: 'EMPRESS', appointeeId: appointee.id });
     options.push({ type: 'CHIEF_EUNUCHS', appointeeId: appointee.id });
     for (const theme of themes) {
-      if (theme.owner !== 'church') {
+      if (theme.owner !== 'church' && theme.strategos == null) {
         options.push({ type: 'STRATEGOS', themeId: theme.id, appointeeId: appointee.id });
       }
-      if (!theme.bishopIsDonor) {
+      // Bishops can only be appointed in provinces with at least 1 church value.
+      if (theme.bishop == null && (Number(theme.C) || 0) >= 1) {
         options.push({ type: 'BISHOP', themeId: theme.id, appointeeId: appointee.id });
       }
     }
@@ -1741,7 +1716,14 @@ function handlePatriarchAppointment(state, meta) {
   if (actorId == null) return markCourtMandatoryActionPassed(state, meta, 'patriarchAppointed', 'The Patriarch');
 
   const selfLocked = hasSelfAppointmentLock(state, actorId);
-  const themes = Object.values(state.themes).filter(theme => !theme.occupied && theme.id !== 'CPL' && !theme.bishopIsDonor);
+  // The Patriarch can only seat a bishop in a province with at least 1 church
+  // value, and only if the seat is vacant.
+  const themes = Object.values(state.themes).filter(theme =>
+    !theme.occupied &&
+    theme.id !== 'CPL' &&
+    theme.bishop == null &&
+    (Number(theme.C) || 0) >= 1
+  );
   const options = [];
   for (const theme of themes) {
     for (const appointee of state.players) {
@@ -1828,7 +1810,11 @@ function scoreChurchGift(state, meta, playerId, theme) {
     (remainingRounds * profile.weights.wealth * 0.95) +
     (ownerIncome * (2.2 + (profile.weights.land * 0.55))) +
     (ownedThemeCount <= 1 ? 2.4 : ownedThemeCount <= 2 ? 1.15 : 0);
-  const churchValue = (theme.P * profile.weights.church * 0.95) + 0.45;
+  // Gifting now sets the province's church value to P + T (all profit and tax
+  // becomes church revenue). The bigger the combined yield, the larger the
+  // permanent contribution to the church pool the donor (now a bishop) will share.
+  const futureChurchPool = (Number(theme.P) || 0) + (Number(theme.T) || 0) + getThemeChurchValue(theme);
+  const churchValue = (futureChurchPool * profile.weights.church * 0.95) + 0.45;
   const patriarchBonus = getPlayer(state, playerId).majorTitles.includes('PATRIARCH') ? 1.2 : 0;
   const bishopLockBonus = 0.35 + (profile.weights.church * 0.28);
   const routeRiskRelief = getThemeRouteRisk(state, theme.id) * (empireDanger < 1 ? 1.05 : 0.35);
@@ -1836,42 +1822,6 @@ function scoreChurchGift(state, meta, playerId, theme) {
   const churchPressure = getCategoryThresholdPressure(state, meta, playerId, 'church') * 1.35;
   const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate') * 0.9;
   return churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief + churchPressure - keepsValue - reservePenalty - estatePressure;
-}
-
-function scoreTaxExemption(state, meta, playerId, theme) {
-  const check = canGrantTaxExemption(state, playerId, theme.id);
-  if (!check.ok) return null;
-  const profile = getPersonalityProfile(meta, playerId);
-  const remainingRounds = getRemainingRounds(state);
-  const empireDanger = getEmpireDanger(state, meta);
-  const routeRisk = getThemeRouteRisk(state, theme.id);
-  const currentOwnerIncome = getThemeOwnerIncome(theme);
-  const exemptOwnerIncome = getTaxExemptOwnerIncome(theme);
-  const incomeGain = Math.max(0, exemptOwnerIncome - currentOwnerIncome);
-  const taxValue = getNormalTaxIncome(theme);
-  const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate');
-  const goldPressure = getCategoryThresholdPressure(state, meta, playerId, 'gold');
-  const taxPressure = getCategoryThresholdPressure(state, meta, playerId, 'tax');
-  const lostOwnTaxValue = theme.strategos === playerId ? taxValue * (0.8 + taxPressure) : 0;
-  const basileusStanding = getStandingSnapshot(state, meta, state.basileusId);
-  const paymentToLeaderPenalty = state.basileusId !== playerId && basileusStanding.rank === 1 ? check.cost * 0.25 : 0;
-  const riskPenalty = routeRisk * (empireDanger > 0.9 ? 0.85 : 0.35);
-  return {
-    kind: 'exempt',
-    theme,
-    cost: check.cost,
-    currentOwnerIncome,
-    exemptOwnerIncome,
-    score:
-      (incomeGain * (remainingRounds + 0.75)) +
-      (profile.weights.land * 0.35) +
-      (estatePressure * 2.25) -
-      (check.cost * 0.62) -
-      (goldPressure * 0.7) -
-      lostOwnTaxValue -
-      paymentToLeaderPenalty -
-      riskPenalty,
-  };
 }
 
 function findBestRecruitmentAction(state, meta, playerId) {
@@ -2013,13 +1963,6 @@ function findBestLandPurchaseAction(state, meta, playerId) {
     .sort((left, right) => right.score - left.score)[0] || null;
 }
 
-function findBestTaxExemptionAction(state, meta, playerId) {
-  return getPlayerThemes(state, playerId)
-    .map(theme => scoreTaxExemption(state, meta, playerId, theme))
-    .filter(Boolean)
-    .sort((left, right) => right.score - left.score)[0] || null;
-}
-
 function runLandStrategy(state, meta, playerId, plannedAction = null) {
   const budget = ensureCourtBudget(state, meta, playerId);
   if (budget.landPurchasesRemaining <= 0) return false;
@@ -2040,25 +1983,6 @@ function runLandStrategy(state, meta, playerId, plannedAction = null) {
   applyDecisionToResult(state, result, buildLandPurchaseDecision(state, meta, playerId, action));
   logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} bids for ${action.theme.id} at ${bidAmount}g (score ${roundTo(action.score, 2)}).`);
   logPublic(meta, `${publicActor(state, playerId)} bids for ${action.theme.id}.`);
-  return true;
-}
-
-function runTaxExemptionStrategy(state, meta, playerId, plannedAction = null) {
-  const action = plannedAction || findBestTaxExemptionAction(state, meta, playerId);
-  const threshold = getMetaForPlayer(meta, playerId, 'landPurchaseThreshold') + 0.35;
-  if (!action || action.score <= threshold) return false;
-
-  const result = grantTaxExemption(state, playerId, action.theme.id);
-  if (!result?.ok) return false;
-
-  invalidateRoundContext(meta);
-  meta.players[playerId].stats.taxExemptions++;
-  meta.players[playerId].stats.taxExemptionSpend += result.cost || action.cost || 0;
-  meta.totals.taxExemptions++;
-  meta.totals.taxExemptionSpend += result.cost || action.cost || 0;
-  applyDecisionToResult(state, result, buildTaxExemptionDecision(state, meta, playerId, action));
-  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} buys tax exemption for ${action.theme.id} (score ${roundTo(action.score, 2)}).`);
-  logPublic(meta, `${publicActor(state, playerId)} buys tax exemption for ${action.theme.id}.`);
   return true;
 }
 
@@ -2101,7 +2025,6 @@ function takeOneStrategicCourtAction(state, meta, playerId) {
   const options = [
     findBestRecruitmentAction(state, meta, playerId),
     findBestLandPurchaseAction(state, meta, playerId),
-    findBestTaxExemptionAction(state, meta, playerId),
     findBestChurchGiftAction(state, meta, playerId),
     findBestDismissalAction(state, meta, playerId),
   ].filter(Boolean).sort((left, right) => right.score - left.score);
@@ -2110,7 +2033,6 @@ function takeOneStrategicCourtAction(state, meta, playerId) {
   if (!best) return false;
   if (best.kind === 'recruit') return runRecruitmentStrategy(state, meta, playerId, best);
   if (best.kind === 'buy') return runLandStrategy(state, meta, playerId, best);
-  if (best.kind === 'exempt') return runTaxExemptionStrategy(state, meta, playerId, best);
   if (best.kind === 'gift') return runChurchGiftStrategy(state, meta, playerId, best);
   if (best.kind === 'dismiss') return runDismissalStrategy(state, meta, playerId, best);
   return false;
@@ -2194,14 +2116,6 @@ function buildRevocationOptions(state, meta, basileusId) {
         score,
       });
     }
-    if (theme.taxExempt) {
-      const ownerId = Number.isInteger(theme.owner) ? theme.owner : null;
-      options.push({
-        kind: 'exempt',
-        themeId: theme.id,
-        score: profile.weights.revocation + (theme.P * 0.8) + (ownerId == null ? 0 : getCategoryThresholdPressure(state, meta, ownerId, 'estate') * 1.2),
-      });
-    }
   }
 
   if (state.empress != null) {
@@ -2234,7 +2148,7 @@ function handleBasileusRevocation(state, meta) {
   const basileusId = state.basileusId;
   // Each revocation costs more troops than the last. Skip the action entirely if
   // the Basileus does not have enough troops left to pay the next cost.
-  const costCheck = canPayRevocationCost(state);
+  const costCheck = canPayRevocationCost(state, basileusId);
   if (!costCheck.ok) return false;
   const cost = costCheck.cost;
   const ranked = buildRevocationOptions(state, meta, basileusId);
@@ -2275,12 +2189,6 @@ function handleBasileusRevocation(state, meta) {
       logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, basileusId)} strips ${best.themeId} from ${describeActor(state, meta, best.targetPlayerId)}.`);
       logPublic(meta, `${publicActor(state, basileusId)} strips ${best.themeId} from ${publicActor(state, best.targetPlayerId)}.`);
     }
-  } else if (best.kind === 'exempt') {
-    result = revokeTaxExemption(state, best.themeId);
-    if (result?.ok) {
-      logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, basileusId)} revokes the tax exemption of ${best.themeId}.`);
-      logPublic(meta, `${publicActor(state, basileusId)} revokes the tax exemption of ${best.themeId}.`);
-    }
   } else if (best.kind === 'court') {
     result = revokeCourtTitle(state, best.titleType);
     if (result?.ok && best.targetPlayerId != null) {
@@ -2300,6 +2208,97 @@ function handleBasileusRevocation(state, meta) {
   }
 
   return false;
+}
+
+// ── Patriarch / regional revocations (non-Basileus authorities) ───────────────
+// The Patriarch may revoke any bishop. A Domestic of the East/West or the
+// Admiral may revoke a strategos in their region. Same escalating troop cost as
+// the Basileus, drawn from any office or army the revoker controls.
+const REGIONAL_REVOKE_REGIONS = { DOM_EAST: 'east', DOM_WEST: 'west', ADMIRAL: 'sea' };
+
+function buildTitleHolderRevocationOptions(state, meta, playerId) {
+  const player = getPlayer(state, playerId);
+  const profile = getPersonalityProfile(meta, playerId);
+  const options = [];
+  const playerStrength = getPlayerStrength(state, meta, playerId);
+
+  const considerStrategos = (titleKey) => {
+    const region = REGIONAL_REVOKE_REGIONS[titleKey];
+    for (const theme of Object.values(state.themes)) {
+      if (theme.region !== region || theme.occupied || theme.strategos == null) continue;
+      if (theme.strategos === playerId) continue;
+      let score = (getPlayerStrength(state, meta, theme.strategos) - playerStrength) * 0.18
+        + profile.weights.revocation + (theme.L * 0.4)
+        + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 0.9);
+      score -= getObligation(meta, playerId, theme.strategos) * 1.2;
+      options.push({
+        kind: 'minor',
+        titleType: 'strategos',
+        themeId: theme.id,
+        targetPlayerId: theme.strategos,
+        score,
+      });
+    }
+  };
+
+  if (player.majorTitles.includes('DOM_EAST')) considerStrategos('DOM_EAST');
+  if (player.majorTitles.includes('DOM_WEST')) considerStrategos('DOM_WEST');
+  if (player.majorTitles.includes('ADMIRAL')) considerStrategos('ADMIRAL');
+
+  if (player.majorTitles.includes('PATRIARCH')) {
+    for (const theme of Object.values(state.themes)) {
+      if (theme.occupied || theme.bishop == null) continue;
+      if (theme.bishop === playerId) continue;
+      let score = (getPlayerStrength(state, meta, theme.bishop) - playerStrength) * 0.18
+        + profile.weights.revocation + (Number(theme.C) || 0) * 0.6
+        + (getCategoryThresholdPressure(state, meta, theme.bishop, 'church') * 0.95);
+      score -= getObligation(meta, playerId, theme.bishop) * 1.2;
+      options.push({
+        kind: 'minor',
+        titleType: 'bishop',
+        themeId: theme.id,
+        targetPlayerId: theme.bishop,
+        score,
+      });
+    }
+  }
+
+  return options.sort((left, right) => right.score - left.score);
+}
+
+function handleTitleHolderRevocation(state, meta, playerId) {
+  if (playerId === state.basileusId) return false;
+  const player = getPlayer(state, playerId);
+  const eligible =
+    player.majorTitles.includes('PATRIARCH') ||
+    player.majorTitles.includes('DOM_EAST') ||
+    player.majorTitles.includes('DOM_WEST') ||
+    player.majorTitles.includes('ADMIRAL');
+  if (!eligible) return false;
+  const costCheck = canPayRevocationCost(state, playerId);
+  if (!costCheck.ok) return false;
+  const cost = costCheck.cost;
+  const ranked = buildTitleHolderRevocationOptions(state, meta, playerId);
+  const threshold = getMetaForPlayer(meta, playerId, 'revocationThreshold') + (cost - 1) * 0.85;
+  const temperature = getMetaForPlayer(meta, playerId, 'courtTemperature');
+  const plausible = ranked.filter(option => option.score > threshold).slice(0, 6);
+  const best = softmaxPick(plausible, temperature, state.rng);
+  if (!best) return false;
+
+  const result = revokeMinorTitle(state, best.themeId, best.titleType, playerId);
+  if (!result?.ok) return false;
+
+  if (best.targetPlayerId != null) {
+    adjustRelation(meta, best.targetPlayerId, playerId, 0, 0.95);
+    reduceObligation(meta, playerId, best.targetPlayerId, 0.55);
+  }
+  applyDecisionToResult(state, result, buildRevocationDecision(state, meta, playerId, best));
+  meta.players[playerId].stats.revocations++;
+  meta.totals.revocations++;
+  invalidateRoundContext(meta);
+  logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} revokes the ${best.titleType} of ${best.themeId}.`);
+  logPublic(meta, `${publicActor(state, playerId)} revokes the ${best.titleType} of ${best.themeId}.`);
+  return true;
 }
 
 function scoreOfficeDestination(state, meta, playerId, office, troopCount, destination, candidateId, pact) {
@@ -2777,6 +2776,10 @@ function takeOneAiCourtAction(state, meta, playerId) {
   }
 
   if (playerId === state.basileusId && handleBasileusRevocation(state, meta)) {
+    return true;
+  }
+
+  if (handleTitleHolderRevocation(state, meta, playerId)) {
     return true;
   }
 

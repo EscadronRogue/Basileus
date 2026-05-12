@@ -561,7 +561,7 @@ async function verifySaveLoadRecovery() {
     try {
       const { room, host } = harness;
       room.gameState.players[0].gold = 7;
-      room.gameState.themes.CPL.taxExempt = true;
+      room.gameState.themes.CPL.C = 1;
       room.gameState.allOrders[1] = {
         deployments: { DOM_EAST: 'capital' },
         candidate: 0,
@@ -578,7 +578,7 @@ async function verifySaveLoadRecovery() {
 
       const loadedRoom = instance.manager.getRoom(loaded.roomCode);
       assert.equal(loadedRoom.gameState.players[0].gold, 7);
-      assert.equal(loadedRoom.gameState.themes.CPL.taxExempt, true);
+      assert.equal(loadedRoom.gameState.themes.CPL.C, 1);
       assert.deepEqual(loadedRoom.gameState.allOrders[1], {
         deployments: { DOM_EAST: 'capital' },
         candidate: 0,

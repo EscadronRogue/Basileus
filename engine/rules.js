@@ -8,6 +8,11 @@ function readThemeTax(themeOrTax) {
   return Math.max(0, Number(themeOrTax?.T ?? themeOrTax?.tax ?? 0) || 0);
 }
 
+function readThemeChurch(themeOrChurch) {
+  if (typeof themeOrChurch === 'number') return Math.max(0, Number(themeOrChurch) || 0);
+  return Math.max(0, Number(themeOrChurch?.C ?? themeOrChurch?.church ?? 0) || 0);
+}
+
 export function getThemeProfitValue(themeOrProfit) {
   return readThemeProfit(themeOrProfit);
 }
@@ -16,12 +21,12 @@ export function getThemeTaxValue(themeOrTax) {
   return readThemeTax(themeOrTax);
 }
 
-export function getThemeLandPrice(themeOrProfit) {
-  return readThemeProfit(themeOrProfit) * 2;
+export function getThemeChurchValue(theme) {
+  return readThemeChurch(theme);
 }
 
-export function getTaxExemptionCost(themeOrTax) {
-  return readThemeTax(themeOrTax) * 2;
+export function getThemeLandPrice(themeOrProfit) {
+  return readThemeProfit(themeOrProfit) * 2;
 }
 
 export function getNormalOwnerIncome(themeOrProfit) {
@@ -32,20 +37,18 @@ export function getNormalTaxIncome(themeOrTax) {
   return readThemeTax(themeOrTax);
 }
 
-export function getTaxExemptOwnerIncome(themeOrTax) {
-  return readThemeProfit(themeOrTax) + readThemeTax(themeOrTax);
-}
-
 export function getThemeOwnerIncome(theme) {
-  return theme?.taxExempt
-    ? getTaxExemptOwnerIncome(theme)
-    : getNormalOwnerIncome(theme);
+  return getNormalOwnerIncome(theme);
 }
 
 export function getThemeTaxIncome(theme) {
-  return theme?.taxExempt
-    ? 0
-    : getNormalTaxIncome(theme);
+  return getNormalTaxIncome(theme);
+}
+
+// The compensation handed to the best defender of a reconquered province when
+// they decline to take the land for themselves: 2× the theme's profit.
+export function getDefenderRewardGold(theme) {
+  return readThemeProfit(theme) * 2;
 }
 
 export function getMercenaryCostForCount(count) {

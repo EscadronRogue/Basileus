@@ -10,7 +10,7 @@ export const SCORE_CATEGORIES = [
   {
     key: 'estate',
     label: 'Estate Income',
-    description: 'Income from owned estates and tax exemptions.',
+    description: 'Income from owned estates.',
   },
   {
     key: 'tax',

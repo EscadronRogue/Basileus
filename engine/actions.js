@@ -20,7 +20,6 @@ import {
 } from './deals.js';
 import {
   getMercenaryHireCost,
-  getTaxExemptionCost,
   getThemeLandPrice,
 } from './rules.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
@@ -314,7 +313,34 @@ export function settleLandAuctions(state) {
   }
 }
 
+// ─── Bishop seniority registry ───
+function ensureBishopAppointments(state) {
+  if (!Array.isArray(state.bishopAppointments)) state.bishopAppointments = [];
+  return state.bishopAppointments;
+}
+
+function registerBishopAppointment(state, themeId, playerId) {
+  const list = ensureBishopAppointments(state);
+  // Remove any existing entry for this theme so seniority cannot be duplicated.
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].themeId === themeId) list.splice(i, 1);
+  }
+  list.push({ themeId, playerId });
+}
+
+function removeBishopAppointment(state, themeId) {
+  const list = ensureBishopAppointments(state);
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].themeId === themeId) list.splice(i, 1);
+  }
+}
+
 // ─── Gift Theme to Church ───
+// When a player gifts an estate to the church, the province pays no profit and no
+// tax anymore — its church value becomes the former P+T so the church receives the
+// full former economic output of the land. Levy stays at the current value (it has
+// already been reduced when the land was privately bought). The donor automatically
+// becomes the bishop of the gifted province.
 export function giftToChurch(state, playerId, themeId) {
   const theme = state.themes[themeId];
   if (!theme || theme.owner !== playerId) return { ok: false, reason: 'Not your theme' };
@@ -322,67 +348,29 @@ export function giftToChurch(state, playerId, themeId) {
     return { ok: false, reason: `${themeName(state, themeId)} is reserved by an accepted deal and cannot be gifted away.` };
   }
   extractOfficeArmy(state, `STRAT_${themeId}`);
+  const formerProfit = Number(theme.P) || 0;
+  const formerTax = Number(theme.T) || 0;
   theme.owner = 'church';
-  theme.taxExempt = false;
   theme.strategos = null;
+  theme.P = 0;
+  theme.T = 0;
+  theme.C = formerProfit + formerTax;
   theme.bishop = playerId;
   theme.bishopIsDonor = true;
+  registerBishopAppointment(state, themeId, playerId);
   state.log.push({ type: 'gift_church', player: playerId, theme: themeId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'gift_theme_to_church',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} gifts ${themeName(state, themeId)} to the church.`,
+    summary: `${playerName(state, playerId)} gifts ${themeName(state, themeId)} to the church and becomes its bishop.`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
+      churchValue: theme.C,
     },
   });
   return { ok: true, historyId: historyEvent?.id || null };
-}
-
-// ─── Tax Exemption ───
-export function canGrantTaxExemption(state, playerId, themeId) {
-  const theme = state.themes[themeId];
-  if (!theme) return { ok: false, reason: 'Theme not found' };
-  if (theme.occupied) return { ok: false, reason: 'Occupied land cannot be exempted' };
-  if (theme.owner === null) return { ok: false, reason: 'Only owned land can be exempted' };
-  if (theme.owner === 'church') return { ok: false, reason: 'Church land cannot be exempted' };
-  if (theme.owner !== playerId) return { ok: false, reason: 'You do not own this theme' };
-  if (theme.taxExempt) return { ok: false, reason: 'Theme is already tax-exempt' };
-  if (playerId === state.basileusId) return { ok: false, reason: 'The Basileus cannot buy tax exemption for his own estates' };
-
-  const cost = getTaxExemptionCost(theme);
-  const spendableGold = getSpendableGold(state, playerId);
-  if (spendableGold < cost) {
-    return { ok: false, reason: `Need ${formatGold(cost)} of unreserved gold, have ${formatGold(spendableGold)}.` };
-  }
-  return { ok: true, cost };
-}
-
-export function grantTaxExemption(state, playerId, themeId) {
-  const check = canGrantTaxExemption(state, playerId, themeId);
-  if (!check.ok) return check;
-
-  const theme = state.themes[themeId];
-  const owner = getPlayer(state, playerId);
-  const basileus = getPlayer(state, state.basileusId);
-  owner.gold -= check.cost;
-  if (basileus) basileus.gold += check.cost;
-  theme.taxExempt = true;
-  state.log.push({ type: 'tax_exempt', player: playerId, theme: themeId, cost: check.cost, round: state.round });
-  const historyEvent = recordHistoryEvent(state, {
-    category: 'court',
-    type: 'grant_tax_exemption',
-    actorId: playerId,
-    summary: `${playerName(state, playerId)} buys tax exemption for ${themeName(state, themeId)} for ${formatGold(check.cost)}.`,
-    details: {
-      themeId,
-      themeName: themeName(state, themeId),
-      cost: check.cost,
-    },
-  });
-  return { ok: true, cost: check.cost, historyId: historyEvent?.id || null };
 }
 
 // ─── Appointments ───
@@ -432,14 +420,13 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
   if (!theme || theme.occupied || theme.id === 'CPL') return { ok: false, reason: 'Invalid theme' };
   if (theme.bishop !== null) return { ok: false, reason: 'This bishop title is already appointed' };
+  if ((Number(theme.C) || 0) < 1) {
+    return { ok: false, reason: 'A bishop can only be appointed in a province with at least 1 church value.' };
+  }
 
   const appointer = getPlayer(state, appointerId);
   if (!appointer.majorTitles.includes('PATRIARCH') && appointerId !== state.basileusId) {
     return { ok: false, reason: 'Not the Patriarch' };
-  }
-
-  if (theme.bishopIsDonor) {
-    return { ok: false, reason: 'This bishopric was granted by church donation and is protected' };
   }
 
   const dealCheck = validateAppointmentPromiseChoice(state, appointerId, appointeeId);
@@ -448,6 +435,8 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
   if (!payment.ok) return { ok: false, reason: payment.reason };
 
   theme.bishop = appointeeId;
+  theme.bishopIsDonor = false;
+  registerBishopAppointment(state, themeId, appointeeId);
   consumeAppointmentPromise(state, appointerId, appointeeId);
   recordAppointmentCostUse(state, appointerId, appointeeId);
   state.log.push({ type: 'appoint_bishop', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
@@ -504,62 +493,41 @@ export function appointCourtTitle(state, titleType, appointeeId) {
   return { ok: true, historyId: historyEvent?.id || null };
 }
 
-// ─── Basileus Revocation Cost ───
-// Each revocation in the same round costs more troops: 1 for the first, 2 for the
-// second, 3 for the third, and so on. Levies are spent first; if those run out the
-// Basileus's professional troops are suspended for this round and return next round.
-function getBasileusOfficeKey(officeKey) {
-  return officeKey;
+// ─── Revocation Cost ───
+// Each revocation in the same round (per player) costs more troops: 1 for the first,
+// 2 for the second, 3 for the third, and so on. Levies are spent first; if those
+// run out the player's professional troops are suspended for this round and return
+// next round. Professional troops sent on a revocation/appointment mission still
+// count for upkeep (they are paid even while away from the office).
+export function getNextRevocationCost(state, playerId = state.basileusId) {
+  const counts = state.courtActions?.revocationsUsed || {};
+  return (Number(counts[playerId]) || 0) + 1;
 }
 
-function getBasileusOwnedOfficeKeys(state) {
-  const basileusId = state.basileusId;
-  const keys = new Set(['BASILEUS']);
-  // Capital court titles assigned to the Basileus, if any.
-  if (state.empress === basileusId) keys.add('EMPRESS');
-  if (state.chiefEunuchs === basileusId) keys.add('CHIEF_EUNUCHS');
-  // Major titles held by the Basileus (rare but possible after a coup before reassignment).
-  const basileus = getPlayer(state, basileusId);
-  for (const titleKey of basileus?.majorTitles || []) {
-    keys.add(titleKey);
-  }
-  return keys;
+export function getPlayerAvailableRevocationTroops(state, playerId = state.basileusId) {
+  return getPlayerAvailableAppointmentTroops(state, playerId);
 }
 
+// Back-compat: older callers passed the Basileus implicitly. Keep the alias.
 export function getBasileusAvailableTroops(state) {
-  const basileusId = state.basileusId;
-  const basileus = getPlayer(state, basileusId);
-  const offices = getBasileusOwnedOfficeKeys(state);
-  let levies = 0;
-  let professionals = 0;
-  for (const officeKey of offices) {
-    levies += state.currentLevies?.[officeKey] || 0;
-    professionals += basileus?.professionalArmies?.[officeKey] || 0;
-  }
-  return { levies, professionals, total: levies + professionals };
+  return getPlayerAvailableRevocationTroops(state, state.basileusId);
 }
 
-export function getNextRevocationCost(state) {
-  const used = state.courtActions?.basileusRevocationsUsed || 0;
-  return used + 1;
-}
-
-export function canPayRevocationCost(state) {
-  const cost = getNextRevocationCost(state);
-  const { total } = getBasileusAvailableTroops(state);
+export function canPayRevocationCost(state, playerId = state.basileusId) {
+  const cost = getNextRevocationCost(state, playerId);
+  const { total } = getPlayerAvailableRevocationTroops(state, playerId);
   return total >= cost ? { ok: true, cost } : { ok: false, cost, available: total };
 }
 
-function payRevocationCost(state) {
-  const cost = getNextRevocationCost(state);
-  const { total } = getBasileusAvailableTroops(state);
+function payRevocationCost(state, playerId = state.basileusId) {
+  const cost = getNextRevocationCost(state, playerId);
+  const { total } = getPlayerAvailableRevocationTroops(state, playerId);
   if (total < cost) {
     return { ok: false, cost, available: total, reason: `Not enough troops to revoke (need ${cost}, have ${total}).` };
   }
 
-  const basileusId = state.basileusId;
-  const basileus = getPlayer(state, basileusId);
-  const offices = Array.from(getBasileusOwnedOfficeKeys(state));
+  const player = getPlayer(state, playerId);
+  const offices = getPlayerControlledOfficeKeys(state, playerId);
   let remaining = cost;
   let leviesSpent = 0;
   let professionalsSpent = 0;
@@ -578,31 +546,32 @@ function payRevocationCost(state) {
   // Then suspend professional troops, which return next round.
   if (remaining > 0) {
     if (!state.suspendedProfessionals) state.suspendedProfessionals = {};
-    if (!state.suspendedProfessionals[basileusId]) state.suspendedProfessionals[basileusId] = {};
+    if (!state.suspendedProfessionals[playerId]) state.suspendedProfessionals[playerId] = {};
     for (const officeKey of offices) {
       if (remaining <= 0) break;
-      const available = basileus.professionalArmies?.[officeKey] || 0;
+      const available = player.professionalArmies?.[officeKey] || 0;
       if (available <= 0) continue;
       const take = Math.min(available, remaining);
-      basileus.professionalArmies[officeKey] = available - take;
-      if (basileus.professionalArmies[officeKey] === 0) {
-        delete basileus.professionalArmies[officeKey];
+      player.professionalArmies[officeKey] = available - take;
+      if (player.professionalArmies[officeKey] === 0) {
+        delete player.professionalArmies[officeKey];
       }
-      state.suspendedProfessionals[basileusId][officeKey] =
-        (state.suspendedProfessionals[basileusId][officeKey] || 0) + take;
+      state.suspendedProfessionals[playerId][officeKey] =
+        (state.suspendedProfessionals[playerId][officeKey] || 0) + take;
       remaining -= take;
       professionalsSpent += take;
     }
   }
 
-  state.courtActions.basileusRevocationsUsed = (state.courtActions.basileusRevocationsUsed || 0) + 1;
+  if (!state.courtActions.revocationsUsed) state.courtActions.revocationsUsed = {};
+  state.courtActions.revocationsUsed[playerId] = (state.courtActions.revocationsUsed[playerId] || 0) + 1;
 
   return { ok: true, cost, leviesSpent, professionalsSpent };
 }
 
-// Restore professional troops that were suspended during revocations. Called at the
-// end of cleanup so the troops are back for the next round but did not pay maintenance
-// for the round in which they were spent.
+// Restore professional troops that were suspended during revocations/appointments.
+// Mission troops are paid for the round they were spent (upkeep applies to suspended
+// pools too), then returned at end of cleanup so they're available next round.
 export function restoreSuspendedProfessionals(state) {
   if (!state.suspendedProfessionals) return;
   for (const [pidStr, pools] of Object.entries(state.suspendedProfessionals)) {
@@ -616,7 +585,18 @@ export function restoreSuspendedProfessionals(state) {
   state.suspendedProfessionals = {};
 }
 
-// ─── Basileus Revocation ───
+// Count of professional troops currently on mission (suspended) for a player.
+function getSuspendedProfessionalCount(state, playerId) {
+  const pools = state.suspendedProfessionals?.[playerId];
+  if (!pools) return 0;
+  return Object.values(pools).reduce((total, count) => total + (Number(count) || 0), 0);
+}
+
+// ─── Revocation ───
+// The Basileus can revoke any major or minor title or an estate. The Patriarch can
+// revoke bishops. The regional title-holders (Domestic of the East/West, Admiral)
+// can revoke strategoi inside their jurisdiction. All revocations follow the same
+// escalating troop-cost rule (1, 2, 3, ... per revocation per player per round).
 function describeRevocationCost(payment) {
   if (!payment) return null;
   return {
@@ -626,14 +606,35 @@ function describeRevocationCost(payment) {
   };
 }
 
-export function revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId) {
+const REGIONAL_REVOCATION_TITLES = {
+  east: 'DOM_EAST',
+  west: 'DOM_WEST',
+  sea: 'ADMIRAL',
+};
+
+export function canPlayerRevokeStrategos(state, playerId, themeId) {
+  if (playerId === state.basileusId) return true;
+  const theme = state.themes[themeId];
+  if (!theme) return false;
+  const requiredTitle = REGIONAL_REVOCATION_TITLES[theme.region];
+  if (!requiredTitle) return false;
+  return Boolean(getPlayer(state, playerId)?.majorTitles?.includes(requiredTitle));
+}
+
+export function canPlayerRevokeBishop(state, playerId) {
+  if (playerId === state.basileusId) return true;
+  return Boolean(getPlayer(state, playerId)?.majorTitles?.includes('PATRIARCH'));
+}
+
+export function revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId, revokerId = state.basileusId) {
   const revokedPlayer = getPlayer(state, revokedPlayerId);
   const newHolder = getPlayer(state, newHolderId);
 
   if (!revokedPlayer.majorTitles.includes(titleKey)) return { ok: false, reason: 'Player does not hold this title' };
   if (newHolderId === state.basileusId) return { ok: false, reason: 'Basileus cannot hold major titles' };
+  if (revokerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus can revoke major titles' };
 
-  const payment = payRevocationCost(state);
+  const payment = payRevocationCost(state, revokerId);
   if (!payment.ok) return { ok: false, reason: payment.reason };
 
   revokedPlayer.majorTitles = revokedPlayer.majorTitles.filter(t => t !== titleKey);
@@ -650,12 +651,12 @@ export function revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId) 
     }
   }
 
-  state.log.push({ type: 'revoke_major', revoked: revokedPlayerId, title: titleKey, newHolder: newHolderId, round: state.round, troopCost: payment.cost });
+  state.log.push({ type: 'revoke_major', revoked: revokedPlayerId, title: titleKey, newHolder: newHolderId, round: state.round, troopCost: payment.cost, revokerId });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'revoke_major_title',
-    actorId: state.basileusId,
-    summary: `${playerName(state, state.basileusId)} revokes ${MAJOR_TITLES[titleKey]?.name || titleKey} from ${playerName(state, revokedPlayerId)} and gives it to ${playerName(state, newHolderId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
+    actorId: revokerId,
+    summary: `${playerName(state, revokerId)} revokes ${MAJOR_TITLES[titleKey]?.name || titleKey} from ${playerName(state, revokedPlayerId)} and gives it to ${playerName(state, newHolderId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
     details: {
       titleKey,
       titleName: MAJOR_TITLES[titleKey]?.name || titleKey,
@@ -669,11 +670,20 @@ export function revokeMajorTitle(state, revokedPlayerId, titleKey, newHolderId) 
   return { ok: true, cost: payment.cost, historyId: historyEvent?.id || null };
 }
 
-export function revokeMinorTitle(state, themeId, titleType) {
+export function revokeMinorTitle(state, themeId, titleType, revokerId = state.basileusId) {
   const theme = state.themes[themeId];
   if (!theme) return { ok: false };
 
-  const payment = payRevocationCost(state);
+  // Authority check: Basileus may revoke either; regional commanders revoke
+  // their strategoi; the Patriarch revokes bishops.
+  if (titleType === 'strategos' && !canPlayerRevokeStrategos(state, revokerId, themeId)) {
+    return { ok: false, reason: 'You do not have authority to revoke this strategos.' };
+  }
+  if (titleType === 'bishop' && !canPlayerRevokeBishop(state, revokerId)) {
+    return { ok: false, reason: 'Only the Basileus or the Patriarch can revoke a bishop.' };
+  }
+
+  const payment = payRevocationCost(state, revokerId);
   if (!payment.ok) return { ok: false, reason: payment.reason };
 
   if (titleType === 'strategos') {
@@ -682,13 +692,14 @@ export function revokeMinorTitle(state, themeId, titleType) {
   } else if (titleType === 'bishop') {
     theme.bishop = null;
     theme.bishopIsDonor = false;
+    removeBishopAppointment(state, themeId);
   }
-  state.log.push({ type: 'revoke_minor', theme: themeId, titleType, round: state.round, troopCost: payment.cost });
+  state.log.push({ type: 'revoke_minor', theme: themeId, titleType, round: state.round, troopCost: payment.cost, revokerId });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'revoke_minor_title',
-    actorId: state.basileusId,
-    summary: `${playerName(state, state.basileusId)} revokes the ${titleType} of ${themeName(state, themeId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
+    actorId: revokerId,
+    summary: `${playerName(state, revokerId)} revokes the ${titleType} of ${themeName(state, themeId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
@@ -699,25 +710,26 @@ export function revokeMinorTitle(state, themeId, titleType) {
   return { ok: true, cost: payment.cost, historyId: historyEvent?.id || null };
 }
 
-export function revokeCourtTitle(state, courtTitleType) {
+export function revokeCourtTitle(state, courtTitleType, revokerId = state.basileusId) {
   if (courtTitleType !== 'EMPRESS' && courtTitleType !== 'CHIEF_EUNUCHS') {
     return { ok: false, reason: 'Invalid court title' };
   }
+  if (revokerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus can revoke court titles' };
   const holderId = courtTitleType === 'EMPRESS' ? state.empress : state.chiefEunuchs;
   if (holderId == null) return { ok: false, reason: 'Title is vacant' };
 
-  const payment = payRevocationCost(state);
+  const payment = payRevocationCost(state, revokerId);
   if (!payment.ok) return { ok: false, reason: payment.reason };
 
   if (courtTitleType === 'EMPRESS') state.empress = null;
   else state.chiefEunuchs = null;
 
-  state.log.push({ type: 'revoke_court', title: courtTitleType, holder: holderId, round: state.round, troopCost: payment.cost });
+  state.log.push({ type: 'revoke_court', title: courtTitleType, holder: holderId, round: state.round, troopCost: payment.cost, revokerId });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'revoke_court_title',
-    actorId: state.basileusId,
-    summary: `${playerName(state, state.basileusId)} revokes the ${courtTitleName(courtTitleType)} from ${playerName(state, holderId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
+    actorId: revokerId,
+    summary: `${playerName(state, revokerId)} revokes the ${courtTitleName(courtTitleType)} from ${playerName(state, holderId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
     details: {
       titleType: courtTitleType,
       titleName: courtTitleName(courtTitleType),
@@ -729,11 +741,12 @@ export function revokeCourtTitle(state, courtTitleType) {
   return { ok: true, cost: payment.cost, historyId: historyEvent?.id || null };
 }
 
-export function revokeTheme(state, themeId) {
+export function revokeTheme(state, themeId, revokerId = state.basileusId) {
   const theme = state.themes[themeId];
   if (!theme || theme.owner === null || theme.owner === 'church') return { ok: false };
+  if (revokerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus can revoke private estates' };
 
-  const payment = payRevocationCost(state);
+  const payment = payRevocationCost(state, revokerId);
   if (!payment.ok) return { ok: false, reason: payment.reason };
 
   extractOfficeArmy(state, `STRAT_${themeId}`);
@@ -742,39 +755,16 @@ export function revokeTheme(state, themeId) {
     theme.L = Math.max(0, (Number(theme.L) || 0) + 1);
     theme.privateLevyReduced = false;
   }
-  theme.taxExempt = false;
   theme.strategos = null;
   theme.bishop = null;
   theme.bishopIsDonor = false;
-  state.log.push({ type: 'revoke_theme', theme: themeId, round: state.round, troopCost: payment.cost });
+  removeBishopAppointment(state, themeId);
+  state.log.push({ type: 'revoke_theme', theme: themeId, round: state.round, troopCost: payment.cost, revokerId });
   const historyEvent = recordHistoryEvent(state, {
     category: 'court',
     type: 'revoke_theme',
-    actorId: state.basileusId,
-    summary: `${playerName(state, state.basileusId)} strips ${themeName(state, themeId)} from private ownership (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
-    details: {
-      themeId,
-      themeName: themeName(state, themeId),
-      revocationCost: describeRevocationCost(payment),
-    },
-  });
-  return { ok: true, cost: payment.cost, historyId: historyEvent?.id || null };
-}
-
-export function revokeTaxExemption(state, themeId) {
-  const theme = state.themes[themeId];
-  if (!theme || !theme.taxExempt) return { ok: false };
-
-  const payment = payRevocationCost(state);
-  if (!payment.ok) return { ok: false, reason: payment.reason };
-
-  theme.taxExempt = false;
-  state.log.push({ type: 'revoke_exemption', theme: themeId, round: state.round, troopCost: payment.cost });
-  const historyEvent = recordHistoryEvent(state, {
-    category: 'court',
-    type: 'revoke_tax_exemption',
-    actorId: state.basileusId,
-    summary: `${playerName(state, state.basileusId)} revokes the tax exemption of ${themeName(state, themeId)} (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
+    actorId: revokerId,
+    summary: `${playerName(state, revokerId)} strips ${themeName(state, themeId)} from private ownership (${payment.cost} troop${payment.cost === 1 ? '' : 's'} spent).`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
@@ -993,6 +983,11 @@ export function canRecruitProfessional(state, playerId, officeKey) {
   if (state.recruitedThisRound[key] === state.round) {
     return { ok: false, reason: 'Already recruited for this office this round' };
   }
+  // A player cannot raise new professional troops while their treasury is in debt.
+  const player = getPlayer(state, playerId);
+  if (player && (Number(player.gold) || 0) < 0) {
+    return { ok: false, reason: 'You cannot recruit new troops while your treasury is in debt.' };
+  }
   return { ok: true };
 }
 
@@ -1076,15 +1071,60 @@ export function dismissProfessional(state, playerId, officeKey, count) {
 
 export function payMaintenance(state, playerId) {
   const player = getPlayer(state, playerId);
-  const upkeepDue = Object.values(player.professionalArmies)
+  const activeUpkeep = Object.values(player.professionalArmies)
     .reduce((total, count) => total + Math.max(0, count || 0), 0);
+  // Professional troops on mission (suspended for appointments/revocations) are
+  // paid this round even though they are away from their office. They will be
+  // restored to their armies immediately after maintenance.
+  const onMission = getSuspendedProfessionalCount(state, playerId);
+  const upkeepDue = activeUpkeep + onMission;
   player.gold -= upkeepDue;
   return {
     cost: upkeepDue,
     upkeepDue,
+    onMission,
     unpaid: 0,
     disbanded: {},
   };
+}
+
+// At the start of each player's turn (or game-wide at round-start), if a player
+// is in debt they automatically lose 1 random professional troop per gold of
+// debt. The discarded troops come from anywhere in their professional army.
+export function applyDebtDisbanding(state, playerId, rng = state.rng) {
+  const player = getPlayer(state, playerId);
+  if (!player) return { disbanded: 0, lost: {} };
+  const debt = -Math.min(0, Number(player.gold) || 0);
+  if (debt <= 0) return { disbanded: 0, lost: {} };
+
+  const lost = {};
+  let disbanded = 0;
+  const drawOne = () => {
+    const entries = Object.entries(player.professionalArmies).filter(([, count]) => count > 0);
+    if (entries.length === 0) return false;
+    const idx = Math.floor((rng ? rng() : Math.random()) * entries.length);
+    const [officeKey] = entries[idx];
+    player.professionalArmies[officeKey] = Math.max(0, (player.professionalArmies[officeKey] || 0) - 1);
+    if (player.professionalArmies[officeKey] === 0) delete player.professionalArmies[officeKey];
+    lost[officeKey] = (lost[officeKey] || 0) + 1;
+    disbanded++;
+    return true;
+  };
+
+  for (let i = 0; i < debt; i++) {
+    if (!drawOne()) break;
+  }
+  if (disbanded > 0) {
+    state.log.push({ type: 'debt_disband', player: playerId, count: disbanded, debt, round: state.round });
+    recordHistoryEvent(state, {
+      category: 'system',
+      type: 'debt_disband',
+      actorId: playerId,
+      summary: `${playerName(state, playerId)} loses ${disbanded} professional troop${disbanded === 1 ? '' : 's'} to debt (${debt}g owed).`,
+      details: { count: disbanded, debt, lost },
+    });
+  }
+  return { disbanded, lost };
 }
 
 // ─── Scoring ───
