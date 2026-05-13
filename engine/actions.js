@@ -83,7 +83,7 @@ function transferOfficeArmy(state, officeKey, playerId, minimumCount = 0) {
 function ensureCourtActionState(state) {
   if (!state.courtActions) state.courtActions = {};
   if (!state.courtActions.appointmentsByRecipient) state.courtActions.appointmentsByRecipient = {};
-  if (!state.courtActions.revocationsByTarget) state.courtActions.revocationsByTarget = {};
+  if (!state.courtActions.revocationsUsed) state.courtActions.revocationsUsed = {};
   return state.courtActions;
 }
 
@@ -260,20 +260,14 @@ function payPatriarchBishopAppointmentCost(state, appointerId, appointeeId) {
   };
 }
 
-function recordPatriarchBishopRevocationCostUse(state, revokerId, targetPlayerId) {
+function recordRevocationCostUse(state, revokerId) {
   const courtActions = ensureCourtActionState(state);
-  if (!courtActions.revocationsByTarget[revokerId]) {
-    courtActions.revocationsByTarget[revokerId] = {};
-  }
-  const byTarget = courtActions.revocationsByTarget[revokerId];
-  byTarget[targetPlayerId] = (Number(byTarget[targetPlayerId]) || 0) + 1;
+  courtActions.revocationsUsed[revokerId] = (Number(courtActions.revocationsUsed[revokerId]) || 0) + 1;
 }
 
 export function getPatriarchBishopRevocationGoldCost(state, revokerId, targetPlayerId) {
   if (!isValidPlayerId(state, targetPlayerId)) return 0;
-  const courtActions = ensureCourtActionState(state);
-  const byTarget = courtActions.revocationsByTarget[revokerId] || {};
-  return Math.max(0, Number(byTarget[targetPlayerId]) || 0) * 2;
+  return getNextRevocationCost(state, revokerId) * 2;
 }
 
 export function canPayPatriarchBishopRevocationCost(state, revokerId, targetPlayerId) {
@@ -320,7 +314,7 @@ function payPatriarchBishopRevocationCost(state, revokerId, targetPlayerId) {
   if (!check.ok) return check;
   const cost = check.goldCost;
   if (cost > 0) getPlayer(state, revokerId).gold -= cost;
-  recordPatriarchBishopRevocationCostUse(state, revokerId, targetPlayerId);
+  recordRevocationCostUse(state, revokerId);
   return {
     ok: true,
     cost,
@@ -660,9 +654,9 @@ export function appointCourtTitle(state, titleType, appointeeId) {
 // ─── Revocation Cost ───
 // Most revocations in the same round (per player) cost more troops: 1 for the
 // first, 2 for the second, 3 for the third, and so on. Patriarch bishop
-// revocations instead use the doubled gold repeat-target cost, matching
-// Patriarch bishop appointments. Professional troops sent on a revocation or
-// appointment mission still count for upkeep.
+// revocations use the same per-revoker escalation, doubled and paid in gold.
+// Professional troops sent on a revocation or appointment mission still count
+// for upkeep.
 export function getNextRevocationCost(state, playerId = state.basileusId) {
   const counts = state.courtActions?.revocationsUsed || {};
   return (Number(counts[playerId]) || 0) + 1;
@@ -727,8 +721,7 @@ function payRevocationCost(state, playerId = state.basileusId) {
     }
   }
 
-  if (!state.courtActions.revocationsUsed) state.courtActions.revocationsUsed = {};
-  state.courtActions.revocationsUsed[playerId] = (state.courtActions.revocationsUsed[playerId] || 0) + 1;
+  recordRevocationCostUse(state, playerId);
 
   return { ok: true, cost, leviesSpent, professionalsSpent };
 }

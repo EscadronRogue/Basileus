@@ -102,8 +102,8 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
  * stays appointed (and continues to receive a share of the church pool) even
  * though the lost province no longer contributes its church value.
  * Recovered provinces become ownerless but keep any bishop who remained attached
- * during occupation. The defender reward step in turnflow may then assign a new
- * private owner to whoever claims the land.
+ * during occupation. The defender reward step in turnflow may leave some pending
+ * reconquests occupied if defenders choose gold.
  */
 export function applyInvasionResult(state, result) {
   for (const themeId of result.themesLost) {

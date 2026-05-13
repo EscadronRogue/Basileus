@@ -100,7 +100,7 @@ test('Patriarch revocation panel displays gold costs for selected bishop targets
   const container = makePanelContainer();
   renderCourtPanel(container, state, patriarchId, {}, { uiState });
 
-  assert.match(container.innerHTML, /Revoke \(0 gold\)/);
+  assert.match(container.innerHTML, /Revoke \(2 gold\)/);
   assert.doesNotMatch(container.innerHTML, /Revoke \(1 troop\)/);
 });
 

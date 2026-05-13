@@ -2189,7 +2189,7 @@ function handleBasileusRevocation(state, meta) {
 // ── Patriarch / regional revocations (non-Basileus authorities) ───────────────
 // The Patriarch may revoke any bishop. A Domestic of the East/West or the
 // Admiral may revoke a strategos in their region. Patriarch bishop revocations
-// use doubled gold repeat-target costs; regional revocations use troops.
+// use doubled per-revoker gold costs; regional revocations use troops.
 const REGIONAL_REVOKE_REGIONS = { DOM_EAST: 'east', DOM_WEST: 'west', ADMIRAL: 'sea' };
 
 function buildTitleHolderRevocationOptions(state, meta, playerId) {
@@ -2262,7 +2262,7 @@ function handleTitleHolderRevocation(state, meta, playerId) {
         : canPayRevocationCost(state, playerId);
       if (!paymentCheck.ok) return null;
       const costStep = goldRevocation
-        ? getPatriarchBishopRevocationGoldCost(state, playerId, option.targetPlayerId) / 2
+        ? Math.max(0, (getPatriarchBishopRevocationGoldCost(state, playerId, option.targetPlayerId) / 2) - 1)
         : Math.max(0, paymentCheck.cost - 1);
       return {
         ...option,

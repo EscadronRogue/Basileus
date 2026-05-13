@@ -667,7 +667,7 @@ function renderHistoryDetails(state, event) {
           <div class="history-breakdown-note province-note">Lost: ${renderProvinceBadgeList(state, event.details.themesLost)}</div>
         ` : ''}
         ${event.details.themesRecovered?.length ? `
-          <div class="history-breakdown-note province-note">Recovered: ${renderProvinceBadgeList(state, event.details.themesRecovered)}</div>
+          <div class="history-breakdown-note province-note">Recoverable: ${renderProvinceBadgeList(state, event.details.themesRecovered)}</div>
         ` : ''}
       </div>
       ${renderWarContributionBreakdown(event.details.contributions)}
@@ -2343,7 +2343,7 @@ function renderRevocationOptions(state, actorId, courtDraft = {}, groups = colle
       `).join('')
     : '<p class="section-hint">Nothing currently revocable.</p>';
   const ruleText = !isBasileus && hasPatriarch
-    ? `${authorityLabel} Patriarch bishop revocations use gold like Patriarch bishop appointments: first revocation of a target is free, then 2, 4, 6... gold for repeat revocations of that same target.${hasRegionalCommand ? ' Strategos revocations still use the normal escalating troop cost.' : ''} You cannot revoke the same player twice in a row.`
+    ? `${authorityLabel} Patriarch bishop revocations use doubled per-revocation gold costs: 2, 4, 6...${hasRegionalCommand ? ' Strategos revocations still use the normal escalating troop cost.' : ''} You cannot revoke the same player twice in a row.`
     : `${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... You cannot revoke the same player twice in a row. Levies are spent before professionals; mission professionals still pay upkeep and return next round.`;
 
   return `<div class="revocation">
@@ -2676,17 +2676,20 @@ function renderDefenderRewardSection(state, activePlayerId = null) {
     ? state.pendingDefenderRewards
     : (Array.isArray(state.lastWarResult?.defenderRewards) ? state.lastWarResult.defenderRewards : []);
   if (!rewards.length) return '';
+  const pendingRewards = rewards.filter((reward) => !reward.resolved);
+  const farthestPendingReward = pendingRewards[pendingRewards.length - 1] || null;
+  const pendingGoldValue = farthestPendingReward?.goldValue || 0;
 
   return `<div class="resolution-section defender-rewards">
     <h4>Best Defender Rewards</h4>
-    <p class="section-hint">Top frontier contributors choose in rank order: take the reconquered land as a private estate, or take 2&times;P gold.</p>
+    <p class="section-hint">Top frontier contributors choose in rank order: restore land to the empire as free-citizen territory, or take 2&times;P gold and leave the farthest pending province occupied.</p>
     <div class="dashboard-list compact">
       ${rewards.map((reward) => {
         const theme = state.themes[reward.themeId];
         const isActor = activePlayerId === reward.defenderId;
         const resolved = Boolean(reward.resolved);
-        const ownerLabel = reward.choice === 'land'
-          ? `${renderPlayerRoleNameById(state, reward.defenderId)} claimed the land`
+        const ownerLabel = reward.choice === 'empire' || reward.choice === 'land'
+          ? `${renderPlayerRoleNameById(state, reward.defenderId)} restored it to the empire`
           : reward.choice === 'gold'
             ? `${renderPlayerRoleNameById(state, reward.defenderId)} took ${formatGold(reward.gold || reward.goldValue || 0)}`
             : `${renderPlayerRoleNameById(state, reward.defenderId)} chooses`;
@@ -2696,8 +2699,8 @@ function renderDefenderRewardSection(state, activePlayerId = null) {
             <span class="dashboard-list-note">${ownerLabel} | Rank #${reward.rank || 1} with ${formatTroops(reward.troops || 0)}</span>
           </div>
           ${resolved ? '' : `<div class="auction-controls">
-            <button class="appt-btn" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="land" ${isActor ? '' : 'disabled'}>Take Land</button>
-            <button class="btn-recruit" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold" ${isActor ? '' : 'disabled'}>Take ${formatGold(reward.goldValue || 0)}</button>
+            <button class="appt-btn" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire" ${isActor ? '' : 'disabled'}>Restore</button>
+            <button class="btn-recruit" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold" ${isActor ? '' : 'disabled'}>Take ${formatGold(pendingGoldValue)}</button>
           </div>`}
         </div>`;
       }).join('')}
@@ -2759,7 +2762,7 @@ export function renderResolutionPanel(container, state, options = {}) {
         </div>
         ${inv?.strength?.length === 2 ? `<div class="war-estimate">Estimate: ${inv.strength[0]}-${inv.strength[1]}</div>` : ''}
         <div class="war-outcome">${
-          war.outcome === 'victory' ? 'Victory. Reconquered: ' + renderProvinceBadgeList(state, war.themesRecovered) :
+          war.outcome === 'victory' ? 'Victory. Can reconquer: ' + renderProvinceBadgeList(state, war.themesRecovered) :
           war.outcome === 'defeat' ? 'Defeat. Lost: ' + renderProvinceBadgeList(state, war.themesLost) :
           'âš– Stalemate'
         }</div>
@@ -2821,7 +2824,7 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
   if (war) {
     const invasionName = state.currentInvasion?.name || 'Invasion';
     const outcomeText = war.outcome === 'victory'
-      ? `Victory. Reconquered: ${renderProvinceBadgeList(state, war.themesRecovered)}`
+      ? `Victory. Can reconquer: ${renderProvinceBadgeList(state, war.themesRecovered)}`
       : war.outcome === 'defeat'
         ? `Defeat. Lost: ${renderProvinceBadgeList(state, war.themesLost)}`
         : 'Stalemate';

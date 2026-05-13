@@ -226,10 +226,8 @@ export function phaseCourt(state) {
     admiralAppointed: false,
     patriarchAppointed: false,
     // Per-player count of revocations this round. Each player's nth revocation
-    // costs n troops unless the Patriarch is revoking bishops, which uses a
-    // doubled gold repeat-target cost.
+    // costs n troops, or 2n gold for Patriarch bishop revocations.
     revocationsUsed: {},
-    revocationsByTarget: {},
     appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };
@@ -355,10 +353,12 @@ export function phaseResolution(state) {
       contributions: frontierContributions,
     };
     applyInvasionResult(state, warResult);
-    // After a successful repulse, top contributors are offered a reward: take a
-    // reconquered estate or receive 2× its profit in gold. Cycles back through the
-    // contributor list if more lands were recovered than there were defenders.
+    // After a successful repulse, top contributors decide whether each recovered
+    // province returns to the empire as free-citizen land or stays occupied in
+    // exchange for gold. Gold choices always abandon the farthest pending
+    // reconquest, preserving a contiguous imperial frontier.
     state.pendingDefenderRewards = createDefenderRewardQueue(state, warResult, frontierContributions);
+    preparePendingReconquestRewards(state, state.pendingDefenderRewards);
     warResult.defenderRewards = state.pendingDefenderRewards;
     state.lastWarResult = warResult;
 
@@ -399,10 +399,11 @@ export function phaseResolution(state) {
 
 // ─── Best-defender reward ───
 // After a successful invasion repulse, top contributors (by frontier troops) each
-// get to claim one of the reconquered estates or take 2× its profit in gold instead.
-// Defenders cycle in rank order — if more lands than defenders, the top defender
-// picks again, and so on. Land is taken as if bought: ownership transfers and the
-// province's levy is reduced by 1 (the standard private-acquisition penalty).
+// decide whether one reconquerable province returns to the empire as free-citizen
+// land or remains occupied in exchange for 2× its profit in gold. Defenders cycle
+// in rank order. Imperial reconquests are assigned from the capital outward;
+// gold choices abandon the farthest pending province so the recovered frontier
+// stays contiguous.
 function rankedDefenders(contributions = []) {
   return contributions
     .filter(entry => (Number(entry.troops) || 0) > 0)
@@ -410,15 +411,61 @@ function rankedDefenders(contributions = []) {
     .sort((a, b) => (b.troops - a.troops) || (a.playerId - b.playerId));
 }
 
-function claimReconqueredLand(state, themeId, playerId) {
+function setReconquestThemeStatus(state, themeId, recovered) {
   const theme = state.themes[themeId];
-  if (!theme || theme.occupied || theme.owner !== null || theme.id === 'CPL') return false;
-  theme.owner = playerId;
-  if (!theme.privateLevyReduced) {
-    theme.L = Math.max(0, (Number(theme.L) || 0) - 1);
-    theme.privateLevyReduced = true;
-  }
+  if (!theme || theme.id === 'CPL') return false;
+  theme.occupied = !recovered;
+  theme.owner = null;
+  theme.strategos = null;
   return true;
+}
+
+function syncRewardTheme(reward, state, themeId) {
+  const theme = state.themes[themeId];
+  reward.themeId = themeId;
+  reward.themeName = theme?.name || themeId;
+  reward.goldValue = getDefenderRewardGold(theme);
+}
+
+function getReconquestThemeOrder(rewards) {
+  return rewards
+    .map((reward, fallbackIndex) => ({
+      themeId: reward.originalThemeId || reward.themeId,
+      index: Number.isFinite(Number(reward.reconquestIndex))
+        ? Number(reward.reconquestIndex)
+        : fallbackIndex,
+    }))
+    .filter(entry => Boolean(entry.themeId))
+    .sort((a, b) => a.index - b.index)
+    .map(entry => entry.themeId);
+}
+
+function getRemainingReconquestThemeIds(rewards) {
+  const assigned = new Set(
+    rewards
+      .filter(reward => reward.resolved && reward.themeId)
+      .map(reward => reward.themeId)
+  );
+  return getReconquestThemeOrder(rewards).filter(themeId => !assigned.has(themeId));
+}
+
+function reassignUnresolvedDefenderRewards(state, rewards) {
+  const remaining = getRemainingReconquestThemeIds(rewards);
+  let nextIndex = 0;
+  for (const reward of rewards) {
+    if (reward.resolved) continue;
+    const themeId = remaining[nextIndex];
+    if (themeId) syncRewardTheme(reward, state, themeId);
+    nextIndex += 1;
+  }
+}
+
+function preparePendingReconquestRewards(state, rewards) {
+  if (!Array.isArray(rewards) || rewards.length === 0) return;
+  for (const themeId of getReconquestThemeOrder(rewards)) {
+    setReconquestThemeStatus(state, themeId, false);
+  }
+  reassignUnresolvedDefenderRewards(state, rewards);
 }
 
 export function createDefenderRewardQueue(state, warResult, contributions) {
@@ -432,6 +479,8 @@ export function createDefenderRewardQueue(state, warResult, contributions) {
     return {
       id: `${state.round}:${i}:${themeId}:${defender.playerId}`,
       themeId,
+      originalThemeId: themeId,
+      reconquestIndex: i,
       themeName: theme?.name || themeId,
       defenderId: defender.playerId,
       defenderName: defender.playerName,
@@ -463,25 +512,32 @@ export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'l
   if (reward.resolved) return { ok: false, reason: 'That defender reward is already resolved.' };
   if (reward.defenderId !== playerId) return { ok: false, reason: 'Only the rewarded defender may choose this reward.' };
 
-  const theme = state.themes[reward.themeId];
+  const remainingThemeIds = getRemainingReconquestThemeIds(rewards);
+  const normalizedChoice = choice === 'gold' ? 'gold' : 'empire';
+  const affectedThemeId = normalizedChoice === 'gold'
+    ? remainingThemeIds[remainingThemeIds.length - 1]
+    : remainingThemeIds[0];
+  const theme = state.themes[affectedThemeId];
   if (!theme) return { ok: false, reason: 'Rewarded province no longer exists.' };
+  syncRewardTheme(reward, state, affectedThemeId);
 
-  const normalizedChoice = choice === 'gold' ? 'gold' : 'land';
-  if (normalizedChoice === 'land') {
-    if (!claimReconqueredLand(state, reward.themeId, playerId)) {
-      return { ok: false, reason: 'That province can no longer be claimed.' };
+  if (normalizedChoice === 'empire') {
+    if (!setReconquestThemeStatus(state, affectedThemeId, true)) {
+      return { ok: false, reason: 'That province can no longer be restored.' };
     }
-    reward.choice = 'land';
+    reward.choice = 'empire';
     reward.gold = 0;
   } else {
     const player = getPlayer(state, playerId);
     const gold = getDefenderRewardGold(theme);
     if (player) player.gold += gold;
+    setReconquestThemeStatus(state, affectedThemeId, false);
     reward.choice = 'gold';
     reward.gold = gold;
   }
 
   reward.resolved = true;
+  reassignUnresolvedDefenderRewards(state, rewards);
   state.log.push({
     type: 'defender_reward',
     player: playerId,
@@ -494,9 +550,9 @@ export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'l
     category: 'resolution',
     type: 'defender_reward',
     actorId: playerId,
-    summary: reward.choice === 'land'
-      ? `${playerName(state, playerId)} claims ${theme?.name || reward.themeId} as best defender.`
-      : `${playerName(state, playerId)} takes ${formatGold(reward.gold || 0)} instead of ${theme?.name || reward.themeId}.`,
+    summary: reward.choice === 'empire'
+      ? `${playerName(state, playerId)} restores ${theme?.name || reward.themeId} to the empire as free-citizen land.`
+      : `${playerName(state, playerId)} takes ${formatGold(reward.gold || 0)} while ${theme?.name || reward.themeId} remains occupied.`,
     details: {
       themeId: reward.themeId,
       themeName: theme?.name || reward.themeId,
@@ -521,7 +577,7 @@ export function autoResolveDefenderRewards(state, shouldResolvePlayer = () => tr
   const resolved = [];
   for (const reward of getPendingDefenderRewards(state)) {
     if (!shouldResolvePlayer(reward.defenderId, reward)) continue;
-    const result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, 'land');
+    const result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, 'empire');
     if (result.ok) resolved.push(result.reward);
   }
   return resolved;
@@ -529,6 +585,7 @@ export function autoResolveDefenderRewards(state, shouldResolvePlayer = () => tr
 
 export function applyDefenderRewards(state, warResult, contributions) {
   state.pendingDefenderRewards = createDefenderRewardQueue(state, warResult, contributions);
+  preparePendingReconquestRewards(state, state.pendingDefenderRewards);
   if (warResult) warResult.defenderRewards = state.pendingDefenderRewards;
   return autoResolveDefenderRewards(state);
 }

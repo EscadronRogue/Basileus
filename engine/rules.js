@@ -45,8 +45,8 @@ export function getThemeTaxIncome(theme) {
   return getNormalTaxIncome(theme);
 }
 
-// The compensation handed to the best defender of a reconquered province when
-// they decline to take the land for themselves: 2× the theme's profit.
+// The compensation handed to a best defender who leaves a reconquerable province
+// occupied instead of restoring it to the empire: 2× the theme's profit.
 export function getDefenderRewardGold(theme) {
   return readThemeProfit(theme) * 2;
 }

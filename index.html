@@ -63,7 +63,7 @@
             <li><strong>Administration.</strong> Provinces pay out gold and raise levies automatically.</li>
             <li><strong>Court.</strong> Buy estates, appoint officers, gift land to the church, recruit troops, hire mercenaries. Confirm when done.</li>
             <li><strong>Secret orders.</strong> Each player privately sends every troop to either the Capital (vote in the coup) or the Frontier (fight the invasion), and picks who to back for the throne.</li>
-            <li><strong>Resolution.</strong> Coup is decided first, then the war. Lost provinces become occupied; reconquered ones go vacant.</li>
+            <li><strong>Resolution.</strong> Coup is decided first, then the war. Lost provinces become occupied; reconquerable ones return as free-citizen land only when defenders restore them.</li>
             <li><strong>Cleanup.</strong> Pay 1 gold per professional troop in upkeep. Levies and mercenaries disband.</li>
           </ol>
 
@@ -100,12 +100,12 @@
           </ul>
 
           <h3>Imperial Revocation</h3>
-          <p>Major titles move only during the post-coup purge. During Court, the Basileus can revoke minor titles or estates. The Patriarch can revoke Bishops. The Domestic of the East/West and the Admiral can revoke a Strategos in their region. Most revocations in the same round (per player) cost more troops than the last (1, 2, 3, ...), spent from any office or army the player controls. Levies are spent first; professionals are sent on the mission &mdash; they still pay upkeep this round and return next round. Patriarch Bishop revocations and appointments use doubled gold repeat-target costs: 0, 2, 4...</p>
+          <p>Major titles move only during the post-coup purge. During Court, the Basileus can revoke minor titles or estates. The Patriarch can revoke Bishops. The Domestic of the East/West and the Admiral can revoke a Strategos in their region. Most revocations in the same round (per player) cost more troops than the last (1, 2, 3, ...), spent from any office or army the player controls. Levies are spent first; professionals are sent on the mission &mdash; they still pay upkeep this round and return next round. Patriarch Bishop revocations use doubled per-revocation gold costs: 2, 4, 6... Bishop appointments still use doubled repeat-target gold costs: 0, 2, 4...</p>
 
           <h3>Debt &amp; Defenders</h3>
           <ul>
             <li><strong>Debt.</strong> A player who enters a turn in debt automatically disbands 1 random professional troop per gold owed. Players in debt also cannot recruit new professional troops until they balance their books.</li>
-            <li><strong>Best defender.</strong> When the empire reconquers provinces, the top frontier contributors take turns claiming reconquered land. Each pick is "take the land (as if you bought it)" or "take 2&times;P gold instead". Defenders cycle in rank order, so if there are more reconquests than defenders the top contributor picks again.</li>
+            <li><strong>Best defender.</strong> When the empire can reconquer provinces, the top frontier contributors take turns choosing either to restore a province to the empire as free-citizen land or take 2&times;P gold. Gold leaves the farthest pending province along the invasion route occupied, keeping the frontier contiguous.</li>
           </ul>
         </div>
       </details>

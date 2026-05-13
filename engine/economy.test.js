@@ -775,7 +775,7 @@ test('patriarch and regional commanders can revoke with any controlled army', ()
     makeTheme('OPS', { bishop: 2 }),
     makeTheme('ANT', { strategos: 2 }),
   ], {
-    0: { majorTitles: ['PATRIARCH'] },
+    0: { gold: 2, majorTitles: ['PATRIARCH'] },
     1: { majorTitles: ['DOM_EAST'], professionalArmies: { DOM_EAST: 1 } },
     2: {},
   });
@@ -785,6 +785,7 @@ test('patriarch and regional commanders can revoke with any controlled army', ()
   const patriarchRevoke = revokeMinorTitle(state, 'OPS', 'bishop', 0);
   assert.equal(patriarchRevoke.ok, true);
   assert.equal(state.themes.OPS.bishop, null);
+  assert.equal(state.players[0].gold, 0);
   assert.equal(state.currentLevies.PATRIARCH, 1);
 
   const regionalRevoke = revokeMinorTitle(state, 'ANT', 'strategos', 1);
@@ -793,13 +794,13 @@ test('patriarch and regional commanders can revoke with any controlled army', ()
   assert.equal(state.currentLevies.DOM_EAST, 0);
 });
 
-test('Patriarch bishop revocations spend doubled gold by repeat target', () => {
+test('Patriarch bishop revocations spend doubled gold by revoker count', () => {
   const state = makeDealState([
     makeTheme('OPS', { bishop: 2 }),
     makeTheme('SAM', { bishop: 1 }),
     makeTheme('ANT', { bishop: 2 }),
   ], {
-    0: { gold: 5, majorTitles: ['PATRIARCH'], professionalArmies: { PATRIARCH: 2 } },
+    0: { gold: 12, majorTitles: ['PATRIARCH'], professionalArmies: { PATRIARCH: 2 } },
     1: {},
     2: {},
   });
@@ -808,20 +809,20 @@ test('Patriarch bishop revocations spend doubled gold by repeat target', () => {
 
   const firstTarget = revokeMinorTitle(state, 'OPS', 'bishop', 0);
   assert.equal(firstTarget.ok, true);
-  assert.equal(state.players[0].gold, 5);
+  assert.equal(state.players[0].gold, 10);
 
   const repeatedTargetLocked = revokeMinorTitle(state, 'ANT', 'bishop', 0);
   assert.equal(repeatedTargetLocked.ok, false);
   assert.match(repeatedTargetLocked.reason, /cannot revoke .* twice in a row/i);
-  assert.equal(state.players[0].gold, 5);
+  assert.equal(state.players[0].gold, 10);
 
   const otherTarget = revokeMinorTitle(state, 'SAM', 'bishop', 0);
   assert.equal(otherTarget.ok, true);
-  assert.equal(state.players[0].gold, 5);
+  assert.equal(state.players[0].gold, 6);
 
   const repeatAfterOther = revokeMinorTitle(state, 'ANT', 'bishop', 0);
   assert.equal(repeatAfterOther.ok, true);
-  assert.equal(state.players[0].gold, 3);
+  assert.equal(state.players[0].gold, 0);
   assert.equal(state.currentLevies.PATRIARCH, 2);
   assert.equal(state.players[0].professionalArmies.PATRIARCH, 2);
 });
@@ -855,7 +856,7 @@ test('a player cannot revoke the same target twice in a row', () => {
   assert.equal(state.themes.ANT.strategos, null);
 });
 
-test('best defender reward can be taken as gold instead of land', () => {
+test('best defender reward can be taken as gold, leaving the province occupied', () => {
   const state = makeState([makeTheme('OPS', { occupied: false })], {
     1: { gold: 0 },
   });
@@ -863,6 +864,8 @@ test('best defender reward can be taken as gold instead of land', () => {
   state.pendingDefenderRewards = [{
     id: 'reward-1',
     themeId: 'OPS',
+    originalThemeId: 'OPS',
+    reconquestIndex: 0,
     defenderId: 1,
     rank: 1,
     troops: 5,
@@ -875,7 +878,94 @@ test('best defender reward can be taken as gold instead of land', () => {
   assert.equal(result.ok, true);
   assert.equal(state.players[1].gold, 4);
   assert.equal(state.themes.OPS.owner, null);
+  assert.equal(state.themes.OPS.occupied, true);
   assert.equal(state.pendingDefenderRewards[0].resolved, true);
+});
+
+test('best defender reward restores reconquered land to free citizens', () => {
+  const state = makeState([makeTheme('OPS', { occupied: true, owner: 2 })], {
+    1: { gold: 0 },
+  });
+  state.phase = 'resolution';
+  state.pendingDefenderRewards = [{
+    id: 'reward-1',
+    themeId: 'OPS',
+    originalThemeId: 'OPS',
+    reconquestIndex: 0,
+    defenderId: 1,
+    rank: 1,
+    troops: 5,
+    goldValue: 4,
+    resolved: false,
+  }];
+  state.lastWarResult = { defenderRewards: state.pendingDefenderRewards };
+
+  const result = applyDefenderRewardChoice(state, 'reward-1', 1, 'empire');
+  assert.equal(result.ok, true);
+  assert.equal(state.players[1].gold, 0);
+  assert.equal(state.themes.OPS.occupied, false);
+  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(state.pendingDefenderRewards[0].choice, 'empire');
+});
+
+test('gold defender reward leaves the farthest pending reconquest occupied', () => {
+  const state = makeState([
+    makeTheme('OPS', { occupied: true }),
+    makeTheme('THK', { occupied: true }),
+    makeTheme('SAM', { occupied: true }),
+  ], {
+    1: { gold: 0 },
+    2: { gold: 0 },
+  });
+  state.phase = 'resolution';
+  state.pendingDefenderRewards = [
+    {
+      id: 'reward-near',
+      themeId: 'OPS',
+      originalThemeId: 'OPS',
+      reconquestIndex: 0,
+      defenderId: 1,
+      rank: 1,
+      troops: 7,
+      goldValue: 4,
+      resolved: false,
+    },
+    {
+      id: 'reward-middle',
+      themeId: 'THK',
+      originalThemeId: 'THK',
+      reconquestIndex: 1,
+      defenderId: 2,
+      rank: 2,
+      troops: 5,
+      goldValue: 2,
+      resolved: false,
+    },
+    {
+      id: 'reward-far',
+      themeId: 'SAM',
+      originalThemeId: 'SAM',
+      reconquestIndex: 2,
+      defenderId: 1,
+      rank: 1,
+      troops: 7,
+      goldValue: 2,
+      resolved: false,
+    },
+  ];
+  state.lastWarResult = { defenderRewards: state.pendingDefenderRewards };
+
+  const gold = applyDefenderRewardChoice(state, 'reward-near', 1, 'gold');
+  assert.equal(gold.ok, true);
+  assert.equal(state.pendingDefenderRewards[0].themeId, 'SAM');
+  assert.equal(state.themes.SAM.occupied, true);
+  assert.equal(state.pendingDefenderRewards[1].themeId, 'OPS');
+
+  const restore = applyDefenderRewardChoice(state, 'reward-middle', 2, 'empire');
+  assert.equal(restore.ok, true);
+  assert.equal(state.themes.OPS.occupied, false);
+  assert.equal(state.themes.THK.occupied, true);
+  assert.equal(state.themes.SAM.occupied, true);
 });
 
 test('self appointment promises enforce the promised beneficiary immediately', () => {
