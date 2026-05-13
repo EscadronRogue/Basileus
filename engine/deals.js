@@ -222,6 +222,31 @@ function comparePlanKeys(leftKeys = [], rightKeys = []) {
   return 0;
 }
 
+function compareTroopPlans(left, right, requiredFrontier, requiredCapital) {
+  const leftOvershoot = (left.frontierCommitted - requiredFrontier) + (left.capitalCommitted - requiredCapital);
+  const rightOvershoot = (right.frontierCommitted - requiredFrontier) + (right.capitalCommitted - requiredCapital);
+  if (leftOvershoot !== rightOvershoot) return leftOvershoot - rightOvershoot;
+
+  const leftTotal = left.frontierCommitted + left.capitalCommitted;
+  const rightTotal = right.frontierCommitted + right.capitalCommitted;
+  if (leftTotal !== rightTotal) return leftTotal - rightTotal;
+
+  const leftOfficeCount = left.frontierOffices.length + left.capitalOffices.length;
+  const rightOfficeCount = right.frontierOffices.length + right.capitalOffices.length;
+  if (leftOfficeCount !== rightOfficeCount) return leftOfficeCount - rightOfficeCount;
+
+  const frontierCmp = comparePlanKeys(
+    left.frontierOffices.map((entry) => entry.officeKey),
+    right.frontierOffices.map((entry) => entry.officeKey),
+  );
+  if (frontierCmp !== 0) return frontierCmp;
+
+  return comparePlanKeys(
+    left.capitalOffices.map((entry) => entry.officeKey),
+    right.capitalOffices.map((entry) => entry.officeKey),
+  );
+}
+
 function buildTroopCommitmentPlan(state, playerId, capitalRequired, frontierRequired) {
   const chunks = getPlayerOrderChunks(state, playerId);
   const requiredCapital = Math.max(0, Number(capitalRequired) || 0);
@@ -237,71 +262,57 @@ function buildTroopCommitmentPlan(state, playerId, capitalRequired, frontierRequ
     };
   }
 
+  const maxChunkTroops = Math.max(0, ...chunks.map((chunk) => Number(chunk.troops) || 0));
+  const frontierCap = requiredFrontier + maxChunkTroops;
+  const capitalCap = requiredCapital + maxChunkTroops;
+
+  const keyFor = (frontierCommitted, capitalCommitted) => (
+    `${Math.min(frontierCap, frontierCommitted)}:${Math.min(capitalCap, capitalCommitted)}`
+  );
+  const store = (map, candidate) => {
+    const key = keyFor(candidate.frontierCommitted, candidate.capitalCommitted);
+    const existing = map.get(key);
+    if (!existing || compareTroopPlans(candidate, existing, requiredFrontier, requiredCapital) < 0) {
+      map.set(key, candidate);
+    }
+  };
+
+  let states = new Map();
+  states.set('0:0', {
+    frontierCommitted: 0,
+    capitalCommitted: 0,
+    frontierOffices: [],
+    capitalOffices: [],
+  });
+
+  for (const chunk of chunks) {
+    const nextStates = new Map(states);
+    for (const plan of states.values()) {
+      store(nextStates, {
+        frontierCommitted: plan.frontierCommitted,
+        capitalCommitted: plan.capitalCommitted + chunk.troops,
+        frontierOffices: plan.frontierOffices,
+        capitalOffices: [...plan.capitalOffices, chunk],
+      });
+      if (!chunk.capitalOnly) {
+        store(nextStates, {
+          frontierCommitted: plan.frontierCommitted + chunk.troops,
+          capitalCommitted: plan.capitalCommitted,
+          frontierOffices: [...plan.frontierOffices, chunk],
+          capitalOffices: plan.capitalOffices,
+        });
+      }
+    }
+    states = nextStates;
+  }
+
   let best = null;
-
-  function consider(frontierOffices, capitalOffices, frontierCommitted, capitalCommitted) {
-    if (frontierCommitted < requiredFrontier || capitalCommitted < requiredCapital) return;
-    const overshoot = (frontierCommitted - requiredFrontier) + (capitalCommitted - requiredCapital);
-    const totalCommitted = frontierCommitted + capitalCommitted;
-    const officeCount = frontierOffices.length + capitalOffices.length;
-    const frontierKeys = frontierOffices.map((entry) => entry.officeKey);
-    const capitalKeys = capitalOffices.map((entry) => entry.officeKey);
-    const candidate = {
-      overshoot,
-      totalCommitted,
-      officeCount,
-      frontierCommitted,
-      capitalCommitted,
-      frontierOffices: frontierOffices.slice(),
-      capitalOffices: capitalOffices.slice(),
-      key: `${frontierKeys.join(',')}|${capitalKeys.join(',')}`,
-    };
-    if (!best) {
-      best = candidate;
-      return;
-    }
-    if (candidate.overshoot !== best.overshoot) {
-      if (candidate.overshoot < best.overshoot) best = candidate;
-      return;
-    }
-    if (candidate.totalCommitted !== best.totalCommitted) {
-      if (candidate.totalCommitted < best.totalCommitted) best = candidate;
-      return;
-    }
-    if (candidate.officeCount !== best.officeCount) {
-      if (candidate.officeCount < best.officeCount) best = candidate;
-      return;
-    }
-    const frontierCmp = comparePlanKeys(frontierKeys, best.frontierOffices.map((entry) => entry.officeKey));
-    if (frontierCmp !== 0) {
-      if (frontierCmp < 0) best = candidate;
-      return;
-    }
-    const capitalCmp = comparePlanKeys(capitalKeys, best.capitalOffices.map((entry) => entry.officeKey));
-    if (capitalCmp < 0) best = candidate;
-  }
-
-  function walk(index, frontierOffices, capitalOffices, frontierCommitted, capitalCommitted) {
-    if (index >= chunks.length) {
-      consider(frontierOffices, capitalOffices, frontierCommitted, capitalCommitted);
-      return;
-    }
-
-    const chunk = chunks[index];
-    walk(index + 1, frontierOffices, capitalOffices, frontierCommitted, capitalCommitted);
-
-    capitalOffices.push(chunk);
-    walk(index + 1, frontierOffices, capitalOffices, frontierCommitted, capitalCommitted + chunk.troops);
-    capitalOffices.pop();
-
-    if (!chunk.capitalOnly) {
-      frontierOffices.push(chunk);
-      walk(index + 1, frontierOffices, capitalOffices, frontierCommitted + chunk.troops, capitalCommitted);
-      frontierOffices.pop();
+  for (const plan of states.values()) {
+    if (plan.frontierCommitted < requiredFrontier || plan.capitalCommitted < requiredCapital) continue;
+    if (!best || compareTroopPlans(plan, best, requiredFrontier, requiredCapital) < 0) {
+      best = plan;
     }
   }
-
-  walk(0, [], [], 0, 0);
 
   if (!best) {
     return fail(`${playerName(state, playerId)} cannot cover ${requiredCapital} capital troop${requiredCapital === 1 ? '' : 's'} and ${requiredFrontier} frontier troop${requiredFrontier === 1 ? '' : 's'} with the current office layout.`);
@@ -667,11 +678,12 @@ function validateDealParticipants(state, actorId, counterpartyId) {
   return { ok: true };
 }
 
-function validateDealClausesAgainstState(state, clauses, pairKey) {
+function validateDealClausesAgainstState(state, clauses, pairKey, options = {}) {
   const reservedThemes = getReservedThemeIds(state);
   const extraGoldReserved = new Map();
   const promisedAppointmentGivers = new Set();
   const promisedProtectionPairs = new Set();
+  const troopPlanCache = options.troopPlanCache instanceof Map ? options.troopPlanCache : null;
 
   for (const clause of clauses) {
     if (clause.kind === DEAL_CLAUSE_KINDS.GOLD) {
@@ -726,7 +738,12 @@ function validateDealClausesAgainstState(state, clauses, pairKey) {
   for (const group of structuralTroopGroups) {
     if (group.error) return fail(group.error);
     if (group.capitalRequired <= 0 && group.frontierRequired <= 0) continue;
-    const plan = buildTroopCommitmentPlan(state, group.playerId, group.capitalRequired, group.frontierRequired);
+    const cacheKey = `${group.playerId}:${group.capitalRequired}:${group.frontierRequired}`;
+    let plan = troopPlanCache?.get(cacheKey);
+    if (!plan) {
+      plan = buildTroopCommitmentPlan(state, group.playerId, group.capitalRequired, group.frontierRequired);
+      troopPlanCache?.set(cacheKey, plan);
+    }
     if (!plan.ok) return plan;
   }
 
@@ -827,6 +844,25 @@ function recordPublicEstateTransfer(state, giverId, receiverId, themeId) {
   });
 }
 
+function recordPublicObligationFailure(state, obligation, reason) {
+  recordHistoryEvent(state, {
+    category: 'court',
+    type: 'deal_obligation_failed',
+    actorId: obligation.giverId,
+    summary: `${playerName(state, obligation.giverId)} can no longer fulfill a deal obligation to ${playerName(state, obligation.receiverId)}.`,
+    details: {
+      obligationId: obligation.id,
+      threadId: obligation.threadId,
+      giverId: obligation.giverId,
+      giverName: playerName(state, obligation.giverId),
+      receiverId: obligation.receiverId,
+      receiverName: playerName(state, obligation.receiverId),
+      kind: obligation.kind,
+      reason,
+    },
+  });
+}
+
 function transferDealGold(state, giverId, receiverId, amount) {
   const giver = getPlayer(state, giverId);
   const receiver = getPlayer(state, receiverId);
@@ -882,7 +918,13 @@ function activateObligation(state, obligation) {
 
   if (obligation.kind === DEAL_CLAUSE_KINDS.ESTATE) {
     const result = transferDealEstate(state, obligation.giverId, obligation.receiverId, obligation.payload.themeId);
-    if (!result.ok) return result;
+    if (!result.ok) {
+      obligation.status = 'completed';
+      obligation.failedRound = state.round;
+      obligation.failureReason = result.reason;
+      recordPublicObligationFailure(state, obligation, result.reason);
+      return { ok: true };
+    }
     markObligationCompleted(obligation);
     return { ok: true };
   }
@@ -1257,7 +1299,9 @@ export function previewDealOffer(state, actorId, payload = {}, options = {}) {
 
   const clauseResult = normalizeDealClauses(state, actorId, counterpartyId, payload.clauses);
   if (!clauseResult.ok) return clauseResult;
-  const validation = validateDealClausesAgainstState(state, clauseResult.clauses, pairKey);
+  const validation = validateDealClausesAgainstState(state, clauseResult.clauses, pairKey, {
+    troopPlanCache: options.troopPlanCache,
+  });
   if (!validation.ok) return validation;
 
   return {

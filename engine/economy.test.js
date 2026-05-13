@@ -730,6 +730,39 @@ test('accepted estate deals transfer the estate immediately without disturbing i
   assert.equal(state.activeDealObligations.length, 0);
 });
 
+test('delayed estate deal obligations fail cleanly if the estate changes hands before activation', () => {
+  const state = makeDealState([
+    makeTheme('OPS', { owner: 0 }),
+  ]);
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      {
+        kind: 'estate',
+        direction: 'give',
+        themeId: 'OPS',
+        startTriggerType: 'when_player_is_basileus',
+        triggerPlayerId: 1,
+      },
+    ],
+  });
+  assert.equal(sent.ok, true);
+  assert.equal(acceptDealOffer(state, 1, { threadId: sent.threadId, expectedRevision: 1 }).ok, true);
+  assert.equal(state.activeDealObligations[0].status, 'dormant');
+
+  state.themes.OPS.owner = 2;
+  state.basileusId = 1;
+  state.round = 2;
+
+  const nextCourt = startCourtDealRound(state);
+  assert.equal(nextCourt.ok, true);
+  assert.equal(state.themes.OPS.owner, 2);
+  assert.equal(state.activeDealObligations.length, 0);
+  assert.equal(state.history.at(-1).type, 'deal_obligation_failed');
+  assert.equal(state.history.at(-1).details.receiverId, 1);
+});
+
 test('appointment promises carry forward until a legal appointment is made to the promised beneficiary', () => {
   const state = makeDealState();
 
