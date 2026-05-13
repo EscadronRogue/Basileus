@@ -18,10 +18,9 @@ import {
   serializeCourtActions,
   serializePublicGameState,
 } from '../engine/publicState.js';
-import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, pickRandom, resolveConfiguredSeed, toInt } from '../engine/setup.js';
+import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, resolveConfiguredSeed, toInt } from '../engine/setup.js';
 import { createAIMeta } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
-import { normalizeAiProfile } from '../ai/profileStore.js';
 
 export const ROOM_STATUS = {
   LOBBY: 'lobby',
@@ -32,19 +31,6 @@ export const ROOM_STATUS = {
 export const SAVE_SCHEMA = 'basileus.multiplayer.save';
 export const SAVE_VERSION = 1;
 
-function normalizeTrainedAiProfiles(rawProfiles = []) {
-  if (!Array.isArray(rawProfiles)) return [];
-  const profiles = [];
-  const seen = new Set();
-  for (const rawProfile of rawProfiles) {
-    const profile = normalizeAiProfile(rawProfile);
-    if (!profile || seen.has(profile.id)) continue;
-    seen.add(profile.id);
-    profiles.push(profile);
-  }
-  return profiles;
-}
-
 function createOpenSeat(seatId) {
   return {
     seatId,
@@ -53,15 +39,6 @@ function createOpenSeat(seatId) {
     sessionId: null,
     seatToken: null,
     connected: false,
-  };
-}
-
-function createDecisionLog(lines = []) {
-  return {
-    lines: Array.isArray(lines) ? lines.slice() : [],
-    push(message) {
-      this.lines.push(message);
-    },
   };
 }
 
@@ -105,20 +82,10 @@ function serializeAiMeta(aiMeta) {
   };
 }
 
-function hydrateAiMeta(rawMeta) {
+function hydrateAiMeta(rawMeta, state) {
   if (!rawMeta) return null;
-  const {
-    humanPlayerIds = [],
-    decisionLog = null,
-    ...rest
-  } = clonePlain(rawMeta);
-  return {
-    ...rest,
-    humanPlayerIds: new Set(humanPlayerIds),
-    decisionLog: createDecisionLog(decisionLog?.lines || []),
-    fastCache: null,
-    roundContext: null,
-  };
+  const { humanPlayerIds = [] } = clonePlain(rawMeta);
+  return createAIMeta(state, { humanPlayerIds });
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
@@ -169,7 +136,6 @@ export class MultiplayerRoom {
     this.roomCode = roomCode;
     this.hostSessionId = hostSessionId;
     this.config = normalizeRoomConfig(config);
-    this.trainedAiProfiles = normalizeTrainedAiProfiles(config.aiProfiles);
     this.seats = Array.from({ length: this.config.playerCount }, (_, seatId) => createOpenSeat(seatId));
     this.connections = new Map();
     this.sessions = new Map();
@@ -341,7 +307,7 @@ export class MultiplayerRoom {
     return this.config;
   }
 
-  async startGame(sessionId, availableAiProfiles = []) {
+  async startGame(sessionId) {
     assert(this.status === ROOM_STATUS.LOBBY, 'The game has already started.');
     assert(this.isHostSession(sessionId), 'Only the host can start the room.');
     assert(this.canStartGame(), 'Every human seat must be claimed before starting.');
@@ -355,21 +321,8 @@ export class MultiplayerRoom {
     });
 
     const humanPlayerIds = getHumanSeatIds(this);
-    const aiSeatIds = getAiSeatIds(this);
-    const trainedRoster = this.trainedAiProfiles.length
-      ? this.trainedAiProfiles
-      : normalizeTrainedAiProfiles(availableAiProfiles);
-    assert(!aiSeatIds.length || trainedRoster.length > 0, 'No AI policy profiles are available for AI seats. Export policy champions or create the room from a client with saved AI profiles.');
-
-    const seatProfiles = {};
-    for (const seatId of aiSeatIds) {
-      const profile = pickRandom(this.gameState.rng, trainedRoster, null);
-      if (profile) seatProfiles[seatId] = profile;
-    }
-
     this.aiMeta = createAIMeta(this.gameState, {
       humanPlayerIds,
-      seatProfiles,
     });
     setDealParticipantIds(this.gameState, this.gameState.players.map((player) => player.id));
     this.assignPlayerFirstNames();
@@ -507,7 +460,6 @@ export class MultiplayerRoom {
         createdAt: this.createdAt,
         updatedAt: this.updatedAt,
         finishedAt: this.finishedAt,
-        trainedAiProfiles: clonePlain(this.trainedAiProfiles),
         seats: this.seats.map((seat) => ({
           seatId: seat.seatId,
           kind: seat.kind,
@@ -673,7 +625,7 @@ export class MultiplayerRoom {
     }
   }
 
-  async handleClientMessage(sessionId, message = {}, availableAiProfiles = []) {
+  async handleClientMessage(sessionId, message = {}) {
     const requestId = message.requestId || null;
     try {
       if (message.type === 'claim_seat') {
@@ -725,7 +677,7 @@ export class MultiplayerRoom {
 
       if (message.type === 'start_game') {
         const previousPhase = this.gameState?.phase || null;
-        await this.startGame(sessionId, availableAiProfiles);
+        await this.startGame(sessionId);
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
       }
@@ -804,9 +756,8 @@ export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlaye
   });
 
   room.config = config;
-  room.trainedAiProfiles = normalizeTrainedAiProfiles(savedRoom.trainedAiProfiles || []);
   room.gameState = gameState;
-  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta);
+  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState);
   room.pendingAiTitleAssignment = clonePlain(savedRoom.pendingAiTitleAssignment);
   room.finishedAt = savedRoom.finishedAt || null;
   room.gameOverSent = false;

@@ -39,6 +39,3 @@ coverage/
 # --- Logs ---
 logs/
 *.log
-
-# Note: training artifacts under .training-runs/ and trained-personalities/runs/
-# are intentionally tracked at the user's request.

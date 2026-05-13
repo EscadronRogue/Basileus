@@ -291,10 +291,9 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
   assert.equal(gameSnapshot.state.phase, 'court');
 
   const room = instance.manager.getRoom(created.roomCode);
-  const aiProfile = room.aiMeta.players[2].profile;
-  assert.ok(aiProfile, 'AI seats should receive explicit policy profiles.');
-  assert.equal(aiProfile.source, 'emergent-trained');
-  assert.equal(aiProfile.basePersonalityId, null);
+  assert.equal(room.aiMeta.players[2].isAI, true);
+  assert.equal(room.aiMeta.players[2].displayName, 'AI Seat 3');
+  assert.equal(room.aiMeta.players[2].profile, undefined);
 
   await guestSocket.close();
   await hostSocket.close();

@@ -50,7 +50,7 @@ function writePending(context, result) {
   return result;
 }
 
-function recordDefenderRewardsForTraining(meta, rewards = []) {
+function recordDefenderRewardsForAiMeta(meta, rewards = []) {
   if (!meta || !Array.isArray(rewards)) return;
   if (!meta.totals) meta.totals = {};
   if (!Number.isFinite(meta.totals.defenderRewards)) meta.totals.defenderRewards = 0;
@@ -75,6 +75,10 @@ function recordDefenderRewardsForTraining(meta, rewards = []) {
   }
 }
 
+function hasAIPlayers(state, meta) {
+  return Boolean(state?.players?.some((player) => isAIPlayer(meta, player.id)));
+}
+
 function autoResolveAiDefenderRewards(state, meta) {
   if (!state || !meta) return [];
   const resolved = [];
@@ -91,7 +95,7 @@ function autoResolveAiDefenderRewards(state, meta) {
     if (!result.ok) break;
     resolved.push(result.reward);
   }
-  recordDefenderRewardsForTraining(meta, resolved);
+  recordDefenderRewardsForAiMeta(meta, resolved);
   return resolved;
 }
 
@@ -114,6 +118,7 @@ export function processAiFlow(state, aiMeta, options = {}) {
   if (!aiMeta || !state) return { pendingAiTitleAssignment: options.pendingAiTitleAssignment ?? null };
   const courtMode = options.courtMode || 'finish';
   let pendingAiTitleAssignment = options.pendingAiTitleAssignment ?? null;
+  const hasAiSeats = hasAIPlayers(state, aiMeta);
 
   let safety = 0;
   while (safety < 20) {
@@ -122,7 +127,9 @@ export function processAiFlow(state, aiMeta, options = {}) {
     if (state.gameOver || state.phase === 'scoring' || state.phase === 'resolution') break;
 
     if (state.phase === 'court') {
-      runAICourtAutomation(state, aiMeta, { mode: courtMode });
+      if (hasAiSeats) {
+        runAICourtAutomation(state, aiMeta, { mode: courtMode });
+      }
       if (courtMode === 'finish' && isCourtComplete(state)) {
         phaseOrders(state);
         invalidateRoundContext(aiMeta);
@@ -132,21 +139,25 @@ export function processAiFlow(state, aiMeta, options = {}) {
     }
 
     if (state.phase === 'orders') {
-      for (const player of state.players) {
-        if (!isAIPlayer(aiMeta, player.id)) continue;
-        if (state.allOrders[player.id]) continue;
-        const orders = buildAIOrders(state, aiMeta, player.id);
-        submitOrders(state, player.id, orders);
+      if (hasAiSeats) {
+        for (const player of state.players) {
+          if (!isAIPlayer(aiMeta, player.id)) continue;
+          if (state.allOrders[player.id]) continue;
+          const orders = buildAIOrders(state, aiMeta, player.id);
+          submitOrders(state, player.id, orders);
+        }
       }
 
       if (allOrdersSubmitted(state)) {
         const previousBasileusId = state.basileusId;
         phaseResolution(state);
-        const aftermath = handlePostResolutionAI(state, aiMeta, {
-          previousBasileusId,
-          autoApplyTitleAssignments: false,
-        });
-        pendingAiTitleAssignment = aftermath.plannedAssignment;
+        if (hasAiSeats) {
+          const aftermath = handlePostResolutionAI(state, aiMeta, {
+            previousBasileusId,
+            autoApplyTitleAssignments: false,
+          });
+          pendingAiTitleAssignment = aftermath.plannedAssignment;
+        }
       }
       break;
     }
@@ -280,7 +291,7 @@ export function handleDefenderRewardChoice(state, aiMeta, context = {}, playerId
   if (!state || state.phase !== 'resolution') return fail('Defender rewards are only available during resolution.');
   const result = applyDefenderRewardChoice(state, String(rewardId || ''), playerId, choice);
   if (!result.ok) return result;
-  recordDefenderRewardsForTraining(aiMeta, [result.reward]);
+  recordDefenderRewardsForAiMeta(aiMeta, [result.reward]);
   return { ok: true, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 

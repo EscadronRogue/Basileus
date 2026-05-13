@@ -1,7 +1,7 @@
 // engine/commands.js — shared command layer used by singleplayer and multiplayer.
 // Each command returns { ok, reason?, observation? }. Mode adapters convert
 // !ok into either a silent re-render (singleplayer) or a transport rejection
-// (multiplayer). Observations feed AI relations (observeCourtAction).
+// (multiplayer). Observations are still emitted for the future AI runtime.
 
 import { recordHistoryEvent } from './history.js';
 import {
@@ -74,8 +74,8 @@ function passMandatoryAppointmentsForPlayer(state, playerId) {
 
 // ─── Court actions ─────────────────────────────────────────────────────────
 // Returns { ok, reason?, observation? }.
-// observation is an AI-relations payload to be fed to observeCourtAction when
-// the player is non-AI (i.e. the action came from a human seat).
+// observation is a future AI-runtime payload emitted when a human-controlled
+// seat changes court state.
 export function applyCourtAction(state, playerId, payload = {}) {
   const action = String(payload.action || '').trim();
 

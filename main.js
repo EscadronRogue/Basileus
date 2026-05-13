@@ -1,11 +1,8 @@
-import { listAvailableAiProfiles } from './ai/profileStore.js';
 import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup.js';
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
 
 const SETUP_RANDOM_VALUE = 'random';
-const AI_SELECTION_TRAINED_RANDOM = '__trained_random__';
-const AI_SELECTION_PROFILE_PREFIX = 'profile:';
 
 const setupDialog = document.getElementById('setupDialog');
 const btnStart = document.getElementById('btnStart');
@@ -25,21 +22,7 @@ const setupMultiplayerError = document.getElementById('setupMultiplayerError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
 
-const aiSeatSelections = new Map();
-let availableAiProfiles = [];
 let multiplayerLaunchInFlight = false;
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
-
-function cloneProfile(profile) {
-  return profile ? JSON.parse(JSON.stringify(profile)) : null;
-}
 
 function getNonRandomOptionValues(select) {
   return [...select.options]
@@ -71,14 +54,6 @@ function clampSeatIndex(rawSeatValue, playerCount) {
   return Math.max(0, Math.min(playerCount - 1, seatNumber - 1));
 }
 
-function isValidAiSeatSelection(value, profilesById) {
-  if (value === AI_SELECTION_TRAINED_RANDOM) return true;
-  if (value.startsWith(AI_SELECTION_PROFILE_PREFIX)) {
-    return profilesById.has(value.slice(AI_SELECTION_PROFILE_PREFIX.length));
-  }
-  return false;
-}
-
 function refreshSeatOptions() {
   const playerCount = getConfiguredPlayerCountForUi();
   const currentValue = setupSeat.value || SETUP_RANDOM_VALUE;
@@ -96,8 +71,7 @@ function refreshSeatOptions() {
 }
 
 function updateStartAvailability() {
-  const needsAiProfiles = setupMode.value === 'single';
-  btnStart.disabled = needsAiProfiles && availableAiProfiles.length === 0;
+  btnStart.disabled = false;
   if (btnJoinRoom) {
     btnJoinRoom.disabled = setupRoomCode.value.trim().length !== 6;
   }
@@ -108,8 +82,7 @@ function setMultiplayerError(message = '') {
 }
 
 function renderAiRoster() {
-  const mode = setupMode.value;
-  if (mode !== 'single') {
+  if (setupMode.value !== 'single') {
     setupAiRoster.innerHTML = '';
     updateStartAvailability();
     return;
@@ -120,45 +93,17 @@ function renderAiRoster() {
   const seatIsRandom = setupSeat.value === SETUP_RANDOM_VALUE;
   const seatAssignmentUnresolved = playerCountIsRandom || seatIsRandom;
   const humanSeat = clampSeatIndex(setupSeat.value, playerCount) + 1;
-  const profilesById = new Map(availableAiProfiles.map((profile) => [profile.id, profile]));
   const aiSeats = Array.from({ length: playerCount }, (_, index) => index + 1)
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
-  if (!availableAiProfiles.length) {
-    setupAiRoster.innerHTML = '<div class="setup-hint">No AI policy profiles are available yet.</div>';
-    setupAiRosterHint.textContent = 'Open the Simulation Lab and export trained champions, then return here to use them in live games.';
-    updateStartAvailability();
-    return;
-  }
+  setupAiRoster.innerHTML = aiSeats.map((seat) => `
+    <div class="setup-ai-seat">
+      <span>Seat ${seat}</span>
+      <span>AI runtime slot</span>
+    </div>
+  `).join('');
 
-  setupAiRoster.innerHTML = aiSeats.map((seat) => {
-    const savedSelection = aiSeatSelections.get(seat) || AI_SELECTION_TRAINED_RANDOM;
-    const selection = isValidAiSeatSelection(savedSelection, profilesById)
-      ? savedSelection
-      : AI_SELECTION_TRAINED_RANDOM;
-
-    return `
-      <label class="setup-ai-seat">
-        <span>Seat ${seat}</span>
-        <select data-ai-seat="${seat}">
-          <option value="${AI_SELECTION_TRAINED_RANDOM}" ${selection === AI_SELECTION_TRAINED_RANDOM ? 'selected' : ''}>Random AI Policy</option>
-          <optgroup label="AI Policies">
-            ${availableAiProfiles.map((profile) => {
-              const value = `${AI_SELECTION_PROFILE_PREFIX}${profile.id}`;
-              return `<option value="${value}" ${value === selection ? 'selected' : ''}>${escapeHtml(profile.name)}</option>`;
-            }).join('')}
-          </optgroup>
-        </select>
-      </label>
-    `;
-  }).join('');
-
-  if (seatAssignmentUnresolved) {
-    setupAiRosterHint.textContent = `Each seat can already be configured from the AI policy roster; once player count and your seat resolve, unavailable seats and your final human seat ignore their AI assignments. ${availableAiProfiles.length} AI profile${availableAiProfiles.length === 1 ? '' : 's'} loaded.`;
-  } else {
-    setupAiRosterHint.textContent = `${availableAiProfiles.length} AI profile${availableAiProfiles.length === 1 ? '' : 's'} available. Each AI seat can use a specific policy or a random policy.`;
-  }
-
+  setupAiRosterHint.textContent = 'AI seats are preserved for the upcoming neural runtime. The first required AI decision will fail clearly until that runtime is implemented.';
   updateStartAvailability();
 }
 
@@ -169,34 +114,6 @@ function refreshModeVisibility() {
   if (defaultSetupActions) defaultSetupActions.hidden = mode === 'multiplayer';
   setMultiplayerError('');
   renderAiRoster();
-}
-
-function resolveAiSeatAssignments(playerCount, humanSeat, rng) {
-  const profilesById = new Map(availableAiProfiles.map((profile) => [profile.id, profile]));
-  const rawSelections = {};
-
-  setupAiRoster.querySelectorAll('select[data-ai-seat]').forEach((select) => {
-    const seat = Number.parseInt(select.dataset.aiSeat || '-1', 10);
-    if (Number.isInteger(seat) && seat > 0) rawSelections[seat] = select.value;
-  });
-
-  const aiSeatProfiles = {};
-  for (let seat = 1; seat <= playerCount; seat += 1) {
-    if (seat === humanSeat) continue;
-    const selection = rawSelections[seat] || AI_SELECTION_TRAINED_RANDOM;
-    const profile = selection.startsWith(AI_SELECTION_PROFILE_PREFIX)
-      ? profilesById.get(selection.slice(AI_SELECTION_PROFILE_PREFIX.length))
-      : pickRandom(rng, availableAiProfiles, null);
-    if (profile) aiSeatProfiles[seat - 1] = cloneProfile(profile);
-  }
-
-  return { aiSeatProfiles };
-}
-
-async function refreshAvailableAiProfiles() {
-  availableAiProfiles = await listAvailableAiProfiles();
-  renderAiRoster();
-  return availableAiProfiles;
 }
 
 async function readSelectedMultiplayerSave() {
@@ -221,11 +138,11 @@ async function launchMultiplayerFlow(intent) {
 
   const playerCount = Number.parseInt(
     resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '4'),
-    10
+    10,
   );
   const deckSize = Number.parseInt(
     resolveRandomValue(setupDeck.value, getNonRandomOptionValues(setupDeck), setupRng, '9'),
-    10
+    10,
   );
 
   try {
@@ -242,7 +159,6 @@ async function launchMultiplayerFlow(intent) {
         playerCount,
         deckSize,
         seed: seedInput,
-        aiProfiles: availableAiProfiles.map(cloneProfile),
       },
       saveGame,
     });
@@ -259,7 +175,7 @@ async function launchMultiplayerFlow(intent) {
   }
 }
 
-btnStart.addEventListener('click', async () => {
+btnStart.addEventListener('click', () => {
   const seedInput = document.getElementById('setupSeed').value.trim();
   const seed = resolveConfiguredSeed(seedInput);
   const setupRng = makeChoiceRng(seed);
@@ -267,18 +183,13 @@ btnStart.addEventListener('click', async () => {
 
   const playerCount = Number.parseInt(
     resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '4'),
-    10
+    10,
   );
   const deckSize = Number.parseInt(
     resolveRandomValue(setupDeck.value, getNonRandomOptionValues(setupDeck), setupRng, '9'),
-    10
+    10,
   );
   const mode = resolveRandomValue(setupMode.value, modeChoices, setupRng, 'single');
-
-  if (mode === 'single' && !availableAiProfiles.length) {
-    setupAiRosterHint.textContent = 'Single-player requires at least one AI policy profile. Open the Simulation Lab and export trained champions if none are available.';
-    return;
-  }
 
   if (setupMode.value === 'multiplayer') {
     return;
@@ -289,9 +200,6 @@ btnStart.addEventListener('click', async () => {
       ? Math.floor(setupRng() * playerCount)
       : clampSeatIndex(setupSeat.value, playerCount))
     : 0;
-  const aiAssignments = mode === 'single'
-    ? resolveAiSeatAssignments(playerCount, seat + 1, setupRng)
-    : { aiSeatProfiles: {} };
 
   setupDialog.style.display = 'none';
 
@@ -303,7 +211,6 @@ btnStart.addEventListener('click', async () => {
     humanPlayerIds: mode === 'single'
       ? [seat]
       : Array.from({ length: playerCount }, (_, index) => index),
-    aiSeatProfiles: aiAssignments.aiSeatProfiles,
   });
   game.init();
 
@@ -350,18 +257,6 @@ setupRoomCode.addEventListener('keydown', (event) => {
   event.preventDefault();
   btnJoinRoom.click();
 });
-setupAiRoster.addEventListener('change', (event) => {
-  const select = event.target.closest('select[data-ai-seat]');
-  if (!select) return;
-  aiSeatSelections.set(Number.parseInt(select.dataset.aiSeat, 10), select.value);
-});
-window.addEventListener('focus', () => {
-  void refreshAvailableAiProfiles();
-});
-window.addEventListener('pageshow', () => {
-  void refreshAvailableAiProfiles();
-});
 
 refreshSeatOptions();
 refreshModeVisibility();
-await refreshAvailableAiProfiles();

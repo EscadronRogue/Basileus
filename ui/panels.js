@@ -498,7 +498,7 @@ function renderDecisionFactors(decision) {
 
   return `
     <div class="history-decision">
-      <div class="history-subhead">${decision.title || 'AI reasoning'}</div>
+      <div class="history-subhead">${decision.title || 'Runtime reasoning'}</div>
       <div class="history-factor-list">
         ${decision.factors.map((entry) => `
           <div class="history-factor ${entry.impact || 'neutral'}">

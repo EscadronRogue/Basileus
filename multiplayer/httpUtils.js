@@ -1,6 +1,5 @@
-// multiplayer/httpUtils.js — shared HTTP utilities for the multiplayer and
-// training servers. Static file serving, JSON responses, and graceful
-// listen/close helpers live here so both servers stay in lockstep.
+// multiplayer/httpUtils.js - shared HTTP utilities for the local and
+// multiplayer servers.
 
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';

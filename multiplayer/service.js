@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
 
-import { createBaselineAiProfile } from '../ai/profileStore.js';
-import { readExportedPersonalitiesFromFolder } from '../simulation/personality-files.js';
 import { createRoom, createRoomFromSave } from './session.js';
 import { attachWebSocketServer } from './wsServer.js';
 
@@ -46,17 +43,6 @@ function normalizePlayerName(rawName) {
 export class MultiplayerRoomManager {
   constructor() {
     this.rooms = new Map();
-    this.aiProfilesPromise = null;
-  }
-
-  async getAvailableAiProfiles() {
-    if (!this.aiProfilesPromise) {
-      const exportRoot = resolve(process.cwd(), 'trained-personalities');
-      this.aiProfilesPromise = readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false })
-        .then((profiles) => profiles.length ? profiles : [createBaselineAiProfile()])
-        .catch(() => [createBaselineAiProfile()]);
-    }
-    return this.aiProfilesPromise;
   }
 
   createSessionToken() {
@@ -201,10 +187,7 @@ export function attachMultiplayerSocketServer(server, manager, options = {}) {
           return;
         }
 
-        const aiProfiles = message?.type === 'start_game'
-          ? await manager.getAvailableAiProfiles()
-          : [];
-        await activeRoom.handleClientMessage(activeSessionId, message, aiProfiles);
+        await activeRoom.handleClientMessage(activeSessionId, message);
       } catch (error) {
         activeRoom?.reject(activeSessionId, message?.requestId || null, error?.message || 'WebSocket command failed.');
       }

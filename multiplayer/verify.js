@@ -164,13 +164,22 @@ async function createStartedThreePlayerRoom(baseUrl, manager) {
   await guestSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-guest');
   const guestPrivate = await guestSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
 
-  hostSocket.send({
-    type: 'set_seat_kind',
-    requestId: 'seat-two-ai',
-    seatId: 2,
-    kind: 'ai',
+  const thirdJoin = await joinRoom(baseUrl, createPayload.roomCode, {
+    playerName: 'Third',
   });
-  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'seat-two-ai');
+  const thirdSocket = await connectSocket(baseUrl, {
+    roomCode: thirdJoin.roomCode,
+    sessionToken: thirdJoin.sessionToken,
+    playerName: 'Third',
+  });
+  thirdSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-third',
+    seatId: 2,
+    playerName: 'Third',
+  });
+  await thirdSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-third');
+  const thirdPrivate = await thirdSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
 
   hostSocket.send({
     type: 'start_game',
@@ -179,8 +188,10 @@ async function createStartedThreePlayerRoom(baseUrl, manager) {
   await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'start-room');
   const hostGame = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
   const guestGame = await guestSocket.waitFor((message) => message.type === 'game_snapshot');
+  const thirdGame = await thirdSocket.waitFor((message) => message.type === 'game_snapshot');
   const hostGamePrivate = await hostSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
   const guestGamePrivate = await guestSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
+  const thirdGamePrivate = await thirdSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
 
   return {
     roomCode: createPayload.roomCode,
@@ -199,10 +210,18 @@ async function createStartedThreePlayerRoom(baseUrl, manager) {
       game: guestGame,
       private: guestGamePrivate,
     },
+    third: {
+      socket: thirdSocket,
+      sessionToken: thirdJoin.sessionToken,
+      seatToken: thirdPrivate.seatToken,
+      game: thirdGame,
+      private: thirdGamePrivate,
+    },
     close: async () => {
       await Promise.allSettled([
         hostSocket.close(),
         guestSocket.close(),
+        thirdSocket.close(),
       ]);
     },
   };
@@ -267,13 +286,22 @@ async function createStartedFourPlayerRoom(baseUrl, manager) {
   await observerSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-observer');
   const observerPrivate = await observerSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
 
-  hostSocket.send({
-    type: 'set_seat_kind',
-    requestId: 'seat-three-ai',
-    seatId: 3,
-    kind: 'ai',
+  const fourthJoin = await joinRoom(baseUrl, createPayload.roomCode, {
+    playerName: 'Fourth',
   });
-  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'seat-three-ai');
+  const fourthSocket = await connectSocket(baseUrl, {
+    roomCode: fourthJoin.roomCode,
+    sessionToken: fourthJoin.sessionToken,
+    playerName: 'Fourth',
+  });
+  fourthSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-fourth',
+    seatId: 3,
+    playerName: 'Fourth',
+  });
+  await fourthSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-fourth');
+  const fourthPrivate = await fourthSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 3);
 
   hostSocket.send({
     type: 'start_game',
@@ -283,9 +311,11 @@ async function createStartedFourPlayerRoom(baseUrl, manager) {
   const hostGame = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
   const guestGame = await guestSocket.waitFor((message) => message.type === 'game_snapshot');
   const observerGame = await observerSocket.waitFor((message) => message.type === 'game_snapshot');
+  const fourthGame = await fourthSocket.waitFor((message) => message.type === 'game_snapshot');
   const hostGamePrivate = await hostSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 0);
   const guestGamePrivate = await guestSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
   const observerGamePrivate = await observerSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
+  const fourthGamePrivate = await fourthSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 3);
 
   return {
     roomCode: createPayload.roomCode,
@@ -311,11 +341,19 @@ async function createStartedFourPlayerRoom(baseUrl, manager) {
       game: observerGame,
       private: observerGamePrivate,
     },
+    fourth: {
+      socket: fourthSocket,
+      sessionToken: fourthJoin.sessionToken,
+      seatToken: fourthPrivate.seatToken,
+      game: fourthGame,
+      private: fourthGamePrivate,
+    },
     close: async () => {
       await Promise.allSettled([
         hostSocket.close(),
         guestSocket.close(),
         observerSocket.close(),
+        fourthSocket.close(),
       ]);
     },
   };
@@ -416,6 +454,11 @@ async function verifyLobbyAndStart() {
     const gameSnapshot = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
     assert.equal(gameSnapshot.status, 'in_progress');
     assert.equal(gameSnapshot.state.phase, 'court');
+    const room = instance.manager.getRoom(created.roomCode);
+    assert.equal(room.aiMeta.pendingNeuralRuntime, true);
+    assert.equal(room.aiMeta.players[2].isAI, true);
+    assert.equal(room.aiMeta.players[2].displayName, 'AI Seat 3');
+    assert.equal(room.aiMeta.players[2].profile, undefined);
 
     await guestSocket.close();
     await hostSocket.close();

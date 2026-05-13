@@ -1,7 +1,7 @@
 {
   "name": "basileus-game",
   "version": "0.1.0",
-  "description": "A 3-5 player browser strategy game of dynastic profiteering inside the Byzantine Empire, with WebSocket multiplayer and an evolutionary AI training lab.",
+  "description": "A 3-5 player browser strategy game of dynastic profiteering inside the Byzantine Empire, with WebSocket multiplayer and neural-ready AI seat infrastructure.",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",
@@ -21,22 +21,18 @@
     "browser-game",
     "websocket",
     "multiplayer",
-    "ai",
-    "self-play",
-    "evolutionary"
+    "ai"
   ],
   "engines": {
     "node": ">=22.4"
   },
   "scripts": {
-    "serve": "node simulation/training-server.js",
+    "serve": "node multiplayer/server.js",
     "serve:multiplayer": "node multiplayer/server.js",
-    "train:node": "node simulation/train-node.js --parallelWorkers=auto",
     "test:economy": "node engine/economy.test.js",
-    "test:evolution": "node --test ai/context.test.js ai/actionSpace.test.js ai/profileStore.test.js ai/policyGenome.test.js ai/noMagicNumbers.test.js ai/courtActionPool.test.js ai/fullGamePolicy.test.js ai/consequences.test.js simulation/evolution.test.js simulation/engine.test.js",
-    "smoke:simulation": "node simulation/smoke-test.js",
+    "test:ai": "node --test ai/brain.test.js ai/purge.test.js",
     "test:multiplayer": "node multiplayer/verify.js",
-    "test": "npm run test:economy && npm run test:evolution && npm run test:ui && npm run smoke:simulation && npm run test:multiplayer",
+    "test": "npm run test:economy && npm run test:ai && npm run test:ui && npm run test:multiplayer",
     "test:ui": "node ui/gameController.test.js"
   }
 }

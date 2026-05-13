@@ -29,8 +29,3 @@
 *.woff2     binary
 *.ttf       binary
 *.otf       binary
-
-# Generated AI-training artifacts: keep tracked, but don't pollute GitHub
-# language stats or diff views.
-.training-runs/**           linguist-generated=true -diff
-trained-personalities/**    linguist-generated=true -diff

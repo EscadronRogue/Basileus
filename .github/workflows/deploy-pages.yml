@@ -31,14 +31,12 @@ jobs:
         run: |
           mkdir -p _site
           # Copy everything the browser needs. Server-only Node scripts are
-          # harmless to ship (they just don't execute), and simulator.html
-          # imports simulation/app.js so we cannot exclude that folder wholesale.
+          # harmless to ship because they do not execute on GitHub Pages.
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='_site' \
             --exclude='node_modules' \
-            --exclude='.training-runs' \
             --exclude='start-local.bat' \
             --exclude='start-local.ps1' \
             ./ _site/

@@ -1467,10 +1467,8 @@ export function summarizeDealClause(state, clause, viewerId = null) {
 }
 
 // ─── AI / automation surface ───────────────────────────────────────────────
-// These helpers let non-UI agents (AI brains, training harnesses, scripts)
-// inspect open deals and dispatch responses through the same engine path the
-// UI uses. They are intentionally thin so the engine stays the single source
-// of truth for validation and bookkeeping.
+// These helpers let non-UI agents inspect open deals and dispatch responses
+// through the same engine path the UI uses.
 
 export function getIncomingDealsForPlayer(state, playerId) {
   ensureDealState(state);
@@ -1489,8 +1487,7 @@ export function getOutgoingDealsForPlayer(state, playerId) {
   ));
 }
 
-// Aggregate numeric snapshot of an offer from a viewer's perspective. Useful
-// as a feature vector for AI training: every entry is a non-negative scalar.
+// Aggregate numeric snapshot of an offer from a viewer's perspective.
 export function summarizeDealOfferImpact(clauses = [], viewerId = null) {
   const totals = {
     clauseCount: Array.isArray(clauses) ? clauses.length : 0,

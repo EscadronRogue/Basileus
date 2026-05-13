@@ -33,13 +33,6 @@ export class GameController {
       humanPlayerIds: Array.isArray(config.humanPlayerIds)
         ? config.humanPlayerIds.slice()
         : Array.from({ length: config.playerCount || 4 }, (_, index) => index),
-      aiPopulationPreset: config.aiPopulationPreset || 'balanced',
-      aiPersonalityIds: Array.isArray(config.aiPersonalityIds)
-        ? config.aiPersonalityIds.slice()
-        : null,
-      aiSeatProfiles: config.aiSeatProfiles && typeof config.aiSeatProfiles === 'object'
-        ? { ...config.aiSeatProfiles }
-        : {},
     };
 
     this.state = null;
@@ -58,9 +51,6 @@ export class GameController {
     if (this.config.mode === 'single') {
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
-        populationPresetId: this.config.aiPopulationPreset,
-        personalityIds: this.config.aiPersonalityIds,
-        seatProfiles: this.config.aiSeatProfiles,
       });
       this.ensureHumanFocus();
     }

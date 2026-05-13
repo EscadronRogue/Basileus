@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3–5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs entirely in the browser, supports hot-seat / single-player vs trained AI, and includes a WebSocket multiplayer server and a Simulation Lab that batch-trains AI policy profiles through self-play.
+Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, keeps single-player and multiplayer AI seat infrastructure wired for the next AI runtime, and includes a pure Node WebSocket multiplayer server.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -11,65 +11,62 @@ Basileus is a 3–5 player strategy game where rival noble houses jockey for tit
 
 ## Highlights
 
-- **Pure browser game.** No bundler, no transpiler, no npm dependencies — just HTML, CSS, and ES modules.
-- **Trained AI opponents.** Policy-genome champions exported to `trained-personalities/latest/` by the evolutionary self-play loop in the Simulation Lab.
-- **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) — no external libraries; runs anywhere Node 20+ runs.
-- **Simulation Lab.** A separate page (`simulator.html`) for stress-testing the live ruleset and breeding new AI rosters.
-- **Deterministic core.** Seeded RNG throughout the engine so games and simulations are reproducible.
+- **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
+- **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
+- **AI seat infrastructure.** Single-player and multiplayer can still mark seats as AI, but the old AI logic has been removed. Any required AI decision fails clearly until the new neural runtime is implemented.
+- **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
-## Tech stack
+## Tech Stack
 
 | Layer | Tech |
 | --- | --- |
 | Frontend | Vanilla JS (ES modules), CSS, SVG map |
-| Backend | Node.js (built-ins only — `node:http`, `node:worker_threads`, `node:crypto`) |
+| Backend | Node.js built-ins |
 | Multiplayer | RFC 6455 WebSocket implementation in pure Node (`multiplayer/wsServer.js`) |
-| Simulation | Worker-thread fan-out, evolutionary search over policy genomes |
+| Game rules | Deterministic engine modules under `engine/` |
 | CI / Deploy | GitHub Actions, GitHub Pages |
 
-## Getting started
+## Getting Started
 
 ### Requirements
-- **Node.js ≥ 22.4** (CI runs on 22 and 24). The multiplayer verifier uses the global `WebSocket`, which is stable from Node 22.4 onward. Check with `node --version`.
 
-### Run locally — Windows
+- **Node.js >= 22.4**. The multiplayer verifier uses the global `WebSocket`, which is stable from Node 22.4 onward.
+
+### Run Locally - Windows
+
 Double-click `start-local.bat`, or from PowerShell:
+
 ```powershell
 ./start-local.ps1
 ```
 
-### Run locally — macOS / Linux
+### Run Locally - macOS / Linux
+
 ```bash
 npm run serve
-# then open http://127.0.0.1:8123/
 ```
 
-### Multiplayer server
+Then open the URL printed by the server.
+
+### Multiplayer Server
+
 ```bash
 npm run serve:multiplayer
 ```
-
-### Simulation Lab
-After starting the local server, open http://127.0.0.1:8123/simulator.html.
-
-### Headless training
-```bash
-npm run train:node -- --parallelWorkers=auto
-```
-By default the trainer uses a fresh random seed each run, rotates policy-only candidates through 3, 4, and 5 player games with 6, 9, and 12 invasion decks, validates finalists with a deeper holdout, and exports champions. Use `--playerCounts=3,5` or `--deckSizes=6,12` only when you deliberately want a narrower curriculum.
 
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
-| `npm run serve` | Static + training HTTP server on port 8123. |
-| `npm run serve:multiplayer` | WebSocket multiplayer server. |
-| `npm run train:node` | Headless evolutionary training run. |
-| `npm run smoke:simulation` | Fast worker-based smoke test of the engine. |
-| `npm run test:multiplayer` | End-to-end test of the multiplayer protocol. |
-| `npm test` | Runs both the smoke test and the multiplayer verifier. |
+| `npm run serve` | Static + multiplayer HTTP server. |
+| `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
+| `npm run test:economy` | Engine/economy rules tests. |
+| `npm run test:ai` | AI stub and purge contract tests. |
+| `npm run test:ui` | Browser controller and panel tests. |
+| `npm run test:multiplayer` | End-to-end multiplayer protocol verifier. |
+| `npm test` | Runs the full local test suite. |
 
-## Online multiplayer deployment
+## Online Multiplayer Deployment
 
 GitHub Pages can only host the static frontend. To make the hosted game create and join multiplayer rooms, deploy the Node multiplayer server separately.
 
@@ -82,46 +79,42 @@ GitHub Pages can only host the static frontend. To make the hosted game create a
 The Pages workflow injects `MULTIPLAYER_BACKEND_URL` into the deployed `index.html` at build time. The checked-in source stays blank so local development continues to use same-origin multiplayer automatically.
 
 Render notes:
+
 - The multiplayer server exposes `GET /healthz` for Render health checks.
 - `render.yaml` defaults `ALLOWED_ORIGINS` to `https://escadronrogue.github.io`. Add more origins in Render if you later serve the frontend from a custom domain.
 - The browser client sends a periodic WebSocket heartbeat and a lightweight `/healthz` HTTP keepalive so an active room still counts as inbound traffic on Render Free.
 
-## Project structure
+## Project Structure
 
-```
+```text
 .
 ├── index.html              # Live game entry point
-├── simulator.html          # Simulation Lab entry point
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
-├── ai/                     # AI policy model + profile store
+├── ai/                     # Minimal AI runtime contract stubs
 ├── assets/                 # SVG map, hitzones, stylesheets
 ├── data/                   # Static game data (provinces, titles, invasion decks)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
 ├── multiplayer/            # Node WebSocket server + protocol verifier
 ├── render/                 # SVG map renderer
-├── simulation/             # Trainer, workers, batch evaluation
-├── trained-personalities/  # Generated policy champion rosters
 └── ui/                     # Browser-side controllers and panels
 ```
 
-## Game overview
+## Game Overview
 
-Players are rival noble houses inside the Byzantine Empire. Each round, gold flows in from provinces, titles are auctioned and reshuffled, invasions strike the frontier, and players plot intrigue against each other. The Basileus (emperor) seat rotates based on cascading title rules. Win by earning points for each 25% share of church income, estate income, tax income, and gold reserves while surviving the political fallout.
+Players are rival noble houses inside the Byzantine Empire. Each round, gold flows in from provinces, titles are auctioned and reshuffled, invasions strike the frontier, and players plot intrigue against each other. The Basileus seat rotates based on cascading title rules. Win by earning points for each 25% share of church income, estate income, tax income, and gold reserves while surviving the political fallout.
 
-The full rule set lives in the engine — read `engine/turnflow.js` and `engine/cascade.js` if you want the canonical source.
+The full rule set lives in the engine. Read `engine/turnflow.js` and `engine/cascade.js` for the canonical source.
 
 ## Development
 
 The repo intentionally has **zero runtime npm dependencies**. Please keep it that way unless there is a strong reason; one of the project's goals is "open the folder, run a server, play."
 
-Useful entry points when contributing:
-- `engine/state.js` — game state shape and reducers
-- `engine/turnflow.js` — round/phase orchestration
-- `ai/brain.js` — AI decision policy
-- `simulation/evolution.js` — evolutionary trainer
-- `multiplayer/wsServer.js` — handcoded WebSocket framing
+Useful entry points:
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and [SECURITY.md](SECURITY.md) for vulnerability reporting.
+- `engine/state.js` - game state shape and reducers
+- `engine/turnflow.js` - round/phase orchestration
+- `ai/brain.js` - neural-runtime integration contract stubs
+- `multiplayer/wsServer.js` - handcoded WebSocket framing
 
 ## License
 

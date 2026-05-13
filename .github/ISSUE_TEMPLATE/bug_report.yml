@@ -1,5 +1,5 @@
 name: Bug report
-description: Something is broken in the game, the simulator, or the multiplayer server.
+description: Something is broken in the game or multiplayer server.
 title: "[bug]: "
 labels: ["bug"]
 body:
@@ -15,10 +15,8 @@ body:
       options:
         - Game (single-player)
         - Multiplayer
-        - Simulation Lab
-        - Headless trainer
         - Engine / rules
-        - AI personality
+        - AI infrastructure
         - Build / CI / repo
         - Other
       default: 0
