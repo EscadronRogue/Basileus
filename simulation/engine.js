@@ -1,5 +1,6 @@
 import { createGameState, getPlayerThemes } from '../engine/state.js';
 import { buildFinalScores as buildEngineFinalScores } from '../engine/scoring.js';
+import { setDealParticipantIds } from '../engine/deals.js';
 import {
   createAIMeta,
   SUPPORTED_PLAYER_COUNTS,
@@ -303,6 +304,7 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
     deckSize: scenario.deckSize,
     seed,
   });
+  setDealParticipantIds(state, state.players.map((player) => player.id));
 
   const seatProfiles = config.seatProfiles && Object.keys(config.seatProfiles).length
     ? { ...config.seatProfiles }
@@ -400,6 +402,12 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
     totalRevocations: meta.totals.revocations,
     totalDefenderRewards: meta.totals.defenderRewards || 0,
     totalMercSpend: meta.totals.mercSpend,
+    totalDealsProposed: meta.totals.dealsProposed || 0,
+    totalDealsAccepted: meta.totals.dealsAccepted || 0,
+    totalDealsCountered: meta.totals.dealsCountered || 0,
+    totalDealsRefused: meta.totals.dealsRefused || 0,
+    totalDealUtility: meta.totals.dealUtility || 0,
+    totalBadAcceptedDeals: meta.totals.badAcceptedDeals || 0,
     throneChanges: meta.totals.throneChanges,
     occupiedThemesEnd: Object.values(state.themes).filter(theme => theme.occupied && theme.id !== 'CPL').length,
     playerMetrics: state.players.map(player => {
@@ -430,6 +438,13 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
         throneCaptures: meta.players[player.id].stats.throneCaptures,
         supportIncumbentVotes: meta.players[player.id].stats.supportIncumbentVotes,
         supportSelfVotes: meta.players[player.id].stats.supportSelfVotes,
+        dealsProposed: meta.players[player.id].stats.dealsProposed || 0,
+        dealsAccepted: meta.players[player.id].stats.dealsAccepted || 0,
+        dealsCountered: meta.players[player.id].stats.dealsCountered || 0,
+        dealsRefused: meta.players[player.id].stats.dealsRefused || 0,
+        dealUtility: meta.players[player.id].stats.dealUtility || 0,
+        badAcceptedDeals: meta.players[player.id].stats.badAcceptedDeals || 0,
+        dealAcceptanceRate: (meta.players[player.id].stats.dealsAccepted || 0) / Math.max(1, (meta.players[player.id].stats.dealsProposed || 0) + (meta.players[player.id].stats.dealsCountered || 0)),
         finalScore: scoreEntry?.points || 0,
         finalWealth: scoreEntry?.wealth || 0,
         finalCategoryShares: categoryShares,

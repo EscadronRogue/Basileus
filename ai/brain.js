@@ -64,8 +64,12 @@ import {
 } from './personalities.js';
 import { normalizeAiProfile } from './profileStore.js';
 import {
+  DEAL_CLAUSE_KINDS,
+  DEAL_TRIGGER_TYPES,
   getIncomingDealsForPlayer,
   getOutgoingDealsForPlayer,
+  getSpendableGold,
+  previewDealOffer,
   respondToDeal,
   sendDealOffer,
   summarizeDealOfferImpact,
@@ -1116,6 +1120,12 @@ export function createAIMeta(state, options = {}) {
         supportSelfVotes: 0,
         throneCaptures: 0,
         defenderRewards: 0,
+        dealsProposed: 0,
+        dealsAccepted: 0,
+        dealsCountered: 0,
+        dealsRefused: 0,
+        dealUtility: 0,
+        badAcceptedDeals: 0,
       },
     };
   }
@@ -1158,6 +1168,12 @@ export function createAIMeta(state, options = {}) {
       defenderRewards: 0,
       throneChanges: 0,
       mercSpend: 0,
+      dealsProposed: 0,
+      dealsAccepted: 0,
+      dealsCountered: 0,
+      dealsRefused: 0,
+      dealUtility: 0,
+      badAcceptedDeals: 0,
     },
     wars: [],
     roundSnapshots: [],
@@ -2666,6 +2682,252 @@ function applyMajorTitleAssignment(state, meta, newBasileusId, plan) {
 // pure of side effects so a learned model or scripted policy can replace
 // them without touching the dispatch path.
 
+function ensureDealBudget(state, meta, playerId) {
+  const playerMeta = meta.players[playerId];
+  if (!playerMeta.dealBudget) {
+    playerMeta.dealBudget = { round: -1, proposals: 0 };
+  }
+  if (playerMeta.dealBudget.round !== state.round) {
+    playerMeta.dealBudget.round = state.round;
+    playerMeta.dealBudget.proposals = 0;
+  }
+  return playerMeta.dealBudget;
+}
+
+function getDealTriggerVariants(state, playerId, counterpartyId, rawClause) {
+  const variants = [{ ...rawClause, startTriggerType: DEAL_TRIGGER_TYPES.IMMEDIATE }];
+  if (playerId !== state.basileusId) {
+    variants.push({
+      ...rawClause,
+      startTriggerType: DEAL_TRIGGER_TYPES.WHEN_PLAYER_IS_BASILEUS,
+      triggerPlayerId: playerId,
+    });
+  }
+  if (counterpartyId !== state.basileusId) {
+    variants.push({
+      ...rawClause,
+      startTriggerType: DEAL_TRIGGER_TYPES.WHEN_PLAYER_IS_BASILEUS,
+      triggerPlayerId: counterpartyId,
+    });
+  }
+  return variants;
+}
+
+function getBestTradeableTheme(state, ownerId, scorer) {
+  return getPlayerThemes(state, ownerId)
+    .filter((theme) => !theme.occupied && theme.owner === ownerId)
+    .map((theme) => ({ theme, score: scorer(theme) }))
+    .sort((left, right) => right.score - left.score)[0]?.theme || null;
+}
+
+function getDealThemeValue(state, meta, viewerId, themeId) {
+  const theme = state.themes?.[themeId];
+  if (!theme) return 0;
+  const remainingRounds = Math.max(1, getRemainingRounds(state));
+  const routeRisk = getThemeRouteRisk(state, theme.id);
+  const income = getThemeOwnerIncome(theme) * Math.min(4, remainingRounds) * 0.55;
+  return income + (getThemeStrategicValue(theme) * 0.18) - (routeRisk * getEmpireDanger(state, meta) * 0.65);
+}
+
+function scoreDealClauseForViewer(state, meta, viewerId, clause) {
+  const profile = getPersonalityProfile(meta, viewerId);
+  const youGive = Number(clause.giverId) === Number(viewerId);
+  const youReceive = Number(clause.receiverId) === Number(viewerId);
+  if (!youGive && !youReceive) return 0;
+
+  let value = 0;
+  if (clause.kind === DEAL_CLAUSE_KINDS.GOLD) {
+    value = (Number(clause.payload?.totalAmount) || 0) * (0.28 + profile.weights.wealth * 0.035);
+  } else if (clause.kind === DEAL_CLAUSE_KINDS.ESTATE) {
+    value = getDealThemeValue(state, meta, viewerId, clause.payload?.themeId);
+  } else if (clause.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT) {
+    const troops = Number(clause.payload?.troopCount) || 0;
+    const candidateId = Number(clause.payload?.candidateId);
+    const candidateScore = scoreCandidateBase(state, meta, viewerId, candidateId);
+    value = troops * (0.75 + profile.weights.capital * 0.16 + profile.weights.throne * 0.14 + Math.max(0, candidateScore) * 0.04);
+  } else if (clause.kind === DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT) {
+    const troops = Number(clause.payload?.troopCount) || 0;
+    value = troops * (0.72 + profile.weights.frontier * 0.18 + getEmpireDanger(state, meta) * 0.45);
+  } else if (clause.kind === DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE) {
+    const count = Number(clause.payload?.appointmentCount) || 0;
+    const giverInfluence = getPlayerInfluence(state, meta, clause.giverId);
+    const titleNeed = Math.max(0.4, 2.4 - getMinorTitleCount(state, viewerId) * 0.35 - getPlayer(state, viewerId).majorTitles.length * 0.55);
+    value = count * (0.95 + titleNeed + giverInfluence * 0.08);
+  } else if (clause.kind === DEAL_CLAUSE_KINDS.NON_REVOCATION) {
+    const turns = Number(clause.durationTurns) || 1;
+    const giverThreat = clause.giverId === state.basileusId ? 1.2 : 0.45;
+    value = turns * (0.65 + giverThreat + profile.weights.revocation * 0.08);
+  }
+
+  if (clause.startTrigger?.type === DEAL_TRIGGER_TYPES.WHEN_PLAYER_IS_BASILEUS) {
+    const triggerPlayerId = Number(clause.startTrigger.playerId);
+    const triggerPressure = triggerPlayerId === state.basileusId
+      ? 1
+      : clamp(scoreCandidateBase(state, meta, triggerPlayerId, triggerPlayerId) / 8, 0.2, 0.85);
+    value *= triggerPressure;
+  }
+
+  return youReceive ? value : -value * (1.05 - Math.min(0.35, getMetaForPlayer(meta, viewerId, 'dealRiskTolerance') * 0.18));
+}
+
+function scoreDealClausesForViewer(state, meta, viewerId, clauses = []) {
+  const counterpartyIds = new Set();
+  let score = 0;
+  for (const clause of clauses) {
+    score += scoreDealClauseForViewer(state, meta, viewerId, clause);
+    if (Number(clause.giverId) !== Number(viewerId)) counterpartyIds.add(clause.giverId);
+    if (Number(clause.receiverId) !== Number(viewerId)) counterpartyIds.add(clause.receiverId);
+  }
+  for (const counterpartyId of counterpartyIds) {
+    score += getAffinityScore(meta, viewerId, Number(counterpartyId)) * 0.18;
+    score += getObligation(meta, Number(counterpartyId), viewerId) * 0.12;
+  }
+  return score;
+}
+
+function buildSingleDealClauseTemplates(state, meta, playerId, counterpartyId) {
+  const clauses = [];
+  const player = getPlayer(state, playerId);
+  const counterparty = getPlayer(state, counterpartyId);
+  const context = ensureRoundContext(state, meta, 'court');
+  const playerPact = context.pactByPlayer[playerId];
+  const counterpartyPact = context.pactByPlayer[counterpartyId];
+  const playerCandidateId = playerPact?.candidateId ?? state.basileusId;
+  const counterpartyCandidateId = counterpartyPact?.candidateId ?? counterpartyId;
+  const playerGold = Math.max(0, getSpendableGold(state, playerId));
+  const counterpartyGold = Math.max(0, getSpendableGold(state, counterpartyId));
+
+  const pushVariants = (rawClause) => {
+    for (const variant of getDealTriggerVariants(state, playerId, counterpartyId, rawClause)) {
+      clauses.push(variant);
+    }
+  };
+
+  if (counterpartyGold > 0) {
+    pushVariants({ kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'ask', amount: Math.min(3, counterpartyGold), durationTurns: 1 });
+  }
+  if (playerGold > 0) {
+    pushVariants({ kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'give', amount: Math.min(3, playerGold), durationTurns: 1 });
+  }
+  if (counterpartyGold >= 2) {
+    pushVariants({ kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'ask', amount: Math.min(4, counterpartyGold), durationTurns: 2 });
+  }
+  if (playerGold >= 2) {
+    pushVariants({ kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'give', amount: Math.min(4, playerGold), durationTurns: 2 });
+  }
+
+  const askEstate = getBestTradeableTheme(state, counterpartyId, (theme) => getDealThemeValue(state, meta, playerId, theme.id));
+  if (askEstate) pushVariants({ kind: DEAL_CLAUSE_KINDS.ESTATE, direction: 'ask', themeId: askEstate.id });
+  const giveEstate = getBestTradeableTheme(state, playerId, (theme) => -getDealThemeValue(state, meta, playerId, theme.id));
+  if (giveEstate) pushVariants({ kind: DEAL_CLAUSE_KINDS.ESTATE, direction: 'give', themeId: giveEstate.id });
+
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.COUP_SUPPORT, direction: 'ask', candidateId: playerCandidateId, troopCount: 1, durationTurns: 1 });
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.COUP_SUPPORT, direction: 'give', candidateId: counterpartyCandidateId, troopCount: 1, durationTurns: 1 });
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, direction: 'ask', troopCount: 1, durationTurns: 1 });
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, direction: 'give', troopCount: 1, durationTurns: 1 });
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE, direction: 'ask', appointmentCount: 1 });
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE, direction: 'give', appointmentCount: 1 });
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.NON_REVOCATION, direction: 'ask', durationTurns: 1 });
+  pushVariants({ kind: DEAL_CLAUSE_KINDS.NON_REVOCATION, direction: 'give', durationTurns: 1 });
+  if (state.round < state.maxRounds) {
+    pushVariants({ kind: DEAL_CLAUSE_KINDS.NON_REVOCATION, direction: 'ask', durationTurns: 2 });
+    pushVariants({ kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, direction: 'ask', troopCount: 1, durationTurns: 2 });
+  }
+
+  return clauses.filter((clause) => {
+    if (clause.direction === 'give' && !player) return false;
+    if (clause.direction === 'ask' && !counterparty) return false;
+    return true;
+  });
+}
+
+function buildDealCandidatePayloads(state, meta, playerId, counterpartyId) {
+  const singles = buildSingleDealClauseTemplates(state, meta, playerId, counterpartyId);
+  const asks = singles.filter((clause) => clause.direction === 'ask').slice(0, 18);
+  const gives = singles.filter((clause) => clause.direction === 'give').slice(0, 18);
+  const payloads = singles.map((clause) => [clause]);
+
+  for (const ask of asks.slice(0, 10)) {
+    for (const give of gives.slice(0, 8)) {
+      if (ask.kind === give.kind && ask.kind === DEAL_CLAUSE_KINDS.ESTATE) continue;
+      payloads.push([ask, give]);
+    }
+  }
+
+  return payloads.slice(0, 96);
+}
+
+function evaluateDealPayload(state, meta, playerId, counterpartyId, clauses, payloadBase = {}) {
+  const preview = previewDealOffer(state, playerId, {
+    ...payloadBase,
+    counterpartyId,
+    clauses,
+  }, payloadBase.threadId ? { mode: 'counter' } : { mode: 'send' });
+  if (!preview.ok) return null;
+
+  const actorUtility = scoreDealClausesForViewer(state, meta, playerId, preview.clauses);
+  const counterpartyUtility = scoreDealClausesForViewer(state, meta, counterpartyId, preview.clauses);
+  const acceptanceFloor = getMetaForPlayer(meta, counterpartyId, 'dealCounterThreshold');
+  const relation = getAffinityScore(meta, playerId, counterpartyId);
+  const score =
+    actorUtility +
+    Math.min(counterpartyUtility - acceptanceFloor, 1.8) * 0.55 +
+    relation * 0.2 -
+    Math.max(0, -counterpartyUtility) * 1.1;
+
+  return {
+    counterpartyId,
+    clauses,
+    normalizedClauses: preview.clauses,
+    actorUtility,
+    counterpartyUtility,
+    score,
+  };
+}
+
+function findBestDealProposal(state, meta, playerId, payloadBase = {}) {
+  const eligibleIds = state.players.map((player) => player.id).filter((id) => id !== playerId);
+  const candidates = [];
+
+  for (const counterpartyId of eligibleIds) {
+    for (const clauses of buildDealCandidatePayloads(state, meta, playerId, counterpartyId)) {
+      const evaluated = evaluateDealPayload(state, meta, playerId, counterpartyId, clauses, payloadBase);
+      if (evaluated) candidates.push(evaluated);
+    }
+  }
+
+  const threshold = getMetaForPlayer(meta, playerId, 'dealProposalThreshold');
+  const plausible = candidates
+    .filter((candidate) => candidate.score > threshold)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 8);
+  return softmaxPick(plausible, getMetaForPlayer(meta, playerId, 'dealTemperature'), state.rng);
+}
+
+function findBestDealCounter(state, meta, playerId, thread) {
+  const counterpartyId = getThreadCounterpartyId(thread, playerId);
+  if (counterpartyId == null || Number(thread.revision) >= 3) return null;
+  const payloadBase = {
+    threadId: thread.id,
+    expectedRevision: thread.revision,
+  };
+  const candidates = [];
+  for (const clauses of buildDealCandidatePayloads(state, meta, playerId, counterpartyId)) {
+    const evaluated = evaluateDealPayload(state, meta, playerId, counterpartyId, clauses, payloadBase);
+    if (evaluated) candidates.push(evaluated);
+  }
+  const plausible = candidates
+    .filter((candidate) => candidate.actorUtility > getMetaForPlayer(meta, playerId, 'dealAcceptanceThreshold'))
+    .filter((candidate) => candidate.counterpartyUtility > getMetaForPlayer(meta, counterpartyId, 'dealCounterThreshold'))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 6);
+  return softmaxPick(plausible, getMetaForPlayer(meta, playerId, 'dealTemperature'), state.rng);
+}
+
+function getThreadCounterpartyId(thread, playerId) {
+  return thread.playerIds.find((id) => Number(id) !== Number(playerId)) ?? null;
+}
+
 // Snapshot of the live deal context for one player. Designed as a feature
 // vector: every value is either a small int or a normalized scalar so it
 // can feed directly into a model without further wrangling.
@@ -2698,20 +2960,78 @@ export function getDealFeatureSnapshot(state, meta, playerId) {
 // a no-op; training can plug in here without touching the dispatch loop.
 export function observeDealEvent(state, meta, event) {
   if (!meta || !event) return;
+  const actorStats = meta.players?.[event.actorId]?.stats;
+  if (!actorStats) return;
+  const utility = Number(event.actorUtility ?? event.utility ?? 0) || 0;
+  if (event.type === 'deal_propose') {
+    actorStats.dealsProposed++;
+    meta.totals.dealsProposed++;
+  } else if (event.type === 'deal_counter') {
+    actorStats.dealsCountered++;
+    meta.totals.dealsCountered++;
+  } else if (event.type === 'deal_accept') {
+    actorStats.dealsAccepted++;
+    actorStats.dealUtility += utility;
+    meta.totals.dealsAccepted++;
+    meta.totals.dealUtility += utility;
+    if (utility < 0) {
+      actorStats.badAcceptedDeals++;
+      meta.totals.badAcceptedDeals++;
+    }
+    adjustRelation(meta, event.actorId, event.counterpartyId, 0.28, 0);
+    adjustRelation(meta, event.counterpartyId, event.actorId, 0.18, 0);
+    if (event.proposerId != null && event.proposerId !== event.actorId) {
+      const proposerStats = meta.players?.[event.proposerId]?.stats;
+      const proposerUtility = Number(event.proposerUtility ?? 0) || 0;
+      if (proposerStats) {
+        proposerStats.dealUtility += proposerUtility;
+        meta.totals.dealUtility += proposerUtility;
+      }
+    }
+  } else if (event.type === 'deal_refuse') {
+    actorStats.dealsRefused++;
+    meta.totals.dealsRefused++;
+    adjustRelation(meta, event.counterpartyId, event.actorId, 0, 0.12);
+  }
   invalidateRoundContext(meta);
 }
 
-// Default policy: refuse every incoming offer so humans get a clean response
-// instead of waiting until the AI confirms court. Replace with a learned
-// policy by overriding `aiDecideOnIncomingDeal`.
 function aiDecideOnIncomingDeal(state, meta, playerId, thread) {
-  return { action: 'refuse', reason: 'ai_no_policy' };
+  const clauses = thread.currentOffer?.clauses || [];
+  const counterpartyId = getThreadCounterpartyId(thread, playerId);
+  const actorUtility = scoreDealClausesForViewer(state, meta, playerId, clauses);
+  const proposerUtility = counterpartyId == null ? 0 : scoreDealClausesForViewer(state, meta, counterpartyId, clauses);
+  const acceptThreshold = getMetaForPlayer(meta, playerId, 'dealAcceptanceThreshold');
+  const counterThreshold = getMetaForPlayer(meta, playerId, 'dealCounterThreshold');
+
+  if (actorUtility >= acceptThreshold) {
+    return { action: 'accept', actorUtility, proposerUtility };
+  }
+
+  if (actorUtility >= counterThreshold) {
+    const counter = findBestDealCounter(state, meta, playerId, thread);
+    if (counter) {
+      return {
+        action: 'counter',
+        clauses: counter.clauses,
+        normalizedClauses: counter.normalizedClauses,
+        actorUtility: counter.actorUtility,
+        proposerUtility: counter.counterpartyUtility,
+      };
+    }
+  }
+
+  return { action: 'refuse', reason: 'ai_unfavorable_deal', actorUtility, proposerUtility };
 }
 
-// Default policy: never propose. Training can return `{ counterpartyId, clauses }`
-// here to dispatch a real offer through the same path the UI uses.
 function aiProposeOutgoingDeal(state, meta, playerId) {
-  return null;
+  const budget = ensureDealBudget(state, meta, playerId);
+  if (budget.proposals >= 1) return null;
+  if (getIncomingDealsForPlayer(state, playerId).length || getOutgoingDealsForPlayer(state, playerId).length) return null;
+  const best = findBestDealProposal(state, meta, playerId);
+  if (!best) return null;
+  budget.proposals++;
+  return best;
 }
 
 function handleAIDealActions(state, meta, playerId) {
@@ -2729,12 +3049,17 @@ function handleAIDealActions(state, meta, playerId) {
     if (decision.action === 'refuse' && decision.reason) payload.reason = decision.reason;
     const result = respondToDeal(state, playerId, payload);
     if (result?.ok) {
+      const counterpartyId = thread.playerIds.find((id) => id !== playerId) ?? null;
       observeDealEvent(state, meta, {
         type: `deal_${decision.action}`,
         actorId: playerId,
-        counterpartyId: thread.playerIds.find((id) => id !== playerId) ?? null,
+        counterpartyId,
+        proposerId: thread.currentOffer?.proposerId ?? counterpartyId,
         threadId: thread.id,
+        actorUtility: decision.actorUtility,
+        proposerUtility: decision.proposerUtility,
       });
+      logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} ${decision.action}s a deal with ${describeActor(state, meta, counterpartyId)}.`);
       acted = true;
     }
   }
@@ -2748,7 +3073,10 @@ function handleAIDealActions(state, meta, playerId) {
         actorId: playerId,
         counterpartyId: Number(proposal.counterpartyId),
         threadId: result.threadId,
+        actorUtility: proposal.actorUtility,
+        proposerUtility: proposal.counterpartyUtility,
       });
+      logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} proposes a deal to ${describeActor(state, meta, Number(proposal.counterpartyId))}.`);
       acted = true;
     }
   }

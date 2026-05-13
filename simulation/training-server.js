@@ -61,10 +61,27 @@ function configToArgs(config, outputPath) {
     '--progressEvery=1',
   ];
 
+  const pushArg = (key, value) => {
+    if (value === undefined || value === null || value === '') return;
+    const argValue = Array.isArray(value) ? value.join(',') : value;
+    if (argValue === '') return;
+    args.push(`--${key}=${argValue}`);
+  };
+
+  if (Array.isArray(config.playerCounts) && config.playerCounts.length) {
+    pushArg('playerCounts', config.playerCounts);
+  } else {
+    pushArg('playerCount', config.playerCount);
+  }
+
+  if (Array.isArray(config.deckSizes) && config.deckSizes.length) {
+    pushArg('deckSizes', config.deckSizes);
+  } else {
+    pushArg('deckSize', config.deckSize);
+  }
+
   const flatKeys = [
     'seed',
-    'playerCount',
-    'deckSize',
     'fitnessPresetId',
     'populationSize',
     'generations',
@@ -79,9 +96,7 @@ function configToArgs(config, outputPath) {
   ];
 
   for (const key of flatKeys) {
-    if (config[key] !== undefined && config[key] !== null && config[key] !== '') {
-      args.push(`--${key}=${config[key]}`);
-    }
+    pushArg(key, config[key]);
   }
 
   if (Number(config.parallelWorkers || 0) <= 0) {

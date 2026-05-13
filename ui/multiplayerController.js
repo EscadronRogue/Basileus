@@ -875,6 +875,8 @@ export class MultiplayerController {
         selectedProvinceId: this.selectedProvinceId,
         uiState: this.uiState,
         aiMeta: null,
+        privateData: this.privateSnapshot || null,
+        notificationScopeKey: `room:${this.roomCode || 'local'}:${this.privateSnapshot?.seatId ?? this.viewPlayerId ?? 'spectator'}`,
         renderTabs: () => this.renderPlayerTabs(),
         renderActionPanel: () => this.renderActionPanel(),
         renderConnectionBadge: () => this.renderConnectionBadge(),

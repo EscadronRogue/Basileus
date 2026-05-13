@@ -512,7 +512,7 @@ body::before {
 }
 #sidebar::-webkit-scrollbar-thumb:hover { background: var(--gold-1); }
 
-#playerDashboard, #balancePanel, #historyPanel, #actionPanel {
+#playerDashboard, #balancePanel, #notificationPanel, #historyPanel, #actionPanel {
   display: flex;
   flex-direction: column;
   min-height: auto;
@@ -522,6 +522,7 @@ body::before {
 
 #playerDashboard.panel-collapsed,
 #balancePanel.panel-collapsed,
+#notificationPanel.panel-collapsed,
 #historyPanel.panel-collapsed,
 #actionPanel.panel-collapsed {
   overflow: hidden;
@@ -609,6 +610,12 @@ body::before {
   overflow-wrap: anywhere;
 }
 
+.sidebar-panel-badge.urgent {
+  background: rgba(146,46,28,0.14);
+  border-color: rgba(146,46,28,0.28);
+  color: #7f291c;
+}
+
 .sidebar-panel-body {
   padding: var(--main-panel-pad);
 }
@@ -620,6 +627,125 @@ body::before {
 
 .history-panel .sidebar-panel-body {
   overflow: visible;
+}
+
+.notification-panel {
+  position: relative;
+}
+
+.notification-list {
+  display: grid;
+  gap: 8px;
+}
+
+.notification-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid rgba(82,63,36,0.14);
+  border-radius: 7px;
+  background: rgba(255,253,246,0.72);
+}
+
+.notification-card.urgent {
+  border-color: rgba(146,46,28,0.28);
+  background: rgba(255,246,239,0.86);
+}
+
+.notification-card.read {
+  opacity: 0.72;
+}
+
+.notification-card-main {
+  min-width: 0;
+}
+
+.notification-title {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--umber-1);
+}
+
+.notification-body,
+.notification-empty {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--umber-2);
+  overflow-wrap: anywhere;
+}
+
+.notification-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--umber-3);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.notification-read-btn {
+  font-size: 10px;
+  padding: 0;
+}
+
+.notification-toast-rail {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 80;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 28px));
+  pointer-events: none;
+}
+
+.notification-toast {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(146,46,28,0.28);
+  border-radius: 7px;
+  background: rgba(255,250,238,0.96);
+  box-shadow: var(--shadow-card);
+  color: var(--umber-1);
+  pointer-events: auto;
+}
+
+.notification-toast strong,
+.notification-toast span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.notification-toast strong {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.notification-toast span {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--umber-2);
+}
+
+.notification-toast button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(82,63,36,0.1);
+  color: var(--umber-1);
+  cursor: pointer;
 }
 
 /* ── Dynasty View / Player Dashboard ─────────────────────────────────
@@ -3415,6 +3541,7 @@ button.merc-button {
 
   #playerDashboard,
   #balancePanel,
+  #notificationPanel,
   #historyPanel,
   #actionPanel { min-width: 0; }
 

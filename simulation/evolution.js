@@ -1,4 +1,5 @@
 import {
+  DEFAULT_MIXED_DECK_SIZES,
   DEFAULT_META_PARAMS,
   META_PARAM_DEFS,
   NEUTRAL_PROFILE,
@@ -29,7 +30,9 @@ const OBJECTIVE_KEYS = [
 export const DEFAULT_TRAINING_CONFIG = {
   seed: 20260429,
   playerCount: 4,
+  playerCounts: SUPPORTED_PLAYER_COUNTS.slice(),
   deckSize: 6,
+  deckSizes: DEFAULT_MIXED_DECK_SIZES.slice(),
   fitnessPresetId: 'balanced',
   populationSize: 32,
   generations: 30,
@@ -50,6 +53,9 @@ export const DEFAULT_FITNESS_WEIGHTS = {
   winReward: 14.0,
   placementReward: 4.0,
   wealthReward: 2.0,
+  dealUtilityReward: 0.35,
+  dealAcceptanceReward: 0.5,
+  badDealPenalty: 1.5,
 };
 
 export const FITNESS_PROFILES = {
@@ -106,6 +112,9 @@ export const FITNESS_TUNING_FIELDS = [
   { key: 'winReward', label: 'Win Reward', step: 0.1, min: 0, max: 30, group: 'Outcome', hint: 'Reward for outright winning a surviving game.' },
   { key: 'placementReward', label: 'Placement Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for finishing high even without an outright win.' },
   { key: 'wealthReward', label: 'Score Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for final score relative to the table mean.' },
+  { key: 'dealUtilityReward', label: 'Deal Utility Reward', step: 0.05, min: 0, max: 5, group: 'Deals', hint: 'Small reward for accepted deals that the AI evaluated as beneficial.' },
+  { key: 'dealAcceptanceReward', label: 'Deal Acceptance Reward', step: 0.05, min: 0, max: 5, group: 'Deals', hint: 'Small reward for turning proposals and counters into accepted deals.' },
+  { key: 'badDealPenalty', label: 'Bad Deal Penalty', step: 0.05, min: 0, max: 10, group: 'Deals', hint: 'Penalty for accepting deals the AI evaluated as negative.' },
 ];
 
 function clamp(value, min, max) {
@@ -194,6 +203,31 @@ function euclideanDistance(left, right) {
 function sanitizePlayerCount(value) {
   const parsed = toInt(value, DEFAULT_TRAINING_CONFIG.playerCount);
   return SUPPORTED_PLAYER_COUNTS.includes(parsed) ? parsed : DEFAULT_TRAINING_CONFIG.playerCount;
+}
+
+function normalizeListInput(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') return value.split(/[,\s]+/).filter(Boolean);
+  if (value == null || value === '') return [];
+  return [value];
+}
+
+function sanitizePlayerCounts(value, fallback = DEFAULT_TRAINING_CONFIG.playerCounts) {
+  const cleaned = [...new Set(
+    normalizeListInput(value)
+      .map(entry => toInt(entry, NaN))
+      .filter(entry => SUPPORTED_PLAYER_COUNTS.includes(entry))
+  )].sort((left, right) => left - right);
+  return cleaned.length ? cleaned : fallback.slice();
+}
+
+function sanitizeDeckSizes(value, fallback = DEFAULT_TRAINING_CONFIG.deckSizes) {
+  const cleaned = [...new Set(
+    normalizeListInput(value)
+      .map(entry => clamp(toInt(entry, NaN), 1, 30))
+      .filter(Number.isFinite)
+  )].sort((left, right) => left - right);
+  return cleaned.length ? cleaned : fallback.slice();
 }
 
 function resolveFitnessPresetId(rawPresetId) {
@@ -496,6 +530,30 @@ const SCRIPTED_OPPONENTS = [
       { supportTemperature: 0.05, orderTemperature: 0.05 }
     ),
   },
+  {
+    id: 'deal_broker',
+    bucket: 'scripted:deal_broker',
+    profile: createStaticProfile(
+      'scripted-deal-broker',
+      'Deal Broker',
+      'Actively trades gold, protection, and support when both sides can profit.',
+      { wealth: 2.4, land: 1.8, frontier: 2.0, capital: 2.3, throne: 2.0, loyalty: 3.2, retaliation: 0.8, revocation: 0.8 },
+      { independence: 0.9, frontierAlarm: 1.2, incumbencyGrip: 1.1 },
+      { dealProposalThreshold: 0.25, dealAcceptanceThreshold: -0.15, dealCounterThreshold: -1.4, dealTemperature: 0.2 }
+    ),
+  },
+  {
+    id: 'hard_bargainer',
+    bucket: 'scripted:hard_bargainer',
+    profile: createStaticProfile(
+      'scripted-hard-bargainer',
+      'Hard Bargainer',
+      'Uses deals opportunistically and rejects lopsided obligations.',
+      { wealth: 3.2, land: 2.8, frontier: 0.9, capital: 2.6, throne: 2.8, loyalty: 0.6, retaliation: 2.4, revocation: 2.1 },
+      { independence: 1.7, frontierAlarm: 0.8, incumbencyGrip: 0.9 },
+      { dealProposalThreshold: 0.65, dealAcceptanceThreshold: 0.65, dealCounterThreshold: -0.25, dealRiskTolerance: 0.2, dealTemperature: 0.1 }
+    ),
+  },
 ];
 
 function buildEmergentCentroids() {
@@ -605,10 +663,17 @@ function buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex) 
 
 function buildEvaluationSuite(config, scope, generation, matchCount, stage) {
   const pattern = getPatternForSuite(scope, stage);
-  const opponentCount = Math.max(0, config.playerCount - 1);
+  const playerCounts = config.playerCounts?.length ? config.playerCounts : [config.playerCount];
+  const deckSizes = config.deckSizes?.length ? config.deckSizes : [config.deckSize];
+  const scenarioCount = Math.max(1, playerCounts.length * deckSizes.length);
+  const scenarioOffset = (generation + (scope === 'validation' ? 1 : scope === 'holdout' ? 2 : 0)) % scenarioCount;
   const suite = [];
 
   for (let matchIndex = 0; matchIndex < matchCount; matchIndex++) {
+    const scenarioIndex = (matchIndex + scenarioOffset) % scenarioCount;
+    const playerCount = playerCounts[scenarioIndex % playerCounts.length];
+    const deckSize = deckSizes[Math.floor(scenarioIndex / playerCounts.length) % deckSizes.length];
+    const opponentCount = Math.max(0, playerCount - 1);
     const descriptors = [];
     for (let slotIndex = 0; slotIndex < opponentCount; slotIndex++) {
       const source = pattern[(matchIndex + slotIndex) % pattern.length];
@@ -618,8 +683,10 @@ function buildEvaluationSuite(config, scope, generation, matchCount, stage) {
       scope,
       generation,
       matchIndex,
-      seed: `${config.seed}:${scope}:g${generation}:m${matchIndex}`,
-      focalSeat: matchIndex % config.playerCount,
+      seed: `${config.seed}:${scope}:g${generation}:m${matchIndex}:${playerCount}p:${deckSize}d`,
+      playerCount,
+      deckSize,
+      focalSeat: matchIndex % playerCount,
       descriptors,
     });
   }
@@ -761,12 +828,18 @@ function computeFitness(game, playerMetric, fitnessWeights) {
   const placementScore = computePlacementScore(game, playerMetric);
   const winnerBonus = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
   const scoreRatio = computeScoreRatio(game, playerMetric);
+  const dealUtility = clamp(Number(playerMetric.dealUtility) || 0, -8, 8);
+  const dealAcceptanceRate = clamp(Number(playerMetric.dealAcceptanceRate) || 0, 0, 1);
+  const badAcceptedDeals = Math.max(0, Number(playerMetric.badAcceptedDeals) || 0);
 
   return roundTo(
     fitnessWeights.survivalBonus +
     (winnerBonus * fitnessWeights.winReward) +
     (placementScore * fitnessWeights.placementReward) +
-    (Math.min(scoreRatio, 3) * fitnessWeights.wealthReward),
+    (Math.min(scoreRatio, 3) * fitnessWeights.wealthReward) +
+    (dealUtility * (fitnessWeights.dealUtilityReward ?? 0)) +
+    (dealAcceptanceRate * (fitnessWeights.dealAcceptanceReward ?? 0)) -
+    (badAcceptedDeals * (fitnessWeights.badDealPenalty ?? 0)),
     4
   );
 }
@@ -818,6 +891,12 @@ function createEvaluationAccumulator(candidate, generation, scope) {
       goldHoardingRate: 0,
       mercSpend: 0,
       recruitmentUtilization: 0,
+      dealsProposed: 0,
+      dealsAccepted: 0,
+      dealsCountered: 0,
+      dealsRefused: 0,
+      dealUtility: 0,
+      badAcceptedDeals: 0,
     },
     collapseDiagnostics: {
       matches: 0,
@@ -886,6 +965,10 @@ function buildBehaviorVector(summary) {
     clamp(behavior.goldHoardingRate, 0, 1),
     clamp(behavior.averageMercSpend / 15, 0, 1),
     clamp(behavior.recruitmentUtilization, 0, 1),
+    clamp(behavior.averageDealsProposed / 2, 0, 1),
+    clamp(behavior.dealAcceptanceRate, 0, 1),
+    clamp((behavior.averageDealUtility + 4) / 8, 0, 1),
+    clamp(behavior.badAcceptedDealRate, 0, 1),
   ];
 }
 
@@ -911,6 +994,8 @@ function finalizeEvaluationSummary(accumulator) {
     ? accumulator.nonBasileusSeatWins / accumulator.nonBasileusSeatMatches
     : 0;
   const matchupExtremes = pickMatchupExtremes(perOpponentTypeWinRate);
+  const dealAttempts = accumulator.behaviorTotals.dealsProposed + accumulator.behaviorTotals.dealsCountered;
+  const dealAccepted = accumulator.behaviorTotals.dealsAccepted;
 
   const summary = {
     generation: accumulator.generation,
@@ -949,6 +1034,13 @@ function finalizeEvaluationSummary(accumulator) {
       goldHoardingRate: roundTo(accumulator.behaviorTotals.goldHoardingRate / Math.max(1, accumulator.matches), 4),
       averageMercSpend: roundTo(accumulator.behaviorTotals.mercSpend / Math.max(1, accumulator.matches), 4),
       recruitmentUtilization: roundTo(accumulator.behaviorTotals.recruitmentUtilization / Math.max(1, accumulator.matches), 4),
+      averageDealsProposed: roundTo(accumulator.behaviorTotals.dealsProposed / Math.max(1, accumulator.matches), 4),
+      averageDealsAccepted: roundTo(dealAccepted / Math.max(1, accumulator.matches), 4),
+      averageDealsCountered: roundTo(accumulator.behaviorTotals.dealsCountered / Math.max(1, accumulator.matches), 4),
+      averageDealsRefused: roundTo(accumulator.behaviorTotals.dealsRefused / Math.max(1, accumulator.matches), 4),
+      dealAcceptanceRate: roundTo(dealAccepted / Math.max(1, dealAttempts), 4),
+      averageDealUtility: roundTo(accumulator.behaviorTotals.dealUtility / Math.max(1, accumulator.matches), 4),
+      badAcceptedDealRate: roundTo(accumulator.behaviorTotals.badAcceptedDeals / Math.max(1, dealAccepted), 4),
     },
     collapseDiagnostics: {
       defenseCoverage: roundTo(accumulator.collapseDiagnostics.defenseCoverage / Math.max(1, accumulator.collapseDiagnostics.matches), 4),
@@ -968,16 +1060,16 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
       matchSpec,
       context.population,
       context.hallOfFame,
-      context.config.playerCount
+      matchSpec.playerCount
     );
     const game = runSingleSimulationGame({
-      playerCount: context.config.playerCount,
-      deckSize: context.config.deckSize,
+      playerCount: matchSpec.playerCount,
+      deckSize: matchSpec.deckSize,
       seed: matchSpec.seed,
       seatProfiles,
       strictTimeoutMs: 15000,
       maxLoopIterations: 256,
-      maxRounds: Math.max(context.config.deckSize + 2, 40),
+      maxRounds: Math.max(matchSpec.deckSize + 2, 40),
     });
     const playerMetric = game.playerMetrics.find(metric => metric.playerId === matchSpec.focalSeat);
     if (!playerMetric) continue;
@@ -1046,6 +1138,12 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     accumulator.behaviorTotals.goldHoardingRate += goldHoardingRate;
     accumulator.behaviorTotals.mercSpend += playerMetric.mercSpend;
     accumulator.behaviorTotals.recruitmentUtilization += recruitUtilization;
+    accumulator.behaviorTotals.dealsProposed += playerMetric.dealsProposed || 0;
+    accumulator.behaviorTotals.dealsAccepted += playerMetric.dealsAccepted || 0;
+    accumulator.behaviorTotals.dealsCountered += playerMetric.dealsCountered || 0;
+    accumulator.behaviorTotals.dealsRefused += playerMetric.dealsRefused || 0;
+    accumulator.behaviorTotals.dealUtility += playerMetric.dealUtility || 0;
+    accumulator.behaviorTotals.badAcceptedDeals += playerMetric.badAcceptedDeals || 0;
 
     if (game.empireFall) {
       const collapse = computeCollapseDefenseProfile(game, playerMetric);
@@ -1296,6 +1394,7 @@ function describeBehaviorProfile(summary) {
   levels.push(`${behavior.averageLandBuys >= 1.2 ? 'high' : behavior.averageLandBuys <= 0.4 ? 'low' : 'moderate'} land buying`);
   levels.push(`${behavior.averageChurchGifts >= 0.4 ? 'high' : behavior.averageChurchGifts <= 0.1 ? 'low' : 'moderate'} church giving`);
   levels.push(`${behavior.averageRevocations >= 0.6 ? 'high' : behavior.averageRevocations <= 0.15 ? 'low' : 'moderate'} revocation`);
+  levels.push(`${behavior.averageDealsProposed >= 0.8 ? 'active' : behavior.averageDealsProposed <= 0.15 ? 'rare' : 'selective'} dealmaking`);
   return levels.join(', ');
 }
 
@@ -1567,7 +1666,9 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       perSeatWinRate: holdoutSummary.perSeatWinRate,
       fitnessPresetId: config.fitnessPresetId,
       playerCount: config.playerCount,
+      playerCounts: config.playerCounts,
       deckSize: config.deckSize,
+      deckSizes: config.deckSizes,
       populationPresetId: 'emergent-self-play',
       seed: config.seed,
       trainedAt: new Date().toISOString(),
@@ -1601,7 +1702,14 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
 }
 
 export function normalizeTrainingConfig(rawConfig = {}) {
-  const playerCount = sanitizePlayerCount(rawConfig.playerCount);
+  const playerCounts = sanitizePlayerCounts(rawConfig.playerCounts ?? (
+    rawConfig.playerCount == null ? DEFAULT_TRAINING_CONFIG.playerCounts : [rawConfig.playerCount]
+  ));
+  const deckSizes = sanitizeDeckSizes(rawConfig.deckSizes ?? (
+    rawConfig.deckSize == null ? DEFAULT_TRAINING_CONFIG.deckSizes : [rawConfig.deckSize]
+  ));
+  const playerCount = playerCounts[0] ?? sanitizePlayerCount(rawConfig.playerCount);
+  const deckSize = deckSizes[0] ?? DEFAULT_TRAINING_CONFIG.deckSize;
   const fitnessPresetId = rawConfig.fitnessPresetId === 'custom'
     ? 'custom'
     : resolveFitnessPresetId(rawConfig.fitnessPresetId);
@@ -1610,10 +1718,12 @@ export function normalizeTrainingConfig(rawConfig = {}) {
   return {
     seed: normalizeSeed(rawConfig.seed ?? DEFAULT_TRAINING_CONFIG.seed),
     playerCount,
-    deckSize: clamp(toInt(rawConfig.deckSize, DEFAULT_TRAINING_CONFIG.deckSize), 1, 30),
+    playerCounts,
+    deckSize,
+    deckSizes,
     fitnessPresetId,
     fitness,
-    populationSize: Math.max(playerCount, toInt(rawConfig.populationSize, DEFAULT_TRAINING_CONFIG.populationSize)),
+    populationSize: Math.max(Math.max(...playerCounts), toInt(rawConfig.populationSize, DEFAULT_TRAINING_CONFIG.populationSize)),
     generations: Math.max(1, toInt(rawConfig.generations, DEFAULT_TRAINING_CONFIG.generations)),
     matchesPerCandidate: Math.max(1, toInt(rawConfig.matchesPerCandidate, DEFAULT_TRAINING_CONFIG.matchesPerCandidate)),
     validationMatchesPerCandidate: Math.max(1, toInt(rawConfig.validationMatchesPerCandidate, DEFAULT_TRAINING_CONFIG.validationMatchesPerCandidate)),
@@ -1809,6 +1919,8 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       trainingMatchesPerCandidate: config.matchesPerCandidate,
       validationMatchesPerCandidate: config.validationMatchesPerCandidate,
       holdoutMatchesPerChampion: config.holdoutMatchesPerChampion,
+      playerCounts: config.playerCounts,
+      deckSizes: config.deckSizes,
       parallelWorkers: Math.max(generationWorkerCount, holdoutWorkerCount),
       selectionMethod: 'pareto-crowding',
       bestFitness: finalChampions[0]?.displayScore || 0,

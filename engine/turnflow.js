@@ -17,6 +17,7 @@ import {
   getOfficeDisplayName,
   getPlayer,
   getPlayerMercenaryAssignments,
+  activatePendingProfessionalArmies,
   formatPlayerLabel,
   isMercenaryCompanyOfficeKey,
   MERCENARY_COMPANY_KEY,
@@ -605,6 +606,7 @@ export function phaseCleanup(state) {
   // Professional troops sent on revocation or appointment missions return after
   // maintenance, so they are paid for the round while unavailable for more actions.
   restoreSuspendedProfessionals(state);
+  activatePendingProfessionalArmies(state);
 
   // 2. Levies expire, mercenaries disband (just clear the references)
   state.currentLevies = {};

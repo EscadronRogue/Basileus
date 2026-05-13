@@ -28,10 +28,15 @@ export const META_PARAM_DEFS = [
   ['churchGiftThreshold',    2.75, 0.00, 6.00, 0.50],
   ['dismissalThreshold',     0.75, 0.00, 3.00, 0.25],
   ['revocationThreshold',    2.45, 0.00, 6.00, 0.45],
+  ['dealProposalThreshold',   1.15, -1.00, 5.00, 0.35],
+  ['dealAcceptanceThreshold', 0.35, -2.00, 4.00, 0.35],
+  ['dealCounterThreshold',   -0.70, -3.00, 2.00, 0.35],
+  ['dealRiskTolerance',       0.45, 0.00, 1.50, 0.18],
 
   ['courtTemperature',       0.40, 0.05, 2.50, 0.25],
   ['orderTemperature',       0.30, 0.05, 2.00, 0.20],
   ['supportTemperature',     0.35, 0.05, 2.00, 0.20],
+  ['dealTemperature',         0.45, 0.05, 2.20, 0.22],
 
   ['opponentLearnRate',      0.18, 0.01, 0.80, 0.12],
   ['opponentTrust',          0.50, 0.00, 1.00, 0.20],

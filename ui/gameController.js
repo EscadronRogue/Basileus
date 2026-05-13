@@ -1,5 +1,6 @@
 import { createGameState } from '../engine/state.js';
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
+import { buildPrivateNotifications } from '../engine/notifications.js';
 import {
   autoResolveUnavailableHumanAppointments,
   handleContinueAfterResolution,
@@ -108,17 +109,28 @@ export class GameController {
   }
 
   render() {
+    const privateData = this.buildPrivateData(this.activePlayer);
     renderGameFrame({
       state: this.state,
       activePlayerId: this.activePlayer,
       selectedProvinceId: this.selectedProvinceId,
       uiState: this.uiState,
       aiMeta: this.aiMeta,
+      privateData,
+      notificationScopeKey: `local:${this.config.seed}:${this.activePlayer}`,
       renderTabs: () => this.renderPlayerTabs(),
       renderActionPanel: () => this.renderActionPanel(),
       renderGameOverOverlay: () => this.renderGameOver(),
       rerender: () => this.render(),
     });
+  }
+
+  buildPrivateData(playerId) {
+    const dealView = buildPrivateDealView(this.state, playerId);
+    return {
+      ...dealView,
+      ...buildPrivateNotifications(this.state, playerId, dealView),
+    };
   }
 
   renderPlayerTabs() {
@@ -156,7 +168,7 @@ export class GameController {
       uiState: this.uiState,
       activePlayerId: this.activePlayer,
       selectedProvinceId: this.selectedProvinceId,
-      privateData: buildPrivateDealView(state, this.activePlayer),
+      privateData: this.buildPrivateData(this.activePlayer),
       canControl,
       spectatorMessage,
       handlers: {

@@ -33,6 +33,8 @@ import {
   getOfficeMercenaryCount,
   getPlayerMercenaryAssignments,
   getPlayerMercenaryTotal,
+  getPendingProfessionalCount,
+  getPlayerPendingProfessionalTotal,
   hasSelfAppointmentLock,
   hasRevocationTargetLock,
   MERCENARY_COMPANY_KEY,
@@ -140,8 +142,10 @@ function getPlayerOffices(state, playerId, options = {}) {
   return offices;
 }
 
-function getTotalProfessionalArmy(player) {
-  return Object.values(player.professionalArmies).reduce((s, n) => s + n, 0);
+function getTotalProfessionalArmy(state, playerId) {
+  const player = getPlayer(state, playerId);
+  const active = Object.values(player.professionalArmies).reduce((s, n) => s + n, 0);
+  return active + getPlayerPendingProfessionalTotal(state, playerId);
 }
 
 function getNextMercenaryCost(state, playerId) {
@@ -167,7 +171,9 @@ function renderArmySummaryLine(entry) {
   if (entry.officeKey === MERCENARY_COMPANY_KEY) {
     return `${formatMercenaries(entry.mercenaries)} | No levies | No professional troops`;
   }
-  return `Professional troops ${entry.professionalTroops} | ${formatLevies(entry.levies)} | ${formatMercenaries(entry.mercenaries)}`;
+  const pending = Number(entry.pendingProfessionalTroops) || 0;
+  const pendingText = pending > 0 ? ` | ${formatTroops(pending)} pending next round` : '';
+  return `Professional troops ${entry.professionalTroops} | ${formatLevies(entry.levies)} | ${formatMercenaries(entry.mercenaries)}${pendingText}`;
 }
 
 function getPrivateIncomeProjection(state, playerId) {
@@ -235,12 +241,13 @@ function getPlayerArmyEntries(state, playerId, includeEmpty = false, options = {
       officeKey: office.key,
       label: office.label,
       professionalTroops: office.mercenaryOnly ? 0 : (getPlayer(state, playerId).professionalArmies[office.key] || 0),
+      pendingProfessionalTroops: office.mercenaryOnly ? 0 : getPendingProfessionalCount(state, playerId, office.key),
       levies: office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0),
       mercenaries: office.mercenaryOnly ? getPlayerMercenaryTroops(state, playerId) : getOfficeMercenaryCount(state, playerId, office.key),
     }))
     .map((entry) => ({
       ...entry,
-      total: entry.professionalTroops + entry.levies + entry.mercenaries,
+      total: entry.professionalTroops + entry.pendingProfessionalTroops + entry.levies + entry.mercenaries,
     }))
     .filter((entry) => includeEmpty || entry.total > 0);
 }
@@ -863,7 +870,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     options.uiState,
     {
       defaultOpen: dashboardFocus === 'army',
-      badge: `${getTotalProfessionalArmy(player)}`,
+      badge: `${getTotalProfessionalArmy(state, playerId)}`,
       focused: dashboardFocus === 'army',
     }
   );
@@ -961,7 +968,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
             <button class="stat stat-button ${dashboardFocus === 'army' ? 'active' : ''}" type="button" data-dashboard-focus="army">
               <span class="stat-icon">ARM</span>
               <span class="stat-label">Army</span>
-              <span class="stat-value">${getTotalProfessionalArmy(player)}</span>
+              <span class="stat-value">${getTotalProfessionalArmy(state, player.id)}</span>
             </button>
             <button class="stat stat-button ${dashboardFocus === 'titles' ? 'active' : ''}" type="button" data-dashboard-focus="titles">
               <span class="stat-icon">TTL</span>
@@ -1643,7 +1650,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks, op
   courtHtml += renderFoldSection(
     'court:armies',
     'Armies',
-    `<p class="section-hint">Professional troops are permanent (max 1 recruit per office per round, 1 gold upkeep per troop each Cleanup). Mercenaries last only this round and cost 1, +2, +3... per additional troop. The Patriarch, Empress and Chief of Eunuchs cannot hold professional troops.</p>${renderArmyManagement(state, activePlayerId)}`,
+    `<p class="section-hint">Professional troops are permanent (max 1 recruit per office per round, ready next round, 1 gold upkeep per troop each Cleanup once active). Mercenaries last only this round and cost 1, +2, +3... per additional troop. The Patriarch, Empress and Chief of Eunuchs cannot hold professional troops.</p>${renderArmyManagement(state, activePlayerId)}`,
     uiSectionState,
     {
       defaultOpen: true,
@@ -2423,13 +2430,14 @@ function renderArmyManagement(state, playerId) {
     <div class="army-grid">
       ${offices.map((office) => {
         const professionalTroops = office.mercenaryOnly ? 0 : (player.professionalArmies[office.key] || 0);
+        const pendingProfessionalTroops = office.mercenaryOnly ? 0 : getPendingProfessionalCount(state, playerId, office.key);
         const levies = office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0);
         const mercenaries = office.mercenaryOnly ? getPlayerMercenaryTroops(state, playerId) : 0;
         const totalTroops = professionalTroops + levies + mercenaries;
         const recruitCheck = office.mercenaryOnly ? { ok: false, reason: 'Mercenary row' } : canRecruitProfessional(state, playerId, office.key);
         const canRecruit = recruitCheck.ok;
         const recruitLabel = canRecruit
-          ? 'Recruit +1 professional troop'
+          ? 'Recruit +1 professional troop (ready next round)'
           : (recruitCheck.reason?.includes('cannot hold')
             ? 'No professional troops here'
             : recruitCheck.reason?.includes('debt')
@@ -2441,7 +2449,7 @@ function renderArmyManagement(state, playerId) {
           <div class="army-office">
             <span>${office.label}</span>
             <span class="army-count">${formatTroops(totalTroops)}</span>
-            <span class="army-count">${renderArmySummaryLine({ officeKey: office.key, professionalTroops, levies, mercenaries })}</span>
+            <span class="army-count">${renderArmySummaryLine({ officeKey: office.key, professionalTroops, pendingProfessionalTroops, levies, mercenaries })}</span>
           </div>
           <div class="army-controls">
             ${office.mercenaryOnly ? `
@@ -2512,6 +2520,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
   if (!alreadyLocked) {
     const deploymentRows = offices.map((office) => {
       const proCount = office.mercenaryOnly ? 0 : (player.professionalArmies[office.key] || 0);
+      const pendingProCount = office.mercenaryOnly ? 0 : getPendingProfessionalCount(state, playerId, office.key);
       const levyCount = office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0);
       const mercCount = mercenaryAssignments[office.key] || 0;
       const total = proCount + levyCount + mercCount;
@@ -2519,7 +2528,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks, options
       const dealLockedDestination = orderLocks?.committedOfficeKeys?.[office.key] || null;
       const troopLine = office.mercenaryOnly
         ? `${formatMercenaries(mercCount)} | No levies | No professional troops`
-        : `Professional troops ${proCount} | ${formatLevies(levyCount)} | ${formatMercenaries(mercCount)}`;
+        : `Professional troops ${proCount} | ${formatLevies(levyCount)} | ${formatMercenaries(mercCount)}${pendingProCount > 0 ? ` | ${formatTroops(pendingProCount)} pending next round` : ''}`;
 
       if (capitalLocked || dealLockedDestination) {
         const lockedDestination = dealLockedDestination || 'capital';

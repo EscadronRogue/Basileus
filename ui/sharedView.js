@@ -18,12 +18,17 @@ export function createDefaultUiState() {
     panels: {
       dashboard: false,
       balance: true,
+      notifications: true,
       history: false,
       action: true,
     },
     sections: {},
     dashboardFocus: null,
     drafts: {},
+    notifications: {
+      read: {},
+      dismissedToasts: {},
+    },
   };
 }
 
@@ -41,6 +46,7 @@ export function bindUiChrome({ uiState, render }) {
   const containers = [
     document.getElementById('playerDashboard'),
     document.getElementById('balancePanel'),
+    document.getElementById('notificationPanel'),
     document.getElementById('historyPanel'),
     document.getElementById('actionPanel'),
   ].filter(Boolean);
@@ -49,7 +55,11 @@ export function bindUiChrome({ uiState, render }) {
     container.querySelectorAll('[data-ui-panel-toggle]').forEach((button) => {
       button.addEventListener('click', () => {
         const panelKey = button.dataset.uiPanelToggle;
-        setPanelOpen(uiState, panelKey, !isPanelOpen(uiState, panelKey, true));
+        const nextOpen = !isPanelOpen(uiState, panelKey, true);
+        setPanelOpen(uiState, panelKey, nextOpen);
+        if (panelKey === 'notifications' && nextOpen) {
+          markRenderedNotificationsRead(uiState, container);
+        }
         render();
       });
     });
@@ -70,7 +80,59 @@ export function bindUiChrome({ uiState, render }) {
         render();
       });
     });
+
+    container.querySelectorAll('[data-notification-read]').forEach((button) => {
+      button.addEventListener('click', () => {
+        markNotificationRead(uiState, button.dataset.notificationScope, button.dataset.notificationRead);
+        render();
+      });
+    });
+
+    container.querySelectorAll('[data-notification-dismiss]').forEach((button) => {
+      button.addEventListener('click', () => {
+        markNotificationDismissed(uiState, button.dataset.notificationScope, button.dataset.notificationDismiss);
+        render();
+      });
+    });
   }
+}
+
+function ensureNotificationUi(uiState) {
+  if (!uiState.notifications) uiState.notifications = {};
+  if (!uiState.notifications.read) uiState.notifications.read = {};
+  if (!uiState.notifications.dismissedToasts) uiState.notifications.dismissedToasts = {};
+  return uiState.notifications;
+}
+
+function notificationKey(scopeKey, id) {
+  return `${scopeKey || 'default'}:${id}`;
+}
+
+function isNotificationRead(uiState, scopeKey, id) {
+  return Boolean(ensureNotificationUi(uiState).read[notificationKey(scopeKey, id)]);
+}
+
+function isNotificationDismissed(uiState, scopeKey, id) {
+  return Boolean(ensureNotificationUi(uiState).dismissedToasts[notificationKey(scopeKey, id)]);
+}
+
+function markNotificationRead(uiState, scopeKey, id) {
+  if (!id) return;
+  ensureNotificationUi(uiState).read[notificationKey(scopeKey, id)] = true;
+}
+
+function markNotificationDismissed(uiState, scopeKey, id) {
+  if (!id) return;
+  const key = notificationKey(scopeKey, id);
+  const notificationUi = ensureNotificationUi(uiState);
+  notificationUi.dismissedToasts[key] = true;
+  notificationUi.read[key] = true;
+}
+
+function markRenderedNotificationsRead(uiState, container) {
+  container.querySelectorAll('[data-notification-id]').forEach((entry) => {
+    markNotificationRead(uiState, entry.dataset.notificationScope, entry.dataset.notificationId);
+  });
 }
 
 export const PHASE_NAMES = {
@@ -245,6 +307,91 @@ export function renderActionShell(panel, state, uiState) {
   return isOpen ? panel.querySelector('[data-role="action-panel-body"]') : null;
 }
 
+function getNotificationActionLabel(action) {
+  return {
+    open_deals: 'Deals',
+    open_orders: 'Orders',
+    open_history: 'History',
+    open_resolution: 'Resolution',
+  }[action] || 'Notice';
+}
+
+function renderNotificationCard(notification, uiState, scopeKey) {
+  const read = isNotificationRead(uiState, scopeKey, notification.id);
+  return `
+    <div class="notification-card${notification.urgent ? ' urgent' : ''}${read ? ' read' : ''}"
+      data-notification-id="${notification.id}"
+      data-notification-scope="${scopeKey}">
+      <div class="notification-card-main">
+        <div class="notification-title">${notification.title}</div>
+        <div class="notification-body">${notification.body || ''}</div>
+      </div>
+      <div class="notification-meta">
+        <span>${getNotificationActionLabel(notification.action)}</span>
+        ${read ? '' : `<button type="button" class="btn-secondary-link notification-read-btn" data-notification-scope="${scopeKey}" data-notification-read="${notification.id}">Mark read</button>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderNotificationToasts(notifications, uiState, scopeKey) {
+  const toasts = notifications
+    .filter((notification) => notification.urgent)
+    .filter((notification) => !isNotificationRead(uiState, scopeKey, notification.id))
+    .filter((notification) => !isNotificationDismissed(uiState, scopeKey, notification.id))
+    .slice(0, 3);
+  if (!toasts.length) return '';
+  return `
+    <div class="notification-toast-rail" aria-live="polite">
+      ${toasts.map((notification) => `
+        <div class="notification-toast" data-notification-id="${notification.id}" data-notification-scope="${scopeKey}">
+          <div>
+            <strong>${notification.title}</strong>
+            <span>${notification.body || ''}</span>
+          </div>
+          <button type="button" aria-label="Dismiss notification" data-notification-scope="${scopeKey}" data-notification-dismiss="${notification.id}">&times;</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+export function renderNotificationsPanel(panel, state, privateData, uiState, scopeKey = 'default') {
+  if (!panel || !state) return;
+  const notifications = Array.isArray(privateData?.notifications) ? privateData.notifications : [];
+  const unreadCount = notifications.filter((entry) => !isNotificationRead(uiState, scopeKey, entry.id)).length;
+  const urgentUnreadCount = notifications.filter((entry) => entry.urgent && !isNotificationRead(uiState, scopeKey, entry.id)).length;
+  const isOpen = isPanelOpen(uiState, 'notifications', true);
+  panel.classList.toggle('panel-collapsed', !isOpen);
+  const badge = urgentUnreadCount > 0
+    ? `${urgentUnreadCount} urgent`
+    : unreadCount > 0
+      ? `${unreadCount} new`
+      : `${notifications.length} notices`;
+
+  panel.innerHTML = `
+    <div class="notification-panel sidebar-panel${isOpen ? '' : ' is-collapsed'}">
+      <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="notifications" aria-expanded="${isOpen}">
+        <span class="sidebar-panel-head-copy">
+          <span class="sidebar-panel-kicker">Private Inbox</span>
+          <span class="sidebar-panel-title">Notifications</span>
+        </span>
+        <span class="sidebar-panel-badge${urgentUnreadCount > 0 ? ' urgent' : ''}">${badge}</span>
+      </button>
+      ${isOpen ? `
+        <div class="sidebar-panel-body">
+          ${notifications.length ? `
+            <div class="notification-list">
+              ${notifications.map((notification) => renderNotificationCard(notification, uiState, scopeKey)).join('')}
+            </div>
+          ` : '<div class="notification-empty">No private notices right now.</div>'}
+        </div>
+      ` : ''}
+      ${renderNotificationToasts(notifications, uiState, scopeKey)}
+    </div>
+  `;
+}
+
 export function renderSpectatorPanel(panel, state, playerId, message) {
   const player = getPlayer(state, playerId);
   panel.innerHTML = `
@@ -406,6 +553,8 @@ export function renderGameFrame({
   selectedProvinceId = null,
   uiState,
   aiMeta = null,
+  privateData = null,
+  notificationScopeKey = 'default',
   renderTabs,
   renderActionPanel,
   renderConnectionBadge = null,
@@ -426,6 +575,7 @@ export function renderGameFrame({
     { aiMeta, uiState },
   );
   renderBalancePanel(document.getElementById('balancePanel'), state, { uiState });
+  renderNotificationsPanel(document.getElementById('notificationPanel'), state, privateData, uiState, notificationScopeKey);
   renderHistoryPanel(document.getElementById('historyPanel'), state, { aiMeta, uiState });
   renderTabs?.();
   renderActionPanel?.();

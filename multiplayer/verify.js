@@ -639,8 +639,12 @@ async function verifyDealPrivacy() {
       assert.equal('dealThreads' in publicSnapshot.state, false);
       assert.equal('activeDealObligations' in publicSnapshot.state, false);
       assert.equal('reservedGold' in publicSnapshot.state, false);
+      assert.equal('notifications' in publicSnapshot.state, false);
       assert.equal(hostPrivate.dealThreads[0].currentOffer.clauses.length, 1);
       assert.equal(hostPrivate.dealThreads[0].id, guestPrivate.dealThreads[0].id);
+      assert.equal(guestPrivate.notifications.some((entry) => entry.kind === 'deal_incoming' && entry.urgent), true);
+      assert.equal(hostPrivate.notifications.some((entry) => entry.kind === 'deal_incoming'), false);
+      assert.deepEqual(observerPrivate.notifications, []);
       assert.deepEqual(observerPrivate.dealThreads, []);
       assert.deepEqual(observerPrivate.dealCounts, {
         pendingInbox: 0,

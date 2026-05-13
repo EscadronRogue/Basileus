@@ -49,6 +49,26 @@ test('training config still enforces structural minimums', () => {
   assert.equal(config.parallelWorkers, 0);
 });
 
+test('training config defaults to broad scenario coverage', () => {
+  const config = normalizeTrainingConfig({});
+
+  assert.deepEqual(config.playerCounts, [3, 4, 5]);
+  assert.deepEqual(config.deckSizes, [6, 9, 12]);
+  assert.equal(config.populationSize, 32);
+});
+
+test('training config can still be focused explicitly', () => {
+  const config = normalizeTrainingConfig({
+    playerCount: 4,
+    deckSize: 12,
+    populationSize: 4,
+  });
+
+  assert.deepEqual(config.playerCounts, [4]);
+  assert.deepEqual(config.deckSizes, [12]);
+  assert.equal(config.populationSize, 4);
+});
+
 test('training match estimates use the full requested trainer sizes', () => {
   const total = estimateTrainingMatches({
     playerCount: 4,
@@ -69,4 +89,20 @@ test('training UI metadata labels final score reward without breaking the wealth
   assert.ok(field);
   assert.equal(field.label, 'Score Reward');
   assert.match(field.hint, /final score/i);
+});
+
+test('training config includes deal fitness shaping fields', () => {
+  const config = normalizeTrainingConfig({
+    fitnessPresetId: 'custom',
+    fitness: {
+      dealUtilityReward: 0.75,
+      dealAcceptanceReward: 0.25,
+      badDealPenalty: 2.25,
+    },
+  });
+
+  assert.equal(config.fitness.dealUtilityReward, 0.75);
+  assert.equal(config.fitness.dealAcceptanceReward, 0.25);
+  assert.equal(config.fitness.badDealPenalty, 2.25);
+  assert.equal(FITNESS_TUNING_FIELDS.some((entry) => entry.key === 'dealUtilityReward'), true);
 });

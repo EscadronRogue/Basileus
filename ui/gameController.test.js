@@ -6,7 +6,7 @@ import { GameController } from './gameController.js';
 import { MultiplayerController } from './multiplayerController.js';
 import { formatProvinceValuesText, renderProvinceBadge } from './labels.js';
 import { renderCourtPanel, renderOrdersPanel } from './panels.js';
-import { bindUiChrome, createDefaultUiState, getPlayerTabEconomy, renderPlayerTabFinance, renderScoringHtml } from './sharedView.js';
+import { bindUiChrome, createDefaultUiState, getPlayerTabEconomy, renderNotificationsPanel, renderPlayerTabFinance, renderScoringHtml } from './sharedView.js';
 
 function makePanelContainer() {
   return {
@@ -152,6 +152,43 @@ test('balance of power panel toggle is wired through shared chrome binding', () 
 
   assert.equal(uiState.panels.balance, false);
   assert.equal(renders, 1);
+});
+
+test('notification panel renders inbox counts and urgent toast actions', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 7 });
+  const panel = {
+    innerHTML: '',
+    classList: { toggle: () => {} },
+  };
+  const uiState = createDefaultUiState();
+  const privateData = {
+    notifications: [
+      {
+        id: 'deal:test:1',
+        kind: 'deal_incoming',
+        title: 'New offer from Player 2',
+        body: 'A deal is waiting for your reply.',
+        urgent: true,
+        action: 'open_deals',
+      },
+      {
+        id: 'obligation:test:1',
+        kind: 'deal_obligation',
+        title: 'Active deal obligation',
+        body: 'You owe support.',
+        urgent: false,
+        action: 'open_orders',
+      },
+    ],
+  };
+
+  renderNotificationsPanel(panel, state, privateData, uiState, 'test-seat');
+
+  assert.match(panel.innerHTML, /Private Inbox/);
+  assert.match(panel.innerHTML, /1 urgent/);
+  assert.match(panel.innerHTML, /New offer from Player 2/);
+  assert.match(panel.innerHTML, /notification-toast/);
+  assert.match(panel.innerHTML, /data-notification-dismiss="deal:test:1"/);
 });
 
 test('final scoring view shows threshold share points', () => {

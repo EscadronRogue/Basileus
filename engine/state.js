@@ -210,6 +210,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     // Each player's orders: { deployments: { officeKey: 'capital'|'frontier' }, candidate: playerId }
     allOrders: {},
     currentMercenaryTroops: {},
+    pendingProfessionalArmies: {},
 
     // Formal court deals (private to participating dynasties)
     dealThreads: [],
@@ -317,6 +318,85 @@ export function getOfficeMercenaryCount(state, playerId, officeKey) {
 
 export function getPlayerMercenaryTotal(state, playerId) {
   return getPlayerMercenaryTroops(state, playerId);
+}
+
+export function getOfficeHolder(state, officeKey) {
+  if (officeKey === MERCENARY_COMPANY_KEY) return null;
+  if (officeKey === 'BASILEUS') return state.basileusId;
+  if (officeKey === 'DOM_EAST' || officeKey === 'DOM_WEST' || officeKey === 'ADMIRAL' || officeKey === 'PATRIARCH') {
+    return findTitleHolder(state, officeKey);
+  }
+  if (officeKey === 'EMPRESS') return state.empress ?? null;
+  if (officeKey === 'CHIEF_EUNUCHS') return state.chiefEunuchs ?? null;
+  if (String(officeKey).startsWith('STRAT_')) {
+    const themeId = String(officeKey).replace('STRAT_', '');
+    return state.themes[themeId]?.strategos ?? null;
+  }
+  return null;
+}
+
+function ensurePendingProfessionalArmies(state) {
+  if (!state.pendingProfessionalArmies || typeof state.pendingProfessionalArmies !== 'object') {
+    state.pendingProfessionalArmies = {};
+  }
+  return state.pendingProfessionalArmies;
+}
+
+export function getPendingProfessionalCount(state, playerId, officeKey) {
+  return Math.max(0, Number(state?.pendingProfessionalArmies?.[playerId]?.[officeKey]) || 0);
+}
+
+export function getPlayerPendingProfessionalTotal(state, playerId) {
+  const pending = state?.pendingProfessionalArmies?.[playerId];
+  if (!pending || typeof pending !== 'object') return 0;
+  return Object.values(pending).reduce((total, count) => total + Math.max(0, Number(count) || 0), 0);
+}
+
+export function addPendingProfessionalArmies(state, playerId, officeKey, count) {
+  const normalizedCount = Math.max(0, Number(count) || 0);
+  if (!Number.isInteger(playerId) || !officeKey || normalizedCount <= 0) return 0;
+  const player = getPlayer(state, playerId);
+  if (!player) return 0;
+  const pending = ensurePendingProfessionalArmies(state);
+  if (!pending[playerId]) pending[playerId] = {};
+  pending[playerId][officeKey] = (Number(pending[playerId][officeKey]) || 0) + normalizedCount;
+  return normalizedCount;
+}
+
+export function extractPendingOfficeArmies(state, officeKey) {
+  const pending = ensurePendingProfessionalArmies(state);
+  let total = 0;
+  for (const [playerId, offices] of Object.entries(pending)) {
+    const count = Math.max(0, Number(offices?.[officeKey]) || 0);
+    if (count <= 0) continue;
+    total += count;
+    delete offices[officeKey];
+    if (Object.keys(offices).length === 0) delete pending[playerId];
+  }
+  return total;
+}
+
+export function clearPendingOfficeArmies(state, officeKey) {
+  extractPendingOfficeArmies(state, officeKey);
+}
+
+export function activatePendingProfessionalArmies(state) {
+  const pending = ensurePendingProfessionalArmies(state);
+  const activated = [];
+  for (const [playerIdText, offices] of Object.entries(pending)) {
+    const playerId = Number(playerIdText);
+    const player = getPlayer(state, playerId);
+    if (!player || !offices || typeof offices !== 'object') continue;
+    for (const [officeKey, countValue] of Object.entries(offices)) {
+      const count = Math.max(0, Number(countValue) || 0);
+      if (count <= 0) continue;
+      if (getOfficeHolder(state, officeKey) !== playerId) continue;
+      player.professionalArmies[officeKey] = (player.professionalArmies[officeKey] || 0) + count;
+      activated.push({ playerId, officeKey, count });
+    }
+  }
+  state.pendingProfessionalArmies = {};
+  return activated;
 }
 
 export function getChurchThemes(state) {

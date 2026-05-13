@@ -203,6 +203,17 @@ function safeInteger(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function safeIntegerList(value, fallback = []) {
+  const rawList = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' ? value.split(/[,\s/]+/) : (value == null ? [] : [value]));
+  const cleaned = [...new Set(rawList
+    .map(entry => safeInteger(entry, NaN))
+    .filter(entry => Number.isFinite(entry) && entry > 0)
+  )].sort((left, right) => left - right);
+  return cleaned.length ? cleaned : fallback.slice();
+}
+
 function safeRecord(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -290,6 +301,10 @@ function normalizeTrainingMetadata(rawTraining = {}) {
   const fitnessVariance = Math.max(0, safeNumber(rawTraining.fitnessVariance, 0));
   const trainedAt = rawTraining.trainedAt ? String(rawTraining.trainedAt) : new Date().toISOString();
   const behaviorProfile = safeRecord(rawTraining.behaviorProfile);
+  const playerCount = safeInteger(rawTraining.playerCount, 4);
+  const deckSize = safeInteger(rawTraining.deckSize, 9);
+  const playerCounts = safeIntegerList(rawTraining.playerCounts, [playerCount]);
+  const deckSizes = safeIntegerList(rawTraining.deckSizes, [deckSize]);
 
   return {
     generation,
@@ -303,8 +318,10 @@ function normalizeTrainingMetadata(rawTraining = {}) {
     empireFallRate: roundTo(empireFallRate, 4),
     fitnessVariance: roundTo(fitnessVariance, 4),
     fitnessPresetId: rawTraining.fitnessPresetId ? String(rawTraining.fitnessPresetId) : 'balanced',
-    playerCount: safeInteger(rawTraining.playerCount, 4),
-    deckSize: safeInteger(rawTraining.deckSize, 9),
+    playerCount,
+    playerCounts,
+    deckSize,
+    deckSizes,
     populationPresetId: rawTraining.populationPresetId ? String(rawTraining.populationPresetId) : 'balanced',
     seed: rawTraining.seed == null ? '' : String(rawTraining.seed),
     trainedAt,
@@ -345,6 +362,13 @@ function normalizeTrainingMetadata(rawTraining = {}) {
       goldHoardingRate: roundTo(clamp(safeNumber(behaviorProfile.goldHoardingRate, 0), 0, 1), 4),
       averageMercSpend: roundTo(Math.max(0, safeNumber(behaviorProfile.averageMercSpend, 0)), 4),
       recruitmentUtilization: roundTo(clamp(safeNumber(behaviorProfile.recruitmentUtilization, 0), 0, 1), 4),
+      averageDealsProposed: roundTo(Math.max(0, safeNumber(behaviorProfile.averageDealsProposed, 0)), 4),
+      averageDealsAccepted: roundTo(Math.max(0, safeNumber(behaviorProfile.averageDealsAccepted, 0)), 4),
+      averageDealsCountered: roundTo(Math.max(0, safeNumber(behaviorProfile.averageDealsCountered, 0)), 4),
+      averageDealsRefused: roundTo(Math.max(0, safeNumber(behaviorProfile.averageDealsRefused, 0)), 4),
+      dealAcceptanceRate: roundTo(clamp(safeNumber(behaviorProfile.dealAcceptanceRate, 0), 0, 1), 4),
+      averageDealUtility: roundTo(safeNumber(behaviorProfile.averageDealUtility, 0), 4),
+      badAcceptedDealRate: roundTo(clamp(safeNumber(behaviorProfile.badAcceptedDealRate, 0), 0, 1), 4),
     },
     perOpponentTypeWinRate: safeRecord(rawTraining.perOpponentTypeWinRate),
     perSeatWinRate: safeRecord(rawTraining.perSeatWinRate),

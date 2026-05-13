@@ -7,6 +7,8 @@ import {
   getOfficeDisplayName,
   getPlayerMercenaryTotal,
   getPlayerMercenaryTroops,
+  addPendingProfessionalArmies,
+  extractPendingOfficeArmies,
   hasSelfAppointmentLock,
   hasRevocationTargetLock,
   MERCENARY_COMPANY_KEY,
@@ -105,7 +107,7 @@ export function checkRevocationCurrentTurnAppointment(state, revocationValue) {
   return { ok: true };
 }
 
-function extractOfficeArmy(state, officeKey) {
+function extractOfficeArmy(state, officeKey, options = {}) {
   let total = 0;
   for (const player of state.players) {
     const count = player.professionalArmies[officeKey] || 0;
@@ -113,6 +115,7 @@ function extractOfficeArmy(state, officeKey) {
     total += count;
     delete player.professionalArmies[officeKey];
   }
+  if (options.clearPending !== false) extractPendingOfficeArmies(state, officeKey);
   return total;
 }
 
@@ -126,8 +129,12 @@ function assignOfficeArmy(state, officeKey, playerId, count) {
 }
 
 function transferOfficeArmy(state, officeKey, playerId, minimumCount = 0) {
-  const total = Math.max(minimumCount, extractOfficeArmy(state, officeKey));
-  return assignOfficeArmy(state, officeKey, playerId, total);
+  const activeCount = extractOfficeArmy(state, officeKey, { clearPending: false });
+  const pendingCount = extractPendingOfficeArmies(state, officeKey);
+  const createdCount = Math.max(0, minimumCount - activeCount - pendingCount);
+  const activeAssigned = assignOfficeArmy(state, officeKey, playerId, activeCount);
+  const pendingAssigned = addPendingProfessionalArmies(state, playerId, officeKey, pendingCount + createdCount);
+  return activeAssigned + pendingAssigned;
 }
 
 function ensureCourtActionState(state) {
@@ -610,7 +617,7 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
     category: 'court',
     type: 'appoint_strategos',
     actorId: appointerId,
-    summary: `${playerName(state, appointerId)} appoints ${playerName(state, appointeeId)} as strategos of ${themeName(state, themeId)}, with 1 professional troop attached to the office.`,
+    summary: `${playerName(state, appointerId)} appoints ${playerName(state, appointeeId)} as strategos of ${themeName(state, themeId)}, with 1 professional troop ready next round.`,
     details: {
       appointeeId,
       appointeeName: playerName(state, appointeeId),
@@ -929,6 +936,8 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
       themeId,
       themeName: themeName(state, themeId),
       titleType,
+      revokedPlayerId: targetPlayerId,
+      revokedPlayerName: playerName(state, targetPlayerId),
       revocationCost: describeRevocationCost(payment),
     },
   });
@@ -1004,6 +1013,8 @@ export function revokeTheme(state, themeId, revokerId = state.basileusId) {
     details: {
       themeId,
       themeName: themeName(state, themeId),
+      revokedPlayerId: targetPlayerId,
+      revokedPlayerName: playerName(state, targetPlayerId),
       revocationCost: describeRevocationCost(payment),
     },
   });
@@ -1138,10 +1149,22 @@ export function suggestMajorTitleAssignments(state, newBasileusId) {
 
 export function applyCoupTitleReassignment(state, newBasileusId, titleAssignments) {
   const officeArmies = {
-    BASILEUS: extractOfficeArmy(state, 'BASILEUS'),
-    DOM_EAST: extractOfficeArmy(state, 'DOM_EAST'),
-    DOM_WEST: extractOfficeArmy(state, 'DOM_WEST'),
-    ADMIRAL: extractOfficeArmy(state, 'ADMIRAL'),
+    BASILEUS: {
+      active: extractOfficeArmy(state, 'BASILEUS', { clearPending: false }),
+      pending: extractPendingOfficeArmies(state, 'BASILEUS'),
+    },
+    DOM_EAST: {
+      active: extractOfficeArmy(state, 'DOM_EAST', { clearPending: false }),
+      pending: extractPendingOfficeArmies(state, 'DOM_EAST'),
+    },
+    DOM_WEST: {
+      active: extractOfficeArmy(state, 'DOM_WEST', { clearPending: false }),
+      pending: extractPendingOfficeArmies(state, 'DOM_WEST'),
+    },
+    ADMIRAL: {
+      active: extractOfficeArmy(state, 'ADMIRAL', { clearPending: false }),
+      pending: extractPendingOfficeArmies(state, 'ADMIRAL'),
+    },
   };
 
   for (const p of state.players) {
@@ -1151,10 +1174,12 @@ export function applyCoupTitleReassignment(state, newBasileusId, titleAssignment
     if (playerId === newBasileusId) continue;
     const player = getPlayer(state, playerId);
     player.majorTitles.push(titleKey);
-    assignOfficeArmy(state, titleKey, playerId, officeArmies[titleKey] || 0);
+    assignOfficeArmy(state, titleKey, playerId, officeArmies[titleKey]?.active || 0);
+    addPendingProfessionalArmies(state, playerId, titleKey, officeArmies[titleKey]?.pending || 0);
   }
   state.basileusId = newBasileusId;
-  assignOfficeArmy(state, 'BASILEUS', newBasileusId, officeArmies.BASILEUS || 0);
+  assignOfficeArmy(state, 'BASILEUS', newBasileusId, officeArmies.BASILEUS?.active || 0);
+  addPendingProfessionalArmies(state, newBasileusId, 'BASILEUS', officeArmies.BASILEUS?.pending || 0);
   state.pendingTitleReassignment = false;
   state.log.push({ type: 'coup', newBasileus: newBasileusId, round: state.round });
   const historyEvent = recordHistoryEvent(state, {
@@ -1214,6 +1239,9 @@ export function canRecruitProfessional(state, playerId, officeKey) {
   if (!canOfficeHoldProfessionals(officeKey)) {
     return { ok: false, reason: 'This office cannot hold professional troops' };
   }
+  if (getOfficeHolder(state, officeKey) !== playerId) {
+    return { ok: false, reason: 'You do not control this office.' };
+  }
   if (!state.recruitedThisRound) state.recruitedThisRound = {};
   const key = officeKey;
   if (state.recruitedThisRound[key] === state.round) {
@@ -1231,11 +1259,7 @@ export function recruitProfessional(state, playerId, officeKey) {
   const check = canRecruitProfessional(state, playerId, officeKey);
   if (!check.ok) return check;
 
-  const player = getPlayer(state, playerId);
-  if (!player.professionalArmies[officeKey]) {
-    player.professionalArmies[officeKey] = 0;
-  }
-  player.professionalArmies[officeKey]++;
+  addPendingProfessionalArmies(state, playerId, officeKey, 1);
 
   if (!state.recruitedThisRound) state.recruitedThisRound = {};
   state.recruitedThisRound[officeKey] = state.round;
@@ -1245,10 +1269,11 @@ export function recruitProfessional(state, playerId, officeKey) {
     category: 'court',
     type: 'recruit_professional',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} recruits 1 professional troop for ${officeName(state, officeKey)}.`,
+    summary: `${playerName(state, playerId)} recruits 1 professional troop for ${officeName(state, officeKey)}; it will be ready next round.`,
     details: {
       officeKey,
       officeName: officeName(state, officeKey),
+      readyNextRound: true,
     },
   });
   return { ok: true, historyId: historyEvent?.id || null };

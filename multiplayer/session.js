@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { createGameState, getPlayer, formatPlayerLabel, makeRng } from '../engine/state.js';
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
+import { buildPrivateNotifications } from '../engine/notifications.js';
 import {
   handleDefenderRewardChoice,
   handleContinueAfterResolution,
@@ -472,6 +473,9 @@ export class MultiplayerRoom {
   createPrivateSnapshotFor(sessionId) {
     const seat = this.findSeatBySession(sessionId);
     const dealView = this.gameState && seat?.seatId != null ? buildPrivateDealView(this.gameState, seat.seatId) : null;
+    const notificationView = this.gameState && seat?.seatId != null
+      ? buildPrivateNotifications(this.gameState, seat.seatId, dealView)
+      : null;
     return {
       type: 'private_snapshot',
       roomCode: this.roomCode,
@@ -485,6 +489,8 @@ export class MultiplayerRoom {
       dealThreads: dealView?.dealThreads || [],
       dealCounts: dealView?.dealCounts || { pendingInbox: 0, pendingOutbox: 0, activeObligations: 0 },
       orderLocks: dealView?.orderLocks || null,
+      notifications: notificationView?.notifications || [],
+      notificationCounts: notificationView?.notificationCounts || { total: 0, urgent: 0 },
     };
   }
 

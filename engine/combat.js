@@ -1,5 +1,7 @@
 // engine/combat.js - Invasion resolution: advance or reconquest
 
+import { clearPendingOfficeArmies } from './state.js';
+
 function clearStrategosArmy(state, themeId) {
   const officeKey = `STRAT_${themeId}`;
   for (const player of state.players) {
@@ -7,6 +9,7 @@ function clearStrategosArmy(state, themeId) {
       delete player.professionalArmies[officeKey];
     }
   }
+  clearPendingOfficeArmies(state, officeKey);
 }
 
 /**

@@ -51,6 +51,17 @@ function formatInteger(value) {
   return `${Math.round(value || 0)}`;
 }
 
+function formatNumberList(values, fallback) {
+  const list = Array.isArray(values) && values.length ? values : [fallback].filter(value => value != null);
+  return list.map(value => formatInteger(value)).join('/');
+}
+
+function formatTrainingScope(training = {}) {
+  const players = formatNumberList(training.playerCounts, training.playerCount);
+  const decks = formatNumberList(training.deckSizes, training.deckSize);
+  return `${players} players / ${decks} invasions`;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -181,11 +192,19 @@ function populateControls() {
     .map(count => `<option value="${count}" ${count === DEFAULT_BATCH_CONFIG.focused.playerCount ? 'selected' : ''}>${count} players</option>`)
     .join('');
 
-  const trainingPlayerCount = byId('trainingPlayerCount');
+  populateCheckboxGroup(
+    'trainingPlayerCounts',
+    SUPPORTED_PLAYER_COUNTS.map(value => ({ id: String(value), value })),
+    DEFAULT_TRAINING_CONFIG.playerCounts.map(String),
+    item => `${item.value} players`
+  );
 
-  trainingPlayerCount.innerHTML = SUPPORTED_PLAYER_COUNTS
-    .map(count => `<option value="${count}" ${count === DEFAULT_TRAINING_CONFIG.playerCount ? 'selected' : ''}>${count} players</option>`)
-    .join('');
+  populateCheckboxGroup(
+    'trainingDeckSizes',
+    DEFAULT_TRAINING_CONFIG.deckSizes.map(value => ({ id: String(value), value })),
+    DEFAULT_TRAINING_CONFIG.deckSizes.map(String),
+    item => `${item.value} invasions`
+  );
 
   byId('focusedDeckSize').value = DEFAULT_BATCH_CONFIG.focused.deckSize;
   byId('simulationsInput').value = DEFAULT_BATCH_CONFIG.simulations;
@@ -199,7 +218,6 @@ function populateControls() {
   byId('trainingHoldoutMatchesPerChampion').value = DEFAULT_TRAINING_CONFIG.holdoutMatchesPerChampion;
   byId('trainingParallelWorkers').value = DEFAULT_TRAINING_CONFIG.parallelWorkers;
   byId('trainingChampions').value = DEFAULT_TRAINING_CONFIG.champions;
-  byId('trainingDeckSize').value = DEFAULT_TRAINING_CONFIG.deckSize;
   byId('trainingSeed').value = DEFAULT_TRAINING_CONFIG.seed;
   applyTrainingFitnessPreset(DEFAULT_TRAINING_CONFIG.fitnessPresetId);
 }
@@ -238,8 +256,8 @@ function readConfigFromForm() {
 function readTrainingConfigFromForm() {
   return normalizeTrainingConfig({
     seed: byId('trainingSeed').value.trim(),
-    playerCount: Number(byId('trainingPlayerCount').value),
-    deckSize: Number(byId('trainingDeckSize').value),
+    playerCounts: getCheckedValues('trainingPlayerCounts').map(Number),
+    deckSizes: getCheckedValues('trainingDeckSizes').map(Number),
     fitnessPresetId: byId('trainingFitnessPreset').value,
     fitness: readTrainingFitnessFromForm(),
     populationSize: Number(byId('trainingPopulationSize').value),
@@ -481,6 +499,7 @@ function renderTrainingResult(result) {
 
   const criteriaRows = [
     ['Preset', getFitnessPresetName(result.config.fitnessPresetId)],
+    ['Scenario scope', formatTrainingScope(result.config)],
     ['Fall penalty', formatNumber(result.config.fitness.collapsePenalty, 2)],
     ['Survival bonus', formatNumber(result.config.fitness.survivalBonus, 2)],
     ['Win reward', formatNumber(result.config.fitness.winReward, 2)],
@@ -513,6 +532,7 @@ function renderTrainingResult(result) {
         <p>${escapeHtml(profile.summary)}</p>
         <div class="training-meta">
           <span class="meta-chip">${escapeHtml(getFitnessPresetName(profile.training.fitnessPresetId))}</span>
+          <span class="meta-chip">${escapeHtml(formatTrainingScope(profile.training))}</span>
           <span class="meta-chip">Score ${formatNumber(profile.training.championScore ?? profile.training.averageFitness, 3)}</span>
           <span class="meta-chip">Train ${formatPercent(profile.training.trainWinShare || 0)}</span>
           <span class="meta-chip">Validation ${formatPercent(profile.training.validationWinShare || 0)}</span>
@@ -620,7 +640,7 @@ function renderSavedProfileLibrary() {
             <span class="meta-chip">${escapeHtml(getFitnessPresetName(profile.training.fitnessPresetId))}</span>
             <span class="meta-chip">Score ${formatNumber(profile.training.championScore ?? profile.training.averageFitness, 3)}</span>
             <span class="meta-chip">Holdout ${formatPercent(profile.training.holdoutWinShare || profile.training.winShare || 0)}</span>
-            <span class="meta-chip">Deck ${formatInteger(profile.training.deckSize)}</span>
+            <span class="meta-chip">${escapeHtml(formatTrainingScope(profile.training))}</span>
             <span class="meta-chip">${escapeHtml(formatProfileSnapshot(profile))}</span>
           </div>
         </article>

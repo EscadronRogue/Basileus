@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { PROVINCES } from '../data/provinces.js';
-import { createGameState, makeRng, MERCENARY_COMPANY_KEY, rollInvasionStrength } from './state.js';
+import { createGameState, getPendingProfessionalCount, makeRng, MERCENARY_COMPANY_KEY, rollInvasionStrength } from './state.js';
 import { runAdministration } from './cascade.js';
 import { applyDefenderRewardChoice, phaseAdministration, phaseCleanup, phaseInvasion, phaseResolution, STARTING_ADMINISTRATION_GOLD } from './turnflow.js';
 import {
@@ -25,13 +25,16 @@ import {
 import { buildFinalScores } from './scoring.js';
 import {
   acceptDealOffer,
+  buildPrivateDealView,
   buildOrderLocksForPlayer,
   counterDealOffer,
+  previewDealOffer,
   refuseDealOffer,
   sendDealOffer,
   setDealParticipantIds,
   startCourtDealRound,
 } from './deals.js';
+import { buildPrivateNotifications } from './notifications.js';
 import {
   getMercenaryHireCost,
   getNormalOwnerIncome,
@@ -43,6 +46,7 @@ import { normalizeHumanOrders } from './orders.js';
 import { applyCourtAction, confirmCourt } from './commands.js';
 import { handleHumanCourtConfirmation } from './runtime.js';
 import { createAIMeta, runAICourtAutomation } from '../ai/brain.js';
+import { NEUTRAL_PROFILE } from '../ai/personalities.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -534,6 +538,101 @@ test('deal threads support send, counter, refuse, accept, stale revisions, and o
     state.dealThreads[0].history.map((entry) => entry.type),
     ['offer_sent', 'offer_countered', 'offer_refused', 'offer_sent', 'offer_accepted'],
   );
+});
+
+test('deal preview validates offers without mutating live deal state', () => {
+  const state = makeDealState([], { 0: { gold: 5 }, 1: { gold: 5 } });
+  const preview = previewDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'gold', direction: 'give', amount: 2, durationTurns: 1 },
+      { kind: 'non_revocation', direction: 'ask', durationTurns: 1 },
+    ],
+  });
+
+  assert.equal(preview.ok, true);
+  assert.equal(preview.clauses.length, 2);
+  assert.equal(preview.actorImpact.goldGiven, 2);
+  assert.equal(preview.counterpartyImpact.goldReceived, 2);
+  assert.equal(state.dealThreads.length, 0);
+  assert.equal(state.players[0].gold, 5);
+  assert.equal(state.reservedGold?.[0] || 0, 0);
+});
+
+test('private notifications surface incoming deals and revoked holdings only to the affected player', () => {
+  const state = makeDealState(
+    [makeTheme('OPS', { owner: 1 })],
+    {
+      0: { gold: 2, professionalArmies: { BASILEUS: 1 } },
+      1: { gold: 2 },
+    },
+  );
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'gold', direction: 'give', amount: 1, durationTurns: 1 },
+    ],
+  });
+  assert.equal(sent.ok, true);
+
+  let playerOnePrivate = buildPrivateDealView(state, 1);
+  let playerOneNotifications = buildPrivateNotifications(state, 1, playerOnePrivate);
+  const playerTwoNotifications = buildPrivateNotifications(state, 2, buildPrivateDealView(state, 2));
+  assert.equal(playerOneNotifications.notifications.some((entry) => entry.kind === 'deal_incoming' && entry.urgent), true);
+  assert.equal(playerTwoNotifications.notifications.some((entry) => entry.kind === 'deal_incoming'), false);
+
+  const revoked = revokeTheme(state, 'OPS', 0);
+  assert.equal(revoked.ok, true);
+
+  playerOnePrivate = buildPrivateDealView(state, 1);
+  playerOneNotifications = buildPrivateNotifications(state, 1, playerOnePrivate);
+  assert.equal(playerOneNotifications.notifications.some((entry) => entry.kind === 'revocation' && entry.urgent), true);
+  assert.equal(buildPrivateNotifications(state, 2, buildPrivateDealView(state, 2)).notifications.some((entry) => entry.kind === 'revocation'), false);
+});
+
+test('AI court automation can propose and evaluate formal deals', () => {
+  const state = makeDealState([], {
+    0: { gold: 6 },
+    1: { gold: 6 },
+    2: { gold: 6 },
+  }, [0, 1, 2]);
+  state.courtActions = {
+    basileusAppointed: true,
+    domesticEastAppointed: true,
+    domesticWestAppointed: true,
+    admiralAppointed: true,
+    patriarchAppointed: true,
+    revocationsUsed: {},
+    appointedThisTurn: {},
+    appointmentsByRecipient: {},
+    playerConfirmed: new Set(),
+  };
+  const dealProfile = {
+    ...NEUTRAL_PROFILE,
+    id: 'test-deal-broker',
+    name: 'Test Deal Broker',
+    meta: {
+      ...(NEUTRAL_PROFILE.meta || {}),
+      dealProposalThreshold: -0.5,
+      dealAcceptanceThreshold: -0.5,
+      dealCounterThreshold: -2,
+      dealTemperature: 0.05,
+    },
+  };
+  const meta = createAIMeta(state, {
+    seatProfiles: {
+      0: dealProfile,
+      1: dealProfile,
+      2: dealProfile,
+    },
+  });
+
+  const result = runAICourtAutomation(state, meta, { mode: 'react' });
+
+  assert.ok(result.actionsTaken > 0);
+  assert.ok(meta.totals.dealsProposed > 0);
+  assert.ok(state.dealThreads.length > 0);
 });
 
 test('confirming court auto-refuses waiting deals and blocks new incoming offers', () => {
@@ -1365,6 +1464,55 @@ test('resolution totals include public mercenary hires and cleanup removes them'
 
   phaseCleanup(state);
   assert.deepEqual(state.currentMercenaryTroops, {});
+});
+
+test('recruited professional troops become active after cleanup', () => {
+  const state = makeState([], {
+    0: { gold: 10, professionalArmies: { BASILEUS: 1 } },
+  });
+
+  const recruit = recruitProfessional(state, 0, 'BASILEUS');
+  assert.equal(recruit.ok, true);
+  assert.equal(state.players[0].professionalArmies.BASILEUS, 1);
+  assert.equal(getPendingProfessionalCount(state, 0, 'BASILEUS'), 1);
+
+  phaseCleanup(state);
+
+  assert.equal(state.players[0].professionalArmies.BASILEUS, 2);
+  assert.equal(getPendingProfessionalCount(state, 0, 'BASILEUS'), 0);
+  assert.equal(state.players[0].gold, 9);
+});
+
+test('new strategos professional troop cannot deploy until the next round', () => {
+  const state = makeState([makeTheme('OPS')], {
+    0: { professionalArmies: { BASILEUS: 1 } },
+  });
+  state.historyEnabled = true;
+
+  const appoint = appointStrategos(state, 0, 'OPS', 1);
+  assert.equal(appoint.ok, true);
+  assert.equal(state.themes.OPS.strategos, 1);
+  assert.equal(state.players[1].professionalArmies.STRAT_OPS || 0, 0);
+  assert.equal(getPendingProfessionalCount(state, 1, 'STRAT_OPS'), 1);
+
+  state.phase = 'orders';
+  state.allOrders = {
+    1: {
+      deployments: { STRAT_OPS: 'capital' },
+      candidate: 1,
+    },
+  };
+
+  phaseResolution(state);
+
+  const reveal = state.history.find((entry) => entry.type === 'orders_revealed' && entry.actorId === 1);
+  assert.equal(reveal.details.capitalTroops, 0);
+  assert.equal(reveal.details.frontierTroops, 0);
+  assert.deepEqual(reveal.details.offices, []);
+
+  phaseCleanup(state);
+  assert.equal(state.players[1].professionalArmies.STRAT_OPS, 1);
+  assert.equal(getPendingProfessionalCount(state, 1, 'STRAT_OPS'), 0);
 });
 
 test('players in debt cannot recruit professional troops', () => {

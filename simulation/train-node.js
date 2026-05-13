@@ -13,6 +13,13 @@ function parseValue(value) {
   return value;
 }
 
+function parseNumberList(value) {
+  return String(value || '')
+    .split(/[,\s]+/)
+    .map(entry => Number.parseInt(entry, 10))
+    .filter(Number.isFinite);
+}
+
 function parseArgs(argv) {
   const config = { ...DEFAULT_TRAINING_CONFIG };
   let output = 'training-result.json';
@@ -26,6 +33,15 @@ function parseArgs(argv) {
     if (key === 'out' || key === 'output') output = String(value);
     else if (key === 'exportDir' || key === 'personalitiesDir') exportDir = String(value || 'trained-personalities');
     else if (key === 'progressEvery') progressEvery = Math.max(1, Number(value) || 1);
+    else if (key === 'playerCounts') config.playerCounts = parseNumberList(rawValue.trim());
+    else if (key === 'deckSizes') config.deckSizes = parseNumberList(rawValue.trim());
+    else if (key === 'playerCount') {
+      config.playerCount = value;
+      config.playerCounts = [value];
+    } else if (key === 'deckSize') {
+      config.deckSize = value;
+      config.deckSizes = [value];
+    }
     else if (key === 'parallelWorkers' && value === 'auto') config.parallelWorkers = Math.max(1, Math.min(availableParallelism() - 1, 8));
     else if (key in config) config[key] = value;
     else if (key.startsWith('fitness.')) {

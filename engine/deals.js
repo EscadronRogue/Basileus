@@ -1210,6 +1210,69 @@ export function autoRefuseAwaitingDeals(state, playerId) {
   }
 }
 
+export function previewDealOffer(state, actorId, payload = {}, options = {}) {
+  ensureDealState(state);
+  if (state.phase !== 'court') return fail('Deals may only be negotiated during the Court phase.');
+  if (isPlayerConfirmedForDeals(state, actorId)) return fail('You already confirmed court actions this round.');
+
+  const mode = options.mode || (payload.threadId ? 'counter' : 'send');
+  let thread = null;
+  let counterpartyId = null;
+  let pairKey = null;
+  let revision = 0;
+  let participantsValidated = false;
+
+  if (mode === 'counter') {
+    thread = getThreadById(state, String(payload.threadId || '').trim());
+    if (!thread) return fail('That deal thread does not exist anymore.');
+    if (thread.status !== DEAL_THREAD_STATUS.OPEN) return fail('That deal is already closed.');
+    if (thread.awaitingPlayerId !== actorId) return fail('Only the dynasty currently holding the offer may counter it.');
+    const revisionCheck = enforceRevision(thread, payload.expectedRevision);
+    if (!revisionCheck.ok) return revisionCheck;
+    counterpartyId = getOpposingPlayerId(thread, actorId);
+    pairKey = thread.pairKey;
+    revision = nextRevision(thread);
+  } else {
+    counterpartyId = toInt(payload.counterpartyId, null);
+    const participantCheck = validateDealParticipants(state, actorId, counterpartyId);
+    if (!participantCheck.ok) return participantCheck;
+    participantsValidated = true;
+    pairKey = makePairKey(actorId, counterpartyId);
+    thread = getThreadByPairKey(state, pairKey);
+    if (thread?.status === DEAL_THREAD_STATUS.OPEN) {
+      return fail('That deal thread is still open. Counter, accept, or refuse it first.');
+    }
+    const revisionCheck = enforceRevision(thread || { revision: 0 }, payload.expectedRevision);
+    if (!revisionCheck.ok) return revisionCheck;
+    revision = thread ? nextRevision(thread) : 1;
+  }
+
+  if (!participantsValidated) {
+    const participantCheck = validateDealParticipants(state, actorId, counterpartyId);
+    if (!participantCheck.ok) return participantCheck;
+  }
+  if (isPlayerConfirmedForDeals(state, counterpartyId)) {
+    return fail(`${playerName(state, counterpartyId)} already confirmed court actions and cannot receive a new deal this round.`);
+  }
+
+  const clauseResult = normalizeDealClauses(state, actorId, counterpartyId, payload.clauses);
+  if (!clauseResult.ok) return clauseResult;
+  const validation = validateDealClausesAgainstState(state, clauseResult.clauses, pairKey);
+  if (!validation.ok) return validation;
+
+  return {
+    ok: true,
+    mode,
+    threadId: thread?.id || null,
+    counterpartyId,
+    pairKey,
+    revision,
+    clauses: clonePlain(clauseResult.clauses),
+    actorImpact: summarizeDealOfferImpact(clauseResult.clauses, actorId),
+    counterpartyImpact: summarizeDealOfferImpact(clauseResult.clauses, counterpartyId),
+  };
+}
+
 export function sendDealOffer(state, actorId, payload = {}) {
   ensureDealState(state);
   if (state.phase !== 'court') return fail('Deals may only be negotiated during the Court phase.');

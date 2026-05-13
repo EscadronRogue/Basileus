@@ -14,7 +14,7 @@ function testProfile(id) {
   };
 }
 
-test('single-game simulation exposes score category and revocation metrics', () => {
+test('single-game simulation exposes score category, revocation, and deal metrics', () => {
   const game = runSingleSimulationGame({
     playerCount: 3,
     deckSize: 1,
@@ -31,6 +31,8 @@ test('single-game simulation exposes score category and revocation metrics', () 
 
   assert.equal(typeof game.topScore, 'number');
   assert.equal(typeof game.totalRevocations, 'number');
+  assert.equal(typeof game.totalDealsProposed, 'number');
+  assert.equal(typeof game.totalDealUtility, 'number');
   assert.ok(game.playerMetrics.length > 0);
 
   const metric = game.playerMetrics[0];
@@ -38,4 +40,7 @@ test('single-game simulation exposes score category and revocation metrics', () 
   assert.equal(typeof metric.finalCategoryShares.gold, 'number');
   assert.equal(typeof metric.finalCategoryPoints.gold, 'number');
   assert.equal(typeof metric.revocations, 'number');
+  assert.equal(typeof metric.dealsProposed, 'number');
+  assert.equal(typeof metric.dealAcceptanceRate, 'number');
+  assert.equal(typeof metric.badAcceptedDeals, 'number');
 });
