@@ -56,7 +56,7 @@ After starting the local server, open http://127.0.0.1:8123/simulator.html.
 ```bash
 npm run train:node -- --parallelWorkers=auto
 ```
-By default the trainer rotates candidates through 3, 4, and 5 player games with 6, 9, and 12 invasion decks. Use `--playerCounts=3,5` or `--deckSizes=6,12` only when you deliberately want a narrower curriculum.
+By default the trainer uses a fresh random seed each run, rotates candidates through 3, 4, and 5 player games with 6, 9, and 12 invasion decks, validates finalists with a deeper holdout, and exports 10 champions. Use `--playerCounts=3,5` or `--deckSizes=6,12` only when you deliberately want a narrower curriculum.
 
 ## Scripts
 

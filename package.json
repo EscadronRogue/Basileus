@@ -33,7 +33,7 @@
     "serve:multiplayer": "node multiplayer/server.js",
     "train:node": "node simulation/train-node.js --parallelWorkers=auto",
     "test:economy": "node engine/economy.test.js",
-    "test:evolution": "node --test simulation/evolution.test.js simulation/engine.test.js",
+    "test:evolution": "node --test ai/context.test.js ai/actionSpace.test.js ai/consequences.test.js simulation/evolution.test.js simulation/engine.test.js",
     "smoke:simulation": "node simulation/smoke-test.js",
     "test:multiplayer": "node multiplayer/verify.js",
     "test": "npm run test:economy && npm run test:evolution && npm run test:ui && npm run smoke:simulation && npm run test:multiplayer",

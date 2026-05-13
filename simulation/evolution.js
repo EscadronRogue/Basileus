@@ -28,7 +28,6 @@ const OBJECTIVE_KEYS = [
 ];
 
 export const DEFAULT_TRAINING_CONFIG = {
-  seed: 20260429,
   playerCount: 4,
   playerCounts: SUPPORTED_PLAYER_COUNTS.slice(),
   deckSize: 6,
@@ -38,8 +37,8 @@ export const DEFAULT_TRAINING_CONFIG = {
   generations: 30,
   matchesPerCandidate: 24,
   validationMatchesPerCandidate: 8,
-  holdoutMatchesPerChampion: 128,
-  champions: 4,
+  holdoutMatchesPerChampion: 1024,
+  champions: 10,
   hallOfFameSize: 32,
   eliteFraction: 0.2,
   freshBloodRate: 0.12,
@@ -53,9 +52,11 @@ export const DEFAULT_FITNESS_WEIGHTS = {
   winReward: 14.0,
   placementReward: 4.0,
   wealthReward: 2.0,
-  dealUtilityReward: 0.35,
-  dealAcceptanceReward: 0.5,
-  badDealPenalty: 1.5,
+  dealUtilityReward: 0.45,
+  dealAcceptanceReward: 0.15,
+  badDealPenalty: 2.25,
+  decisionQualityReward: 0.35,
+  projectionErrorPenalty: 0.25,
 };
 
 export const FITNESS_PROFILES = {
@@ -113,8 +114,10 @@ export const FITNESS_TUNING_FIELDS = [
   { key: 'placementReward', label: 'Placement Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for finishing high even without an outright win.' },
   { key: 'wealthReward', label: 'Score Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for final score relative to the table mean.' },
   { key: 'dealUtilityReward', label: 'Deal Utility Reward', step: 0.05, min: 0, max: 5, group: 'Deals', hint: 'Small reward for accepted deals that the AI evaluated as beneficial.' },
-  { key: 'dealAcceptanceReward', label: 'Deal Acceptance Reward', step: 0.05, min: 0, max: 5, group: 'Deals', hint: 'Small reward for turning proposals and counters into accepted deals.' },
+  { key: 'dealAcceptanceReward', label: 'Useful Deal Reward', step: 0.05, min: 0, max: 5, group: 'Deals', hint: 'Small reward for accepted deals after net utility and bad-deal penalties.' },
   { key: 'badDealPenalty', label: 'Bad Deal Penalty', step: 0.05, min: 0, max: 10, group: 'Deals', hint: 'Penalty for accepting deals the AI evaluated as negative.' },
+  { key: 'decisionQualityReward', label: 'Decision Quality Reward', step: 0.05, min: 0, max: 5, group: 'Judgment', hint: 'Reward for consequence projections that align with realized game outcomes.' },
+  { key: 'projectionErrorPenalty', label: 'Projection Error Penalty', step: 0.05, min: 0, max: 5, group: 'Judgment', hint: 'Penalty for large gaps between projected decision value and realized results.' },
 ];
 
 function clamp(value, min, max) {
@@ -157,12 +160,13 @@ function hashSeedString(value) {
   return hash >>> 0;
 }
 
-function normalizeSeed(rawSeed) {
-  if (rawSeed == null || rawSeed === '') return Date.now() >>> 0;
-  const text = String(rawSeed).trim();
-  if (!text) return Date.now() >>> 0;
-  if (/^-?\d+$/.test(text)) return Number(text) >>> 0;
-  return hashSeedString(text);
+function randomSeed() {
+  if (globalThis.crypto?.getRandomValues) {
+    const values = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(values);
+    return values[0] >>> 0;
+  }
+  return Math.floor(Math.random() * 4294967296) >>> 0;
 }
 
 function createRng(seed) {
@@ -820,17 +824,37 @@ function computeCollapseDefenseProfile(game, playerMetric) {
   };
 }
 
+function computeCollapseFitness(game, playerMetric, fitnessWeights) {
+  if (game.guardTriggered) return -fitnessWeights.collapsePenalty;
+
+  const collapse = computeCollapseDefenseProfile(game, playerMetric);
+  const defenseSignal = clamp(
+    (collapse.defenseCoverage * 0.5) +
+    (collapse.fatalCoverage * 0.35) +
+    (collapse.commitmentRate * 0.15),
+    0,
+    1
+  );
+  const defenseCredit = defenseSignal * fitnessWeights.collapsePenalty * 0.65;
+  const freeRidePenalty = (1 - defenseSignal) * fitnessWeights.collapsePenalty * 0.2;
+
+  return roundTo(-fitnessWeights.collapsePenalty + defenseCredit - freeRidePenalty, 4);
+}
+
 function computeFitness(game, playerMetric, fitnessWeights) {
   if (game.guardTriggered || game.empireFall) {
-    return roundTo(-fitnessWeights.collapsePenalty, 4);
+    return computeCollapseFitness(game, playerMetric, fitnessWeights);
   }
 
   const placementScore = computePlacementScore(game, playerMetric);
   const winnerBonus = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
   const scoreRatio = computeScoreRatio(game, playerMetric);
   const dealUtility = clamp(Number(playerMetric.dealUtility) || 0, -8, 8);
-  const dealAcceptanceRate = clamp(Number(playerMetric.dealAcceptanceRate) || 0, 0, 1);
   const badAcceptedDeals = Math.max(0, Number(playerMetric.badAcceptedDeals) || 0);
+  const dealAttempts = Math.max(1, (Number(playerMetric.dealsProposed) || 0) + (Number(playerMetric.dealsCountered) || 0));
+  const usefulDealRate = clamp(((Number(playerMetric.dealsAccepted) || 0) - badAcceptedDeals) / dealAttempts, 0, 1);
+  const decisionQuality = clamp(Number(playerMetric.decisionQuality) || 0, 0, 1);
+  const projectionError = clamp(Number(playerMetric.projectionError) || 0, 0, 2);
 
   return roundTo(
     fitnessWeights.survivalBonus +
@@ -838,8 +862,10 @@ function computeFitness(game, playerMetric, fitnessWeights) {
     (placementScore * fitnessWeights.placementReward) +
     (Math.min(scoreRatio, 3) * fitnessWeights.wealthReward) +
     (dealUtility * (fitnessWeights.dealUtilityReward ?? 0)) +
-    (dealAcceptanceRate * (fitnessWeights.dealAcceptanceReward ?? 0)) -
-    (badAcceptedDeals * (fitnessWeights.badDealPenalty ?? 0)),
+    (usefulDealRate * (fitnessWeights.dealAcceptanceReward ?? 0)) -
+    (badAcceptedDeals * (fitnessWeights.badDealPenalty ?? 0)) +
+    (decisionQuality * (fitnessWeights.decisionQualityReward ?? 0)) -
+    (projectionError * (fitnessWeights.projectionErrorPenalty ?? 0)),
     4
   );
 }
@@ -885,7 +911,13 @@ function createEvaluationAccumulator(candidate, generation, scope) {
       churchGifts: 0,
       revocations: 0,
       defenderRewards: 0,
+      defenderGoldChoices: 0,
+      defenderRestoreChoices: 0,
+      defenderRewardGold: 0,
       throneCaptures: 0,
+      titleShuffles: 0,
+      supporterTitleRewards: 0,
+      rivalOfficeDenials: 0,
       incumbentSupportRate: 0,
       selfSupportRate: 0,
       goldHoardingRate: 0,
@@ -897,6 +929,14 @@ function createEvaluationAccumulator(candidate, generation, scope) {
       dealsRefused: 0,
       dealUtility: 0,
       badAcceptedDeals: 0,
+      coordinatedClaimantDeals: 0,
+      frontierCoordinationDeals: 0,
+      systemicDecisionCount: 0,
+      projectedUtility: 0,
+      projectedRisk: 0,
+      projectedFlexibility: 0,
+      projectionError: 0,
+      decisionQuality: 0,
     },
     collapseDiagnostics: {
       matches: 0,
@@ -959,7 +999,10 @@ function buildBehaviorVector(summary) {
     clamp(behavior.averageChurchGifts / 3, 0, 1),
     clamp(behavior.averageRevocations / 2, 0, 1),
     clamp(behavior.averageDefenderRewards / 3, 0, 1),
+    clamp(behavior.defenderGoldChoiceRate, 0, 1),
     clamp(behavior.averageThroneCaptures / 2, 0, 1),
+    clamp(behavior.averageTitleShuffles / 4, 0, 1),
+    clamp(behavior.supporterTitleRewardRate, 0, 1),
     clamp(behavior.incumbentSupportRate, 0, 1),
     clamp(behavior.selfSupportRate, 0, 1),
     clamp(behavior.goldHoardingRate, 0, 1),
@@ -969,6 +1012,12 @@ function buildBehaviorVector(summary) {
     clamp(behavior.dealAcceptanceRate, 0, 1),
     clamp((behavior.averageDealUtility + 4) / 8, 0, 1),
     clamp(behavior.badAcceptedDealRate, 0, 1),
+    clamp(behavior.averageCoordinatedClaimantDeals / 2, 0, 1),
+    clamp(behavior.averageFrontierCoordinationDeals / 2, 0, 1),
+    clamp(behavior.averageSystemicDecisions / 8, 0, 1),
+    clamp((behavior.averageProjectedUtility + 4) / 8, 0, 1),
+    clamp(behavior.averageProjectionError, 0, 1),
+    clamp(behavior.averageDecisionQuality, 0, 1),
   ];
 }
 
@@ -996,6 +1045,8 @@ function finalizeEvaluationSummary(accumulator) {
   const matchupExtremes = pickMatchupExtremes(perOpponentTypeWinRate);
   const dealAttempts = accumulator.behaviorTotals.dealsProposed + accumulator.behaviorTotals.dealsCountered;
   const dealAccepted = accumulator.behaviorTotals.dealsAccepted;
+  const defenderChoices = accumulator.behaviorTotals.defenderGoldChoices + accumulator.behaviorTotals.defenderRestoreChoices;
+  const titleShuffles = accumulator.behaviorTotals.titleShuffles;
 
   const summary = {
     generation: accumulator.generation,
@@ -1028,7 +1079,12 @@ function finalizeEvaluationSummary(accumulator) {
       averageChurchGifts: roundTo(accumulator.behaviorTotals.churchGifts / Math.max(1, accumulator.matches), 4),
       averageRevocations: roundTo(accumulator.behaviorTotals.revocations / Math.max(1, accumulator.matches), 4),
       averageDefenderRewards: roundTo(accumulator.behaviorTotals.defenderRewards / Math.max(1, accumulator.matches), 4),
+      defenderGoldChoiceRate: roundTo(accumulator.behaviorTotals.defenderGoldChoices / Math.max(1, defenderChoices), 4),
+      averageDefenderRewardGold: roundTo(accumulator.behaviorTotals.defenderRewardGold / Math.max(1, accumulator.matches), 4),
       averageThroneCaptures: roundTo(accumulator.behaviorTotals.throneCaptures / Math.max(1, accumulator.matches), 4),
+      averageTitleShuffles: roundTo(titleShuffles / Math.max(1, accumulator.matches), 4),
+      supporterTitleRewardRate: roundTo(accumulator.behaviorTotals.supporterTitleRewards / Math.max(1, titleShuffles), 4),
+      rivalOfficeDenialRate: roundTo(accumulator.behaviorTotals.rivalOfficeDenials / Math.max(1, titleShuffles), 4),
       incumbentSupportRate: roundTo(accumulator.behaviorTotals.incumbentSupportRate / Math.max(1, accumulator.matches), 4),
       selfSupportRate: roundTo(accumulator.behaviorTotals.selfSupportRate / Math.max(1, accumulator.matches), 4),
       goldHoardingRate: roundTo(accumulator.behaviorTotals.goldHoardingRate / Math.max(1, accumulator.matches), 4),
@@ -1041,6 +1097,14 @@ function finalizeEvaluationSummary(accumulator) {
       dealAcceptanceRate: roundTo(dealAccepted / Math.max(1, dealAttempts), 4),
       averageDealUtility: roundTo(accumulator.behaviorTotals.dealUtility / Math.max(1, accumulator.matches), 4),
       badAcceptedDealRate: roundTo(accumulator.behaviorTotals.badAcceptedDeals / Math.max(1, dealAccepted), 4),
+      averageCoordinatedClaimantDeals: roundTo(accumulator.behaviorTotals.coordinatedClaimantDeals / Math.max(1, accumulator.matches), 4),
+      averageFrontierCoordinationDeals: roundTo(accumulator.behaviorTotals.frontierCoordinationDeals / Math.max(1, accumulator.matches), 4),
+      averageSystemicDecisions: roundTo(accumulator.behaviorTotals.systemicDecisionCount / Math.max(1, accumulator.matches), 4),
+      averageProjectedUtility: roundTo(accumulator.behaviorTotals.projectedUtility / Math.max(1, accumulator.matches), 4),
+      averageProjectedRisk: roundTo(accumulator.behaviorTotals.projectedRisk / Math.max(1, accumulator.matches), 4),
+      averageProjectedFlexibility: roundTo(accumulator.behaviorTotals.projectedFlexibility / Math.max(1, accumulator.matches), 4),
+      averageProjectionError: roundTo(accumulator.behaviorTotals.projectionError / Math.max(1, accumulator.matches), 4),
+      averageDecisionQuality: roundTo(accumulator.behaviorTotals.decisionQuality / Math.max(1, accumulator.matches), 4),
     },
     collapseDiagnostics: {
       defenseCoverage: roundTo(accumulator.collapseDiagnostics.defenseCoverage / Math.max(1, accumulator.collapseDiagnostics.matches), 4),
@@ -1132,7 +1196,13 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     accumulator.behaviorTotals.churchGifts += playerMetric.themesGifted;
     accumulator.behaviorTotals.revocations += playerMetric.revocations;
     accumulator.behaviorTotals.defenderRewards += playerMetric.defenderRewards || 0;
+    accumulator.behaviorTotals.defenderGoldChoices += playerMetric.defenderGoldChoices || 0;
+    accumulator.behaviorTotals.defenderRestoreChoices += playerMetric.defenderRestoreChoices || 0;
+    accumulator.behaviorTotals.defenderRewardGold += playerMetric.defenderRewardGold || 0;
     accumulator.behaviorTotals.throneCaptures += playerMetric.throneCaptures;
+    accumulator.behaviorTotals.titleShuffles += playerMetric.titleShuffles || 0;
+    accumulator.behaviorTotals.supporterTitleRewards += playerMetric.supporterTitleRewards || 0;
+    accumulator.behaviorTotals.rivalOfficeDenials += playerMetric.rivalOfficeDenials || 0;
     accumulator.behaviorTotals.incumbentSupportRate += incumbentSupportRate;
     accumulator.behaviorTotals.selfSupportRate += selfSupportRate;
     accumulator.behaviorTotals.goldHoardingRate += goldHoardingRate;
@@ -1144,6 +1214,14 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     accumulator.behaviorTotals.dealsRefused += playerMetric.dealsRefused || 0;
     accumulator.behaviorTotals.dealUtility += playerMetric.dealUtility || 0;
     accumulator.behaviorTotals.badAcceptedDeals += playerMetric.badAcceptedDeals || 0;
+    accumulator.behaviorTotals.coordinatedClaimantDeals += playerMetric.coordinatedClaimantDeals || 0;
+    accumulator.behaviorTotals.frontierCoordinationDeals += playerMetric.frontierCoordinationDeals || 0;
+    accumulator.behaviorTotals.systemicDecisionCount += playerMetric.systemicDecisionCount || 0;
+    accumulator.behaviorTotals.projectedUtility += playerMetric.projectedUtility || 0;
+    accumulator.behaviorTotals.projectedRisk += playerMetric.projectedRisk || 0;
+    accumulator.behaviorTotals.projectedFlexibility += playerMetric.projectedFlexibility || 0;
+    accumulator.behaviorTotals.projectionError += playerMetric.projectionError || 0;
+    accumulator.behaviorTotals.decisionQuality += playerMetric.decisionQuality || 0;
 
     if (game.empireFall) {
       const collapse = computeCollapseDefenseProfile(game, playerMetric);
@@ -1695,6 +1773,8 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       seatBias: holdoutSummary.startingBasileusSeatBias,
       bestMatchup: holdoutSummary.bestMatchup?.tag || '',
       worstMatchup: holdoutSummary.worstMatchup?.tag || '',
+      averageProjectionError: holdoutSummary.behaviorProfile?.averageProjectionError || 0,
+      averageDecisionQuality: holdoutSummary.behaviorProfile?.averageDecisionQuality || 0,
       behaviorProfile: holdoutSummary.behaviorProfile,
       mainBehavior: describeBehaviorProfile(holdoutSummary),
     },
@@ -1716,7 +1796,7 @@ export function normalizeTrainingConfig(rawConfig = {}) {
   const fitness = normalizeFitnessWeights(rawConfig.fitness, rawConfig.fitnessPresetId);
 
   return {
-    seed: normalizeSeed(rawConfig.seed ?? DEFAULT_TRAINING_CONFIG.seed),
+    seed: randomSeed(),
     playerCount,
     playerCounts,
     deckSize,

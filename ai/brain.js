@@ -74,12 +74,35 @@ import {
   sendDealOffer,
   summarizeDealOfferImpact,
 } from '../engine/deals.js';
+import {
+  ensureAIContext,
+  invalidateAIContext as invalidateSystemicAIContext,
+} from './context.js';
+import {
+  AI_ACTION_KINDS,
+  AI_ACTION_PHASES,
+} from './actionSpace.js';
+import {
+  recordSelectedActionProjection,
+  scoreActionPolicy,
+} from './consequences.js';
 
 const PUBLIC_LOG_LIMIT = 48;
 const DEAL_SINGLE_PAYLOAD_LIMIT = 36;
 const DEAL_COMBO_ASK_LIMIT = 7;
 const DEAL_COMBO_GIVE_LIMIT = 5;
 const DEAL_TOTAL_PAYLOAD_LIMIT = 56;
+const DEAL_INTENT_PAYLOAD_LIMIT = 24;
+const DEAL_INTENTS = {
+  GENERIC: 'generic',
+  GENERIC_EXCHANGE: 'generic_exchange',
+  COALITION_COORDINATION: 'coalition_coordination',
+  SPLIT_FRONTIER_DEFENSE: 'split_frontier_defense',
+  SUPPORT_FOR_REWARD: 'support_for_reward',
+  PROTECTION_FOR_SUPPORT: 'protection_for_support',
+  ESTATE_TRADE: 'estate_trade',
+  GOLD_MAKEWEIGHT: 'gold_makeweight',
+};
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -225,6 +248,39 @@ function getMeta(profile, key) {
 
 function getMetaForPlayer(meta, playerId, key) {
   return getMeta(getPersonalityProfile(meta, playerId), key);
+}
+
+function evaluateSystemicAction(state, meta, playerId, descriptor, baseScore = 0, stage = state.phase) {
+  try {
+    return scoreActionPolicy(
+      state,
+      meta,
+      playerId,
+      {
+        phase: stage,
+        ...descriptor,
+      },
+      baseScore,
+      ensureAIContext(state, meta, stage),
+    );
+  } catch {
+    return {
+      descriptor,
+      impact: {},
+      total: 0,
+      score: baseScore,
+    };
+  }
+}
+
+function applySystemicScore(state, meta, playerId, descriptor, baseScore = 0, stage = state.phase) {
+  return evaluateSystemicAction(state, meta, playerId, descriptor, baseScore, stage).score;
+}
+
+function rememberSystemicDecision(state, meta, playerId, descriptor, baseScore = 0, stage = state.phase) {
+  const evaluation = evaluateSystemicAction(state, meta, playerId, descriptor, baseScore, stage);
+  recordSelectedActionProjection(meta, playerId, evaluation);
+  return evaluation;
 }
 
 // ---------------------------------------------------------------------------
@@ -554,6 +610,122 @@ function getCategoryThresholdPressure(state, meta, playerId, categoryKey) {
   const currentThreshold = points > 0 ? SCORE_SHARE_THRESHOLDS[points - 1] : 0;
   const defensePressure = points > 0 ? clamp(1 - ((share - currentThreshold) / 0.12), 0, 1) * 0.45 : 0;
   return gainPressure + defensePressure;
+}
+
+function getPendingRewardThemeForChoice(state, choice) {
+  const pending = (Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards : [])
+    .filter((reward) => !reward.resolved)
+    .slice()
+    .sort((left, right) => (Number(left.reconquestIndex) || 0) - (Number(right.reconquestIndex) || 0));
+  const entry = choice === 'gold' ? pending[pending.length - 1] : pending[0];
+  return entry?.themeId || entry?.originalThemeId || null;
+}
+
+function getOccupiedRoutePressure(state, themeId) {
+  if (!themeId || !state.currentInvasion?.route?.length) return 0;
+  const route = state.currentInvasion.route;
+  const themeIndex = route.indexOf(themeId);
+  if (themeIndex === -1) return 0;
+  let pressure = 0;
+  for (let index = 0; index <= themeIndex; index++) {
+    const routeTheme = state.themes?.[route[index]];
+    if (routeTheme?.occupied) pressure += 0.2 + (0.16 * (themeIndex - index));
+  }
+  return clamp(pressure, 0, 1.4);
+}
+
+function estimateGoldRewardScore(state, meta, playerId, reward, affectedThemeId) {
+  const profile = getPersonalityProfile(meta, playerId);
+  const gold = Math.max(0, Number(reward?.goldValue ?? reward?.gold) || 0);
+  const remainingRounds = getRemainingRounds(state);
+  const standing = getStandingSnapshot(state, meta, playerId);
+  const goldPressure = getCategoryThresholdPressure(state, meta, playerId, 'gold');
+  const comebackPressure = clamp(standing.gapToLeader / 12, 0, 1.4);
+  const endgamePressure = remainingRounds <= 1 ? 1.05 : remainingRounds <= 2 ? 0.72 : remainingRounds <= 4 ? 0.3 : 0;
+  const greed = getMetaForPlayer(meta, playerId, 'defenderRewardGreed');
+  const routeRisk = getThemeRouteRisk(state, affectedThemeId);
+  const danger = getEmpireDanger(state, meta);
+
+  let score = gold * (0.32 + (profile.weights.wealth * 0.045));
+  score += goldPressure * (1.25 + (greed * 0.4));
+  score += comebackPressure * (0.9 + greed);
+  score += endgamePressure * (0.85 + (profile.weights.wealth * 0.15));
+  score += greed * 0.55;
+  score -= danger * routeRisk * (1.55 + getMetaForPlayer(meta, playerId, 'defenderRewardSafety'));
+  return score;
+}
+
+function estimateRestoreRewardScore(state, meta, playerId, reward, affectedThemeId) {
+  const profile = getPersonalityProfile(meta, playerId);
+  const theme = state.themes?.[affectedThemeId || reward?.themeId];
+  const danger = getEmpireDanger(state, meta);
+  const threat = getThreatLevel(state, meta);
+  const routeRisk = getThemeRouteRisk(state, affectedThemeId || reward?.themeId);
+  const occupiedRoutePressure = getOccupiedRoutePressure(state, affectedThemeId || reward?.themeId);
+  const safety = getMetaForPlayer(meta, playerId, 'defenderRewardSafety');
+  const remainingRounds = getRemainingRounds(state);
+  const ownerStake = theme?.owner != null && theme.owner !== 'church'
+    ? getAffinityScore(meta, playerId, Number(theme.owner)) * 0.22
+    : 0;
+  const ownExposure = getPlayerExposure(state, playerId, meta);
+  const frontierStake = getPlayerThreatenedLandValue(state, playerId, meta);
+
+  let score = 0.4 + (danger * (1.55 + safety)) + (threat * 0.65);
+  score += routeRisk * (1.35 + (safety * 0.75) + (profile.weights.frontier * 0.22));
+  score += occupiedRoutePressure * (1.15 + safety);
+  score += Math.min(2.2, ownExposure * 0.28 + frontierStake * 0.035);
+  score += Math.max(0, remainingRounds - 1) * 0.04;
+  score += ownerStake;
+  if (theme?.id === 'CPL') score += 4;
+  if (danger > 1.05 && routeRisk > 0.35) score += 1.25 + (safety * 0.6);
+  return score;
+}
+
+export function chooseAIDefenderRewardChoice(state, meta, reward) {
+  if (!state || !meta || !reward) return 'empire';
+  const playerId = reward.defenderId;
+  if (playerId == null || !meta.players?.[playerId]) return 'empire';
+  const goldThemeId = getPendingRewardThemeForChoice(state, 'gold') || reward.themeId;
+  const restoreThemeId = getPendingRewardThemeForChoice(state, 'empire') || reward.themeId;
+  const danger = getEmpireDanger(state, meta);
+  const routeRisk = Math.max(getThemeRouteRisk(state, goldThemeId), getThemeRouteRisk(state, restoreThemeId));
+  const restoreScore = estimateRestoreRewardScore(state, meta, playerId, reward, restoreThemeId);
+  const goldScore = estimateGoldRewardScore(state, meta, playerId, reward, goldThemeId);
+  const goldEvaluation = evaluateSystemicAction(
+    state,
+    meta,
+    playerId,
+    {
+      kind: AI_ACTION_KINDS.DEFENDER_REWARD,
+      phase: AI_ACTION_PHASES.RESOLUTION,
+      payload: { choice: 'gold', themeId: goldThemeId, theme: state.themes?.[goldThemeId], gold: reward.goldValue ?? reward.gold ?? 0 },
+      gains: { gold: reward.goldValue ?? reward.gold ?? 0 },
+      timing: 'immediate',
+      reversibility: 'low',
+    },
+    goldScore,
+    AI_ACTION_PHASES.RESOLUTION,
+  );
+  const restoreEvaluation = evaluateSystemicAction(
+    state,
+    meta,
+    playerId,
+    {
+      kind: AI_ACTION_KINDS.DEFENDER_REWARD,
+      phase: AI_ACTION_PHASES.RESOLUTION,
+      payload: { choice: 'empire', themeId: restoreThemeId, theme: state.themes?.[restoreThemeId], gold: reward.goldValue ?? reward.gold ?? 0 },
+      timing: 'immediate',
+      reversibility: 'low',
+    },
+    restoreScore,
+    AI_ACTION_PHASES.RESOLUTION,
+  );
+
+  let choice = goldEvaluation.score > (restoreEvaluation.score + 0.15) ? 'gold' : 'empire';
+  if (danger >= 1.25 && routeRisk >= 0.25) choice = 'empire';
+  if (danger >= 1.05 && (restoreEvaluation.score + 0.35) >= goldEvaluation.score) choice = 'empire';
+  recordSelectedActionProjection(meta, playerId, choice === 'gold' ? goldEvaluation : restoreEvaluation);
+  return choice;
 }
 
 function getVictoryPositionScore(state, meta, playerId) {
@@ -1048,6 +1220,7 @@ export function invalidateRoundContext(meta) {
   if (!meta) return;
   meta.roundContext = null;
   meta.fastCache = null;
+  invalidateSystemicAIContext(meta);
 }
 
 export function isAIPlayer(meta, playerId) {
@@ -1124,12 +1297,27 @@ export function createAIMeta(state, options = {}) {
         supportSelfVotes: 0,
         throneCaptures: 0,
         defenderRewards: 0,
+        defenderGoldChoices: 0,
+        defenderRestoreChoices: 0,
+        defenderRewardGold: 0,
+        titleShuffles: 0,
+        supporterTitleRewards: 0,
+        rivalOfficeDenials: 0,
         dealsProposed: 0,
         dealsAccepted: 0,
         dealsCountered: 0,
         dealsRefused: 0,
         dealUtility: 0,
         badAcceptedDeals: 0,
+        coordinatedClaimantDeals: 0,
+        frontierCoordinationDeals: 0,
+        systemicDecisionCount: 0,
+        projectedUtilityTotal: 0,
+        projectedRiskTotal: 0,
+        projectedFlexibilityTotal: 0,
+        acceptedDealClauseKinds: {},
+        proposedDealIntents: {},
+        acceptedDealIntents: {},
       },
     };
   }
@@ -1170,7 +1358,13 @@ export function createAIMeta(state, options = {}) {
       recruitOpportunities: 0,
       revocations: 0,
       defenderRewards: 0,
+      defenderGoldChoices: 0,
+      defenderRestoreChoices: 0,
+      defenderRewardGold: 0,
       throneChanges: 0,
+      titleShuffles: 0,
+      supporterTitleRewards: 0,
+      rivalOfficeDenials: 0,
       mercSpend: 0,
       dealsProposed: 0,
       dealsAccepted: 0,
@@ -1178,6 +1372,15 @@ export function createAIMeta(state, options = {}) {
       dealsRefused: 0,
       dealUtility: 0,
       badAcceptedDeals: 0,
+      coordinatedClaimantDeals: 0,
+      frontierCoordinationDeals: 0,
+      systemicDecisionCount: 0,
+      projectedUtilityTotal: 0,
+      projectedRiskTotal: 0,
+      projectedFlexibilityTotal: 0,
+      acceptedDealClauseKinds: {},
+      proposedDealIntents: {},
+      acceptedDealIntents: {},
     },
     wars: [],
     roundSnapshots: [],
@@ -1550,6 +1753,74 @@ function finalizeCourtAutomation(state, meta, aiOrder) {
   }
 }
 
+function appointmentDescriptor(actorId, type, themeId, appointeeId, appointmentCost = 0, paymentType = 'troops') {
+  return {
+    kind: AI_ACTION_KINDS.APPOINTMENT,
+    phase: AI_ACTION_PHASES.COURT,
+    payload: { type, themeId: themeId || null, appointeeId },
+    costs: paymentType === 'gold' ? { gold: appointmentCost } : { troops: appointmentCost },
+    gains: { titles: 1 },
+    beneficiaries: [appointeeId],
+    targets: [],
+    timing: 'immediate',
+    reversibility: type === 'EMPRESS' || type === 'CHIEF_EUNUCHS' ? 'medium' : 'low',
+  };
+}
+
+function revocationDescriptor(actorId, option, cost = 0, paymentType = 'troops') {
+  return {
+    kind: AI_ACTION_KINDS.REVOCATION,
+    phase: AI_ACTION_PHASES.COURT,
+    payload: {
+      kind: option.kind,
+      themeId: option.themeId || null,
+      titleType: option.titleType || option.kind,
+      targetPlayerId: option.targetPlayerId ?? null,
+    },
+    costs: paymentType === 'gold' ? { gold: cost } : { troops: cost },
+    targets: option.targetPlayerId == null ? [] : [option.targetPlayerId],
+    timing: 'immediate',
+    reversibility: 'medium',
+  };
+}
+
+function landPurchaseDescriptor(state, playerId, theme, cost) {
+  return {
+    kind: AI_ACTION_KINDS.LAND_PURCHASE,
+    phase: AI_ACTION_PHASES.COURT,
+    payload: { themeId: theme.id, theme },
+    costs: { gold: cost },
+    gains: { income: getThemeOwnerIncome(theme), score: getThemeStrategicValue(theme) * 0.08 },
+    beneficiaries: [playerId],
+    timing: 'future',
+    reversibility: 'medium',
+  };
+}
+
+function churchGiftDescriptor(playerId, theme) {
+  return {
+    kind: AI_ACTION_KINDS.CHURCH_GIFT,
+    phase: AI_ACTION_PHASES.COURT,
+    payload: { themeId: theme.id, theme },
+    gains: { score: ((Number(theme.P) || 0) + (Number(theme.T) || 0) + (Number(theme.C) || 0)) * 0.2 },
+    beneficiaries: [playerId],
+    timing: 'future',
+    reversibility: 'low',
+  };
+}
+
+function troopManagementDescriptor(kind, officeKey, count = 1, extra = {}) {
+  return {
+    kind,
+    phase: AI_ACTION_PHASES.COURT,
+    payload: { officeKey, count, ...extra },
+    gains: kind === AI_ACTION_KINDS.RECRUIT ? { troops: count } : {},
+    costs: kind === AI_ACTION_KINDS.DISMISS ? { troops: count } : {},
+    timing: kind === AI_ACTION_KINDS.RECRUIT ? 'future' : 'immediate',
+    reversibility: 'high',
+  };
+}
+
 function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
   const actorProfile = getPersonalityProfile(meta, actorId);
   const context = ensureRoundContext(state, meta, 'court');
@@ -1601,7 +1872,15 @@ function scoreMinorSlot(state, meta, actorId, type, theme, appointeeId) {
   const controlBias = actorProfile.weights.loyalty * appointeeAffinity;
   const riskPenalty = appointeeAmbition * 0.32;
 
-  return slotValue + sharedCoalitionBonus + debtRepayment + leverageGain + patronageRetention + selfBias + controlBias + recipientPressure - riskPenalty - appointmentCostPenalty;
+  const baseScore = slotValue + sharedCoalitionBonus + debtRepayment + leverageGain + patronageRetention + selfBias + controlBias + recipientPressure - riskPenalty - appointmentCostPenalty;
+  return applySystemicScore(
+    state,
+    meta,
+    actorId,
+    appointmentDescriptor(actorId, type, theme?.id || null, appointeeId, appointmentCost, bishopGoldAppointment ? 'gold' : 'troops'),
+    baseScore,
+    AI_ACTION_PHASES.COURT,
+  );
 }
 
 function registerFavor(meta, actorId, recipientId, amount) {
@@ -1664,6 +1943,7 @@ function handleBasileusAppointment(state, meta) {
     state.courtActions.basileusAppointed = true;
     invalidateRoundContext(meta);
     registerFavor(meta, actorId, option.appointeeId, option.type === 'EMPRESS' || option.type === 'CHIEF_EUNUCHS' ? 1.2 : 1.0);
+    rememberSystemicDecision(state, meta, actorId, appointmentDescriptor(actorId, option.type, option.themeId || null, option.appointeeId), 0, AI_ACTION_PHASES.COURT);
     applyDecisionToResult(state, result, buildMinorAppointmentDecision(state, meta, actorId, option));
     logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, actorId)} appoints ${describeActor(state, meta, option.appointeeId)} to ${option.type}${option.themeId ? ` in ${option.themeId}` : ''}.`);
     logPublic(meta, `${publicActor(state, actorId)} grants ${option.type}${option.themeId ? ` in ${option.themeId}` : ''} to ${publicActor(state, option.appointeeId)}.`);
@@ -1729,6 +2009,7 @@ function handleRegionalStrategosAppointment(state, meta, titleKey) {
 
     invalidateRoundContext(meta);
     registerFavor(meta, actorId, option.appointeeId, 0.95);
+    rememberSystemicDecision(state, meta, actorId, appointmentDescriptor(actorId, 'STRATEGOS', option.themeId, option.appointeeId), 0, AI_ACTION_PHASES.COURT);
     if (previousHolder != null && previousHolder !== option.appointeeId) {
       adjustRelation(meta, previousHolder, actorId, 0, 0.55);
       reduceObligation(meta, actorId, previousHolder, 0.6);
@@ -1788,6 +2069,7 @@ function handlePatriarchAppointment(state, meta) {
     state.courtActions.patriarchAppointed = true;
     invalidateRoundContext(meta);
     registerFavor(meta, actorId, option.appointeeId, 1.0);
+    rememberSystemicDecision(state, meta, actorId, appointmentDescriptor(actorId, 'BISHOP', option.themeId, option.appointeeId), 0, AI_ACTION_PHASES.COURT);
     if (previousHolder != null && previousHolder !== option.appointeeId) {
       adjustRelation(meta, previousHolder, actorId, 0, 0.45);
       reduceObligation(meta, actorId, previousHolder, 0.45);
@@ -1829,7 +2111,15 @@ function scoreLandPurchase(state, meta, playerId, theme) {
   const riskPenalty = routeRisk * (empireDanger < 1 ? 0.45 : 0.85);
   const selfProtection = exposure > 0 ? theme.L * 0.15 : 0;
   const zeroIncomeRelief = getPlayerIncomePotential(state, playerId, meta) === 0 ? 2.2 : 0;
-  return privateValue + landControl + cheapness + scarcityBonus + catchUpBonus + churchOptionality + selfProtection + zeroIncomeRelief + estatePressure - (dueNow * 0.7) - overbidPenalty - reservePenalty - riskPenalty - goldPressure - (profile.weights.frontier * 0.15);
+  const baseScore = privateValue + landControl + cheapness + scarcityBonus + catchUpBonus + churchOptionality + selfProtection + zeroIncomeRelief + estatePressure - (dueNow * 0.7) - overbidPenalty - reservePenalty - riskPenalty - goldPressure - (profile.weights.frontier * 0.15);
+  return applySystemicScore(
+    state,
+    meta,
+    playerId,
+    landPurchaseDescriptor(state, playerId, theme, dueNow),
+    baseScore,
+    AI_ACTION_PHASES.COURT,
+  );
 }
 
 function scoreChurchGift(state, meta, playerId, theme) {
@@ -1855,7 +2145,15 @@ function scoreChurchGift(state, meta, playerId, theme) {
   const reservePenalty = temperament.churchReserve * (1.25 + (threatenedValue * 0.02));
   const churchPressure = getCategoryThresholdPressure(state, meta, playerId, 'church') * 1.35;
   const estatePressure = getCategoryThresholdPressure(state, meta, playerId, 'estate') * 0.9;
-  return churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief + churchPressure - keepsValue - reservePenalty - estatePressure;
+  const baseScore = churchValue + patriarchBonus + bishopLockBonus + routeRiskRelief + churchPressure - keepsValue - reservePenalty - estatePressure;
+  return applySystemicScore(
+    state,
+    meta,
+    playerId,
+    churchGiftDescriptor(playerId, theme),
+    baseScore,
+    AI_ACTION_PHASES.COURT,
+  );
 }
 
 function findBestRecruitmentAction(state, meta, playerId) {
@@ -1873,11 +2171,19 @@ function findBestRecruitmentAction(state, meta, playerId) {
 
     const capitalPotential = scoreOfficeDestination(state, meta, playerId, office, 1, 'capital', candidateId, commitment);
     const frontierPotential = scoreOfficeDestination(state, meta, playerId, office, 1, 'frontier', candidateId, commitment);
-    const score =
+    const baseScore =
       (Math.max(capitalPotential, frontierPotential) * 0.38) +
       (profile.weights.mercenary * 0.35) +
       (standing.rank > 1 ? standing.gapToLeader * 0.03 : 0) -
       (player.gold <= 0 ? 0.3 : 0.05);
+    const score = applySystemicScore(
+      state,
+      meta,
+      playerId,
+      troopManagementDescriptor(AI_ACTION_KINDS.RECRUIT, office.key, 1),
+      baseScore,
+      AI_ACTION_PHASES.COURT,
+    );
 
     if (!best || score > best.score) {
       best = { kind: 'recruit', office, score };
@@ -1901,6 +2207,7 @@ function runRecruitmentStrategy(state, meta, playerId, plannedAction = null) {
   invalidateRoundContext(meta);
   meta.players[playerId].stats.recruits++;
   meta.totals.recruits++;
+  rememberSystemicDecision(state, meta, playerId, troopManagementDescriptor(AI_ACTION_KINDS.RECRUIT, action.office.key, 1), action.score, AI_ACTION_PHASES.COURT);
   applyDecisionToResult(state, result, buildRecruitmentDecision(state, meta, playerId, action, candidateId, commitment));
   logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} recruits 1 professional troop for ${action.office.key}.`);
   logPublic(meta, `${publicActor(state, playerId)} recruits a professional troop for ${action.office.key}.`);
@@ -1957,7 +2264,15 @@ function findBestDismissalAction(state, meta, playerId) {
 
   const targetCuts = Math.max(immediateStrain, longTermStrain * 0.7);
   const count = Math.max(1, Math.min(weakestOffice.count, Math.ceil(targetCuts / Math.max(0.9, temperament.frontierAlarm))));
-  const score = (targetCuts * 1.1) - (weakestOffice.marginalValue * 0.28) - (empireDanger * 0.25);
+  const baseScore = (targetCuts * 1.1) - (weakestOffice.marginalValue * 0.28) - (empireDanger * 0.25);
+  const score = applySystemicScore(
+    state,
+    meta,
+    playerId,
+    troopManagementDescriptor(AI_ACTION_KINDS.DISMISS, weakestOffice.office.key, count),
+    baseScore,
+    AI_ACTION_PHASES.COURT,
+  );
   // Tier 2: evolvable dismissal threshold (was 0.75)
   const threshold = getMetaForPlayer(meta, playerId, 'dismissalThreshold');
   if (score <= threshold) return null;
@@ -1979,6 +2294,7 @@ function runDismissalStrategy(state, meta, playerId, plannedAction = null) {
   if (!result?.ok) return false;
 
   invalidateRoundContext(meta);
+  rememberSystemicDecision(state, meta, playerId, troopManagementDescriptor(AI_ACTION_KINDS.DISMISS, action.office.key, action.count), action.score, AI_ACTION_PHASES.COURT);
   applyDecisionToResult(state, result, buildDismissalDecision(state, meta, playerId, action));
   logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} dismisses ${action.count} troop${action.count === 1 ? '' : 's'} from ${action.office.key}.`);
   logPublic(meta, `${publicActor(state, playerId)} dismisses ${action.count} troop${action.count === 1 ? '' : 's'} from ${action.office.key}.`);
@@ -2014,6 +2330,7 @@ function runLandStrategy(state, meta, playerId, plannedAction = null) {
   budget.landPurchasesRemaining--;
   meta.players[playerId].stats.landBuys++;
   meta.totals.landBuys++;
+  rememberSystemicDecision(state, meta, playerId, landPurchaseDescriptor(state, playerId, action.theme, bidAmount), action.score, AI_ACTION_PHASES.COURT);
   applyDecisionToResult(state, result, buildLandPurchaseDecision(state, meta, playerId, action));
   logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} bids for ${action.theme.id} at ${bidAmount}g (score ${roundTo(action.score, 2)}).`);
   logPublic(meta, `${publicActor(state, playerId)} bids for ${action.theme.id}.`);
@@ -2046,6 +2363,7 @@ function runChurchGiftStrategy(state, meta, playerId, plannedAction = null) {
   budget.churchGiftsRemaining--;
   meta.players[playerId].stats.themesGifted++;
   meta.totals.gifts++;
+  rememberSystemicDecision(state, meta, playerId, churchGiftDescriptor(playerId, action.theme), action.score, AI_ACTION_PHASES.COURT);
   if (previousBishop != null && previousBishop !== playerId) {
     adjustRelation(meta, previousBishop, playerId, 0, 0.35);
   }
@@ -2156,7 +2474,20 @@ function buildRevocationOptions(state, meta, basileusId) {
     }
   }
 
-  return options.sort((left, right) => right.score - left.score);
+  const cost = getNextRevocationCost(state, basileusId);
+  return options
+    .map(option => ({
+      ...option,
+      score: applySystemicScore(
+        state,
+        meta,
+        basileusId,
+        revocationDescriptor(basileusId, option, cost),
+        option.score,
+        AI_ACTION_PHASES.COURT,
+      ),
+    }))
+    .sort((left, right) => right.score - left.score);
 }
 
 function handleBasileusRevocation(state, meta) {
@@ -2205,6 +2536,7 @@ function handleBasileusRevocation(state, meta) {
   }
 
   if (result?.ok) {
+    rememberSystemicDecision(state, meta, basileusId, revocationDescriptor(basileusId, best, cost), best.score, AI_ACTION_PHASES.COURT);
     applyDecisionToResult(state, result, buildRevocationDecision(state, meta, basileusId, best));
     meta.players[basileusId].stats.revocations++;
     meta.totals.revocations++;
@@ -2295,8 +2627,17 @@ function handleTitleHolderRevocation(state, meta, playerId) {
       const costStep = goldRevocation
         ? Math.max(0, (getPatriarchBishopRevocationGoldCost(state, playerId, option.targetPlayerId) / 2) - 1)
         : Math.max(0, paymentCheck.cost - 1);
+      const systemicScore = applySystemicScore(
+        state,
+        meta,
+        playerId,
+        revocationDescriptor(playerId, option, paymentCheck.cost || paymentCheck.goldCost || 0, goldRevocation ? 'gold' : 'troops'),
+        option.score,
+        AI_ACTION_PHASES.COURT,
+      );
       return {
         ...option,
+        score: systemicScore,
         paymentCheck,
         threshold: getMetaForPlayer(meta, playerId, 'revocationThreshold') + costStep * 0.85,
       };
@@ -2314,6 +2655,14 @@ function handleTitleHolderRevocation(state, meta, playerId) {
     adjustRelation(meta, best.targetPlayerId, playerId, 0, 0.95);
     reduceObligation(meta, playerId, best.targetPlayerId, 0.55);
   }
+  rememberSystemicDecision(
+    state,
+    meta,
+    playerId,
+    revocationDescriptor(playerId, best, best.paymentCheck?.cost || best.paymentCheck?.goldCost || 0, best.paymentCheck?.paymentType || 'troops'),
+    best.score,
+    AI_ACTION_PHASES.COURT,
+  );
   applyDecisionToResult(state, result, buildRevocationDecision(state, meta, playerId, best));
   meta.players[playerId].stats.revocations++;
   meta.totals.revocations++;
@@ -2354,7 +2703,19 @@ function scoreOfficeDestination(state, meta, playerId, office, troopCount, desti
       score -= (rivalStake - ownStake) * 0.08;
     }
     if (standing.rank > 1 && basileusStanding.rank === 1 && candidateId !== state.basileusId) score -= 0.2;
-    return score;
+    return applySystemicScore(
+      state,
+      meta,
+      playerId,
+      {
+        kind: AI_ACTION_KINDS.ORDERS,
+        phase: AI_ACTION_PHASES.ORDERS,
+        payload: { candidateId, officeKey: office.key, destination },
+        commitments: { frontierTroops: troopCount },
+      },
+      score,
+      AI_ACTION_PHASES.ORDERS,
+    );
   }
 
   let score = troopCount * ((profile.weights.capital * 0.96) + (profile.weights.throne * 0.82) + (candidateAffinity * 0.45));
@@ -2369,7 +2730,19 @@ function scoreOfficeDestination(state, meta, playerId, office, troopCount, desti
   if (empireDanger > 1.05) score -= troopCount * (0.28 + (0.22 * temperament.frontierAlarm));
   if (empireDanger > 1.2 && candidateId !== state.basileusId) score -= troopCount * 0.45;
   if (exposure > 1.25 && empireDanger > 1.1) score -= exposure * 0.58;
-  return score;
+  return applySystemicScore(
+    state,
+    meta,
+    playerId,
+    {
+      kind: AI_ACTION_KINDS.ORDERS,
+      phase: AI_ACTION_PHASES.ORDERS,
+      payload: { candidateId, officeKey: office.key, destination },
+      commitments: { capitalTroops: troopCount },
+    },
+    score,
+    AI_ACTION_PHASES.ORDERS,
+  );
 }
 
 function planMercenaries(state, meta, playerId, officePlans, pact) {
@@ -2473,6 +2846,21 @@ export function buildAIOrders(state, meta, playerId) {
   meta.players[playerId].stats.coupVotes++;
   if (candidateId === state.basileusId) meta.players[playerId].stats.supportIncumbentVotes++;
   if (candidateId === playerId) meta.players[playerId].stats.supportSelfVotes++;
+  rememberSystemicDecision(
+    state,
+    meta,
+    playerId,
+    {
+      kind: AI_ACTION_KINDS.ORDERS,
+      phase: AI_ACTION_PHASES.ORDERS,
+      payload: { candidateId, orders: { deployments, candidate: candidateId } },
+      commitments: { capitalTroops, frontierTroops },
+      timing: 'immediate',
+      reversibility: 'low',
+    },
+    0,
+    AI_ACTION_PHASES.ORDERS,
+  );
   logDecision(meta, `Round ${state.round} orders: ${describeActor(state, meta, playerId)} backs ${describeActor(state, meta, candidateId)} with ${capitalTroops} capital troops and ${frontierTroops} frontier troops.`);
   const debug = {
     pactKind: pact?.kind || 'defense',
@@ -2521,6 +2909,22 @@ function runMercenaryStrategy(state, meta, playerId) {
     meta.players[playerId].stats.mercsHired += mercenary.count;
     meta.players[playerId].stats.mercSpend += result.cost || 0;
     meta.totals.mercSpend += result.cost || 0;
+    rememberSystemicDecision(
+      state,
+      meta,
+      playerId,
+      {
+        kind: AI_ACTION_KINDS.MERCENARY_HIRE,
+        phase: AI_ACTION_PHASES.COURT,
+        payload: { officeKey: mercenary.officeKey, count: mercenary.count },
+        costs: { gold: result.cost || 0 },
+        gains: { troops: mercenary.count },
+        timing: 'immediate',
+        reversibility: 'medium',
+      },
+      0,
+      AI_ACTION_PHASES.COURT,
+    );
     applyDecisionToResult(state, result, buildMercenaryDecision(debug, mercenary, result.cost || 0));
     const officeLabel = getOfficeDisplayName(state, mercenary.officeKey);
     logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} hires ${mercenary.count} mercenary troop${mercenary.count === 1 ? '' : 's'} for ${officeLabel}.`);
@@ -2622,27 +3026,96 @@ function enumerateTitleAssignments(state, newBasileusId) {
   return assignments;
 }
 
+function getTitleRoleFitScore(state, meta, newBasileusId, holderId, titleKey, orders, totals) {
+  const inferredHolderProfile = blendedOpponentProfile(meta, newBasileusId, holderId);
+  const regionalStake = getPlayerThemes(state, holderId)
+    .filter((theme) => !theme.occupied && MAJOR_TITLES[titleKey]?.region && theme.region === MAJOR_TITLES[titleKey].region)
+    .reduce((total, theme) => total + 0.22 + (theme.L * 0.18) + (theme.P * 0.05), 0);
+  const frontierCommitment = totals.frontier * 0.18 + (meta.players?.[holderId]?.stats?.frontierTroops || 0) * 0.035;
+  const capitalCommitment = totals.capital * 0.1;
+
+  if (titleKey === 'PATRIARCH') {
+    return (
+      (inferredHolderProfile.weights.church * 0.64) +
+      (inferredHolderProfile.weights.loyalty * 0.18) -
+      (inferredHolderProfile.weights.revocation * 0.22) -
+      (orders?.candidate != null && orders.candidate !== newBasileusId ? 0.35 : 0)
+    );
+  }
+
+  const officeRegion = MAJOR_TITLES[titleKey]?.region || null;
+  const regionalNeed = officeRegion === 'sea' ? 0.42 : 0.58;
+  return (
+    (inferredHolderProfile.weights.frontier * 0.46) +
+    (inferredHolderProfile.weights.loyalty * 0.22) +
+    (inferredHolderProfile.weights.mercenary * 0.14) +
+    frontierCommitment +
+    capitalCommitment +
+    (regionalStake * regionalNeed)
+  );
+}
+
 function scoreTitleAssignment(state, meta, newBasileusId, assignment, previousHolders) {
+  const profile = getPersonalityProfile(meta, newBasileusId);
+  const continuityWeight = getMetaForPlayer(meta, newBasileusId, 'titleContinuityBias');
+  const supporterRewardWeight = getMetaForPlayer(meta, newBasileusId, 'titleSupporterReward');
+  const rivalSuppressionWeight = getMetaForPlayer(meta, newBasileusId, 'titleRivalSuppression');
   let totalScore = 0;
   for (const titleKey of MAJOR_TITLE_KEYS) {
     const holderId = assignment[titleKey];
     const loyalty = getAffinityScore(meta, newBasileusId, holderId);
     const competence = getCompetenceScore(state, meta, holderId);
     const ambition = getAmbitionScore(meta, holderId);
-    // Tier 5: when judging the holder's likely church alignment, use the new
-    // Basileus's INFERRED view of them, not their true profile. This is the
-    // crux of opponent-modeled play.
-    const inferredHolderProfile = blendedOpponentProfile(meta, newBasileusId, holderId);
-    const churchBonus = titleKey === 'PATRIARCH' ? inferredHolderProfile.weights.church * 0.45 : 0;
-    const continuity = previousHolders[titleKey] === holderId ? 0.42 : 0;
-    const supporterBonus = (state.allOrders?.[holderId]?.candidate === newBasileusId) ? 1.25 : 0;
-    const debtRepayment = getObligation(meta, newBasileusId, holderId) * 1.3;
-    totalScore += (loyalty * 1.1) + (competence * 0.58) + churchBonus + continuity + supporterBonus + debtRepayment - (ambition * 0.42);
+    const orders = state.allOrders?.[holderId] || null;
+    const totals = orders ? computeOrderTotals(state, holderId, orders) : { capital: 0, frontier: 0 };
+    const supported = orders?.candidate === newBasileusId && holderId !== newBasileusId;
+    const opposed = orders?.candidate != null && orders.candidate !== newBasileusId;
+    const selfClaim = orders?.candidate === holderId && holderId !== newBasileusId;
+    const standing = getStandingSnapshot(state, meta, holderId);
+    const roleFit = getTitleRoleFitScore(state, meta, newBasileusId, holderId, titleKey, orders, totals);
+    const continuity = previousHolders[titleKey] === holderId ? continuityWeight * 0.28 : 0;
+    const supportIntensity = supported
+      ? 1 + (totals.capital * 0.16) + (totals.frontier * 0.08) + getObligation(meta, newBasileusId, holderId) * 0.18
+      : 0;
+    const supporterBonus = supportIntensity * supporterRewardWeight;
+    const debtRepayment = getObligation(meta, newBasileusId, holderId) * (0.75 + supporterRewardWeight * 0.25);
+    const leaderPenalty = standing.rank === 1 && holderId !== newBasileusId ? 0.65 + Math.max(0, standing.leadOverNextBehind) * 0.05 : 0;
+    const rivalPenalty = opposed
+      ? rivalSuppressionWeight * (0.85 + (selfClaim ? 0.45 : 0) + (ambition * 0.2) + (totals.capital * 0.1))
+      : 0;
+    const dangerousRivalPenalty = Math.max(0, getPlayerStrength(state, meta, holderId) - getPlayerStrength(state, meta, newBasileusId)) * 0.035 * rivalSuppressionWeight;
+
+    totalScore += (
+      (loyalty * (1.0 + profile.weights.loyalty * 0.06)) +
+      (competence * 0.35) +
+      roleFit +
+      continuity +
+      supporterBonus +
+      debtRepayment -
+      (ambition * 0.32) -
+      leaderPenalty -
+      rivalPenalty -
+      dangerousRivalPenalty
+    );
   }
-  return totalScore;
+  return applySystemicScore(
+    state,
+    meta,
+    newBasileusId,
+    {
+      kind: AI_ACTION_KINDS.TITLE_ASSIGNMENT,
+      phase: AI_ACTION_PHASES.RESOLUTION,
+      payload: { assignment },
+      beneficiaries: Object.values(assignment).map(Number),
+      timing: 'future',
+      reversibility: 'low',
+    },
+    totalScore,
+    AI_ACTION_PHASES.RESOLUTION,
+  );
 }
 
-function planMajorTitleAssignment(state, meta, newBasileusId) {
+export function planMajorTitleAssignment(state, meta, newBasileusId) {
   const previousHolders = {};
   for (const titleKey of MAJOR_TITLE_KEYS) {
     previousHolders[titleKey] = state.players.find(player => player.majorTitles.includes(titleKey))?.id ?? null;
@@ -2655,7 +3128,17 @@ function planMajorTitleAssignment(state, meta, newBasileusId) {
     }))
     .sort((left, right) => right.score - left.score);
 
-  return { previousHolders, best: assignments[0] || null };
+  const bestScore = assignments[0]?.score ?? null;
+  const nearBest = bestScore == null
+    ? []
+    : assignments.filter(entry => entry.score >= bestScore - 0.85).slice(0, 8);
+  const picked = softmaxPick(
+    nearBest,
+    Math.max(0.05, getMetaForPlayer(meta, newBasileusId, 'courtTemperature') * 0.45),
+    state.rng,
+  );
+
+  return { previousHolders, best: picked || assignments[0] || null };
 }
 
 function applyMajorTitleAssignment(state, meta, newBasileusId, plan) {
@@ -2663,17 +3146,49 @@ function applyMajorTitleAssignment(state, meta, newBasileusId, plan) {
   const result = applyCoupTitleReassignment(state, newBasileusId, plan.best.assignment);
   meta.players[newBasileusId].stats.throneCaptures++;
   meta.totals.throneChanges++;
+  let titleShuffles = 0;
+  let supporterTitleRewards = 0;
+  let rivalOfficeDenials = 0;
 
   for (const [titleKey, holderId] of Object.entries(plan.best.assignment)) {
     adjustRelation(meta, holderId, newBasileusId, 1.0, 0);
     adjustRelation(meta, newBasileusId, holderId, 0.35, 0);
     reduceObligation(meta, newBasileusId, holderId, 1.0);
+    if (state.allOrders?.[holderId]?.candidate === newBasileusId && holderId !== newBasileusId) {
+      supporterTitleRewards++;
+    }
     const previousHolderId = plan.previousHolders[titleKey];
     if (previousHolderId != null && previousHolderId !== holderId) {
+      titleShuffles++;
+      if (state.allOrders?.[previousHolderId]?.candidate != null && state.allOrders[previousHolderId].candidate !== newBasileusId) {
+        rivalOfficeDenials++;
+      }
       adjustRelation(meta, previousHolderId, newBasileusId, 0, 0.85);
     }
   }
+  const stats = meta.players[newBasileusId].stats;
+  stats.titleShuffles = (stats.titleShuffles || 0) + titleShuffles;
+  stats.supporterTitleRewards = (stats.supporterTitleRewards || 0) + supporterTitleRewards;
+  stats.rivalOfficeDenials = (stats.rivalOfficeDenials || 0) + rivalOfficeDenials;
+  meta.totals.titleShuffles = (meta.totals.titleShuffles || 0) + titleShuffles;
+  meta.totals.supporterTitleRewards = (meta.totals.supporterTitleRewards || 0) + supporterTitleRewards;
+  meta.totals.rivalOfficeDenials = (meta.totals.rivalOfficeDenials || 0) + rivalOfficeDenials;
 
+  rememberSystemicDecision(
+    state,
+    meta,
+    newBasileusId,
+    {
+      kind: AI_ACTION_KINDS.TITLE_ASSIGNMENT,
+      phase: AI_ACTION_PHASES.RESOLUTION,
+      payload: { assignment: plan.best.assignment },
+      beneficiaries: Object.values(plan.best.assignment).map(Number),
+      timing: 'future',
+      reversibility: 'low',
+    },
+    plan.best.score || 0,
+    AI_ACTION_PHASES.RESOLUTION,
+  );
   applyDecisionToResult(state, result, buildTitleAssignmentDecision(state, meta, newBasileusId, plan));
   logDecision(meta, `Round ${state.round} resolution: ${describeActor(state, meta, newBasileusId)} captures the throne and redistributes the four major offices.`);
   logPublic(meta, `${publicActor(state, newBasileusId)} captures the throne and redistributes the major offices.`);
@@ -2925,6 +3440,246 @@ function buildSingleDealClauseTemplates(state, meta, playerId, counterpartyId) {
   });
 }
 
+function makeDealPayload(intent, clauses) {
+  return { intent, clauses: clauses.filter(Boolean) };
+}
+
+function getDealPayloadClauses(payload) {
+  return Array.isArray(payload) ? payload : (Array.isArray(payload?.clauses) ? payload.clauses : []);
+}
+
+function getDealPayloadIntent(payload, clauses, playerId, counterpartyId) {
+  return Array.isArray(payload) || !payload?.intent
+    ? inferDealIntent(clauses, playerId, counterpartyId)
+    : payload.intent;
+}
+
+function rawDealClause(kind, direction, payload = {}) {
+  return { kind, direction, durationTurns: 1, ...payload };
+}
+
+function triggeredDealClause(state, rawClause, triggerPlayerId) {
+  if (triggerPlayerId == null || Number(triggerPlayerId) === Number(state.basileusId)) return rawClause;
+  return {
+    ...rawClause,
+    startTriggerType: DEAL_TRIGGER_TYPES.WHEN_PLAYER_IS_BASILEUS,
+    triggerPlayerId: Number(triggerPlayerId),
+  };
+}
+
+function inferDealIntent(clauses = [], playerId = null, counterpartyId = null) {
+  const kinds = new Set(clauses.map((clause) => clause.kind));
+  const coupClauses = clauses.filter((clause) => clause.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT);
+  const coupCandidates = new Set(coupClauses.map((clause) => Number(clause.payload?.candidateId ?? clause.candidateId)).filter(Number.isInteger));
+  const reciprocalCoup = playerId != null && counterpartyId != null && coupClauses.some((clause) => Number(clause.giverId) === Number(playerId)) && coupClauses.some((clause) => Number(clause.giverId) === Number(counterpartyId));
+
+  if (kinds.has(DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT) && kinds.has(DEAL_CLAUSE_KINDS.COUP_SUPPORT)) {
+    return DEAL_INTENTS.SPLIT_FRONTIER_DEFENSE;
+  }
+  if (kinds.has(DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE) && kinds.has(DEAL_CLAUSE_KINDS.COUP_SUPPORT)) {
+    return DEAL_INTENTS.SUPPORT_FOR_REWARD;
+  }
+  if (kinds.has(DEAL_CLAUSE_KINDS.NON_REVOCATION) && kinds.has(DEAL_CLAUSE_KINDS.COUP_SUPPORT)) {
+    return DEAL_INTENTS.PROTECTION_FOR_SUPPORT;
+  }
+  if (kinds.has(DEAL_CLAUSE_KINDS.ESTATE)) return DEAL_INTENTS.ESTATE_TRADE;
+  if (kinds.has(DEAL_CLAUSE_KINDS.GOLD) && kinds.size > 1) return DEAL_INTENTS.GOLD_MAKEWEIGHT;
+  if (reciprocalCoup || (coupClauses.length >= 2 && coupCandidates.size === 1)) {
+    return DEAL_INTENTS.COALITION_COORDINATION;
+  }
+  return clauses.length > 1 ? DEAL_INTENTS.GENERIC_EXCHANGE : DEAL_INTENTS.GENERIC;
+}
+
+function chooseCoordinationCandidates(state, meta, playerId, counterpartyId) {
+  const context = ensureRoundContext(state, meta, 'court');
+  const playerCandidateId = context.pactByPlayer[playerId]?.candidateId ?? state.basileusId;
+  const counterpartyCandidateId = context.pactByPlayer[counterpartyId]?.candidateId ?? state.basileusId;
+  return uniqueList([
+    playerCandidateId,
+    counterpartyCandidateId,
+    context.strongestChallengerId,
+    state.basileusId,
+  ]).filter(candidateId => candidateId != null && state.players.some(player => player.id === Number(candidateId)));
+}
+
+function buildIntentDealPayloads(state, meta, playerId, counterpartyId) {
+  const payloads = [];
+  const context = ensureRoundContext(state, meta, 'court');
+  const playerPact = context.pactByPlayer[playerId];
+  const counterpartyPact = context.pactByPlayer[counterpartyId];
+  const playerCandidateId = playerPact?.candidateId ?? state.basileusId;
+  const counterpartyCandidateId = counterpartyPact?.candidateId ?? state.basileusId;
+  const playerGold = Math.max(0, getSpendableGold(state, playerId));
+  const counterpartyGold = Math.max(0, getSpendableGold(state, counterpartyId));
+  const danger = getEmpireDanger(state, meta);
+  const candidates = chooseCoordinationCandidates(state, meta, playerId, counterpartyId);
+  const push = (intent, clauses) => {
+    if (clauses?.length) payloads.push(makeDealPayload(intent, clauses));
+  };
+
+  for (const candidateId of candidates.slice(0, 3)) {
+    push(DEAL_INTENTS.COALITION_COORDINATION, [
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'ask', { candidateId, troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'give', { candidateId, troopCount: 1 }),
+    ]);
+    if (playerCandidateId !== counterpartyCandidateId) {
+      push(DEAL_INTENTS.COALITION_COORDINATION, [
+        rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'ask', { candidateId, troopCount: 1 }),
+        playerGold > 0 ? rawDealClause(DEAL_CLAUSE_KINDS.GOLD, 'give', { amount: Math.min(2, playerGold), durationTurns: 1 }) : null,
+      ].filter(Boolean));
+    }
+  }
+
+  if (danger >= 0.45) {
+    const sharedCandidateId = candidates[0] ?? state.basileusId;
+    push(DEAL_INTENTS.SPLIT_FRONTIER_DEFENSE, [
+      rawDealClause(DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, 'ask', { troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, 'give', { troopCount: 1 }),
+    ]);
+    push(DEAL_INTENTS.SPLIT_FRONTIER_DEFENSE, [
+      rawDealClause(DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, 'ask', { troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, 'give', { troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'ask', { candidateId: sharedCandidateId, troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'give', { candidateId: sharedCandidateId, troopCount: 1 }),
+    ]);
+  }
+
+  if (counterpartyId !== state.basileusId) {
+    push(DEAL_INTENTS.SUPPORT_FOR_REWARD, [
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'give', { candidateId: counterpartyId, troopCount: 1 }),
+      triggeredDealClause(state, rawDealClause(DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE, 'ask', { appointmentCount: 1 }), counterpartyId),
+    ]);
+    push(DEAL_INTENTS.PROTECTION_FOR_SUPPORT, [
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'give', { candidateId: counterpartyId, troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.NON_REVOCATION, 'ask', { durationTurns: 2 }),
+    ]);
+  }
+
+  if (playerId === state.basileusId || playerPact?.candidateId === playerId) {
+    push(DEAL_INTENTS.PROTECTION_FOR_SUPPORT, [
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'ask', { candidateId: playerCandidateId, troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.NON_REVOCATION, 'give', { durationTurns: 1 }),
+    ]);
+  }
+
+  const askEstate = getBestTradeableTheme(state, counterpartyId, (theme) => getDealThemeValue(state, meta, playerId, theme.id));
+  if (askEstate && playerGold > 0) {
+    push(DEAL_INTENTS.ESTATE_TRADE, [
+      rawDealClause(DEAL_CLAUSE_KINDS.ESTATE, 'ask', { themeId: askEstate.id }),
+      rawDealClause(DEAL_CLAUSE_KINDS.GOLD, 'give', { amount: Math.min(4, playerGold), durationTurns: Math.min(2, playerGold) }),
+    ]);
+  }
+
+  if (counterpartyGold > 0) {
+    push(DEAL_INTENTS.GOLD_MAKEWEIGHT, [
+      rawDealClause(DEAL_CLAUSE_KINDS.COUP_SUPPORT, 'give', { candidateId: counterpartyCandidateId, troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.GOLD, 'ask', { amount: Math.min(2, counterpartyGold), durationTurns: 1 }),
+    ]);
+  }
+  if (playerGold > 0) {
+    push(DEAL_INTENTS.GOLD_MAKEWEIGHT, [
+      rawDealClause(DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, 'ask', { troopCount: 1 }),
+      rawDealClause(DEAL_CLAUSE_KINDS.GOLD, 'give', { amount: Math.min(2, playerGold), durationTurns: 1 }),
+    ]);
+  }
+
+  return payloads.slice(0, DEAL_INTENT_PAYLOAD_LIMIT);
+}
+
+function scoreDealStrategicOutcomeForViewer(state, meta, viewerId, counterpartyId, clauses = [], intent = null) {
+  const profile = getPersonalityProfile(meta, viewerId);
+  const context = ensureRoundContext(state, meta, 'court');
+  const pact = context.pactByPlayer[viewerId];
+  const preferredCandidateId = pact?.candidateId ?? state.basileusId;
+  const coordinationWeight = getMetaForPlayer(meta, viewerId, 'dealCoordinationWeight');
+  const reciprocityWeight = getMetaForPlayer(meta, viewerId, 'dealReciprocityWeight');
+  const danger = getEmpireDanger(state, meta);
+  const coupClauses = clauses.filter((clause) => clause.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT);
+  const frontierClauses = clauses.filter((clause) => clause.kind === DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT);
+  let score = 0;
+
+  if (intent === DEAL_INTENTS.COALITION_COORDINATION || intent === DEAL_INTENTS.SPLIT_FRONTIER_DEFENSE) {
+    const candidateIds = uniqueList(coupClauses.map(clause => Number(clause.payload?.candidateId)).filter(Number.isInteger));
+    const sharedCandidateId = candidateIds.length === 1 ? candidateIds[0] : null;
+    if (sharedCandidateId != null) {
+      const candidateSignal = context.supportSignal?.[sharedCandidateId] || 0;
+      const incumbentSignal = context.supportSignal?.[state.basileusId] || 0;
+      const marginalNeed = sharedCandidateId === state.basileusId
+        ? Math.max(0, context.strongestChallengerSignal - incumbentSignal)
+        : Math.max(0, incumbentSignal - candidateSignal + 1.5);
+      score += coordinationWeight * (0.35 + Math.min(1.8, marginalNeed * 0.12));
+      if (sharedCandidateId === preferredCandidateId) score += coordinationWeight * 0.75;
+      if (sharedCandidateId !== viewerId && getStandingSnapshot(state, meta, sharedCandidateId).rank === 1) {
+        score -= 0.45 + profile.weights.throne * 0.08;
+      }
+    }
+    const givesCoup = coupClauses.some(clause => Number(clause.giverId) === Number(viewerId));
+    const receivesCoup = coupClauses.some(clause => Number(clause.giverId) === Number(counterpartyId));
+    if (givesCoup && receivesCoup) score += reciprocityWeight * 0.55;
+  }
+
+  if (intent === DEAL_INTENTS.SPLIT_FRONTIER_DEFENSE || frontierClauses.length) {
+    const givesFrontier = frontierClauses.some(clause => Number(clause.giverId) === Number(viewerId));
+    const receivesFrontier = frontierClauses.some(clause => Number(clause.giverId) === Number(counterpartyId));
+    if (receivesFrontier) score += danger * (0.5 + profile.weights.frontier * 0.08) * coordinationWeight;
+    if (givesFrontier && receivesFrontier) score += reciprocityWeight * Math.max(0.25, danger * 0.35);
+    if (givesFrontier && danger < 0.35) score -= 0.35;
+  }
+
+  if (intent === DEAL_INTENTS.SUPPORT_FOR_REWARD || intent === DEAL_INTENTS.PROTECTION_FOR_SUPPORT) {
+    const rewardClauses = clauses.filter(clause => (
+      clause.kind === DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE
+      || clause.kind === DEAL_CLAUSE_KINDS.NON_REVOCATION
+      || clause.kind === DEAL_CLAUSE_KINDS.ESTATE
+    ));
+    if (rewardClauses.some(clause => Number(clause.receiverId) === Number(viewerId))) score += 0.45 + getCategoryThresholdPressure(state, meta, viewerId, 'tax') * 0.2;
+    if (coupClauses.some(clause => Number(clause.giverId) === Number(viewerId) && Number(clause.payload?.candidateId) === preferredCandidateId)) score += coordinationWeight * 0.3;
+  }
+
+  if (intent === DEAL_INTENTS.GOLD_MAKEWEIGHT) {
+    score += Math.min(0.35, Math.abs(scoreDealClausesForViewer(state, meta, viewerId, clauses)) * 0.08);
+  }
+
+  return score;
+}
+
+function estimateSpeculativeDealPenalty(state, meta, viewerId, clauses = []) {
+  const tolerance = getMetaForPlayer(meta, viewerId, 'dealSpeculationTolerance');
+  let penalty = 0;
+  for (const clause of clauses) {
+    const trigger = clause.startTrigger;
+    if (!trigger || trigger.type !== DEAL_TRIGGER_TYPES.WHEN_PLAYER_IS_BASILEUS) continue;
+    const triggerPlayerId = Number(trigger.playerId);
+    if (triggerPlayerId === state.basileusId) continue;
+    const plausibility = clamp((scoreCandidateBase(state, meta, triggerPlayerId, triggerPlayerId) + 2) / 10, 0.08, 0.95);
+    const viewerRelevant = Number(clause.giverId) === Number(viewerId) || Number(clause.receiverId) === Number(viewerId);
+    if (viewerRelevant) penalty += (1 - plausibility) * (0.65 + Math.max(0, -scoreDealClauseForViewer(state, meta, viewerId, clause)) * 0.12);
+  }
+  return penalty * clamp(1.15 - tolerance, 0.15, 1.15);
+}
+
+function scoreDealUtilityForViewer(state, meta, viewerId, counterpartyId, clauses = [], intent = null) {
+  const strategic = scoreDealStrategicOutcomeForViewer(state, meta, viewerId, counterpartyId, clauses, intent);
+  const baseScore = scoreDealClausesForViewer(state, meta, viewerId, clauses)
+    + strategic
+    - estimateSpeculativeDealPenalty(state, meta, viewerId, clauses);
+  return applySystemicScore(
+    state,
+    meta,
+    viewerId,
+    {
+      kind: AI_ACTION_KINDS.DEAL,
+      phase: AI_ACTION_PHASES.COURT,
+      payload: { counterpartyId, clauses, intent },
+      targets: counterpartyId == null ? [] : [counterpartyId],
+      timing: 'future',
+      reversibility: 'low',
+    },
+    baseScore,
+    AI_ACTION_PHASES.COURT,
+  );
+}
+
 function buildDealCandidatePayloads(state, meta, playerId, counterpartyId) {
   const singles = buildSingleDealClauseTemplates(state, meta, playerId, counterpartyId);
   const ranked = rankDealTemplates(state, meta, playerId, counterpartyId, singles);
@@ -2954,19 +3709,23 @@ function buildDealCandidatePayloads(state, meta, playerId, counterpartyId) {
     DEAL_COMBO_GIVE_LIMIT,
     byGiveScore,
   );
-  const payloads = selectedSingles.map((clause) => [clause]);
+  const payloads = [
+    ...buildIntentDealPayloads(state, meta, playerId, counterpartyId),
+    ...selectedSingles.map((clause) => makeDealPayload(DEAL_INTENTS.GENERIC, [clause])),
+  ];
 
   for (const ask of asks) {
     for (const give of gives) {
       if (ask.kind === give.kind && ask.kind === DEAL_CLAUSE_KINDS.ESTATE) continue;
-      payloads.push([ask, give]);
+      payloads.push(makeDealPayload(inferDealIntent([ask, give], playerId, counterpartyId), [ask, give]));
     }
   }
 
   return payloads.slice(0, DEAL_TOTAL_PAYLOAD_LIMIT);
 }
 
-function evaluateDealPayload(state, meta, playerId, counterpartyId, clauses, payloadBase = {}, searchCache = null) {
+function evaluateDealPayload(state, meta, playerId, counterpartyId, payload, payloadBase = {}, searchCache = null) {
+  const clauses = getDealPayloadClauses(payload);
   const preview = previewDealOffer(state, playerId, {
     ...payloadBase,
     counterpartyId,
@@ -2977,20 +3736,25 @@ function evaluateDealPayload(state, meta, playerId, counterpartyId, clauses, pay
   });
   if (!preview.ok) return null;
 
-  const actorUtility = scoreDealClausesForViewer(state, meta, playerId, preview.clauses);
-  const counterpartyUtility = scoreDealClausesForViewer(state, meta, counterpartyId, preview.clauses);
+  const intent = getDealPayloadIntent(payload, preview.clauses, playerId, counterpartyId);
+  const actorUtility = scoreDealUtilityForViewer(state, meta, playerId, counterpartyId, preview.clauses, intent);
+  const counterpartyUtility = scoreDealUtilityForViewer(state, meta, counterpartyId, playerId, preview.clauses, intent);
   const acceptanceFloor = getMetaForPlayer(meta, counterpartyId, 'dealCounterThreshold');
   const relation = getAffinityScore(meta, playerId, counterpartyId);
+  const strategicBias = scoreDealStrategicOutcomeForViewer(state, meta, playerId, counterpartyId, preview.clauses, intent);
   const score =
     actorUtility +
     Math.min(counterpartyUtility - acceptanceFloor, 1.8) * 0.55 +
+    strategicBias * 0.35 +
     relation * 0.2 -
-    Math.max(0, -counterpartyUtility) * 1.1;
+    Math.max(0, -counterpartyUtility) * 1.25 -
+    Math.max(0, -actorUtility) * 0.75;
 
   return {
     counterpartyId,
     clauses,
     normalizedClauses: preview.clauses,
+    intent,
     actorUtility,
     counterpartyUtility,
     score,
@@ -3003,15 +3767,18 @@ function findBestDealProposal(state, meta, playerId, payloadBase = {}) {
   const searchCache = { troopPlanCache: new Map() };
 
   for (const counterpartyId of eligibleIds) {
-    for (const clauses of buildDealCandidatePayloads(state, meta, playerId, counterpartyId)) {
-      const evaluated = evaluateDealPayload(state, meta, playerId, counterpartyId, clauses, payloadBase, searchCache);
+    for (const payload of buildDealCandidatePayloads(state, meta, playerId, counterpartyId)) {
+      const evaluated = evaluateDealPayload(state, meta, playerId, counterpartyId, payload, payloadBase, searchCache);
       if (evaluated) candidates.push(evaluated);
     }
   }
 
   const threshold = getMetaForPlayer(meta, playerId, 'dealProposalThreshold');
+  const riskTolerance = getMetaForPlayer(meta, playerId, 'dealRiskTolerance');
   const plausible = candidates
     .filter((candidate) => candidate.score > threshold)
+    .filter((candidate) => candidate.actorUtility > -riskTolerance * 0.65)
+    .filter((candidate) => candidate.counterpartyUtility > getMetaForPlayer(meta, candidate.counterpartyId, 'dealCounterThreshold') - 0.45)
     .sort((left, right) => right.score - left.score)
     .slice(0, 8);
   return softmaxPick(plausible, getMetaForPlayer(meta, playerId, 'dealTemperature'), state.rng);
@@ -3026,8 +3793,8 @@ function findBestDealCounter(state, meta, playerId, thread) {
   };
   const candidates = [];
   const searchCache = { troopPlanCache: new Map() };
-  for (const clauses of buildDealCandidatePayloads(state, meta, playerId, counterpartyId)) {
-    const evaluated = evaluateDealPayload(state, meta, playerId, counterpartyId, clauses, payloadBase, searchCache);
+  for (const payload of buildDealCandidatePayloads(state, meta, playerId, counterpartyId)) {
+    const evaluated = evaluateDealPayload(state, meta, playerId, counterpartyId, payload, payloadBase, searchCache);
     if (evaluated) candidates.push(evaluated);
   }
   const plausible = candidates
@@ -3072,11 +3839,61 @@ export function getDealFeatureSnapshot(state, meta, playerId) {
 
 // Hook for AI relation / posterior updates triggered by deal events. Currently
 // a no-op; training can plug in here without touching the dispatch loop.
+function incrementPlainCount(record, key, amount = 1) {
+  if (!record || key == null) return;
+  record[key] = (Number(record[key]) || 0) + amount;
+}
+
+function recordDealIntentStats(meta, actorStats, event, intent) {
+  if (event.type === 'deal_propose') {
+    if (!actorStats.proposedDealIntents) actorStats.proposedDealIntents = {};
+    if (!meta.totals.proposedDealIntents) meta.totals.proposedDealIntents = {};
+    incrementPlainCount(actorStats.proposedDealIntents, intent);
+    incrementPlainCount(meta.totals.proposedDealIntents, intent);
+  }
+  if (event.type === 'deal_accept') {
+    if (!actorStats.acceptedDealIntents) actorStats.acceptedDealIntents = {};
+    if (!actorStats.acceptedDealClauseKinds) actorStats.acceptedDealClauseKinds = {};
+    if (!meta.totals.acceptedDealIntents) meta.totals.acceptedDealIntents = {};
+    if (!meta.totals.acceptedDealClauseKinds) meta.totals.acceptedDealClauseKinds = {};
+    incrementPlainCount(actorStats.acceptedDealIntents, intent);
+    incrementPlainCount(meta.totals.acceptedDealIntents, intent);
+    for (const clause of event.clauses || []) {
+      incrementPlainCount(actorStats.acceptedDealClauseKinds, clause.kind);
+      incrementPlainCount(meta.totals.acceptedDealClauseKinds, clause.kind);
+    }
+  }
+}
+
+function recordCoordinationDealStats(meta, actorStats, event, intent) {
+  if (event.type !== 'deal_accept') return;
+  const clauses = event.clauses || [];
+  const coupClauses = clauses.filter((clause) => clause.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT);
+  const frontierClauses = clauses.filter((clause) => clause.kind === DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT);
+  const sharedCandidates = uniqueList(coupClauses.map(clause => Number(clause.payload?.candidateId)).filter(Number.isInteger));
+  const multiGiverCoup = uniqueList(coupClauses.map(clause => Number(clause.giverId)).filter(Number.isInteger)).length >= 2;
+  const coordinated = intent === DEAL_INTENTS.COALITION_COORDINATION
+    || (sharedCandidates.length === 1 && (multiGiverCoup || coupClauses.length >= 2));
+  const frontierCoordination = intent === DEAL_INTENTS.SPLIT_FRONTIER_DEFENSE
+    || (frontierClauses.length > 0 && coupClauses.length > 0);
+
+  if (coordinated) {
+    actorStats.coordinatedClaimantDeals = (actorStats.coordinatedClaimantDeals || 0) + 1;
+    meta.totals.coordinatedClaimantDeals = (meta.totals.coordinatedClaimantDeals || 0) + 1;
+  }
+  if (frontierCoordination) {
+    actorStats.frontierCoordinationDeals = (actorStats.frontierCoordinationDeals || 0) + 1;
+    meta.totals.frontierCoordinationDeals = (meta.totals.frontierCoordinationDeals || 0) + 1;
+  }
+}
+
 export function observeDealEvent(state, meta, event) {
   if (!meta || !event) return;
   const actorStats = meta.players?.[event.actorId]?.stats;
   if (!actorStats) return;
   const utility = Number(event.actorUtility ?? event.utility ?? 0) || 0;
+  const intent = event.intent || inferDealIntent(event.clauses || [], event.actorId, event.counterpartyId);
+  recordDealIntentStats(meta, actorStats, event, intent);
   if (event.type === 'deal_propose') {
     actorStats.dealsProposed++;
     meta.totals.dealsProposed++;
@@ -3092,6 +3909,7 @@ export function observeDealEvent(state, meta, event) {
       actorStats.badAcceptedDeals++;
       meta.totals.badAcceptedDeals++;
     }
+    recordCoordinationDealStats(meta, actorStats, event, intent);
     adjustRelation(meta, event.actorId, event.counterpartyId, 0.28, 0);
     adjustRelation(meta, event.counterpartyId, event.actorId, 0.18, 0);
     if (event.proposerId != null && event.proposerId !== event.actorId) {
@@ -3113,13 +3931,17 @@ export function observeDealEvent(state, meta, event) {
 function aiDecideOnIncomingDeal(state, meta, playerId, thread) {
   const clauses = thread.currentOffer?.clauses || [];
   const counterpartyId = getThreadCounterpartyId(thread, playerId);
-  const actorUtility = scoreDealClausesForViewer(state, meta, playerId, clauses);
-  const proposerUtility = counterpartyId == null ? 0 : scoreDealClausesForViewer(state, meta, counterpartyId, clauses);
+  const intent = inferDealIntent(clauses, playerId, counterpartyId);
+  const actorUtility = counterpartyId == null ? scoreDealClausesForViewer(state, meta, playerId, clauses) : scoreDealUtilityForViewer(state, meta, playerId, counterpartyId, clauses, intent);
+  const proposerUtility = counterpartyId == null ? 0 : scoreDealUtilityForViewer(state, meta, counterpartyId, playerId, clauses, intent);
   const acceptThreshold = getMetaForPlayer(meta, playerId, 'dealAcceptanceThreshold');
   const counterThreshold = getMetaForPlayer(meta, playerId, 'dealCounterThreshold');
+  const speculativePenalty = estimateSpeculativeDealPenalty(state, meta, playerId, clauses);
+  const netUtilityGuard = Math.max(0, -proposerUtility) * 0.18 + speculativePenalty * 0.35;
+  const usefulDealThreshold = acceptThreshold + netUtilityGuard;
 
-  if (actorUtility >= acceptThreshold) {
-    return { action: 'accept', actorUtility, proposerUtility };
+  if (actorUtility >= usefulDealThreshold && actorUtility >= -0.05) {
+    return { action: 'accept', actorUtility, proposerUtility, intent };
   }
 
   if (actorUtility >= counterThreshold) {
@@ -3131,11 +3953,12 @@ function aiDecideOnIncomingDeal(state, meta, playerId, thread) {
         normalizedClauses: counter.normalizedClauses,
         actorUtility: counter.actorUtility,
         proposerUtility: counter.counterpartyUtility,
+        intent: counter.intent,
       };
     }
   }
 
-  return { action: 'refuse', reason: 'ai_unfavorable_deal', actorUtility, proposerUtility };
+  return { action: 'refuse', reason: 'ai_unfavorable_deal', actorUtility, proposerUtility, intent };
 }
 
 function aiProposeOutgoingDeal(state, meta, playerId) {
@@ -3156,6 +3979,7 @@ function handleAIDealActions(state, meta, playerId) {
   for (const thread of getIncomingDealsForPlayer(state, playerId)) {
     const decision = aiDecideOnIncomingDeal(state, meta, playerId, thread);
     if (!decision || !decision.action) continue;
+    const offeredClauses = thread.currentOffer?.clauses || [];
     const payload = {
       threadId: thread.id,
       expectedRevision: thread.revision,
@@ -3166,6 +3990,27 @@ function handleAIDealActions(state, meta, playerId) {
     const result = respondToDeal(state, playerId, payload);
     if (result?.ok) {
       const counterpartyId = thread.playerIds.find((id) => id !== playerId) ?? null;
+      if (decision.action === 'accept' || decision.action === 'counter') {
+        rememberSystemicDecision(
+          state,
+          meta,
+          playerId,
+          {
+            kind: AI_ACTION_KINDS.DEAL,
+            phase: AI_ACTION_PHASES.COURT,
+            payload: {
+              counterpartyId,
+              clauses: decision.action === 'counter' ? (decision.normalizedClauses || decision.clauses || []) : offeredClauses,
+              intent: decision.intent,
+            },
+            targets: counterpartyId == null ? [] : [counterpartyId],
+            timing: 'future',
+            reversibility: 'low',
+          },
+          decision.actorUtility || 0,
+          AI_ACTION_PHASES.COURT,
+        );
+      }
       observeDealEvent(state, meta, {
         type: `deal_${decision.action}`,
         actorId: playerId,
@@ -3174,6 +4019,8 @@ function handleAIDealActions(state, meta, playerId) {
         threadId: thread.id,
         actorUtility: decision.actorUtility,
         proposerUtility: decision.proposerUtility,
+        intent: decision.intent,
+        clauses: decision.action === 'counter' ? (decision.normalizedClauses || decision.clauses || []) : offeredClauses,
       });
       logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} ${decision.action}s a deal with ${describeActor(state, meta, counterpartyId)}.`);
       acted = true;
@@ -3184,6 +4031,25 @@ function handleAIDealActions(state, meta, playerId) {
   if (proposal && proposal.counterpartyId != null) {
     const result = sendDealOffer(state, playerId, proposal);
     if (result?.ok) {
+      rememberSystemicDecision(
+        state,
+        meta,
+        playerId,
+        {
+          kind: AI_ACTION_KINDS.DEAL,
+          phase: AI_ACTION_PHASES.COURT,
+          payload: {
+            counterpartyId: Number(proposal.counterpartyId),
+            clauses: proposal.normalizedClauses || proposal.clauses || [],
+            intent: proposal.intent,
+          },
+          targets: [Number(proposal.counterpartyId)],
+          timing: 'future',
+          reversibility: 'low',
+        },
+        proposal.actorUtility || proposal.score || 0,
+        AI_ACTION_PHASES.COURT,
+      );
       observeDealEvent(state, meta, {
         type: 'deal_propose',
         actorId: playerId,
@@ -3191,6 +4057,8 @@ function handleAIDealActions(state, meta, playerId) {
         threadId: result.threadId,
         actorUtility: proposal.actorUtility,
         proposerUtility: proposal.counterpartyUtility,
+        intent: proposal.intent,
+        clauses: proposal.normalizedClauses || proposal.clauses || [],
       });
       logDecision(meta, `Round ${state.round} court: ${describeActor(state, meta, playerId)} proposes a deal to ${describeActor(state, meta, Number(proposal.counterpartyId))}.`);
       acted = true;

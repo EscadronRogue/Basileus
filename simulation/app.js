@@ -218,7 +218,6 @@ function populateControls() {
   byId('trainingHoldoutMatchesPerChampion').value = DEFAULT_TRAINING_CONFIG.holdoutMatchesPerChampion;
   byId('trainingParallelWorkers').value = DEFAULT_TRAINING_CONFIG.parallelWorkers;
   byId('trainingChampions').value = DEFAULT_TRAINING_CONFIG.champions;
-  byId('trainingSeed').value = DEFAULT_TRAINING_CONFIG.seed;
   applyTrainingFitnessPreset(DEFAULT_TRAINING_CONFIG.fitnessPresetId);
 }
 
@@ -255,7 +254,6 @@ function readConfigFromForm() {
 
 function readTrainingConfigFromForm() {
   return normalizeTrainingConfig({
-    seed: byId('trainingSeed').value.trim(),
     playerCounts: getCheckedValues('trainingPlayerCounts').map(Number),
     deckSizes: getCheckedValues('trainingDeckSizes').map(Number),
     fitnessPresetId: byId('trainingFitnessPreset').value,

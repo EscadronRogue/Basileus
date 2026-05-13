@@ -81,7 +81,6 @@ function configToArgs(config, outputPath) {
   }
 
   const flatKeys = [
-    'seed',
     'fitnessPresetId',
     'populationSize',
     'generations',

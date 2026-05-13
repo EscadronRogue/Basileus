@@ -7,6 +7,7 @@ import {
 } from '../ai/brain.js';
 import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../engine/runtime.js';
 import { normalizeAiProfile } from '../ai/profileStore.js';
+import { summarizePredictionStats } from '../ai/consequences.js';
 import { DEFAULT_MIXED_DECK_SIZES } from './constants.js';
 
 export const DEFAULT_BATCH_CONFIG = {
@@ -376,6 +377,7 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
   const capitalTroops = sum(state.players.map(player => meta.players[player.id].stats.capitalTroops));
   const sampleGame = sampled ? buildSampleGame(state, meta, scenario, seed, finalScores) : null;
   const scoreByPlayer = new Map(finalScores.scores.map(score => [score.playerId, score]));
+  const averageFinalScore = average(finalScores.scores.map(score => score.points || 0));
 
   return {
     index: gameIndex,
@@ -401,17 +403,34 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
     totalRecruitOpportunities: meta.totals.recruitOpportunities,
     totalRevocations: meta.totals.revocations,
     totalDefenderRewards: meta.totals.defenderRewards || 0,
+    totalDefenderGoldChoices: meta.totals.defenderGoldChoices || 0,
+    totalDefenderRestoreChoices: meta.totals.defenderRestoreChoices || 0,
+    totalDefenderRewardGold: meta.totals.defenderRewardGold || 0,
     totalMercSpend: meta.totals.mercSpend,
+    totalTitleShuffles: meta.totals.titleShuffles || 0,
+    totalSupporterTitleRewards: meta.totals.supporterTitleRewards || 0,
+    totalRivalOfficeDenials: meta.totals.rivalOfficeDenials || 0,
     totalDealsProposed: meta.totals.dealsProposed || 0,
     totalDealsAccepted: meta.totals.dealsAccepted || 0,
     totalDealsCountered: meta.totals.dealsCountered || 0,
     totalDealsRefused: meta.totals.dealsRefused || 0,
     totalDealUtility: meta.totals.dealUtility || 0,
     totalBadAcceptedDeals: meta.totals.badAcceptedDeals || 0,
+    totalCoordinatedClaimantDeals: meta.totals.coordinatedClaimantDeals || 0,
+    totalFrontierCoordinationDeals: meta.totals.frontierCoordinationDeals || 0,
+    acceptedDealClauseKinds: { ...(meta.totals.acceptedDealClauseKinds || {}) },
+    acceptedDealIntents: { ...(meta.totals.acceptedDealIntents || {}) },
+    proposedDealIntents: { ...(meta.totals.proposedDealIntents || {}) },
     throneChanges: meta.totals.throneChanges,
     occupiedThemesEnd: Object.values(state.themes).filter(theme => theme.occupied && theme.id !== 'CPL').length,
     playerMetrics: state.players.map(player => {
       const scoreEntry = scoreByPlayer.get(player.id);
+      const winnerCredit = finalScores.winners.some(winner => winner.playerId === player.id) && !state.gameOver ? 1 : 0;
+      const scoreRatio = averageFinalScore > 0 ? ((scoreEntry?.points || 0) / averageFinalScore) : 1;
+      const prediction = summarizePredictionStats(
+        meta.players[player.id].stats,
+        ((scoreRatio - 1) * 1.8) + winnerCredit - (state.gameOver ? 0.75 : 0),
+      );
       const categoryShares = {};
       const categoryPoints = {};
       for (const category of scoreEntry?.categories || []) {
@@ -435,7 +454,13 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
         coupVotes: meta.players[player.id].stats.coupVotes,
         revocations: meta.players[player.id].stats.revocations,
         defenderRewards: meta.players[player.id].stats.defenderRewards || 0,
+        defenderGoldChoices: meta.players[player.id].stats.defenderGoldChoices || 0,
+        defenderRestoreChoices: meta.players[player.id].stats.defenderRestoreChoices || 0,
+        defenderRewardGold: meta.players[player.id].stats.defenderRewardGold || 0,
         throneCaptures: meta.players[player.id].stats.throneCaptures,
+        titleShuffles: meta.players[player.id].stats.titleShuffles || 0,
+        supporterTitleRewards: meta.players[player.id].stats.supporterTitleRewards || 0,
+        rivalOfficeDenials: meta.players[player.id].stats.rivalOfficeDenials || 0,
         supportIncumbentVotes: meta.players[player.id].stats.supportIncumbentVotes,
         supportSelfVotes: meta.players[player.id].stats.supportSelfVotes,
         dealsProposed: meta.players[player.id].stats.dealsProposed || 0,
@@ -444,7 +469,18 @@ function runSingleGame(config, scenario, gameIndex, sampled) {
         dealsRefused: meta.players[player.id].stats.dealsRefused || 0,
         dealUtility: meta.players[player.id].stats.dealUtility || 0,
         badAcceptedDeals: meta.players[player.id].stats.badAcceptedDeals || 0,
+        coordinatedClaimantDeals: meta.players[player.id].stats.coordinatedClaimantDeals || 0,
+        frontierCoordinationDeals: meta.players[player.id].stats.frontierCoordinationDeals || 0,
+        acceptedDealClauseKinds: { ...(meta.players[player.id].stats.acceptedDealClauseKinds || {}) },
+        acceptedDealIntents: { ...(meta.players[player.id].stats.acceptedDealIntents || {}) },
+        proposedDealIntents: { ...(meta.players[player.id].stats.proposedDealIntents || {}) },
         dealAcceptanceRate: (meta.players[player.id].stats.dealsAccepted || 0) / Math.max(1, (meta.players[player.id].stats.dealsProposed || 0) + (meta.players[player.id].stats.dealsCountered || 0)),
+        systemicDecisionCount: prediction.systemicDecisionCount,
+        projectedUtility: prediction.projectedUtility,
+        projectedRisk: prediction.projectedRisk,
+        projectedFlexibility: prediction.projectedFlexibility,
+        projectionError: prediction.projectionError,
+        decisionQuality: prediction.decisionQuality,
         finalScore: scoreEntry?.points || 0,
         finalWealth: scoreEntry?.wealth || 0,
         finalCategoryShares: categoryShares,
@@ -502,6 +538,14 @@ function createBucket(key, label) {
     recruitsTotal: 0,
     recruitOpportunitiesTotal: 0,
     occupiedThemesTotal: 0,
+    defenderGoldChoicesTotal: 0,
+    defenderRestoreChoicesTotal: 0,
+    defenderRewardGoldTotal: 0,
+    titleShufflesTotal: 0,
+    supporterTitleRewardsTotal: 0,
+    rivalOfficeDenialsTotal: 0,
+    coordinatedClaimantDealsTotal: 0,
+    frontierCoordinationDealsTotal: 0,
   };
 }
 
@@ -519,6 +563,14 @@ function applyGameToBucket(bucket, game) {
   bucket.recruitsTotal += game.totalRecruits;
   bucket.recruitOpportunitiesTotal += game.totalRecruitOpportunities;
   bucket.occupiedThemesTotal += game.occupiedThemesEnd;
+  bucket.defenderGoldChoicesTotal += game.totalDefenderGoldChoices || 0;
+  bucket.defenderRestoreChoicesTotal += game.totalDefenderRestoreChoices || 0;
+  bucket.defenderRewardGoldTotal += game.totalDefenderRewardGold || 0;
+  bucket.titleShufflesTotal += game.totalTitleShuffles || 0;
+  bucket.supporterTitleRewardsTotal += game.totalSupporterTitleRewards || 0;
+  bucket.rivalOfficeDenialsTotal += game.totalRivalOfficeDenials || 0;
+  bucket.coordinatedClaimantDealsTotal += game.totalCoordinatedClaimantDeals || 0;
+  bucket.frontierCoordinationDealsTotal += game.totalFrontierCoordinationDeals || 0;
   if (!game.empireFall && !game.guardTriggered) {
     bucket.scoringGames++;
     bucket.winnerWealthTotal += game.topWealth;
@@ -546,6 +598,14 @@ function finalizeBucket(bucket) {
     averageRecruits: bucket.games ? bucket.recruitsTotal / bucket.games : 0,
     recruitmentUtilization: bucket.recruitOpportunitiesTotal ? bucket.recruitsTotal / bucket.recruitOpportunitiesTotal : 0,
     averageOccupiedThemes: bucket.games ? bucket.occupiedThemesTotal / bucket.games : 0,
+    averageDefenderGoldChoices: bucket.games ? bucket.defenderGoldChoicesTotal / bucket.games : 0,
+    defenderGoldChoiceRate: (bucket.defenderGoldChoicesTotal + bucket.defenderRestoreChoicesTotal) ? bucket.defenderGoldChoicesTotal / (bucket.defenderGoldChoicesTotal + bucket.defenderRestoreChoicesTotal) : 0,
+    averageDefenderRewardGold: bucket.games ? bucket.defenderRewardGoldTotal / bucket.games : 0,
+    averageTitleShuffles: bucket.games ? bucket.titleShufflesTotal / bucket.games : 0,
+    supporterTitleRewardRate: bucket.titleShufflesTotal ? bucket.supporterTitleRewardsTotal / bucket.titleShufflesTotal : 0,
+    rivalOfficeDenialRate: bucket.titleShufflesTotal ? bucket.rivalOfficeDenialsTotal / bucket.titleShufflesTotal : 0,
+    averageCoordinatedClaimantDeals: bucket.games ? bucket.coordinatedClaimantDealsTotal / bucket.games : 0,
+    averageFrontierCoordinationDeals: bucket.games ? bucket.frontierCoordinationDealsTotal / bucket.games : 0,
   };
 }
 
@@ -568,6 +628,14 @@ function createPersonalityBucket(profileId, name, theory) {
     titlesTotal: 0,
     themesTotal: 0,
     goldTotal: 0,
+    defenderGoldChoicesTotal: 0,
+    defenderRestoreChoicesTotal: 0,
+    defenderRewardGoldTotal: 0,
+    titleShufflesTotal: 0,
+    supporterTitleRewardsTotal: 0,
+    rivalOfficeDenialsTotal: 0,
+    coordinatedClaimantDealsTotal: 0,
+    frontierCoordinationDealsTotal: 0,
   };
 }
 
@@ -591,6 +659,13 @@ function finalizePersonalityBucket(bucket) {
     averageTitles: bucket.seats ? bucket.titlesTotal / bucket.seats : 0,
     averageThemes: bucket.seats ? bucket.themesTotal / bucket.seats : 0,
     averageGold: bucket.seats ? bucket.goldTotal / bucket.seats : 0,
+    defenderGoldChoiceRate: (bucket.defenderGoldChoicesTotal + bucket.defenderRestoreChoicesTotal) ? bucket.defenderGoldChoicesTotal / (bucket.defenderGoldChoicesTotal + bucket.defenderRestoreChoicesTotal) : 0,
+    averageDefenderRewardGold: bucket.seats ? bucket.defenderRewardGoldTotal / bucket.seats : 0,
+    averageTitleShuffles: bucket.seats ? bucket.titleShufflesTotal / bucket.seats : 0,
+    supporterTitleRewardRate: bucket.titleShufflesTotal ? bucket.supporterTitleRewardsTotal / bucket.titleShufflesTotal : 0,
+    rivalOfficeDenialRate: bucket.titleShufflesTotal ? bucket.rivalOfficeDenialsTotal / bucket.titleShufflesTotal : 0,
+    averageCoordinatedClaimantDeals: bucket.seats ? bucket.coordinatedClaimantDealsTotal / bucket.seats : 0,
+    averageFrontierCoordinationDeals: bucket.seats ? bucket.frontierCoordinationDealsTotal / bucket.seats : 0,
   };
 }
 
@@ -780,6 +855,14 @@ export async function runSimulationBatch(rawConfig = {}, onProgress = null) {
       bucket.titlesTotal += playerMetric.finalTitles;
       bucket.themesTotal += playerMetric.finalThemes;
       bucket.goldTotal += playerMetric.finalGold;
+      bucket.defenderGoldChoicesTotal += playerMetric.defenderGoldChoices || 0;
+      bucket.defenderRestoreChoicesTotal += playerMetric.defenderRestoreChoices || 0;
+      bucket.defenderRewardGoldTotal += playerMetric.defenderRewardGold || 0;
+      bucket.titleShufflesTotal += playerMetric.titleShuffles || 0;
+      bucket.supporterTitleRewardsTotal += playerMetric.supporterTitleRewards || 0;
+      bucket.rivalOfficeDenialsTotal += playerMetric.rivalOfficeDenials || 0;
+      bucket.coordinatedClaimantDealsTotal += playerMetric.coordinatedClaimantDeals || 0;
+      bucket.frontierCoordinationDealsTotal += playerMetric.frontierCoordinationDeals || 0;
     }
 
     for (const war of game.wars) {

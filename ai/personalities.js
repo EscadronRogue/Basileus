@@ -32,6 +32,14 @@ export const META_PARAM_DEFS = [
   ['dealAcceptanceThreshold', 0.35, -2.00, 4.00, 0.35],
   ['dealCounterThreshold',   -0.70, -3.00, 2.00, 0.35],
   ['dealRiskTolerance',       0.45, 0.00, 1.50, 0.18],
+  ['defenderRewardGreed',      0.55, 0.00, 2.00, 0.20],
+  ['defenderRewardSafety',     1.10, 0.00, 3.00, 0.30],
+  ['dealCoordinationWeight',   1.00, 0.00, 3.00, 0.25],
+  ['dealReciprocityWeight',    0.75, 0.00, 3.00, 0.25],
+  ['dealSpeculationTolerance', 0.45, 0.00, 1.50, 0.18],
+  ['titleContinuityBias',      0.20, 0.00, 1.50, 0.18],
+  ['titleSupporterReward',     1.45, 0.00, 4.00, 0.35],
+  ['titleRivalSuppression',    0.95, 0.00, 3.00, 0.30],
 
   ['courtTemperature',       0.40, 0.05, 2.50, 0.25],
   ['orderTemperature',       0.30, 0.05, 2.00, 0.20],
@@ -40,6 +48,13 @@ export const META_PARAM_DEFS = [
 
   ['opponentLearnRate',      0.18, 0.01, 0.80, 0.12],
   ['opponentTrust',          0.50, 0.00, 1.00, 0.20],
+
+  ['consequenceSensitivity',  0.85, 0.00, 2.50, 0.25],
+  ['riskHorizon',             0.90, 0.00, 2.50, 0.25],
+  ['flexibilityValue',        0.75, 0.00, 2.50, 0.22],
+  ['rivalDenialValue',        0.80, 0.00, 2.50, 0.24],
+  ['uncertaintyTolerance',    0.55, 0.00, 2.00, 0.20],
+  ['cooperationValue',        0.80, 0.00, 2.50, 0.22],
 ];
 
 export const META_PARAM_KEYS = META_PARAM_DEFS.map(([key]) => key);

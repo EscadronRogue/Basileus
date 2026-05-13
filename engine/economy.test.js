@@ -45,7 +45,7 @@ import {
 import { normalizeHumanOrders } from './orders.js';
 import { applyCourtAction, confirmCourt } from './commands.js';
 import { handleHumanCourtConfirmation } from './runtime.js';
-import { createAIMeta, runAICourtAutomation } from '../ai/brain.js';
+import { chooseAIDefenderRewardChoice, createAIMeta, planMajorTitleAssignment, runAICourtAutomation } from '../ai/brain.js';
 import { NEUTRAL_PROFILE } from '../ai/personalities.js';
 
 function province(id) {
@@ -632,7 +632,61 @@ test('AI court automation can propose and evaluate formal deals', () => {
 
   assert.ok(result.actionsTaken > 0);
   assert.ok(meta.totals.dealsProposed > 0);
+  assert.ok(Object.values(meta.totals.proposedDealIntents || {}).some(count => count > 0));
   assert.ok(state.dealThreads.length > 0);
+});
+
+test('AI refuses clearly negative incoming deals instead of accepting activity for its own sake', () => {
+  const state = makeDealState([], {
+    0: { gold: 0 },
+    1: { gold: 6 },
+    2: { gold: 0 },
+  }, [0, 1, 2]);
+  state.courtActions = {
+    basileusAppointed: true,
+    domesticEastAppointed: true,
+    domesticWestAppointed: true,
+    admiralAppointed: true,
+    patriarchAppointed: true,
+    revocationsUsed: {},
+    appointedThisTurn: {},
+    appointmentsByRecipient: {},
+    playerConfirmed: new Set(),
+  };
+  state.players[1].majorTitles = ['DOM_EAST'];
+  state.players[1].professionalArmies = { DOM_EAST: 1 };
+  state.currentLevies = { DOM_EAST: 0 };
+
+  const sent = sendDealOffer(state, 0, {
+    counterpartyId: 1,
+    clauses: [
+      { kind: 'gold', direction: 'ask', amount: 4, durationTurns: 1 },
+    ],
+  });
+  assert.equal(sent.ok, true);
+
+  const cautiousProfile = {
+    ...NEUTRAL_PROFILE,
+    id: 'test-cautious-deals',
+    meta: {
+      ...(NEUTRAL_PROFILE.meta || {}),
+      dealAcceptanceThreshold: 0.1,
+      dealCounterThreshold: -0.5,
+      dealSpeculationTolerance: 0,
+    },
+  };
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0],
+    seatProfiles: {
+      1: cautiousProfile,
+      2: cautiousProfile,
+    },
+  });
+
+  runAICourtAutomation(state, meta, { mode: 'react' });
+
+  assert.notEqual(state.dealThreads[0].status, 'accepted');
+  assert.equal(meta.players[1].stats.badAcceptedDeals || 0, 0);
 });
 
 test('confirming court auto-refuses waiting deals and blocks new incoming offers', () => {
@@ -1163,6 +1217,126 @@ test('gold defender reward leaves the farthest pending reconquest occupied', () 
   assert.equal(state.themes.OPS.occupied, false);
   assert.equal(state.themes.THK.occupied, true);
   assert.equal(state.themes.SAM.occupied, true);
+});
+
+test('AI defender reward takes gold when scoring pressure is high and empire danger is low', () => {
+  const state = createGameState({ playerCount: 3, deckSize: 3, seed: 321 });
+  state.phase = 'resolution';
+  state.round = 2;
+  state.currentInvasion = null;
+  state.players[0].gold = 35;
+  state.players[1].gold = 23;
+  state.players[2].gold = 35;
+  state.pendingDefenderRewards = [{
+    id: 'ai-reward-gold',
+    themeId: 'OPS',
+    originalThemeId: 'OPS',
+    reconquestIndex: 0,
+    defenderId: 1,
+    rank: 1,
+    troops: 4,
+    goldValue: 4,
+    resolved: false,
+  }];
+
+  const greedyProfile = {
+    ...NEUTRAL_PROFILE,
+    id: 'test-greedy-reward',
+    weights: { ...NEUTRAL_PROFILE.weights, wealth: 3, frontier: 0.5 },
+    meta: {
+      ...(NEUTRAL_PROFILE.meta || {}),
+      defenderRewardGreed: 2,
+      defenderRewardSafety: 0.1,
+    },
+  };
+  const meta = createAIMeta(state, { seatProfiles: { 1: greedyProfile } });
+
+  assert.equal(chooseAIDefenderRewardChoice(state, meta, state.pendingDefenderRewards[0]), 'gold');
+});
+
+test('AI defender reward restores land when route pressure and collapse danger are high', () => {
+  const state = createGameState({ playerCount: 3, deckSize: 6, seed: 654 });
+  state.phase = 'resolution';
+  state.round = 3;
+  state.currentInvasion = {
+    id: 'test-invasion',
+    name: 'Test Invasion',
+    route: ['OPS', 'THK', 'CPL'],
+    strength: [14, 16],
+  };
+  state.currentLevies = { BASILEUS: 0, DOM_EAST: 0, DOM_WEST: 0, ADMIRAL: 0 };
+  state.themes.OPS.occupied = true;
+  state.themes.THK.occupied = true;
+  state.pendingDefenderRewards = [{
+    id: 'ai-reward-restore',
+    themeId: 'OPS',
+    originalThemeId: 'OPS',
+    reconquestIndex: 0,
+    defenderId: 1,
+    rank: 1,
+    troops: 5,
+    goldValue: 4,
+    resolved: false,
+  }];
+
+  const safeProfile = {
+    ...NEUTRAL_PROFILE,
+    id: 'test-safe-reward',
+    weights: { ...NEUTRAL_PROFILE.weights, wealth: 0.6, frontier: 3 },
+    meta: {
+      ...(NEUTRAL_PROFILE.meta || {}),
+      defenderRewardGreed: 0,
+      defenderRewardSafety: 3,
+    },
+  };
+  const meta = createAIMeta(state, { seatProfiles: { 1: safeProfile } });
+
+  assert.equal(chooseAIDefenderRewardChoice(state, meta, state.pendingDefenderRewards[0]), 'empire');
+});
+
+test('AI coup title assignment rewards supporters and strips offices from rivals', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 3, seed: 987 });
+  state.basileusId = 0;
+  for (const player of state.players) {
+    player.majorTitles = [];
+    player.professionalArmies = {};
+  }
+  state.players[2].majorTitles = ['DOM_EAST', 'PATRIARCH'];
+  state.players[2].professionalArmies = { DOM_EAST: 2 };
+  state.players[3].majorTitles = ['DOM_WEST'];
+  state.players[3].professionalArmies = { DOM_WEST: 2 };
+  state.players[0].majorTitles = ['ADMIRAL'];
+  state.players[0].professionalArmies = { BASILEUS: 2, ADMIRAL: 2 };
+  state.allOrders = {
+    0: { candidate: 0, deployments: { BASILEUS: 'capital', ADMIRAL: 'frontier' } },
+    1: { candidate: 1, deployments: {} },
+    2: { candidate: 2, deployments: { DOM_EAST: 'capital' } },
+    3: { candidate: 1, deployments: { DOM_WEST: 'capital' } },
+  };
+
+  const coupProfile = {
+    ...NEUTRAL_PROFILE,
+    id: 'test-title-politics',
+    meta: {
+      ...(NEUTRAL_PROFILE.meta || {}),
+      titleContinuityBias: 0,
+      titleSupporterReward: 4,
+      titleRivalSuppression: 3,
+      courtTemperature: 0.05,
+    },
+  };
+  const meta = createAIMeta(state, {
+    seatProfiles: {
+      1: coupProfile,
+      2: coupProfile,
+      3: coupProfile,
+    },
+  });
+  const plan = planMajorTitleAssignment(state, meta, 1);
+  const assignment = plan.best.assignment;
+
+  assert.ok(Object.values(assignment).includes(3));
+  assert.ok(assignment.DOM_EAST !== 2 || assignment.PATRIARCH !== 2);
 });
 
 test('self appointment promises enforce the promised beneficiary immediately', () => {

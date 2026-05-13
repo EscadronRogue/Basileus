@@ -33,6 +33,9 @@ test('single-game simulation exposes score category, revocation, and deal metric
   assert.equal(typeof game.totalRevocations, 'number');
   assert.equal(typeof game.totalDealsProposed, 'number');
   assert.equal(typeof game.totalDealUtility, 'number');
+  assert.equal(typeof game.totalDefenderGoldChoices, 'number');
+  assert.equal(typeof game.totalTitleShuffles, 'number');
+  assert.equal(typeof game.totalCoordinatedClaimantDeals, 'number');
   assert.ok(game.playerMetrics.length > 0);
 
   const metric = game.playerMetrics[0];
@@ -43,4 +46,11 @@ test('single-game simulation exposes score category, revocation, and deal metric
   assert.equal(typeof metric.dealsProposed, 'number');
   assert.equal(typeof metric.dealAcceptanceRate, 'number');
   assert.equal(typeof metric.badAcceptedDeals, 'number');
+  assert.equal(typeof metric.defenderGoldChoices, 'number');
+  assert.equal(typeof metric.titleShuffles, 'number');
+  assert.equal(typeof metric.coordinatedClaimantDeals, 'number');
+  assert.equal(typeof metric.systemicDecisionCount, 'number');
+  assert.equal(typeof metric.projectedUtility, 'number');
+  assert.equal(typeof metric.projectionError, 'number');
+  assert.equal(typeof metric.decisionQuality, 'number');
 });

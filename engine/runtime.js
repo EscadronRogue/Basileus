@@ -6,8 +6,8 @@
 import {
   advanceToNextInteractivePhase,
   applyDefenderRewardChoice,
-  autoResolveDefenderRewards,
   allOrdersSubmitted,
+  getPendingDefenderRewards,
   hasPendingDefenderRewards,
   isCourtComplete,
   phaseCleanup,
@@ -25,6 +25,7 @@ import {
 import {
   applyPlannedAiTitleAssignment,
   buildAIOrders,
+  chooseAIDefenderRewardChoice,
   handlePostResolutionAI,
   invalidateRoundContext,
   isAIPlayer,
@@ -54,18 +55,43 @@ function recordDefenderRewardsForTraining(meta, rewards = []) {
   if (!meta || !Array.isArray(rewards)) return;
   if (!meta.totals) meta.totals = {};
   if (!Number.isFinite(meta.totals.defenderRewards)) meta.totals.defenderRewards = 0;
+  if (!Number.isFinite(meta.totals.defenderGoldChoices)) meta.totals.defenderGoldChoices = 0;
+  if (!Number.isFinite(meta.totals.defenderRestoreChoices)) meta.totals.defenderRestoreChoices = 0;
+  if (!Number.isFinite(meta.totals.defenderRewardGold)) meta.totals.defenderRewardGold = 0;
   for (const reward of rewards) {
     const playerMeta = meta.players?.[reward.defenderId];
     if (!playerMeta) continue;
     if (!playerMeta.stats) playerMeta.stats = {};
     playerMeta.stats.defenderRewards = (Number(playerMeta.stats.defenderRewards) || 0) + 1;
     meta.totals.defenderRewards += 1;
+    if (reward.choice === 'gold') {
+      playerMeta.stats.defenderGoldChoices = (Number(playerMeta.stats.defenderGoldChoices) || 0) + 1;
+      playerMeta.stats.defenderRewardGold = (Number(playerMeta.stats.defenderRewardGold) || 0) + (Number(reward.gold) || 0);
+      meta.totals.defenderGoldChoices += 1;
+      meta.totals.defenderRewardGold += Number(reward.gold) || 0;
+    } else if (reward.choice === 'empire') {
+      playerMeta.stats.defenderRestoreChoices = (Number(playerMeta.stats.defenderRestoreChoices) || 0) + 1;
+      meta.totals.defenderRestoreChoices += 1;
+    }
   }
 }
 
 function autoResolveAiDefenderRewards(state, meta) {
   if (!state || !meta) return [];
-  const resolved = autoResolveDefenderRewards(state, (playerId) => isAIPlayer(meta, playerId));
+  const resolved = [];
+  let safety = 0;
+  while (safety < 20) {
+    safety += 1;
+    const reward = getPendingDefenderRewards(state).find((entry) => isAIPlayer(meta, entry.defenderId));
+    if (!reward) break;
+    const choice = chooseAIDefenderRewardChoice(state, meta, reward);
+    let result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, choice);
+    if (!result.ok && choice !== 'empire') {
+      result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, 'empire');
+    }
+    if (!result.ok) break;
+    resolved.push(result.reward);
+  }
   recordDefenderRewardsForTraining(meta, resolved);
   return resolved;
 }

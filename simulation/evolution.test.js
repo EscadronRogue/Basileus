@@ -55,6 +55,9 @@ test('training config defaults to broad scenario coverage', () => {
   assert.deepEqual(config.playerCounts, [3, 4, 5]);
   assert.deepEqual(config.deckSizes, [6, 9, 12]);
   assert.equal(config.populationSize, 32);
+  assert.equal(config.champions, 10);
+  assert.equal(config.holdoutMatchesPerChampion, 1024);
+  assert.equal(Number.isInteger(config.seed), true);
 });
 
 test('training config can still be focused explicitly', () => {
@@ -105,4 +108,19 @@ test('training config includes deal fitness shaping fields', () => {
   assert.equal(config.fitness.dealAcceptanceReward, 0.25);
   assert.equal(config.fitness.badDealPenalty, 2.25);
   assert.equal(FITNESS_TUNING_FIELDS.some((entry) => entry.key === 'dealUtilityReward'), true);
+});
+
+test('training config includes systemic judgment fitness shaping fields', () => {
+  const config = normalizeTrainingConfig({
+    fitnessPresetId: 'custom',
+    fitness: {
+      decisionQualityReward: 0.8,
+      projectionErrorPenalty: 0.4,
+    },
+  });
+
+  assert.equal(config.fitness.decisionQualityReward, 0.8);
+  assert.equal(config.fitness.projectionErrorPenalty, 0.4);
+  assert.equal(FITNESS_TUNING_FIELDS.some((entry) => entry.key === 'decisionQualityReward'), true);
+  assert.equal(FITNESS_TUNING_FIELDS.some((entry) => entry.key === 'projectionErrorPenalty'), true);
 });
