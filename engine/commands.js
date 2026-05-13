@@ -29,6 +29,7 @@ import {
   canPayRevocationCost,
   canPlayerRevokeBishop,
   canPlayerRevokeStrategos,
+  checkRevocationCurrentTurnAppointment,
   dismissProfessional,
   giftToChurch,
   hireMercenaries,
@@ -243,6 +244,8 @@ export function applyCourtAction(state, playerId, payload = {}) {
     if (kind === 'minor') {
       const theme = state.themes[parts[1]];
       const targetPlayerId = parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
+      const sameTurnAppointmentCheck = checkRevocationCurrentTurnAppointment(state, action.value);
+      if (!sameTurnAppointmentCheck.ok) return fail(sameTurnAppointmentCheck.reason);
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
@@ -258,6 +261,8 @@ export function applyCourtAction(state, playerId, payload = {}) {
       observation = { ...observation, targetPlayerId };
     } else if (kind === 'court') {
       const targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
+      const sameTurnAppointmentCheck = checkRevocationCurrentTurnAppointment(state, action.value);
+      if (!sameTurnAppointmentCheck.ok) return fail(sameTurnAppointmentCheck.reason);
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
@@ -270,6 +275,8 @@ export function applyCourtAction(state, playerId, payload = {}) {
       observation = { ...observation, targetPlayerId };
     } else if (kind === 'theme') {
       const targetPlayerId = state.themes[parts[1]]?.owner ?? null;
+      const sameTurnAppointmentCheck = checkRevocationCurrentTurnAppointment(state, action.value);
+      if (!sameTurnAppointmentCheck.ok) return fail(sameTurnAppointmentCheck.reason);
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }

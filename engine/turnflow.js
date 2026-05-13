@@ -228,6 +228,7 @@ export function phaseCourt(state) {
     // Per-player count of revocations this round. Each player's nth revocation
     // costs n troops, or 2n gold for Patriarch bishop revocations.
     revocationsUsed: {},
+    appointedThisTurn: {},
     appointmentsByRecipient: {},
     playerConfirmed: new Set(),
   };

@@ -7,6 +7,7 @@ import {
   canPayPatriarchBishopRevocationCost,
   canPayRevocationCost,
   canRecruitProfessional,
+  checkRevocationCurrentTurnAppointment,
   getLandAuction,
   getMinimumLandBid,
   getNextAppointmentCost,
@@ -1775,6 +1776,8 @@ function isPatriarchGoldRevocationValue(state, actorId, value) {
 }
 
 function getRevocationPaymentCheck(state, actorId, value) {
+  const sameTurnAppointmentCheck = checkRevocationCurrentTurnAppointment(state, value);
+  if (!sameTurnAppointmentCheck.ok) return { ...sameTurnAppointmentCheck, cost: 0 };
   const targetPlayerId = getRevocationTargetPlayerId(state, value);
   if (isPatriarchGoldRevocationValue(state, actorId, value)) {
     return canPayPatriarchBishopRevocationCost(state, actorId, targetPlayerId);
@@ -1783,6 +1786,7 @@ function getRevocationPaymentCheck(state, actorId, value) {
 }
 
 function formatRevocationPayment(check) {
+  if (!check?.ok && /appointed this turn/i.test(check?.reason || '')) return 'blocked';
   if (check?.paymentType === 'gold') return formatGold(check.goldCost || check.cost || 0);
   const cost = check?.cost || 0;
   return `${cost} troop${cost === 1 ? '' : 's'}`;
@@ -2343,8 +2347,8 @@ function renderRevocationOptions(state, actorId, courtDraft = {}, groups = colle
       `).join('')
     : '<p class="section-hint">Nothing currently revocable.</p>';
   const ruleText = !isBasileus && hasPatriarch
-    ? `${authorityLabel} Patriarch bishop revocations use doubled per-revocation gold costs: 2, 4, 6...${hasRegionalCommand ? ' Strategos revocations still use the normal escalating troop cost.' : ''} You cannot revoke the same player twice in a row.`
-    : `${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... You cannot revoke the same player twice in a row. Levies are spent before professionals; mission professionals still pay upkeep and return next round.`;
+    ? `${authorityLabel} Patriarch bishop revocations use doubled per-revocation gold costs: 2, 4, 6...${hasRegionalCommand ? ' Strategos revocations still use the normal escalating troop cost.' : ''} Titles appointed this turn cannot be revoked. You cannot revoke the same player twice in a row.`
+    : `${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... Titles appointed this turn cannot be revoked. You cannot revoke the same player twice in a row. Levies are spent before professionals; mission professionals still pay upkeep and return next round.`;
 
   return `<div class="revocation">
     <p class="section-hint">${ruleText}</p>

@@ -17,6 +17,7 @@ import {
   hireMercenaries,
   payMaintenance,
   recruitProfessional,
+  revokeCourtTitle,
   revokeMinorTitle,
   revokeTheme,
   settleLandAuctions,
@@ -854,6 +855,70 @@ test('a player cannot revoke the same target twice in a row', () => {
   const targetAfterOther = revokeMinorTitle(state, 'ANT', 'strategos', 0);
   assert.equal(targetAfterOther.ok, true);
   assert.equal(state.themes.ANT.strategos, null);
+});
+
+test('titles appointed this turn cannot be revoked', () => {
+  const state = makeDealState([
+    makeTheme('OPS'),
+  ], {
+    0: { professionalArmies: { BASILEUS: 1 } },
+    1: {},
+    2: {},
+  });
+  state.currentLevies = { BASILEUS: 2 };
+
+  const appoint = appointStrategos(state, 0, 'OPS', 1);
+  assert.equal(appoint.ok, true);
+
+  const revoke = revokeMinorTitle(state, 'OPS', 'strategos', 0);
+  assert.equal(revoke.ok, false);
+  assert.match(revoke.reason, /appointed this turn/i);
+  assert.equal(state.themes.OPS.strategos, 1);
+  assert.equal(state.currentLevies.BASILEUS, 2);
+
+  state.courtActions.appointedThisTurn = {};
+  const laterRevoke = revokeMinorTitle(state, 'OPS', 'strategos', 0);
+  assert.equal(laterRevoke.ok, true);
+  assert.equal(state.themes.OPS.strategos, null);
+});
+
+test('court titles appointed this turn cannot be revoked', () => {
+  const state = makeDealState([], {
+    0: { professionalArmies: { BASILEUS: 1 } },
+    1: {},
+    2: {},
+  });
+  state.currentLevies = { BASILEUS: 2 };
+
+  const appoint = appointCourtTitle(state, 'EMPRESS', 1);
+  assert.equal(appoint.ok, true);
+
+  const revoke = revokeCourtTitle(state, 'EMPRESS', 0);
+  assert.equal(revoke.ok, false);
+  assert.match(revoke.reason, /appointed this turn/i);
+  assert.equal(state.empress, 1);
+  assert.equal(state.currentLevies.BASILEUS, 2);
+});
+
+test('estate revocation cannot bypass a title appointed this turn', () => {
+  const state = makeDealState([
+    makeTheme('OPS', { owner: 1 }),
+  ], {
+    0: { professionalArmies: { BASILEUS: 1 } },
+    1: {},
+    2: {},
+  });
+  state.currentLevies = { BASILEUS: 2 };
+
+  const appoint = appointBishop(state, 0, 'OPS', 2);
+  assert.equal(appoint.ok, true);
+
+  const revoke = revokeTheme(state, 'OPS', 0);
+  assert.equal(revoke.ok, false);
+  assert.match(revoke.reason, /appointed this turn/i);
+  assert.equal(state.themes.OPS.owner, 1);
+  assert.equal(state.themes.OPS.bishop, 2);
+  assert.equal(state.currentLevies.BASILEUS, 2);
 });
 
 test('best defender reward can be taken as gold, leaving the province occupied', () => {

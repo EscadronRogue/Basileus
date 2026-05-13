@@ -23,6 +23,7 @@ import {
   canPayPatriarchBishopRevocationCost,
   dismissProfessional,
   canRecruitProfessional,
+  checkRevocationCurrentTurnAppointment,
   getPatriarchBishopAppointmentGoldCost,
   getPatriarchBishopRevocationGoldCost,
   getLandAuction,
@@ -2064,6 +2065,7 @@ function buildRevocationOptions(state, meta, basileusId) {
 
     const wealthLead = getPlayer(state, player.id).gold - getPlayer(state, basileusId).gold;
     for (const theme of getPlayerThemes(state, player.id)) {
+      if (!checkRevocationCurrentTurnAppointment(state, `theme:${theme.id}`).ok) continue;
       let score = (wealthLead * 0.35) + profile.weights.revocation + (theme.P * 0.25) + (theme.L * 0.25) + (getCategoryThresholdPressure(state, meta, player.id, 'estate') * 1.3);
       score -= getObligation(meta, basileusId, player.id) * 1.25;
       if (context.pactByPlayer[player.id]?.candidateId === basileusId) score -= 1.8;
@@ -2079,18 +2081,21 @@ function buildRevocationOptions(state, meta, basileusId) {
 
   for (const theme of Object.values(state.themes)) {
     if (!theme.occupied && theme.strategos != null && !hasRevocationTargetLock(state, basileusId, theme.strategos)) {
-      let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + profile.weights.revocation + theme.L + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 1.1);
-      score -= getObligation(meta, basileusId, theme.strategos) * 1.15;
-      if (context.pactByPlayer[theme.strategos]?.candidateId === basileusId) score -= 1.7;
-      options.push({
-        kind: 'minor',
-        themeId: theme.id,
-        titleType: 'strategos',
-        targetPlayerId: theme.strategos,
-        score,
-      });
+      if (checkRevocationCurrentTurnAppointment(state, `minor:${theme.id}:strategos`).ok) {
+        let score = (getPlayerStrength(state, meta, theme.strategos) - basileusStrength) * 0.18 + profile.weights.revocation + theme.L + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 1.1);
+        score -= getObligation(meta, basileusId, theme.strategos) * 1.15;
+        if (context.pactByPlayer[theme.strategos]?.candidateId === basileusId) score -= 1.7;
+        options.push({
+          kind: 'minor',
+          themeId: theme.id,
+          titleType: 'strategos',
+          targetPlayerId: theme.strategos,
+          score,
+        });
+      }
     }
     if (theme.bishop != null && !hasRevocationTargetLock(state, basileusId, theme.bishop)) {
+      if (!checkRevocationCurrentTurnAppointment(state, `minor:${theme.id}:bishop`).ok) continue;
       let score = (getPlayerStrength(state, meta, theme.bishop) - basileusStrength) * 0.12 + profile.weights.revocation + (theme.P * 0.8) + (getCategoryThresholdPressure(state, meta, theme.bishop, 'church') * 1.1);
       score -= getObligation(meta, basileusId, theme.bishop) * 1.1;
       if (context.pactByPlayer[theme.bishop]?.candidateId === basileusId) score -= 1.5;
@@ -2105,26 +2110,30 @@ function buildRevocationOptions(state, meta, basileusId) {
   }
 
   if (state.empress != null && !hasRevocationTargetLock(state, basileusId, state.empress)) {
-    let score = profile.weights.revocation + (getPlayerStrength(state, meta, state.empress) - basileusStrength) * 0.15;
-    score -= getObligation(meta, basileusId, state.empress) * 1.1;
-    if (context.pactByPlayer[state.empress]?.candidateId === basileusId) score -= 1.6;
-    options.push({
-      kind: 'court',
-      titleType: 'EMPRESS',
-      targetPlayerId: state.empress,
-      score,
-    });
+    if (checkRevocationCurrentTurnAppointment(state, 'court:EMPRESS').ok) {
+      let score = profile.weights.revocation + (getPlayerStrength(state, meta, state.empress) - basileusStrength) * 0.15;
+      score -= getObligation(meta, basileusId, state.empress) * 1.1;
+      if (context.pactByPlayer[state.empress]?.candidateId === basileusId) score -= 1.6;
+      options.push({
+        kind: 'court',
+        titleType: 'EMPRESS',
+        targetPlayerId: state.empress,
+        score,
+      });
+    }
   }
   if (state.chiefEunuchs != null && !hasRevocationTargetLock(state, basileusId, state.chiefEunuchs)) {
-    let score = profile.weights.revocation + (getPlayerStrength(state, meta, state.chiefEunuchs) - basileusStrength) * 0.15;
-    score -= getObligation(meta, basileusId, state.chiefEunuchs) * 1.1;
-    if (context.pactByPlayer[state.chiefEunuchs]?.candidateId === basileusId) score -= 1.6;
-    options.push({
-      kind: 'court',
-      titleType: 'CHIEF_EUNUCHS',
-      targetPlayerId: state.chiefEunuchs,
-      score,
-    });
+    if (checkRevocationCurrentTurnAppointment(state, 'court:CHIEF_EUNUCHS').ok) {
+      let score = profile.weights.revocation + (getPlayerStrength(state, meta, state.chiefEunuchs) - basileusStrength) * 0.15;
+      score -= getObligation(meta, basileusId, state.chiefEunuchs) * 1.1;
+      if (context.pactByPlayer[state.chiefEunuchs]?.candidateId === basileusId) score -= 1.6;
+      options.push({
+        kind: 'court',
+        titleType: 'CHIEF_EUNUCHS',
+        targetPlayerId: state.chiefEunuchs,
+        score,
+      });
+    }
   }
 
   return options.sort((left, right) => right.score - left.score);
@@ -2204,6 +2213,7 @@ function buildTitleHolderRevocationOptions(state, meta, playerId) {
       if (theme.region !== region || theme.occupied || theme.strategos == null) continue;
       if (theme.strategos === playerId) continue;
       if (hasRevocationTargetLock(state, playerId, theme.strategos)) continue;
+      if (!checkRevocationCurrentTurnAppointment(state, `minor:${theme.id}:strategos`).ok) continue;
       let score = (getPlayerStrength(state, meta, theme.strategos) - playerStrength) * 0.18
         + profile.weights.revocation + (theme.L * 0.4)
         + (getCategoryThresholdPressure(state, meta, theme.strategos, 'tax') * 0.9);
@@ -2227,6 +2237,7 @@ function buildTitleHolderRevocationOptions(state, meta, playerId) {
       if (theme.bishop == null) continue;
       if (theme.bishop === playerId) continue;
       if (hasRevocationTargetLock(state, playerId, theme.bishop)) continue;
+      if (!checkRevocationCurrentTurnAppointment(state, `minor:${theme.id}:bishop`).ok) continue;
       let score = (getPlayerStrength(state, meta, theme.bishop) - playerStrength) * 0.18
         + profile.weights.revocation + (Number(theme.C) || 0) * 0.6
         + (getCategoryThresholdPressure(state, meta, theme.bishop, 'church') * 0.95);
