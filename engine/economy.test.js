@@ -45,8 +45,10 @@ import {
 import { normalizeHumanOrders } from './orders.js';
 import { applyCourtAction, confirmCourt } from './commands.js';
 import { handleHumanCourtConfirmation } from './runtime.js';
+import { AI_ACTION_KINDS } from '../ai/actionSpace.js';
 import { chooseAIDefenderRewardChoice, createAIMeta, planMajorTitleAssignment, runAICourtAutomation } from '../ai/brain.js';
 import { NEUTRAL_PROFILE } from '../ai/personalities.js';
+import { POLICY_ACTION_KEYS, POLICY_FEATURE_KEYS, normalizePolicyGenome } from '../ai/policyGenome.js';
 
 function province(id) {
   return PROVINCES.find((entry) => entry.id === id);
@@ -382,7 +384,35 @@ test('AI raises land auctions at the legal minimum instead of underbidding', () 
   state.landAuctions = {
     SAM: { bidderId: 2, amount: 2 },
   };
-  const aiMeta = createAIMeta(state, { humanPlayerIds: [0, 2] });
+  state.courtActions = {
+    basileusAppointed: false,
+    domesticEastAppointed: false,
+    domesticWestAppointed: false,
+    admiralAppointed: false,
+    patriarchAppointed: false,
+    revocationsUsed: {},
+    appointedThisTurn: {},
+    appointmentsByRecipient: {},
+    playerConfirmed: new Set(),
+  };
+  const actionPriors = Object.fromEntries(POLICY_ACTION_KEYS.map((key) => [key, -6]));
+  actionPriors[AI_ACTION_KINDS.LAND_PURCHASE] = 6;
+  const aiMeta = createAIMeta(state, {
+    humanPlayerIds: [0, 2],
+    seatProfiles: {
+      1: {
+        ...NEUTRAL_PROFILE,
+        id: 'land-test',
+        name: 'Land Test',
+        policy: normalizePolicyGenome({
+          actionPriors,
+          featureWeights: Object.fromEntries(POLICY_FEATURE_KEYS.map((key) => [key, 0])),
+          baseScoreWeight: 0,
+          actionThreshold: -6,
+        }),
+      },
+    },
+  });
 
   const result = runAICourtAutomation(state, aiMeta, { mode: 'react' });
 
@@ -614,11 +644,15 @@ test('AI court automation can propose and evaluate formal deals', () => {
     name: 'Test Deal Broker',
     meta: {
       ...(NEUTRAL_PROFILE.meta || {}),
-      dealProposalThreshold: -0.5,
-      dealAcceptanceThreshold: -0.5,
       dealCounterThreshold: -2,
-      dealTemperature: 0.05,
     },
+    policy: normalizePolicyGenome({
+      actionPriors: {
+        [AI_ACTION_KINDS.DEAL]: 6,
+        [AI_ACTION_KINDS.CONFIRM_COURT]: -6,
+      },
+      actionThreshold: -6,
+    }),
   };
   const meta = createAIMeta(state, {
     seatProfiles: {
@@ -670,10 +704,15 @@ test('AI refuses clearly negative incoming deals instead of accepting activity f
     id: 'test-cautious-deals',
     meta: {
       ...(NEUTRAL_PROFILE.meta || {}),
-      dealAcceptanceThreshold: 0.1,
       dealCounterThreshold: -0.5,
-      dealSpeculationTolerance: 0,
     },
+    policy: normalizePolicyGenome({
+      actionPriors: {
+        [AI_ACTION_KINDS.DEAL]: 6,
+        [AI_ACTION_KINDS.CONFIRM_COURT]: -6,
+      },
+      actionThreshold: -6,
+    }),
   };
   const meta = createAIMeta(state, {
     humanPlayerIds: [0],
@@ -1243,11 +1282,17 @@ test('AI defender reward takes gold when scoring pressure is high and empire dan
     ...NEUTRAL_PROFILE,
     id: 'test-greedy-reward',
     weights: { ...NEUTRAL_PROFILE.weights, wealth: 3, frontier: 0.5 },
-    meta: {
-      ...(NEUTRAL_PROFILE.meta || {}),
-      defenderRewardGreed: 2,
-      defenderRewardSafety: 0.1,
-    },
+    policy: normalizePolicyGenome({
+      featureWeights: {
+        ...Object.fromEntries(POLICY_FEATURE_KEYS.map((key) => [key, 0])),
+        economic: 3,
+        goldPressure: 3,
+        restorationPressure: -2,
+        survival: -1,
+      },
+      baseScoreWeight: 0,
+      actionThreshold: -6,
+    }),
   };
   const meta = createAIMeta(state, { seatProfiles: { 1: greedyProfile } });
 
@@ -1283,11 +1328,17 @@ test('AI defender reward restores land when route pressure and collapse danger a
     ...NEUTRAL_PROFILE,
     id: 'test-safe-reward',
     weights: { ...NEUTRAL_PROFILE.weights, wealth: 0.6, frontier: 3 },
-    meta: {
-      ...(NEUTRAL_PROFILE.meta || {}),
-      defenderRewardGreed: 0,
-      defenderRewardSafety: 3,
-    },
+    policy: normalizePolicyGenome({
+      featureWeights: {
+        ...Object.fromEntries(POLICY_FEATURE_KEYS.map((key) => [key, 0])),
+        survival: 3,
+        routeSafety: 3,
+        restorationPressure: 3,
+        economic: -1,
+      },
+      baseScoreWeight: 0,
+      actionThreshold: -6,
+    }),
   };
   const meta = createAIMeta(state, { seatProfiles: { 1: safeProfile } });
 
@@ -1317,13 +1368,17 @@ test('AI coup title assignment rewards supporters and strips offices from rivals
   const coupProfile = {
     ...NEUTRAL_PROFILE,
     id: 'test-title-politics',
-    meta: {
-      ...(NEUTRAL_PROFILE.meta || {}),
-      titleContinuityBias: 0,
-      titleSupporterReward: 4,
-      titleRivalSuppression: 3,
-      courtTemperature: 0.05,
-    },
+    policy: normalizePolicyGenome({
+      featureWeights: {
+        ...Object.fromEntries(POLICY_FEATURE_KEYS.map((key) => [key, 0])),
+        supporterReward: 4,
+        rivalSuppression: 3,
+        roleFit: 0.5,
+      },
+      baseScoreWeight: 0,
+      actionThreshold: -6,
+      scoreTemperature: 0.05,
+    }),
   };
   const meta = createAIMeta(state, {
     seatProfiles: {
@@ -1418,11 +1473,11 @@ test('final scoring gives zero points for empty categories and ties highest tota
 test('all-human court advances only after each player confirms', () => {
   const state = makeState([makeTheme('OPS')]);
   state.courtActions = {
-    basileusAppointed: true,
-    domesticEastAppointed: true,
-    domesticWestAppointed: true,
-    admiralAppointed: true,
-    patriarchAppointed: true,
+    basileusAppointed: false,
+    domesticEastAppointed: false,
+    domesticWestAppointed: false,
+    admiralAppointed: false,
+    patriarchAppointed: false,
     revocationsUsed: {},
     appointmentsByRecipient: {},
     playerConfirmed: new Set([0, 1]),
@@ -1433,7 +1488,7 @@ test('all-human court advances only after each player confirms', () => {
   assert.equal(state.phase, 'orders');
 });
 
-test('court confirmation passes only the confirming players own mandatory appointments', () => {
+test('court confirmation does not auto-pass optional appointment slots', () => {
   const state = makeState([makeTheme('OPS'), makeTheme('THS'), makeTheme('AEG')], {
     0: { majorTitles: ['DOM_EAST'] },
     1: { majorTitles: ['DOM_WEST'] },
@@ -1452,8 +1507,8 @@ test('court confirmation passes only the confirming players own mandatory appoin
 
   const result = confirmCourt(state, 0);
   assert.equal(result.ok, true);
-  assert.equal(state.courtActions.basileusAppointed, true);
-  assert.equal(state.courtActions.domesticEastAppointed, true);
+  assert.equal(state.courtActions.basileusAppointed, false);
+  assert.equal(state.courtActions.domesticEastAppointed, false);
   assert.equal(state.courtActions.domesticWestAppointed, false);
   assert.equal(state.courtActions.patriarchAppointed, false);
   assert.equal(state.courtActions.playerConfirmed.has(0), true);

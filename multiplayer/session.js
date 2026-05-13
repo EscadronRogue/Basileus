@@ -359,7 +359,7 @@ export class MultiplayerRoom {
     const trainedRoster = this.trainedAiProfiles.length
       ? this.trainedAiProfiles
       : normalizeTrainedAiProfiles(availableAiProfiles);
-    assert(!aiSeatIds.length || trainedRoster.length > 0, 'No trained AI profiles are available for AI seats. Export trained personalities or create the room from a client with saved trained profiles.');
+    assert(!aiSeatIds.length || trainedRoster.length > 0, 'No AI policy profiles are available for AI seats. Export policy champions or create the room from a client with saved AI profiles.');
 
     const seatProfiles = {};
     for (const seatId of aiSeatIds) {

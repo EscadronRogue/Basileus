@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3–5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs entirely in the browser, supports hot-seat / single-player vs trained AI, and includes a WebSocket multiplayer server and a Simulation Lab that batch-trains AI personalities through self-play.
+Basileus is a 3–5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs entirely in the browser, supports hot-seat / single-player vs trained AI, and includes a WebSocket multiplayer server and a Simulation Lab that batch-trains AI policy profiles through self-play.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -12,7 +12,7 @@ Basileus is a 3–5 player strategy game where rival noble houses jockey for tit
 ## Highlights
 
 - **Pure browser game.** No bundler, no transpiler, no npm dependencies — just HTML, CSS, and ES modules.
-- **Trained AI opponents.** Ten curated personalities (`trained-personalities/definitive/`) produced by an evolutionary self-play loop in the Simulation Lab.
+- **Trained AI opponents.** Policy-genome champions exported to `trained-personalities/latest/` by the evolutionary self-play loop in the Simulation Lab.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) — no external libraries; runs anywhere Node 20+ runs.
 - **Simulation Lab.** A separate page (`simulator.html`) for stress-testing the live ruleset and breeding new AI rosters.
 - **Deterministic core.** Seeded RNG throughout the engine so games and simulations are reproducible.
@@ -24,7 +24,7 @@ Basileus is a 3–5 player strategy game where rival noble houses jockey for tit
 | Frontend | Vanilla JS (ES modules), CSS, SVG map |
 | Backend | Node.js (built-ins only — `node:http`, `node:worker_threads`, `node:crypto`) |
 | Multiplayer | RFC 6455 WebSocket implementation in pure Node (`multiplayer/wsServer.js`) |
-| Simulation | Worker-thread fan-out, evolutionary search over personality genomes |
+| Simulation | Worker-thread fan-out, evolutionary search over policy genomes |
 | CI / Deploy | GitHub Actions, GitHub Pages |
 
 ## Getting started
@@ -56,7 +56,7 @@ After starting the local server, open http://127.0.0.1:8123/simulator.html.
 ```bash
 npm run train:node -- --parallelWorkers=auto
 ```
-By default the trainer uses a fresh random seed each run, rotates candidates through 3, 4, and 5 player games with 6, 9, and 12 invasion decks, validates finalists with a deeper holdout, and exports 10 champions. Use `--playerCounts=3,5` or `--deckSizes=6,12` only when you deliberately want a narrower curriculum.
+By default the trainer uses a fresh random seed each run, rotates policy-only candidates through 3, 4, and 5 player games with 6, 9, and 12 invasion decks, validates finalists with a deeper holdout, and exports champions. Use `--playerCounts=3,5` or `--deckSizes=6,12` only when you deliberately want a narrower curriculum.
 
 ## Scripts
 
@@ -93,14 +93,14 @@ Render notes:
 ├── index.html              # Live game entry point
 ├── simulator.html          # Simulation Lab entry point
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
-├── ai/                     # AI personality model + profile store
+├── ai/                     # AI policy model + profile store
 ├── assets/                 # SVG map, hitzones, stylesheets
 ├── data/                   # Static game data (provinces, titles, invasion decks)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
 ├── multiplayer/            # Node WebSocket server + protocol verifier
 ├── render/                 # SVG map renderer
 ├── simulation/             # Trainer, workers, batch evaluation
-├── trained-personalities/  # Curated and historical AI rosters
+├── trained-personalities/  # Generated policy champion rosters
 └── ui/                     # Browser-side controllers and panels
 ```
 

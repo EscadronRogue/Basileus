@@ -2226,7 +2226,7 @@ function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
     && paymentCheck.ok;
   const label = state.courtActions?.basileusAppointed
     ? 'Basileus: optionally appoint another court title or province office.'
-    : 'Basileus: choose one court title or province office to appoint.';
+    : 'Basileus: optionally appoint a court title or province office.';
 
   return `<div class="appointment-block" data-appt-key="basileus" data-appointer-id="${appointerId}">
     <span class="appt-label">${label}</span>
@@ -2269,7 +2269,7 @@ function renderStrategosAppointment(state, titleKey, selectedProvinceId, appoint
   const canSubmit = Boolean(selectedThemeId) && hasAppointmentAppointee(selectedAppointeeId) && paymentCheck.ok;
   const label = state.courtActions?.[`${titleKey}_appointed`]
     ? `${title.name}: optionally appoint another Strategos.`
-    : `${title.name}: choose a province and appoint its Strategos.`;
+    : `${title.name}: optionally appoint a province Strategos.`;
 
   return `<div class="appointment-block" data-appt-key="${titleKey}" data-appointer-id="${appointerId}">
     <span class="appt-label">${label}</span>
@@ -2302,7 +2302,7 @@ function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draf
   const canSubmit = Boolean(selectedThemeId) && hasAppointmentAppointee(selectedAppointeeId) && paymentCheck.ok;
   const label = state.courtActions?.patriarchAppointed
     ? 'Patriarch: optionally appoint another Bishop.'
-    : 'Patriarch: choose a province and appoint its Bishop.';
+    : 'Patriarch: optionally appoint a province Bishop.';
 
   return `<div class="appointment-block" data-appt-key="patriarch" data-appointer-id="${appointerId}" data-appointment-payment="patriarch-bishop-gold">
     <span class="appt-label">${label}</span>

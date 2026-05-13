@@ -7,8 +7,10 @@ import {
   PROFILE_TACTIC_KEYS,
   PROFILE_WEIGHT_KEYS,
 } from './personalities.js';
+import { normalizePolicyGenome } from './policyGenome.js';
 
 const STORAGE_KEY = 'basileus.savedAiProfiles.v1';
+const BASELINE_POLICY_PROFILE_ID = 'baseline-policy';
 const EXPORTED_PROFILE_INDEX_ENDPOINTS = [
   'api/personalities/exported',
 ];
@@ -396,6 +398,7 @@ export function normalizeAiProfile(rawProfile = null) {
   const weights = normalizeWeights(rawProfile.weights || {});
   const tactics = normalizeTactics(rawProfile.tactics || {});
   const meta = normalizeMetaParams(rawProfile.meta || {});
+  const policy = normalizePolicyGenome(rawProfile.policy || {});
   const hasExplicitBase = Object.prototype.hasOwnProperty.call(rawProfile, 'basePersonalityId');
   let basePersonalityId = null;
   if (PERSONALITIES[rawProfile.basePersonalityId]) {
@@ -412,17 +415,37 @@ export function normalizeAiProfile(rawProfile = null) {
     id,
     name,
     shortName: String(rawProfile.shortName || name).trim() || name,
-    theory: String(rawProfile.theory || 'Self-play trained profile').trim() || 'Self-play trained profile',
+    theory: String(rawProfile.theory || 'Self-play policy profile').trim() || 'Self-play policy profile',
     summary: String(rawProfile.summary || '').trim(),
     source: String(rawProfile.source || 'trained').trim() || 'trained',
     basePersonalityId,
     weights,
     tactics,
     meta,
+    policy,
     training: normalizeTrainingMetadata(rawProfile.training || {}),
   };
   if (!profile.summary) profile.summary = buildAutoSummary(profile);
   return profile;
+}
+
+export function createBaselineAiProfile() {
+  return {
+    ...normalizeAiProfile({
+      id: BASELINE_POLICY_PROFILE_ID,
+      name: 'Baseline Policy',
+      shortName: 'Baseline',
+      theory: 'Neutral policy baseline',
+      summary: 'Default policy profile used until a policy champion roster is exported.',
+      source: 'baseline-policy',
+      basePersonalityId: null,
+      policy: {},
+      training: {
+        trainedAt: '1970-01-01T00:00:00.000Z',
+      },
+    }),
+    librarySource: 'baseline',
+  };
 }
 
 export function listSavedAiProfiles() {
@@ -444,6 +467,10 @@ export async function listAvailableAiProfiles() {
       continue;
     }
     merged.set(profile.id, profile);
+  }
+
+  if (!merged.size) {
+    merged.set(BASELINE_POLICY_PROFILE_ID, createBaselineAiProfile());
   }
 
   return sortProfiles([...merged.values()]);

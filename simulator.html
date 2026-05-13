@@ -14,7 +14,7 @@
         <p class="hero-kicker">Current Ruleset Only</p>
         <h1>Simulation Lab</h1>
         <p class="hero-summary">
-          Batch-test the live Basileus rules with AI dynasties, mixed player personalities, and sampled full-game logs.
+          Batch-test the live Basileus rules with AI dynasties, selected policy profiles, and sampled full-game logs.
         </p>
       </div>
       <a class="hero-link" href="index.html">Back To Live Game</a>
@@ -84,7 +84,7 @@
           <div class="field">
             <span>Available Trained AI Pool</span>
             <div id="personalityPool" class="chip-grid"></div>
-            <small class="field-note">Simulation batches draw opponents only from these trained profiles.</small>
+            <small class="field-note">Simulation batches draw opponents only from these AI policy profiles.</small>
           </div>
 
           <div class="button-row">
@@ -100,7 +100,7 @@
         <section class="control-card">
           <div class="section-head">
             <h2>Evolution Trainer</h2>
-            <p>Let AI profiles mutate through self-play, then keep the strongest champions for live games.</p>
+            <p>Let policy genomes evolve through self-play, then keep the strongest champions for live games.</p>
           </div>
 
           <div class="form-grid compact-grid">
@@ -128,19 +128,25 @@
           <div class="form-grid compact-grid">
             <label class="field">
               <span>Holdout / Finalist</span>
-              <input id="trainingHoldoutMatchesPerChampion" type="number" min="16" step="1">
+              <input id="trainingHoldoutMatchesPerChampion" type="number" min="1" step="1">
             </label>
+            <label class="field">
+              <span>Final Audit / Champion</span>
+              <input id="trainingFinalAuditMatchesPerChampion" type="number" min="0" step="1">
+            </label>
+          </div>
+
+          <div class="form-grid compact-grid">
             <label class="field">
               <span>Champions To Keep</span>
               <input id="trainingChampions" type="number" min="1" step="1">
             </label>
+            <label class="field">
+              <span>Parallel Workers</span>
+              <input id="trainingParallelWorkers" type="number" min="0" step="1">
+              <small class="field-note">0 = auto when launched through the local Node trainer.</small>
+            </label>
           </div>
-
-          <label class="field">
-            <span>Parallel Workers</span>
-            <input id="trainingParallelWorkers" type="number" min="0" step="1">
-            <small class="field-note">0 = auto when launched through the local Node trainer.</small>
-          </label>
 
           <div class="form-grid">
             <label class="field">
@@ -186,7 +192,7 @@
         <section class="control-card">
           <div class="section-head">
             <h2>Saved AI Library</h2>
-            <p>Any trained profile detected here can be used by both the live game and the simulation runner.</p>
+            <p>Any AI policy profile detected here can be used by both the live game and the simulation runner.</p>
           </div>
           <div class="button-row single-button-row">
             <button class="secondary-button" id="refreshLibraryButton">Refresh Library</button>

@@ -1,6 +1,6 @@
+import { AI_NUM } from '../ai/numericConstants.js';
 import {
   DEFAULT_MIXED_DECK_SIZES,
-  DEFAULT_META_PARAMS,
   META_PARAM_DEFS,
   NEUTRAL_PROFILE,
   PROFILE_TACTIC_KEYS,
@@ -8,17 +8,28 @@ import {
   SUPPORTED_PLAYER_COUNTS,
 } from '../ai/personalities.js';
 import { normalizeAiProfile } from '../ai/profileStore.js';
+import {
+  createFreshPolicyGenome,
+  crossoverPolicyGenomes,
+  mutatePolicyGenome,
+  normalizePolicyGenome,
+  POLICY_ACTION_KEYS,
+  POLICY_DEAL_SCORE_KEYS,
+  POLICY_DEAL_STRATEGIC_KEYS,
+  POLICY_FEATURE_KEYS,
+  POLICY_IMPACT_KEYS,
+  POLICY_PHASE_KEYS,
+} from '../ai/policyGenome.js';
 import { runSingleSimulationGame } from './engine.js';
 
-const WEIGHT_MIN = 0.15;
-const WEIGHT_MAX = 4.5;
-const TACTIC_MIN = 0.55;
-const TACTIC_MAX = 2.4;
+const WEIGHT_MIN = AI_NUM.N_0_15;
+const WEIGHT_MAX = AI_NUM.N_4_5;
+const TACTIC_MIN = AI_NUM.N_0_55;
+const TACTIC_MAX = AI_NUM.N_2_4;
 const OBJECTIVE_KEYS = [
   'survivalRate',
   'winShare',
   'scorePercentile',
-  'legacyWinRate',
   'scriptedWinRate',
   'hallOfFameWinRate',
   'emergentWinRate',
@@ -28,35 +39,37 @@ const OBJECTIVE_KEYS = [
 ];
 
 export const DEFAULT_TRAINING_CONFIG = {
-  playerCount: 4,
+  seed: null,
+  playerCount: AI_NUM.N_4,
   playerCounts: SUPPORTED_PLAYER_COUNTS.slice(),
-  deckSize: 6,
+  deckSize: AI_NUM.N_6,
   deckSizes: DEFAULT_MIXED_DECK_SIZES.slice(),
   fitnessPresetId: 'balanced',
-  populationSize: 32,
-  generations: 30,
-  matchesPerCandidate: 24,
-  validationMatchesPerCandidate: 8,
-  holdoutMatchesPerChampion: 1024,
-  champions: 10,
-  hallOfFameSize: 32,
-  eliteFraction: 0.2,
-  freshBloodRate: 0.12,
-  hallOfFameMixFraction: 0.25,
-  parallelWorkers: 0,
+  populationSize: AI_NUM.N_48,
+  generations: AI_NUM.N_45,
+  matchesPerCandidate: AI_NUM.N_32,
+  validationMatchesPerCandidate: AI_NUM.N_12,
+  holdoutMatchesPerChampion: AI_NUM.N_1536,
+  finalAuditMatchesPerChampion: AI_NUM.N_192,
+  champions: AI_NUM.N_12,
+  hallOfFameSize: AI_NUM.N_48,
+  eliteFraction: AI_NUM.N_0_2,
+  freshBloodRate: AI_NUM.N_0_12,
+  hallOfFameMixFraction: AI_NUM.N_0_25,
+  parallelWorkers: AI_NUM.N_0,
 };
 
 export const DEFAULT_FITNESS_WEIGHTS = {
-  collapsePenalty: 12.0,
-  survivalBonus: 1.0,
-  winReward: 14.0,
-  placementReward: 4.0,
-  wealthReward: 2.0,
-  dealUtilityReward: 0.45,
-  dealAcceptanceReward: 0.15,
-  badDealPenalty: 2.25,
-  decisionQualityReward: 0.35,
-  projectionErrorPenalty: 0.25,
+  collapsePenalty: AI_NUM.N_12,
+  survivalBonus: AI_NUM.N_1,
+  winReward: AI_NUM.N_14,
+  placementReward: AI_NUM.N_4,
+  wealthReward: AI_NUM.N_2,
+  dealUtilityReward: AI_NUM.N_0,
+  dealAcceptanceReward: AI_NUM.N_0,
+  badDealPenalty: AI_NUM.N_0,
+  decisionQualityReward: AI_NUM.N_0,
+  projectionErrorPenalty: AI_NUM.N_0,
 };
 
 export const FITNESS_PROFILES = {
@@ -72,11 +85,11 @@ export const FITNESS_PROFILES = {
     summary: 'Rewards winning more heavily, accepting more collapse risk.',
     weights: {
       ...DEFAULT_FITNESS_WEIGHTS,
-      collapsePenalty: 8.0,
-      survivalBonus: 0.6,
-      winReward: 18.0,
-      placementReward: 5.0,
-      wealthReward: 3.0,
+      collapsePenalty: AI_NUM.N_8,
+      survivalBonus: AI_NUM.N_0_6,
+      winReward: AI_NUM.N_18,
+      placementReward: AI_NUM.N_5,
+      wealthReward: AI_NUM.N_3,
     },
   },
   cooperative: {
@@ -85,11 +98,11 @@ export const FITNESS_PROFILES = {
     summary: 'Rewards keeping the empire alive more heavily than high-variance wins.',
     weights: {
       ...DEFAULT_FITNESS_WEIGHTS,
-      collapsePenalty: 16.0,
-      survivalBonus: 1.6,
-      winReward: 10.0,
-      placementReward: 3.0,
-      wealthReward: 1.4,
+      collapsePenalty: AI_NUM.N_16,
+      survivalBonus: AI_NUM.N_1_6,
+      winReward: AI_NUM.N_10,
+      placementReward: AI_NUM.N_3,
+      wealthReward: AI_NUM.N_1_4,
     },
   },
   prudent: {
@@ -98,26 +111,26 @@ export const FITNESS_PROFILES = {
     summary: 'Treats imperial collapse as a major failure and prefers very robust play.',
     weights: {
       ...DEFAULT_FITNESS_WEIGHTS,
-      collapsePenalty: 20.0,
-      survivalBonus: 2.0,
-      winReward: 8.0,
-      placementReward: 2.4,
-      wealthReward: 1.0,
+      collapsePenalty: AI_NUM.N_20,
+      survivalBonus: AI_NUM.N_2,
+      winReward: AI_NUM.N_8,
+      placementReward: AI_NUM.N_2_4,
+      wealthReward: AI_NUM.N_1,
     },
   },
 };
 
 export const FITNESS_TUNING_FIELDS = [
-  { key: 'collapsePenalty', label: 'Empire Fall Penalty', step: 0.1, min: 0, max: 40, group: 'Outcome', hint: 'Penalty applied if the empire falls or a simulation guard aborts.' },
-  { key: 'survivalBonus', label: 'Survival Bonus', step: 0.1, min: 0, max: 20, group: 'Outcome', hint: 'Flat reward when the empire survives to scoring.' },
-  { key: 'winReward', label: 'Win Reward', step: 0.1, min: 0, max: 30, group: 'Outcome', hint: 'Reward for outright winning a surviving game.' },
-  { key: 'placementReward', label: 'Placement Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for finishing high even without an outright win.' },
-  { key: 'wealthReward', label: 'Score Reward', step: 0.1, min: 0, max: 15, group: 'Outcome', hint: 'Reward for final score relative to the table mean.' },
-  { key: 'dealUtilityReward', label: 'Deal Utility Reward', step: 0.05, min: 0, max: 5, group: 'Deals', hint: 'Small reward for accepted deals that the AI evaluated as beneficial.' },
-  { key: 'dealAcceptanceReward', label: 'Useful Deal Reward', step: 0.05, min: 0, max: 5, group: 'Deals', hint: 'Small reward for accepted deals after net utility and bad-deal penalties.' },
-  { key: 'badDealPenalty', label: 'Bad Deal Penalty', step: 0.05, min: 0, max: 10, group: 'Deals', hint: 'Penalty for accepting deals the AI evaluated as negative.' },
-  { key: 'decisionQualityReward', label: 'Decision Quality Reward', step: 0.05, min: 0, max: 5, group: 'Judgment', hint: 'Reward for consequence projections that align with realized game outcomes.' },
-  { key: 'projectionErrorPenalty', label: 'Projection Error Penalty', step: 0.05, min: 0, max: 5, group: 'Judgment', hint: 'Penalty for large gaps between projected decision value and realized results.' },
+  { key: 'collapsePenalty', label: 'Empire Fall Penalty', step: AI_NUM.N_0_1, min: AI_NUM.N_0, max: AI_NUM.N_40, group: 'Outcome', hint: 'Penalty applied if the empire falls or a simulation guard aborts.' },
+  { key: 'survivalBonus', label: 'Survival Bonus', step: AI_NUM.N_0_1, min: AI_NUM.N_0, max: AI_NUM.N_20, group: 'Outcome', hint: 'Flat reward when the empire survives to scoring.' },
+  { key: 'winReward', label: 'Win Reward', step: AI_NUM.N_0_1, min: AI_NUM.N_0, max: AI_NUM.N_30, group: 'Outcome', hint: 'Reward for outright winning a surviving game.' },
+  { key: 'placementReward', label: 'Placement Reward', step: AI_NUM.N_0_1, min: AI_NUM.N_0, max: AI_NUM.N_15, group: 'Outcome', hint: 'Reward for finishing high even without an outright win.' },
+  { key: 'wealthReward', label: 'Score Reward', step: AI_NUM.N_0_1, min: AI_NUM.N_0, max: AI_NUM.N_15, group: 'Outcome', hint: 'Reward for final score relative to the table mean.' },
+  { key: 'dealUtilityReward', label: 'Deal Utility Reward', step: AI_NUM.N_0_05, min: AI_NUM.N_0, max: AI_NUM.N_5, group: 'Deals', hint: 'Small reward for accepted deals that the AI evaluated as beneficial.' },
+  { key: 'dealAcceptanceReward', label: 'Useful Deal Reward', step: AI_NUM.N_0_05, min: AI_NUM.N_0, max: AI_NUM.N_5, group: 'Deals', hint: 'Small reward for accepted deals after net utility and bad-deal penalties.' },
+  { key: 'badDealPenalty', label: 'Bad Deal Penalty', step: AI_NUM.N_0_05, min: AI_NUM.N_0, max: AI_NUM.N_10, group: 'Deals', hint: 'Penalty for accepting deals the AI evaluated as negative.' },
+  { key: 'decisionQualityReward', label: 'Decision Quality Reward', step: AI_NUM.N_0_05, min: AI_NUM.N_0, max: AI_NUM.N_5, group: 'Judgment', hint: 'Reward for consequence projections that align with realized game outcomes.' },
+  { key: 'projectionErrorPenalty', label: 'Projection Error Penalty', step: AI_NUM.N_0_05, min: AI_NUM.N_0, max: AI_NUM.N_5, group: 'Judgment', hint: 'Penalty for large gaps between projected decision value and realized results.' },
 ];
 
 function clamp(value, min, max) {
@@ -125,7 +138,7 @@ function clamp(value, min, max) {
 }
 
 function toInt(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(value, AI_NUM.N_10);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -134,71 +147,85 @@ function toNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function roundTo(value, digits = 4) {
-  const scale = 10 ** digits;
+function roundTo(value, digits = AI_NUM.N_4) {
+  const scale = AI_NUM.N_10 ** digits;
   return Math.round(value * scale) / scale;
 }
 
 function average(values) {
-  if (!values.length) return 0;
-  return values.reduce((total, value) => total + value, 0) / values.length;
+  if (!values.length) return AI_NUM.N_0;
+  return values.reduce((total, value) => total + value, AI_NUM.N_0) / values.length;
 }
 
 function variance(values) {
-  if (values.length < 2) return 0;
+  if (values.length < AI_NUM.N_2) return AI_NUM.N_0;
   const mean = average(values);
-  return average(values.map(value => (value - mean) ** 2));
+  return average(values.map(value => (value - mean) ** AI_NUM.N_2));
+}
+
+function lowerConfidenceRate(rate, samples, z = AI_NUM.N_1_28) {
+  const p = clamp(Number(rate) || AI_NUM.N_0, AI_NUM.N_0, AI_NUM.N_1);
+  const n = Math.max(AI_NUM.N_1, Number(samples) || AI_NUM.N_1);
+  return roundTo(Math.max(AI_NUM.N_0, p - z * Math.sqrt((p * (AI_NUM.N_1 - p)) / n)), AI_NUM.N_4);
 }
 
 function hashSeedString(value) {
   const text = String(value ?? '');
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index++) {
+  let hash = AI_NUM.N_2166136261;
+  for (let index = AI_NUM.N_0; index < text.length; index++) {
     hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
+    hash = Math.imul(hash, AI_NUM.N_16777619);
   }
-  return hash >>> 0;
+  return hash >>> AI_NUM.N_0;
 }
 
 function randomSeed() {
   if (globalThis.crypto?.getRandomValues) {
-    const values = new Uint32Array(1);
+    const values = new Uint32Array(AI_NUM.N_1);
     globalThis.crypto.getRandomValues(values);
-    return values[0] >>> 0;
+    return values[AI_NUM.N_0] >>> AI_NUM.N_0;
   }
-  return Math.floor(Math.random() * 4294967296) >>> 0;
+  return Math.floor(Math.random() * AI_NUM.N_4294967296) >>> AI_NUM.N_0;
+}
+
+function normalizeSeed(rawSeed) {
+  if (rawSeed == null || rawSeed === '') return randomSeed();
+  const text = String(rawSeed).trim();
+  if (!text) return randomSeed();
+  if (/^-?\d+$/.test(text)) return Number(text) >>> AI_NUM.N_0;
+  return hashSeedString(text);
 }
 
 function createRng(seed) {
-  let state = seed >>> 0;
+  let state = seed >>> AI_NUM.N_0;
   return () => {
     state += 0x6D2B79F5;
     let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    t = Math.imul(t ^ (t >>> AI_NUM.N_15), t | AI_NUM.N_1);
+    t ^= t + Math.imul(t ^ (t >>> AI_NUM.N_7), t | AI_NUM.N_61);
+    return ((t ^ (t >>> AI_NUM.N_14)) >>> AI_NUM.N_0) / AI_NUM.N_4294967296;
   };
 }
 
 function shuffle(array, rng) {
   const copy = array.slice();
-  for (let index = copy.length - 1; index > 0; index--) {
-    const swapIndex = Math.floor(rng() * (index + 1));
+  for (let index = copy.length - AI_NUM.N_1; index > AI_NUM.N_0; index--) {
+    const swapIndex = Math.floor(rng() * (index + AI_NUM.N_1));
     [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
   }
   return copy;
 }
 
 function normalizeRange(value, min, max) {
-  if (max <= min) return 0;
-  return clamp((value - min) / (max - min), 0, 1);
+  if (max <= min) return AI_NUM.N_0;
+  return clamp((value - min) / (max - min), AI_NUM.N_0, AI_NUM.N_1);
 }
 
 function euclideanDistance(left, right) {
   const length = Math.min(left.length, right.length);
-  let total = 0;
-  for (let index = 0; index < length; index++) {
-    const delta = (left[index] || 0) - (right[index] || 0);
+  let total = AI_NUM.N_0;
+  for (let index = AI_NUM.N_0; index < length; index++) {
+    const delta = (left[index] || AI_NUM.N_0) - (right[index] || AI_NUM.N_0);
     total += delta * delta;
   }
   return Math.sqrt(total);
@@ -228,7 +255,7 @@ function sanitizePlayerCounts(value, fallback = DEFAULT_TRAINING_CONFIG.playerCo
 function sanitizeDeckSizes(value, fallback = DEFAULT_TRAINING_CONFIG.deckSizes) {
   const cleaned = [...new Set(
     normalizeListInput(value)
-      .map(entry => clamp(toInt(entry, NaN), 1, 30))
+      .map(entry => clamp(toInt(entry, NaN), AI_NUM.N_1, AI_NUM.N_30))
       .filter(Number.isFinite)
   )].sort((left, right) => left - right);
   return cleaned.length ? cleaned : fallback.slice();
@@ -242,45 +269,9 @@ function normalizeFitnessWeights(rawWeights = {}, presetId = DEFAULT_TRAINING_CO
   const baseWeights = FITNESS_PROFILES[resolveFitnessPresetId(presetId)]?.weights || DEFAULT_FITNESS_WEIGHTS;
   const normalized = {};
   for (const field of FITNESS_TUNING_FIELDS) {
-    normalized[field.key] = roundTo(clamp(toNumber(rawWeights[field.key], baseWeights[field.key]), field.min, field.max), 4);
+    normalized[field.key] = roundTo(clamp(toNumber(rawWeights[field.key], baseWeights[field.key]), field.min, field.max), AI_NUM.N_4);
   }
   return normalized;
-}
-
-function freshTactics(rng) {
-  return {
-    independence: roundTo(clamp(0.85 + (rng() - 0.5) * 0.6, 0.72, 1.75)),
-    frontierAlarm: roundTo(clamp(1.2 + (rng() - 0.5) * 0.7, 0.85, 2.15)),
-    churchReserve: roundTo(clamp(1.0 + (rng() - 0.5) * 0.7, 0.7, 2.2)),
-    incumbencyGrip: roundTo(clamp(1.2 + (rng() - 0.5) * 0.7, 0.9, 2.1)),
-  };
-}
-
-function freshMetaParams(rng) {
-  const meta = {};
-  for (const [key, fallback, min, max] of META_PARAM_DEFS) {
-    const sampled = min + rng() * (max - min);
-    meta[key] = roundTo(clamp((fallback * 0.5) + (sampled * 0.5), min, max), 4);
-  }
-  return meta;
-}
-
-function mutateValue(value, rng, intensity, min, max, scale = 1) {
-  const swing = ((rng() + rng() + rng()) - 1.5) * intensity * scale;
-  return roundTo(clamp(value + swing, min, max));
-}
-
-function dominantWeightKeys(weights, count = 2) {
-  return PROFILE_WEIGHT_KEYS
-    .map(key => ({ key, value: weights[key] || 0 }))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, count)
-    .map(entry => entry.key);
-}
-
-function buildProfileSignature(weights, count = 2) {
-  const topKeys = dominantWeightKeys(weights, count);
-  return topKeys.length ? topKeys.join('+') : 'balanced';
 }
 
 function createInternalProfile(candidate) {
@@ -288,52 +279,75 @@ function createInternalProfile(candidate) {
     id: candidate.id,
     name: candidate.name,
     shortName: candidate.name,
-    theory: 'Self-play training genome',
+    theory: 'Self-play policy genome',
     summary: candidate.summary,
     source: 'emergent-trained',
     basePersonalityId: null,
-    weights: candidate.weights,
-    tactics: candidate.tactics,
-    meta: candidate.meta,
+    policy: candidate.policy,
     training: candidate.training,
   });
 }
 
-function buildChampionName(candidate, rank) {
-  const [primaryKey, secondaryKey] = dominantWeightKeys(candidate.weights, 2);
-  const epithets = {
-    wealth: 'Score',
-    land: 'Estate',
-    frontier: 'Aegis',
-    capital: 'Palace',
-    throne: 'Crown',
-    church: 'Synod',
-    loyalty: 'Accord',
-    retaliation: 'Vendetta',
-    selfAppointment: 'Patron',
-    mercenary: 'Iron',
+function rankRecordKeys(record, labels, count = AI_NUM.N_2, positiveOnly = true) {
+  return Object.entries(record || {})
+    .filter(([, value]) => Number.isFinite(Number(value)))
+    .filter(([, value]) => !positiveOnly || Number(value) > AI_NUM.N_0)
+    .sort((left, right) => Math.abs(Number(right[AI_NUM.N_1])) - Math.abs(Number(left[AI_NUM.N_1])))
+    .slice(AI_NUM.N_0, count)
+    .map(([key]) => labels[key] || key);
+}
+
+function getPolicySignature(policyInput, count = AI_NUM.N_2) {
+  const policy = normalizePolicyGenome(policyInput);
+  const actionLabels = {
+    appointment: 'Court',
     revocation: 'Edict',
+    deal: 'Accord',
+    land_purchase: 'Estate',
+    church_gift: 'Synod',
+    recruit: 'Levy',
+    dismiss: 'Reserve',
+    mercenary_hire: 'Iron',
+    confirm_court: 'Tempo',
+    orders: 'Command',
+    defender_reward: 'Aegis',
+    title_assignment: 'Crown',
   };
-  const primary = epithets[primaryKey] || 'Emergent';
-  const secondary = epithets[secondaryKey] || 'Pattern';
+  const featureLabels = {
+    survival: 'Aegis',
+    economic: 'Coin',
+    political: 'Palace',
+    military: 'Spear',
+    diplomacy: 'Accord',
+    denial: 'Denial',
+    flexibility: 'Reserve',
+    endgame: 'Endgame',
+    candidateAlignment: 'Crown',
+    frontierCommitment: 'Frontier',
+    capitalCommitment: 'Capital',
+    routeSafety: 'Route',
+    goldPressure: 'Treasury',
+    restorationPressure: 'Restoration',
+    supporterReward: 'Patron',
+    rivalSuppression: 'Rival',
+  };
+  const actions = rankRecordKeys(policy.actionPriors, actionLabels, count);
+  const features = rankRecordKeys(policy.featureWeights, featureLabels, count);
+  return [...actions, ...features].slice(AI_NUM.N_0, count);
+}
+
+function buildChampionName(candidate, rank) {
+  const [primary = 'Policy', secondary = 'Pattern'] = getPolicySignature(candidate.policy, AI_NUM.N_2);
   return `${primary} ${secondary} Mk ${rank}`;
 }
 
 function createNeutralCandidate(rng, index) {
-  const weights = {};
-  for (const key of PROFILE_WEIGHT_KEYS) {
-    const sampled = WEIGHT_MIN + rng() * (WEIGHT_MAX - WEIGHT_MIN);
-    weights[key] = roundTo(clamp((1.0 * 0.4) + (sampled * 0.6), WEIGHT_MIN, WEIGHT_MAX));
-  }
-
   const candidate = {
-    id: `cand-neut-${index}-${Math.floor(rng() * 1e9)}`,
-    name: `Emergent Seed ${index + 1}`,
+    id: `cand-neut-${index}-${Math.floor(rng() * AI_NUM.N_1000000000)}`,
+    name: `Emergent Seed ${index + AI_NUM.N_1}`,
     summary: '',
     basePersonalityId: null,
-    weights,
-    tactics: freshTactics(rng),
-    meta: freshMetaParams(rng),
+    policy: createFreshPolicyGenome(rng),
     training: {},
   };
   candidate.profile = createInternalProfile(candidate);
@@ -346,64 +360,32 @@ function cloneCandidate(candidate, generation, suffix) {
     name: candidate.name,
     summary: candidate.summary,
     basePersonalityId: null,
-    weights: { ...candidate.weights },
-    tactics: { ...candidate.tactics },
-    meta: { ...(candidate.meta || DEFAULT_META_PARAMS) },
+    policy: normalizePolicyGenome(candidate.policy),
     training: { ...(candidate.training || {}), generation },
   };
   clone.profile = createInternalProfile(clone);
   return clone;
 }
 
-function crossoverCandidates(parentA, parentB, rng, generation, index, mutationScale = 1) {
-  const weights = {};
-  for (const key of PROFILE_WEIGHT_KEYS) {
-    const blend = 0.3 + (rng() * 0.4);
-    const mixed = (parentA.weights[key] * blend) + (parentB.weights[key] * (1 - blend));
-    weights[key] = mutateValue(mixed, rng, 0.36, WEIGHT_MIN, WEIGHT_MAX, mutationScale);
-  }
+function crossoverCandidates(parentA, parentB, rng, generation, index, mutationScale = AI_NUM.N_1) {
+  const policy = crossoverPolicyGenomes(parentA.policy, parentB.policy, rng, mutationScale);
 
-  const tactics = {};
-  for (const key of PROFILE_TACTIC_KEYS) {
-    const source = rng() < 0.5 ? parentA.tactics[key] : parentB.tactics[key];
-    tactics[key] = mutateValue(source, rng, 0.14, TACTIC_MIN, TACTIC_MAX, mutationScale);
-  }
-
-  const meta = {};
-  for (const [key, , min, max, mutation] of META_PARAM_DEFS) {
-    const source = rng() < 0.5
-      ? (parentA.meta?.[key] ?? DEFAULT_META_PARAMS[key])
-      : (parentB.meta?.[key] ?? DEFAULT_META_PARAMS[key]);
-    meta[key] = mutateValue(source, rng, mutation, min, max, mutationScale);
-  }
-
-  const dominantParent = rng() < 0.5 ? parentA : parentB;
+  const dominantParent = rng() < AI_NUM.N_0_5 ? parentA : parentB;
   const candidate = {
-    id: `child-${generation}-${index}-${Math.floor(rng() * 1e9)}`,
+    id: `child-${generation}-${index}-${Math.floor(rng() * AI_NUM.N_1000000000)}`,
     name: dominantParent.name,
     summary: '',
     basePersonalityId: null,
-    weights,
-    tactics,
-    meta,
+    policy,
     training: { generation },
   };
   candidate.profile = createInternalProfile(candidate);
   return candidate;
 }
 
-function mutateCandidate(parent, rng, generation, index, mutationScale = 1) {
+function mutateCandidate(parent, rng, generation, index, mutationScale = AI_NUM.N_1) {
   const candidate = cloneCandidate(parent, generation, `m${index}`);
-  for (const key of PROFILE_WEIGHT_KEYS) {
-    candidate.weights[key] = mutateValue(candidate.weights[key], rng, 0.3, WEIGHT_MIN, WEIGHT_MAX, mutationScale);
-  }
-  for (const key of PROFILE_TACTIC_KEYS) {
-    candidate.tactics[key] = mutateValue(candidate.tactics[key], rng, 0.12, TACTIC_MIN, TACTIC_MAX, mutationScale);
-  }
-  for (const [key, , min, max, mutation] of META_PARAM_DEFS) {
-    const source = candidate.meta?.[key] ?? DEFAULT_META_PARAMS[key];
-    candidate.meta[key] = mutateValue(source, rng, mutation, min, max, mutationScale);
-  }
+  candidate.policy = mutatePolicyGenome(candidate.policy, rng, mutationScale);
   candidate.profile = createInternalProfile(candidate);
   return candidate;
 }
@@ -414,17 +396,17 @@ function buildInitialPopulation(config, rng) {
 
 function createStaticProfile(id, name, summary, weightOverrides = {}, tacticOverrides = {}, metaOverrides = {}) {
   const weights = Object.fromEntries(
-    PROFILE_WEIGHT_KEYS.map(key => [key, roundTo(clamp(weightOverrides[key] ?? 1.0, WEIGHT_MIN, WEIGHT_MAX))])
+    PROFILE_WEIGHT_KEYS.map(key => [key, roundTo(clamp(weightOverrides[key] ?? AI_NUM.N_1, WEIGHT_MIN, WEIGHT_MAX))])
   );
   const tactics = {
-    independence: roundTo(clamp(tacticOverrides.independence ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
-    frontierAlarm: roundTo(clamp(tacticOverrides.frontierAlarm ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
-    churchReserve: roundTo(clamp(tacticOverrides.churchReserve ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
-    incumbencyGrip: roundTo(clamp(tacticOverrides.incumbencyGrip ?? 1.0, TACTIC_MIN, TACTIC_MAX)),
+    independence: roundTo(clamp(tacticOverrides.independence ?? AI_NUM.N_1, TACTIC_MIN, TACTIC_MAX)),
+    frontierAlarm: roundTo(clamp(tacticOverrides.frontierAlarm ?? AI_NUM.N_1, TACTIC_MIN, TACTIC_MAX)),
+    churchReserve: roundTo(clamp(tacticOverrides.churchReserve ?? AI_NUM.N_1, TACTIC_MIN, TACTIC_MAX)),
+    incumbencyGrip: roundTo(clamp(tacticOverrides.incumbencyGrip ?? AI_NUM.N_1, TACTIC_MIN, TACTIC_MAX)),
   };
   const meta = {};
   for (const [key, fallback, min, max] of META_PARAM_DEFS) {
-    meta[key] = roundTo(clamp(metaOverrides[key] ?? fallback, min, max), 4);
+    meta[key] = roundTo(clamp(metaOverrides[key] ?? fallback, min, max), AI_NUM.N_4);
   }
   return normalizeAiProfile({
     id,
@@ -437,6 +419,7 @@ function createStaticProfile(id, name, summary, weightOverrides = {}, tacticOver
     weights,
     tactics,
     meta,
+    policy: normalizePolicyGenome(metaOverrides.policy || {}),
   });
 }
 
@@ -448,9 +431,9 @@ const SCRIPTED_OPPONENTS = [
       'scripted-always-coup-leader',
       'Coup Leader',
       'Pushes hard on capital leverage and throne pressure.',
-      { frontier: 0.3, capital: 4.2, throne: 4.4, loyalty: 0.2, mercenary: 4.0, retaliation: 2.6, revocation: 2.0 },
-      { independence: 1.6, frontierAlarm: 0.7, incumbencyGrip: 0.8 },
-      { supportTemperature: 0.05, orderTemperature: 0.05 }
+      { frontier: AI_NUM.N_0_3, capital: AI_NUM.N_4_2, throne: AI_NUM.N_4_4, loyalty: AI_NUM.N_0_2, mercenary: AI_NUM.N_4, retaliation: AI_NUM.N_2_6, revocation: AI_NUM.N_2 },
+      { independence: AI_NUM.N_1_6, frontierAlarm: AI_NUM.N_0_7, incumbencyGrip: AI_NUM.N_0_8 },
+      { supportTemperature: AI_NUM.N_0_05, orderTemperature: AI_NUM.N_0_05 }
     ),
   },
   {
@@ -460,8 +443,8 @@ const SCRIPTED_OPPONENTS = [
       'scripted-free-rider',
       'Free Rider',
       'Optimizes for private gain while under-contributing to the frontier.',
-      { wealth: 3.5, land: 3.8, frontier: 0.2, capital: 2.8, throne: 2.7, loyalty: 0.2, mercenary: 2.5 },
-      { independence: 1.4, frontierAlarm: 0.55, churchReserve: 1.2 }
+      { wealth: AI_NUM.N_3_5, land: AI_NUM.N_3_8, frontier: AI_NUM.N_0_2, capital: AI_NUM.N_2_8, throne: AI_NUM.N_2_7, loyalty: AI_NUM.N_0_2, mercenary: AI_NUM.N_2_5 },
+      { independence: AI_NUM.N_1_4, frontierAlarm: AI_NUM.N_0_55, churchReserve: AI_NUM.N_1_2 }
     ),
   },
   {
@@ -471,8 +454,8 @@ const SCRIPTED_OPPONENTS = [
       'scripted-frontier-defender',
       'Frontier Defender',
       'Over-indexes on imperial defense and stabilizing the incumbent.',
-      { frontier: 4.4, loyalty: 2.8, capital: 0.6, throne: 0.5, wealth: 0.8, mercenary: 2.2 },
-      { independence: 0.8, frontierAlarm: 2.1, incumbencyGrip: 1.8 }
+      { frontier: AI_NUM.N_4_4, loyalty: AI_NUM.N_2_8, capital: AI_NUM.N_0_6, throne: AI_NUM.N_0_5, wealth: AI_NUM.N_0_8, mercenary: AI_NUM.N_2_2 },
+      { independence: AI_NUM.N_0_8, frontierAlarm: AI_NUM.N_2_1, incumbencyGrip: AI_NUM.N_1_8 }
     ),
   },
   {
@@ -482,9 +465,9 @@ const SCRIPTED_OPPONENTS = [
       'scripted-land-buyer',
       'Land Buyer',
       'Treats the empire as a land rush and buys aggressively.',
-      { wealth: 2.8, land: 4.4, frontier: 0.7, capital: 1.4, throne: 1.1, loyalty: 0.8 },
-      { churchReserve: 1.6 },
-      { landPurchaseThreshold: -0.6 }
+      { wealth: AI_NUM.N_2_8, land: AI_NUM.N_4_4, frontier: AI_NUM.N_0_7, capital: AI_NUM.N_1_4, throne: AI_NUM.N_1_1, loyalty: AI_NUM.N_0_8 },
+      { churchReserve: AI_NUM.N_1_6 },
+      { landPurchaseThreshold: -AI_NUM.N_0_6 }
     ),
   },
   {
@@ -494,9 +477,9 @@ const SCRIPTED_OPPONENTS = [
       'scripted-church-gifter',
       'Church Gifter',
       'Converts private themes into church leverage whenever possible.',
-      { church: 4.4, loyalty: 2.0, land: 0.5, wealth: 0.8, frontier: 1.1, capital: 0.9, throne: 0.8 },
-      { churchReserve: 0.55 },
-      { churchGiftThreshold: 0.15 }
+      { church: AI_NUM.N_4_4, loyalty: AI_NUM.N_2, land: AI_NUM.N_0_5, wealth: AI_NUM.N_0_8, frontier: AI_NUM.N_1_1, capital: AI_NUM.N_0_9, throne: AI_NUM.N_0_8 },
+      { churchReserve: AI_NUM.N_0_55 },
+      { churchGiftThreshold: AI_NUM.N_0_15 }
     ),
   },
   {
@@ -506,8 +489,8 @@ const SCRIPTED_OPPONENTS = [
       'scripted-punish-revocations',
       'Revocation Punisher',
       'Treats court aggression as a threat and leans into retaliation.',
-      { retaliation: 4.2, revocation: 3.4, capital: 2.5, throne: 2.6, loyalty: 0.5, frontier: 0.8 },
-      { independence: 1.5 }
+      { retaliation: AI_NUM.N_4_2, revocation: AI_NUM.N_3_4, capital: AI_NUM.N_2_5, throne: AI_NUM.N_2_6, loyalty: AI_NUM.N_0_5, frontier: AI_NUM.N_0_8 },
+      { independence: AI_NUM.N_1_5 }
     ),
   },
   {
@@ -517,9 +500,9 @@ const SCRIPTED_OPPONENTS = [
       'scripted-support-incumbent',
       'Incumbent Supporter',
       'Stabilizes the existing Basileus and avoids opportunistic coups.',
-      { loyalty: 3.8, frontier: 2.6, capital: 0.5, throne: 0.4, selfAppointment: 0.5, retaliation: 0.6 },
-      { independence: 0.7, incumbencyGrip: 2.2 },
-      { supportTemperature: 0.05 }
+      { loyalty: AI_NUM.N_3_8, frontier: AI_NUM.N_2_6, capital: AI_NUM.N_0_5, throne: AI_NUM.N_0_4, selfAppointment: AI_NUM.N_0_5, retaliation: AI_NUM.N_0_6 },
+      { independence: AI_NUM.N_0_7, incumbencyGrip: AI_NUM.N_2_2 },
+      { supportTemperature: AI_NUM.N_0_05 }
     ),
   },
   {
@@ -529,9 +512,9 @@ const SCRIPTED_OPPONENTS = [
       'scripted-support-richest-rival',
       'Richest Rival Supporter',
       'Acts as a capital kingmaker behind the strongest non-incumbent challenger.',
-      { capital: 3.8, throne: 3.4, loyalty: 0.6, frontier: 0.5, wealth: 1.0, mercenary: 2.8 },
-      { independence: 1.5, frontierAlarm: 0.6 },
-      { supportTemperature: 0.05, orderTemperature: 0.05 }
+      { capital: AI_NUM.N_3_8, throne: AI_NUM.N_3_4, loyalty: AI_NUM.N_0_6, frontier: AI_NUM.N_0_5, wealth: AI_NUM.N_1, mercenary: AI_NUM.N_2_8 },
+      { independence: AI_NUM.N_1_5, frontierAlarm: AI_NUM.N_0_6 },
+      { supportTemperature: AI_NUM.N_0_05, orderTemperature: AI_NUM.N_0_05 }
     ),
   },
   {
@@ -541,9 +524,9 @@ const SCRIPTED_OPPONENTS = [
       'scripted-deal-broker',
       'Deal Broker',
       'Actively trades gold, protection, and support when both sides can profit.',
-      { wealth: 2.4, land: 1.8, frontier: 2.0, capital: 2.3, throne: 2.0, loyalty: 3.2, retaliation: 0.8, revocation: 0.8 },
-      { independence: 0.9, frontierAlarm: 1.2, incumbencyGrip: 1.1 },
-      { dealProposalThreshold: 0.25, dealAcceptanceThreshold: -0.15, dealCounterThreshold: -1.4, dealTemperature: 0.2 }
+      { wealth: AI_NUM.N_2_4, land: AI_NUM.N_1_8, frontier: AI_NUM.N_2, capital: AI_NUM.N_2_3, throne: AI_NUM.N_2, loyalty: AI_NUM.N_3_2, retaliation: AI_NUM.N_0_8, revocation: AI_NUM.N_0_8 },
+      { independence: AI_NUM.N_0_9, frontierAlarm: AI_NUM.N_1_2, incumbencyGrip: AI_NUM.N_1_1 },
+      { dealCounterThreshold: -AI_NUM.N_1_4 }
     ),
   },
   {
@@ -553,18 +536,18 @@ const SCRIPTED_OPPONENTS = [
       'scripted-hard-bargainer',
       'Hard Bargainer',
       'Uses deals opportunistically and rejects lopsided obligations.',
-      { wealth: 3.2, land: 2.8, frontier: 0.9, capital: 2.6, throne: 2.8, loyalty: 0.6, retaliation: 2.4, revocation: 2.1 },
-      { independence: 1.7, frontierAlarm: 0.8, incumbencyGrip: 0.9 },
-      { dealProposalThreshold: 0.65, dealAcceptanceThreshold: 0.65, dealCounterThreshold: -0.25, dealRiskTolerance: 0.2, dealTemperature: 0.1 }
+      { wealth: AI_NUM.N_3_2, land: AI_NUM.N_2_8, frontier: AI_NUM.N_0_9, capital: AI_NUM.N_2_6, throne: AI_NUM.N_2_8, loyalty: AI_NUM.N_0_6, retaliation: AI_NUM.N_2_4, revocation: AI_NUM.N_2_1 },
+      { independence: AI_NUM.N_1_7, frontierAlarm: AI_NUM.N_0_8, incumbencyGrip: AI_NUM.N_0_9 },
+      { dealCounterThreshold: -AI_NUM.N_0_25, dealRiskTolerance: AI_NUM.N_0_2 }
     ),
   },
 ];
 
 function buildEmergentCentroids() {
   const centroids = [];
-  for (let index = 0; index < 4; index++) {
+  for (let index = AI_NUM.N_0; index < AI_NUM.N_4; index++) {
     const rng = createRng(hashSeedString(`emergent-centroid:${index}`));
-    centroids.push(createNeutralCandidate(rng, 5000 + index));
+    centroids.push(createNeutralCandidate(rng, AI_NUM.N_5000 + index));
   }
   return centroids.map((candidate, index) => ({
     id: `cluster_${index}`,
@@ -574,15 +557,29 @@ function buildEmergentCentroids() {
 
 function encodeGenomeVector(candidateLike) {
   const vector = [];
-  for (const key of PROFILE_WEIGHT_KEYS) {
-    vector.push(normalizeRange(candidateLike.weights?.[key] ?? 1, WEIGHT_MIN, WEIGHT_MAX));
-  }
-  for (const key of PROFILE_TACTIC_KEYS) {
-    vector.push(normalizeRange(candidateLike.tactics?.[key] ?? 1, TACTIC_MIN, TACTIC_MAX));
-  }
-  for (const [key, fallback, min, max] of META_PARAM_DEFS) {
-    vector.push(normalizeRange(candidateLike.meta?.[key] ?? fallback, min, max));
-  }
+  const policy = normalizePolicyGenome(candidateLike.policy || {});
+  for (const key of POLICY_ACTION_KEYS) vector.push(normalizeRange(policy.actionPriors[key] ?? AI_NUM.N_0, -AI_NUM.N_6, AI_NUM.N_6));
+  for (const key of POLICY_PHASE_KEYS) vector.push(normalizeRange(policy.phasePriors[key] ?? AI_NUM.N_0, -AI_NUM.N_4, AI_NUM.N_4));
+  for (const key of POLICY_FEATURE_KEYS) vector.push(normalizeRange(policy.featureWeights[key] ?? AI_NUM.N_0, -AI_NUM.N_4, AI_NUM.N_4));
+  for (const key of POLICY_IMPACT_KEYS) vector.push(normalizeRange(policy.impactWeights[key] ?? AI_NUM.N_0, -AI_NUM.N_3, AI_NUM.N_3));
+  for (const key of POLICY_DEAL_SCORE_KEYS) vector.push(normalizeRange(policy.dealScoreWeights[key] ?? AI_NUM.N_0, -AI_NUM.N_4, AI_NUM.N_4));
+  for (const key of POLICY_DEAL_STRATEGIC_KEYS) vector.push(normalizeRange(policy.dealStrategicWeights[key] ?? AI_NUM.N_0, -AI_NUM.N_4, AI_NUM.N_4));
+  vector.push(normalizeRange(policy.scoreTemperature, AI_NUM.N_0_05, AI_NUM.N_3));
+  vector.push(normalizeRange(policy.actionThreshold, -AI_NUM.N_6, AI_NUM.N_6));
+  vector.push(normalizeRange(policy.maxCourtActionsPerRound, AI_NUM.N_1, AI_NUM.N_24));
+  vector.push(normalizeRange(policy.maxActionRepeatsPerKind, AI_NUM.N_1, AI_NUM.N_10));
+  vector.push(normalizeRange(policy.baseScoreWeight, -AI_NUM.N_2, AI_NUM.N_2));
+  vector.push(normalizeRange(policy.dealCounterpartySurplusCap, AI_NUM.N_0, AI_NUM.N_5));
+  vector.push(normalizeRange(policy.dealSingleTemplateLimit, AI_NUM.N_4, AI_NUM.N_36));
+  vector.push(normalizeRange(policy.dealComboAskLimit, AI_NUM.N_1, AI_NUM.N_7));
+  vector.push(normalizeRange(policy.dealComboGiveLimit, AI_NUM.N_1, AI_NUM.N_5));
+  vector.push(normalizeRange(policy.dealTotalPayloadLimit, AI_NUM.N_8, AI_NUM.N_56));
+  vector.push(normalizeRange(policy.dealIntentPayloadLimit, AI_NUM.N_4, AI_NUM.N_24));
+  vector.push(normalizeRange(policy.dealProposalOptionLimit, AI_NUM.N_1, AI_NUM.N_12));
+  vector.push(normalizeRange(policy.dealCounterOptionLimit, AI_NUM.N_1, AI_NUM.N_8));
+  vector.push(normalizeRange(policy.orderPlanLimit, AI_NUM.N_8, AI_NUM.N_1024));
+  vector.push(normalizeRange(policy.titleAssignmentLimit, AI_NUM.N_4, AI_NUM.N_1024));
+  vector.push(normalizeRange(policy.mercenaryHireLimit, AI_NUM.N_1, AI_NUM.N_12));
   return vector;
 }
 
@@ -607,22 +604,23 @@ function getEmergentBucket(profile, prefix = 'emergent') {
 }
 
 function getGenerationBucketTag(generation) {
-  return `hof:generation_bucket_${Math.max(0, Math.floor((Math.max(1, generation) - 1) / 10))}`;
+  return `hof:generation_bucket_${Math.max(AI_NUM.N_0, Math.floor((Math.max(AI_NUM.N_1, generation) - AI_NUM.N_1) / AI_NUM.N_10))}`;
 }
 
 function trainingStage(generation, totalGenerations) {
-  const progress = (generation - 1) / Math.max(1, totalGenerations - 1);
-  if (progress < 0.34) return 'early';
-  if (progress < 0.67) return 'mid';
+  const progress = (generation - AI_NUM.N_1) / Math.max(AI_NUM.N_1, totalGenerations - AI_NUM.N_1);
+  if (progress < AI_NUM.N_0_34) return 'early';
+  if (progress < AI_NUM.N_0_67) return 'mid';
   return 'late';
 }
 
 function getPatternForSuite(scope, stage) {
-  if (scope === 'validation') return ['scripted', 'emergent', 'hof'];
-  if (scope === 'holdout') return ['scripted', 'hof', 'emergent', 'scripted'];
+  if (scope === 'validation') return ['scripted', 'emergent', 'hof', 'worst'];
+  if (scope === 'holdout') return ['scripted', 'hof', 'worst', 'emergent', 'scripted'];
+  if (scope === 'audit') return ['scripted', 'emergent', 'hof', 'worst', 'emergent'];
   if (stage === 'early') return ['population', 'emergent', 'scripted'];
   if (stage === 'mid') return ['population', 'scripted', 'emergent', 'hof'];
-  return ['population', 'hof', 'scripted', 'emergent'];
+  return ['population', 'hof', 'worst', 'scripted', 'emergent'];
 }
 
 function createFreshEmergentProfile(seedKey) {
@@ -659,9 +657,13 @@ function buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex) 
     };
   }
 
+  if (source === 'worst') {
+    return { source, offset: (matchIndex * AI_NUM.N_11) + (slotIndex * AI_NUM.N_17) };
+  }
+
   return {
     source,
-    offset: (matchIndex * 7) + (slotIndex * 13),
+    offset: (matchIndex * AI_NUM.N_7) + (slotIndex * AI_NUM.N_13),
   };
 }
 
@@ -669,17 +671,17 @@ function buildEvaluationSuite(config, scope, generation, matchCount, stage) {
   const pattern = getPatternForSuite(scope, stage);
   const playerCounts = config.playerCounts?.length ? config.playerCounts : [config.playerCount];
   const deckSizes = config.deckSizes?.length ? config.deckSizes : [config.deckSize];
-  const scenarioCount = Math.max(1, playerCounts.length * deckSizes.length);
-  const scenarioOffset = (generation + (scope === 'validation' ? 1 : scope === 'holdout' ? 2 : 0)) % scenarioCount;
+  const scenarioCount = Math.max(AI_NUM.N_1, playerCounts.length * deckSizes.length);
+  const scenarioOffset = (generation + (scope === 'validation' ? AI_NUM.N_1 : scope === 'holdout' ? AI_NUM.N_2 : scope === 'audit' ? AI_NUM.N_3 : AI_NUM.N_0)) % scenarioCount;
   const suite = [];
 
-  for (let matchIndex = 0; matchIndex < matchCount; matchIndex++) {
+  for (let matchIndex = AI_NUM.N_0; matchIndex < matchCount; matchIndex++) {
     const scenarioIndex = (matchIndex + scenarioOffset) % scenarioCount;
     const playerCount = playerCounts[scenarioIndex % playerCounts.length];
     const deckSize = deckSizes[Math.floor(scenarioIndex / playerCounts.length) % deckSizes.length];
-    const opponentCount = Math.max(0, playerCount - 1);
+    const opponentCount = Math.max(AI_NUM.N_0, playerCount - AI_NUM.N_1);
     const descriptors = [];
-    for (let slotIndex = 0; slotIndex < opponentCount; slotIndex++) {
+    for (let slotIndex = AI_NUM.N_0; slotIndex < opponentCount; slotIndex++) {
       const source = pattern[(matchIndex + slotIndex) % pattern.length];
       descriptors.push(buildSuiteDescriptor(source, scope, generation, matchIndex, slotIndex));
     }
@@ -700,7 +702,7 @@ function buildEvaluationSuite(config, scope, generation, matchCount, stage) {
 
 function pickPopulationOpponent(population, focalId, offset) {
   if (!population.length) return null;
-  for (let step = 0; step < population.length; step++) {
+  for (let step = AI_NUM.N_0; step < population.length; step++) {
     const candidate = population[(offset + step) % population.length];
     if (candidate.id === focalId) continue;
     return {
@@ -742,9 +744,23 @@ function materializeOpponentDescriptor(descriptor, candidate, population, hallOf
     };
   }
 
+  if (descriptor.source === 'worst') {
+    const worstBucket = candidate.training?.worstMatchup?.bucket || candidate.profile?.training?.worstMatchup?.bucket || '';
+    const scripted = SCRIPTED_OPPONENTS.find(bot => bot.bucket === worstBucket || bot.bucket.includes(worstBucket));
+    if (scripted) return { bucket: scripted.bucket, profile: scripted.profile };
+    if (String(worstBucket).startsWith('hof:')) {
+      return pickHallOfFameOpponent(hallOfFame, descriptor.offset) || {
+        bucket: getEmergentBucket(NEUTRAL_PROFILE),
+        profile: createFreshEmergentProfile(`worst-hof-fallback:${descriptor.offset}`),
+      };
+    }
+    const profile = createFreshEmergentProfile(`worst:${worstBucket || 'unknown'}:${descriptor.offset}`);
+    return { bucket: getEmergentBucket(profile, 'worst'), profile };
+  }
+
   return {
     bucket: getEmergentBucket(NEUTRAL_PROFILE),
-    profile: createFreshEmergentProfile(`descriptor-fallback:${descriptor.source}:${descriptor.offset || 0}`),
+    profile: createFreshEmergentProfile(`descriptor-fallback:${descriptor.source}:${descriptor.offset || AI_NUM.N_0}`),
   };
 }
 
@@ -773,14 +789,14 @@ function computePlacementScore(game, playerMetric) {
   const orderedScores = game.playerMetrics.map(metric => metric.finalScore ?? metric.finalWealth).sort((left, right) => right - left);
   const playerScore = playerMetric.finalScore ?? playerMetric.finalWealth;
   const placement = orderedScores.findIndex(score => score === playerScore);
-  if (placement === -1) return 0;
-  return (game.playerMetrics.length - placement - 1) / Math.max(1, game.playerMetrics.length - 1);
+  if (placement === -AI_NUM.N_1) return AI_NUM.N_0;
+  return (game.playerMetrics.length - placement - AI_NUM.N_1) / Math.max(AI_NUM.N_1, game.playerMetrics.length - AI_NUM.N_1);
 }
 
 function computeScoreRatio(game, playerMetric) {
   const meanScore = average(game.playerMetrics.map(metric => metric.finalScore ?? metric.finalWealth));
   const playerScore = playerMetric.finalScore ?? playerMetric.finalWealth;
-  return meanScore > 0 ? playerScore / meanScore : 1;
+  return meanScore > AI_NUM.N_0 ? playerScore / meanScore : AI_NUM.N_1;
 }
 
 function computeWealthRatio(game, playerMetric) {
@@ -791,36 +807,36 @@ function getWarContribution(war, playerId) {
   const contributions = Array.isArray(war?.contributions) ? war.contributions : [];
   return contributions
     .filter(entry => entry.playerId === playerId)
-    .reduce((total, entry) => total + Math.max(0, Number(entry.troops) || 0), 0);
+    .reduce((total, entry) => total + Math.max(AI_NUM.N_0, Number(entry.troops) || AI_NUM.N_0), AI_NUM.N_0);
 }
 
 function computeCollapseDefenseProfile(game, playerMetric) {
-  const wars = Array.isArray(game?.wars) ? game.wars.filter(war => (Number(war?.strength) || 0) > 0) : [];
+  const wars = Array.isArray(game?.wars) ? game.wars.filter(war => (Number(war?.strength) || AI_NUM.N_0) > AI_NUM.N_0) : [];
   if (!wars.length) {
     return {
-      defenseCoverage: 0,
-      fatalCoverage: 0,
-      commitmentRate: 0,
+      defenseCoverage: AI_NUM.N_0,
+      fatalCoverage: AI_NUM.N_0,
+      commitmentRate: AI_NUM.N_0,
     };
   }
 
-  const totalThreat = wars.reduce((total, war) => total + Math.max(0, Number(war.strength) || 0), 0);
+  const totalThreat = wars.reduce((total, war) => total + Math.max(AI_NUM.N_0, Number(war.strength) || AI_NUM.N_0), AI_NUM.N_0);
   const defendedThreat = wars.reduce((total, war) => {
-    const threat = Math.max(0, Number(war.strength) || 0);
+    const threat = Math.max(AI_NUM.N_0, Number(war.strength) || AI_NUM.N_0);
     const contribution = getWarContribution(war, playerMetric.playerId);
     return total + Math.min(contribution, threat);
-  }, 0);
-  const fatalWar = wars.find(war => Boolean(war.reachedCPL)) || wars[wars.length - 1];
-  const fatalThreat = Math.max(0, Number(fatalWar?.strength) || 0);
-  const fatalContribution = fatalWar ? getWarContribution(fatalWar, playerMetric.playerId) : 0;
-  const totalTroopsCommitted = Math.max(0, Number(playerMetric.frontierTroops) || 0) + Math.max(0, Number(playerMetric.capitalTroops) || 0);
+  }, AI_NUM.N_0);
+  const fatalWar = wars.find(war => Boolean(war.reachedCPL)) || wars[wars.length - AI_NUM.N_1];
+  const fatalThreat = Math.max(AI_NUM.N_0, Number(fatalWar?.strength) || AI_NUM.N_0);
+  const fatalContribution = fatalWar ? getWarContribution(fatalWar, playerMetric.playerId) : AI_NUM.N_0;
+  const totalTroopsCommitted = Math.max(AI_NUM.N_0, Number(playerMetric.frontierTroops) || AI_NUM.N_0) + Math.max(AI_NUM.N_0, Number(playerMetric.capitalTroops) || AI_NUM.N_0);
 
   return {
-    defenseCoverage: totalThreat > 0 ? defendedThreat / totalThreat : 0,
-    fatalCoverage: fatalThreat > 0 ? Math.min(fatalContribution, fatalThreat) / fatalThreat : 0,
-    commitmentRate: totalTroopsCommitted > 0
-      ? Math.max(0, Number(playerMetric.frontierTroops) || 0) / totalTroopsCommitted
-      : 0,
+    defenseCoverage: totalThreat > AI_NUM.N_0 ? defendedThreat / totalThreat : AI_NUM.N_0,
+    fatalCoverage: fatalThreat > AI_NUM.N_0 ? Math.min(fatalContribution, fatalThreat) / fatalThreat : AI_NUM.N_0,
+    commitmentRate: totalTroopsCommitted > AI_NUM.N_0
+      ? Math.max(AI_NUM.N_0, Number(playerMetric.frontierTroops) || AI_NUM.N_0) / totalTroopsCommitted
+      : AI_NUM.N_0,
   };
 }
 
@@ -829,16 +845,16 @@ function computeCollapseFitness(game, playerMetric, fitnessWeights) {
 
   const collapse = computeCollapseDefenseProfile(game, playerMetric);
   const defenseSignal = clamp(
-    (collapse.defenseCoverage * 0.5) +
-    (collapse.fatalCoverage * 0.35) +
-    (collapse.commitmentRate * 0.15),
-    0,
-    1
+    (collapse.defenseCoverage * AI_NUM.N_0_5) +
+    (collapse.fatalCoverage * AI_NUM.N_0_35) +
+    (collapse.commitmentRate * AI_NUM.N_0_15),
+    AI_NUM.N_0,
+    AI_NUM.N_1
   );
-  const defenseCredit = defenseSignal * fitnessWeights.collapsePenalty * 0.65;
-  const freeRidePenalty = (1 - defenseSignal) * fitnessWeights.collapsePenalty * 0.2;
+  const defenseCredit = defenseSignal * fitnessWeights.collapsePenalty * AI_NUM.N_0_65;
+  const freeRidePenalty = (AI_NUM.N_1 - defenseSignal) * fitnessWeights.collapsePenalty * AI_NUM.N_0_2;
 
-  return roundTo(-fitnessWeights.collapsePenalty + defenseCredit - freeRidePenalty, 4);
+  return roundTo(-fitnessWeights.collapsePenalty + defenseCredit - freeRidePenalty, AI_NUM.N_4);
 }
 
 function computeFitness(game, playerMetric, fitnessWeights) {
@@ -847,26 +863,26 @@ function computeFitness(game, playerMetric, fitnessWeights) {
   }
 
   const placementScore = computePlacementScore(game, playerMetric);
-  const winnerBonus = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
+  const winnerBonus = playerMetric.isWinner ? AI_NUM.N_1 / Math.max(AI_NUM.N_1, game.winners.length) : AI_NUM.N_0;
   const scoreRatio = computeScoreRatio(game, playerMetric);
-  const dealUtility = clamp(Number(playerMetric.dealUtility) || 0, -8, 8);
-  const badAcceptedDeals = Math.max(0, Number(playerMetric.badAcceptedDeals) || 0);
-  const dealAttempts = Math.max(1, (Number(playerMetric.dealsProposed) || 0) + (Number(playerMetric.dealsCountered) || 0));
-  const usefulDealRate = clamp(((Number(playerMetric.dealsAccepted) || 0) - badAcceptedDeals) / dealAttempts, 0, 1);
-  const decisionQuality = clamp(Number(playerMetric.decisionQuality) || 0, 0, 1);
-  const projectionError = clamp(Number(playerMetric.projectionError) || 0, 0, 2);
+  const dealUtility = clamp(Number(playerMetric.dealUtility) || AI_NUM.N_0, -AI_NUM.N_8, AI_NUM.N_8);
+  const badAcceptedDeals = Math.max(AI_NUM.N_0, Number(playerMetric.badAcceptedDeals) || AI_NUM.N_0);
+  const dealAttempts = Math.max(AI_NUM.N_1, (Number(playerMetric.dealsProposed) || AI_NUM.N_0) + (Number(playerMetric.dealsCountered) || AI_NUM.N_0));
+  const usefulDealRate = clamp(((Number(playerMetric.dealsAccepted) || AI_NUM.N_0) - badAcceptedDeals) / dealAttempts, AI_NUM.N_0, AI_NUM.N_1);
+  const decisionQuality = clamp(Number(playerMetric.decisionQuality) || AI_NUM.N_0, AI_NUM.N_0, AI_NUM.N_1);
+  const projectionError = clamp(Number(playerMetric.projectionError) || AI_NUM.N_0, AI_NUM.N_0, AI_NUM.N_2);
 
   return roundTo(
     fitnessWeights.survivalBonus +
     (winnerBonus * fitnessWeights.winReward) +
     (placementScore * fitnessWeights.placementReward) +
-    (Math.min(scoreRatio, 3) * fitnessWeights.wealthReward) +
-    (dealUtility * (fitnessWeights.dealUtilityReward ?? 0)) +
-    (usefulDealRate * (fitnessWeights.dealAcceptanceReward ?? 0)) -
-    (badAcceptedDeals * (fitnessWeights.badDealPenalty ?? 0)) +
-    (decisionQuality * (fitnessWeights.decisionQualityReward ?? 0)) -
-    (projectionError * (fitnessWeights.projectionErrorPenalty ?? 0)),
-    4
+    (Math.min(scoreRatio, AI_NUM.N_3) * fitnessWeights.wealthReward) +
+    (dealUtility * (fitnessWeights.dealUtilityReward ?? AI_NUM.N_0)) +
+    (usefulDealRate * (fitnessWeights.dealAcceptanceReward ?? AI_NUM.N_0)) -
+    (badAcceptedDeals * (fitnessWeights.badDealPenalty ?? AI_NUM.N_0)) +
+    (decisionQuality * (fitnessWeights.decisionQualityReward ?? AI_NUM.N_0)) -
+    (projectionError * (fitnessWeights.projectionErrorPenalty ?? AI_NUM.N_0)),
+    AI_NUM.N_4
   );
 }
 
@@ -876,7 +892,7 @@ function createBucketMap() {
 
 function addWeightedBucketStats(bucketMap, bucketKey, weight, winCredit, fitness) {
   if (!bucketMap.has(bucketKey)) {
-    bucketMap.set(bucketKey, { matches: 0, wins: 0, fitnessTotal: 0 });
+    bucketMap.set(bucketKey, { matches: AI_NUM.N_0, wins: AI_NUM.N_0, fitnessTotal: AI_NUM.N_0 });
   }
   const bucket = bucketMap.get(bucketKey);
   bucket.matches += weight;
@@ -889,71 +905,72 @@ function createEvaluationAccumulator(candidate, generation, scope) {
     candidate,
     generation,
     scope,
-    matches: 0,
-    weightedWins: 0,
-    fitnessTotal: 0,
+    matches: AI_NUM.N_0,
+    weightedWins: AI_NUM.N_0,
+    fitnessTotal: AI_NUM.N_0,
     fitnessSamples: [],
-    scoreTotal: 0,
-    scorePercentileTotal: 0,
-    scoreRatioTotal: 0,
-    wealthTotal: 0,
-    wealthPercentileTotal: 0,
-    wealthRatioTotal: 0,
-    empireFalls: 0,
-    guardAborts: 0,
+    scoreTotal: AI_NUM.N_0,
+    scorePercentileTotal: AI_NUM.N_0,
+    scoreRatioTotal: AI_NUM.N_0,
+    wealthTotal: AI_NUM.N_0,
+    wealthPercentileTotal: AI_NUM.N_0,
+    wealthRatioTotal: AI_NUM.N_0,
+    empireFalls: AI_NUM.N_0,
+    guardAborts: AI_NUM.N_0,
+    scenarioStats: new Map(),
     seatStats: new Map(),
     opponentTypeStats: createBucketMap(),
     opponentClassStats: createBucketMap(),
     behaviorTotals: {
-      frontierShare: 0,
-      capitalShare: 0,
-      landBuys: 0,
-      churchGifts: 0,
-      revocations: 0,
-      defenderRewards: 0,
-      defenderGoldChoices: 0,
-      defenderRestoreChoices: 0,
-      defenderRewardGold: 0,
-      throneCaptures: 0,
-      titleShuffles: 0,
-      supporterTitleRewards: 0,
-      rivalOfficeDenials: 0,
-      incumbentSupportRate: 0,
-      selfSupportRate: 0,
-      goldHoardingRate: 0,
-      mercSpend: 0,
-      recruitmentUtilization: 0,
-      dealsProposed: 0,
-      dealsAccepted: 0,
-      dealsCountered: 0,
-      dealsRefused: 0,
-      dealUtility: 0,
-      badAcceptedDeals: 0,
-      coordinatedClaimantDeals: 0,
-      frontierCoordinationDeals: 0,
-      systemicDecisionCount: 0,
-      projectedUtility: 0,
-      projectedRisk: 0,
-      projectedFlexibility: 0,
-      projectionError: 0,
-      decisionQuality: 0,
+      frontierShare: AI_NUM.N_0,
+      capitalShare: AI_NUM.N_0,
+      landBuys: AI_NUM.N_0,
+      churchGifts: AI_NUM.N_0,
+      revocations: AI_NUM.N_0,
+      defenderRewards: AI_NUM.N_0,
+      defenderGoldChoices: AI_NUM.N_0,
+      defenderRestoreChoices: AI_NUM.N_0,
+      defenderRewardGold: AI_NUM.N_0,
+      throneCaptures: AI_NUM.N_0,
+      titleShuffles: AI_NUM.N_0,
+      supporterTitleRewards: AI_NUM.N_0,
+      rivalOfficeDenials: AI_NUM.N_0,
+      incumbentSupportRate: AI_NUM.N_0,
+      selfSupportRate: AI_NUM.N_0,
+      goldHoardingRate: AI_NUM.N_0,
+      mercSpend: AI_NUM.N_0,
+      recruitmentUtilization: AI_NUM.N_0,
+      dealsProposed: AI_NUM.N_0,
+      dealsAccepted: AI_NUM.N_0,
+      dealsCountered: AI_NUM.N_0,
+      dealsRefused: AI_NUM.N_0,
+      dealUtility: AI_NUM.N_0,
+      badAcceptedDeals: AI_NUM.N_0,
+      coordinatedClaimantDeals: AI_NUM.N_0,
+      frontierCoordinationDeals: AI_NUM.N_0,
+      systemicDecisionCount: AI_NUM.N_0,
+      projectedUtility: AI_NUM.N_0,
+      projectedRisk: AI_NUM.N_0,
+      projectedFlexibility: AI_NUM.N_0,
+      projectionError: AI_NUM.N_0,
+      decisionQuality: AI_NUM.N_0,
     },
     collapseDiagnostics: {
-      matches: 0,
-      defenseCoverage: 0,
-      fatalCoverage: 0,
-      commitmentRate: 0,
+      matches: AI_NUM.N_0,
+      defenseCoverage: AI_NUM.N_0,
+      fatalCoverage: AI_NUM.N_0,
+      commitmentRate: AI_NUM.N_0,
     },
-    basileusSeatWins: 0,
-    basileusSeatMatches: 0,
-    nonBasileusSeatWins: 0,
-    nonBasileusSeatMatches: 0,
+    basileusSeatWins: AI_NUM.N_0,
+    basileusSeatMatches: AI_NUM.N_0,
+    nonBasileusSeatWins: AI_NUM.N_0,
+    nonBasileusSeatMatches: AI_NUM.N_0,
   };
 }
 
 function updateSeatStats(seatStats, seatId, winCredit, fitness) {
   if (!seatStats.has(seatId)) {
-    seatStats.set(seatId, { matches: 0, wins: 0, fitnessTotal: 0 });
+    seatStats.set(seatId, { matches: AI_NUM.N_0, wins: AI_NUM.N_0, fitnessTotal: AI_NUM.N_0 });
   }
   const bucket = seatStats.get(seatId);
   bucket.matches++;
@@ -961,20 +978,32 @@ function updateSeatStats(seatStats, seatId, winCredit, fitness) {
   bucket.fitnessTotal += fitness;
 }
 
+function finalizeWinRateMap(statsMap) {
+  const finalized = {};
+  for (const [key, bucket] of statsMap.entries()) {
+    finalized[key] = {
+      matches: bucket.matches,
+      winRate: roundTo(bucket.wins / Math.max(AI_NUM.N_1, bucket.matches), AI_NUM.N_4),
+      averageFitness: roundTo(bucket.fitnessTotal / Math.max(AI_NUM.N_1, bucket.matches), AI_NUM.N_4),
+    };
+  }
+  return finalized;
+}
+
 function finalizeBucketStats(bucketMap) {
   const finalized = {};
   for (const [bucketKey, bucket] of bucketMap.entries()) {
     finalized[bucketKey] = {
-      matches: roundTo(bucket.matches, 4),
-      winRate: roundTo(bucket.wins / Math.max(0.0001, bucket.matches), 4),
-      averageFitness: roundTo(bucket.fitnessTotal / Math.max(0.0001, bucket.matches), 4),
+      matches: roundTo(bucket.matches, AI_NUM.N_4),
+      winRate: roundTo(bucket.wins / Math.max(AI_NUM.N_0_0001, bucket.matches), AI_NUM.N_4),
+      averageFitness: roundTo(bucket.fitnessTotal / Math.max(AI_NUM.N_0_0001, bucket.matches), AI_NUM.N_4),
     };
   }
   return finalized;
 }
 
 function pickMatchupExtremes(perOpponentTypeWinRate) {
-  const entries = Object.entries(perOpponentTypeWinRate).filter(([, value]) => value.matches > 0);
+  const entries = Object.entries(perOpponentTypeWinRate).filter(([, value]) => value.matches > AI_NUM.N_0);
   if (!entries.length) {
     return {
       bestMatchup: null,
@@ -982,66 +1011,61 @@ function pickMatchupExtremes(perOpponentTypeWinRate) {
     };
   }
 
-  const best = entries.slice().sort((left, right) => right[1].winRate - left[1].winRate || right[1].matches - left[1].matches)[0];
-  const worst = entries.slice().sort((left, right) => left[1].winRate - right[1].winRate || right[1].matches - left[1].matches)[0];
+  const best = entries.slice().sort((left, right) => right[AI_NUM.N_1].winRate - left[AI_NUM.N_1].winRate || right[AI_NUM.N_1].matches - left[AI_NUM.N_1].matches)[AI_NUM.N_0];
+  const worst = entries.slice().sort((left, right) => left[AI_NUM.N_1].winRate - right[AI_NUM.N_1].winRate || right[AI_NUM.N_1].matches - left[AI_NUM.N_1].matches)[AI_NUM.N_0];
   return {
-    bestMatchup: { tag: best[0], ...best[1] },
-    worstMatchup: { tag: worst[0], ...worst[1] },
+    bestMatchup: { tag: best[AI_NUM.N_0], ...best[AI_NUM.N_1] },
+    worstMatchup: { tag: worst[AI_NUM.N_0], ...worst[AI_NUM.N_1] },
   };
 }
 
 function buildBehaviorVector(summary) {
   const behavior = summary.behaviorProfile;
   return [
-    clamp(behavior.frontierTroopShare, 0, 1),
-    clamp(behavior.capitalTroopShare, 0, 1),
-    clamp(behavior.averageLandBuys / 3, 0, 1),
-    clamp(behavior.averageChurchGifts / 3, 0, 1),
-    clamp(behavior.averageRevocations / 2, 0, 1),
-    clamp(behavior.averageDefenderRewards / 3, 0, 1),
-    clamp(behavior.defenderGoldChoiceRate, 0, 1),
-    clamp(behavior.averageThroneCaptures / 2, 0, 1),
-    clamp(behavior.averageTitleShuffles / 4, 0, 1),
-    clamp(behavior.supporterTitleRewardRate, 0, 1),
-    clamp(behavior.incumbentSupportRate, 0, 1),
-    clamp(behavior.selfSupportRate, 0, 1),
-    clamp(behavior.goldHoardingRate, 0, 1),
-    clamp(behavior.averageMercSpend / 15, 0, 1),
-    clamp(behavior.recruitmentUtilization, 0, 1),
-    clamp(behavior.averageDealsProposed / 2, 0, 1),
-    clamp(behavior.dealAcceptanceRate, 0, 1),
-    clamp((behavior.averageDealUtility + 4) / 8, 0, 1),
-    clamp(behavior.badAcceptedDealRate, 0, 1),
-    clamp(behavior.averageCoordinatedClaimantDeals / 2, 0, 1),
-    clamp(behavior.averageFrontierCoordinationDeals / 2, 0, 1),
-    clamp(behavior.averageSystemicDecisions / 8, 0, 1),
-    clamp((behavior.averageProjectedUtility + 4) / 8, 0, 1),
-    clamp(behavior.averageProjectionError, 0, 1),
-    clamp(behavior.averageDecisionQuality, 0, 1),
+    clamp(behavior.frontierTroopShare, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.capitalTroopShare, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageLandBuys / AI_NUM.N_3, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageChurchGifts / AI_NUM.N_3, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageRevocations / AI_NUM.N_2, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageDefenderRewards / AI_NUM.N_3, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.defenderGoldChoiceRate, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageThroneCaptures / AI_NUM.N_2, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageTitleShuffles / AI_NUM.N_4, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.supporterTitleRewardRate, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.incumbentSupportRate, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.selfSupportRate, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.goldHoardingRate, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageMercSpend / AI_NUM.N_15, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.recruitmentUtilization, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageDealsProposed / AI_NUM.N_2, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.dealAcceptanceRate, AI_NUM.N_0, AI_NUM.N_1),
+    clamp((behavior.averageDealUtility + AI_NUM.N_4) / AI_NUM.N_8, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.badAcceptedDealRate, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageCoordinatedClaimantDeals / AI_NUM.N_2, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageFrontierCoordinationDeals / AI_NUM.N_2, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageSystemicDecisions / AI_NUM.N_8, AI_NUM.N_0, AI_NUM.N_1),
+    clamp((behavior.averageProjectedUtility + AI_NUM.N_4) / AI_NUM.N_8, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageProjectionError, AI_NUM.N_0, AI_NUM.N_1),
+    clamp(behavior.averageDecisionQuality, AI_NUM.N_0, AI_NUM.N_1),
   ];
 }
 
 function finalizeEvaluationSummary(accumulator) {
   const perOpponentTypeWinRate = finalizeBucketStats(accumulator.opponentTypeStats);
   const perOpponentClassWinRate = finalizeBucketStats(accumulator.opponentClassStats);
-  const perSeatWinRate = {};
-  for (const [seatId, bucket] of accumulator.seatStats.entries()) {
-    perSeatWinRate[seatId] = {
-      matches: bucket.matches,
-      winRate: roundTo(bucket.wins / Math.max(1, bucket.matches), 4),
-      averageFitness: roundTo(bucket.fitnessTotal / Math.max(1, bucket.matches), 4),
-    };
-  }
+  const perScenarioWinRate = finalizeWinRateMap(accumulator.scenarioStats);
+  const perSeatWinRate = finalizeWinRateMap(accumulator.seatStats);
 
+  const scenarioVariance = variance(Object.values(perScenarioWinRate).map(bucket => bucket.winRate));
   const opponentVariance = variance(Object.values(perOpponentTypeWinRate).map(bucket => bucket.winRate));
   const seatVariance = variance(Object.values(perSeatWinRate).map(bucket => bucket.winRate));
-  const totalTroopShare = Math.max(0.0001, accumulator.behaviorTotals.frontierShare + accumulator.behaviorTotals.capitalShare);
+  const totalTroopShare = Math.max(AI_NUM.N_0_0001, accumulator.behaviorTotals.frontierShare + accumulator.behaviorTotals.capitalShare);
   const basileusSeatWinShare = accumulator.basileusSeatMatches
     ? accumulator.basileusSeatWins / accumulator.basileusSeatMatches
-    : 0;
+    : AI_NUM.N_0;
   const nonBasileusSeatWinShare = accumulator.nonBasileusSeatMatches
     ? accumulator.nonBasileusSeatWins / accumulator.nonBasileusSeatMatches
-    : 0;
+    : AI_NUM.N_0;
   const matchupExtremes = pickMatchupExtremes(perOpponentTypeWinRate);
   const dealAttempts = accumulator.behaviorTotals.dealsProposed + accumulator.behaviorTotals.dealsCountered;
   const dealAccepted = accumulator.behaviorTotals.dealsAccepted;
@@ -1052,64 +1076,68 @@ function finalizeEvaluationSummary(accumulator) {
     generation: accumulator.generation,
     scope: accumulator.scope,
     matches: accumulator.matches,
-    wins: roundTo(accumulator.weightedWins, 4),
-    winShare: roundTo(accumulator.weightedWins / Math.max(1, accumulator.matches), 4),
-    averageFitness: roundTo(accumulator.fitnessTotal / Math.max(1, accumulator.matches), 4),
-    averageScore: roundTo(accumulator.scoreTotal / Math.max(1, accumulator.matches), 2),
-    scorePercentile: roundTo(accumulator.scorePercentileTotal / Math.max(1, accumulator.matches), 4),
-    scoreRatio: roundTo(accumulator.scoreRatioTotal / Math.max(1, accumulator.matches), 4),
-    averageWealth: roundTo(accumulator.wealthTotal / Math.max(1, accumulator.matches), 2),
-    wealthPercentile: roundTo(accumulator.wealthPercentileTotal / Math.max(1, accumulator.matches), 4),
-    wealthRatio: roundTo(accumulator.wealthRatioTotal / Math.max(1, accumulator.matches), 4),
-    empireFallRate: roundTo(accumulator.empireFalls / Math.max(1, accumulator.matches), 4),
-    guardRate: roundTo(accumulator.guardAborts / Math.max(1, accumulator.matches), 4),
-    fitnessVariance: roundTo(variance(accumulator.fitnessSamples), 4),
-    opponentVariance: roundTo(opponentVariance, 4),
-    seatVariance: roundTo(seatVariance, 4),
+    wins: roundTo(accumulator.weightedWins, AI_NUM.N_4),
+    winShare: roundTo(accumulator.weightedWins / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    averageFitness: roundTo(accumulator.fitnessTotal / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    averageScore: roundTo(accumulator.scoreTotal / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_2),
+    scorePercentile: roundTo(accumulator.scorePercentileTotal / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    lowerConfidenceWinShare: lowerConfidenceRate(accumulator.weightedWins / Math.max(AI_NUM.N_1, accumulator.matches), accumulator.matches),
+    lowerConfidenceScorePercentile: lowerConfidenceRate(accumulator.scorePercentileTotal / Math.max(AI_NUM.N_1, accumulator.matches), accumulator.matches),
+    scoreRatio: roundTo(accumulator.scoreRatioTotal / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    averageWealth: roundTo(accumulator.wealthTotal / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_2),
+    wealthPercentile: roundTo(accumulator.wealthPercentileTotal / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    wealthRatio: roundTo(accumulator.wealthRatioTotal / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    empireFallRate: roundTo(accumulator.empireFalls / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    guardRate: roundTo(accumulator.guardAborts / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+    fitnessVariance: roundTo(variance(accumulator.fitnessSamples), AI_NUM.N_4),
+    scenarioVariance: roundTo(scenarioVariance, AI_NUM.N_4),
+    opponentVariance: roundTo(opponentVariance, AI_NUM.N_4),
+    seatVariance: roundTo(seatVariance, AI_NUM.N_4),
+    perScenarioWinRate,
     perOpponentTypeWinRate,
     perOpponentClassWinRate,
     perSeatWinRate,
     bestMatchup: matchupExtremes.bestMatchup,
     worstMatchup: matchupExtremes.worstMatchup,
-    startingBasileusSeatBias: roundTo(basileusSeatWinShare - nonBasileusSeatWinShare, 4),
+    startingBasileusSeatBias: roundTo(basileusSeatWinShare - nonBasileusSeatWinShare, AI_NUM.N_4),
     behaviorProfile: {
-      frontierTroopShare: roundTo(accumulator.behaviorTotals.frontierShare / totalTroopShare, 4),
-      capitalTroopShare: roundTo(accumulator.behaviorTotals.capitalShare / totalTroopShare, 4),
-      averageLandBuys: roundTo(accumulator.behaviorTotals.landBuys / Math.max(1, accumulator.matches), 4),
-      averageChurchGifts: roundTo(accumulator.behaviorTotals.churchGifts / Math.max(1, accumulator.matches), 4),
-      averageRevocations: roundTo(accumulator.behaviorTotals.revocations / Math.max(1, accumulator.matches), 4),
-      averageDefenderRewards: roundTo(accumulator.behaviorTotals.defenderRewards / Math.max(1, accumulator.matches), 4),
-      defenderGoldChoiceRate: roundTo(accumulator.behaviorTotals.defenderGoldChoices / Math.max(1, defenderChoices), 4),
-      averageDefenderRewardGold: roundTo(accumulator.behaviorTotals.defenderRewardGold / Math.max(1, accumulator.matches), 4),
-      averageThroneCaptures: roundTo(accumulator.behaviorTotals.throneCaptures / Math.max(1, accumulator.matches), 4),
-      averageTitleShuffles: roundTo(titleShuffles / Math.max(1, accumulator.matches), 4),
-      supporterTitleRewardRate: roundTo(accumulator.behaviorTotals.supporterTitleRewards / Math.max(1, titleShuffles), 4),
-      rivalOfficeDenialRate: roundTo(accumulator.behaviorTotals.rivalOfficeDenials / Math.max(1, titleShuffles), 4),
-      incumbentSupportRate: roundTo(accumulator.behaviorTotals.incumbentSupportRate / Math.max(1, accumulator.matches), 4),
-      selfSupportRate: roundTo(accumulator.behaviorTotals.selfSupportRate / Math.max(1, accumulator.matches), 4),
-      goldHoardingRate: roundTo(accumulator.behaviorTotals.goldHoardingRate / Math.max(1, accumulator.matches), 4),
-      averageMercSpend: roundTo(accumulator.behaviorTotals.mercSpend / Math.max(1, accumulator.matches), 4),
-      recruitmentUtilization: roundTo(accumulator.behaviorTotals.recruitmentUtilization / Math.max(1, accumulator.matches), 4),
-      averageDealsProposed: roundTo(accumulator.behaviorTotals.dealsProposed / Math.max(1, accumulator.matches), 4),
-      averageDealsAccepted: roundTo(dealAccepted / Math.max(1, accumulator.matches), 4),
-      averageDealsCountered: roundTo(accumulator.behaviorTotals.dealsCountered / Math.max(1, accumulator.matches), 4),
-      averageDealsRefused: roundTo(accumulator.behaviorTotals.dealsRefused / Math.max(1, accumulator.matches), 4),
-      dealAcceptanceRate: roundTo(dealAccepted / Math.max(1, dealAttempts), 4),
-      averageDealUtility: roundTo(accumulator.behaviorTotals.dealUtility / Math.max(1, accumulator.matches), 4),
-      badAcceptedDealRate: roundTo(accumulator.behaviorTotals.badAcceptedDeals / Math.max(1, dealAccepted), 4),
-      averageCoordinatedClaimantDeals: roundTo(accumulator.behaviorTotals.coordinatedClaimantDeals / Math.max(1, accumulator.matches), 4),
-      averageFrontierCoordinationDeals: roundTo(accumulator.behaviorTotals.frontierCoordinationDeals / Math.max(1, accumulator.matches), 4),
-      averageSystemicDecisions: roundTo(accumulator.behaviorTotals.systemicDecisionCount / Math.max(1, accumulator.matches), 4),
-      averageProjectedUtility: roundTo(accumulator.behaviorTotals.projectedUtility / Math.max(1, accumulator.matches), 4),
-      averageProjectedRisk: roundTo(accumulator.behaviorTotals.projectedRisk / Math.max(1, accumulator.matches), 4),
-      averageProjectedFlexibility: roundTo(accumulator.behaviorTotals.projectedFlexibility / Math.max(1, accumulator.matches), 4),
-      averageProjectionError: roundTo(accumulator.behaviorTotals.projectionError / Math.max(1, accumulator.matches), 4),
-      averageDecisionQuality: roundTo(accumulator.behaviorTotals.decisionQuality / Math.max(1, accumulator.matches), 4),
+      frontierTroopShare: roundTo(accumulator.behaviorTotals.frontierShare / totalTroopShare, AI_NUM.N_4),
+      capitalTroopShare: roundTo(accumulator.behaviorTotals.capitalShare / totalTroopShare, AI_NUM.N_4),
+      averageLandBuys: roundTo(accumulator.behaviorTotals.landBuys / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageChurchGifts: roundTo(accumulator.behaviorTotals.churchGifts / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageRevocations: roundTo(accumulator.behaviorTotals.revocations / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageDefenderRewards: roundTo(accumulator.behaviorTotals.defenderRewards / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      defenderGoldChoiceRate: roundTo(accumulator.behaviorTotals.defenderGoldChoices / Math.max(AI_NUM.N_1, defenderChoices), AI_NUM.N_4),
+      averageDefenderRewardGold: roundTo(accumulator.behaviorTotals.defenderRewardGold / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageThroneCaptures: roundTo(accumulator.behaviorTotals.throneCaptures / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageTitleShuffles: roundTo(titleShuffles / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      supporterTitleRewardRate: roundTo(accumulator.behaviorTotals.supporterTitleRewards / Math.max(AI_NUM.N_1, titleShuffles), AI_NUM.N_4),
+      rivalOfficeDenialRate: roundTo(accumulator.behaviorTotals.rivalOfficeDenials / Math.max(AI_NUM.N_1, titleShuffles), AI_NUM.N_4),
+      incumbentSupportRate: roundTo(accumulator.behaviorTotals.incumbentSupportRate / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      selfSupportRate: roundTo(accumulator.behaviorTotals.selfSupportRate / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      goldHoardingRate: roundTo(accumulator.behaviorTotals.goldHoardingRate / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageMercSpend: roundTo(accumulator.behaviorTotals.mercSpend / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      recruitmentUtilization: roundTo(accumulator.behaviorTotals.recruitmentUtilization / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageDealsProposed: roundTo(accumulator.behaviorTotals.dealsProposed / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageDealsAccepted: roundTo(dealAccepted / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageDealsCountered: roundTo(accumulator.behaviorTotals.dealsCountered / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageDealsRefused: roundTo(accumulator.behaviorTotals.dealsRefused / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      dealAcceptanceRate: roundTo(dealAccepted / Math.max(AI_NUM.N_1, dealAttempts), AI_NUM.N_4),
+      averageDealUtility: roundTo(accumulator.behaviorTotals.dealUtility / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      badAcceptedDealRate: roundTo(accumulator.behaviorTotals.badAcceptedDeals / Math.max(AI_NUM.N_1, dealAccepted), AI_NUM.N_4),
+      averageCoordinatedClaimantDeals: roundTo(accumulator.behaviorTotals.coordinatedClaimantDeals / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageFrontierCoordinationDeals: roundTo(accumulator.behaviorTotals.frontierCoordinationDeals / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageSystemicDecisions: roundTo(accumulator.behaviorTotals.systemicDecisionCount / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageProjectedUtility: roundTo(accumulator.behaviorTotals.projectedUtility / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageProjectedRisk: roundTo(accumulator.behaviorTotals.projectedRisk / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageProjectedFlexibility: roundTo(accumulator.behaviorTotals.projectedFlexibility / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageProjectionError: roundTo(accumulator.behaviorTotals.projectionError / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
+      averageDecisionQuality: roundTo(accumulator.behaviorTotals.decisionQuality / Math.max(AI_NUM.N_1, accumulator.matches), AI_NUM.N_4),
     },
     collapseDiagnostics: {
-      defenseCoverage: roundTo(accumulator.collapseDiagnostics.defenseCoverage / Math.max(1, accumulator.collapseDiagnostics.matches), 4),
-      fatalCoverage: roundTo(accumulator.collapseDiagnostics.fatalCoverage / Math.max(1, accumulator.collapseDiagnostics.matches), 4),
-      commitmentRate: roundTo(accumulator.collapseDiagnostics.commitmentRate / Math.max(1, accumulator.collapseDiagnostics.matches), 4),
+      defenseCoverage: roundTo(accumulator.collapseDiagnostics.defenseCoverage / Math.max(AI_NUM.N_1, accumulator.collapseDiagnostics.matches), AI_NUM.N_4),
+      fatalCoverage: roundTo(accumulator.collapseDiagnostics.fatalCoverage / Math.max(AI_NUM.N_1, accumulator.collapseDiagnostics.matches), AI_NUM.N_4),
+      commitmentRate: roundTo(accumulator.collapseDiagnostics.commitmentRate / Math.max(AI_NUM.N_1, accumulator.collapseDiagnostics.matches), AI_NUM.N_4),
     },
   };
   summary.behaviorVector = buildBehaviorVector(summary);
@@ -1131,31 +1159,31 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
       deckSize: matchSpec.deckSize,
       seed: matchSpec.seed,
       seatProfiles,
-      strictTimeoutMs: 15000,
-      maxLoopIterations: 256,
-      maxRounds: Math.max(matchSpec.deckSize + 2, 40),
+      strictTimeoutMs: AI_NUM.N_15000,
+      maxLoopIterations: AI_NUM.N_256,
+      maxRounds: Math.max(matchSpec.deckSize + AI_NUM.N_2, AI_NUM.N_40),
     });
     const playerMetric = game.playerMetrics.find(metric => metric.playerId === matchSpec.focalSeat);
     if (!playerMetric) continue;
 
-    const winCredit = playerMetric.isWinner ? 1 / Math.max(1, game.winners.length) : 0;
+    const winCredit = playerMetric.isWinner ? AI_NUM.N_1 / Math.max(AI_NUM.N_1, game.winners.length) : AI_NUM.N_0;
     const fitness = computeFitness(game, playerMetric, fitnessWeights);
     const placementScore = computePlacementScore(game, playerMetric);
     const scoreRatio = computeScoreRatio(game, playerMetric);
     const finalScore = playerMetric.finalScore ?? playerMetric.finalWealth;
-    const totalTroops = Math.max(0, playerMetric.frontierTroops) + Math.max(0, playerMetric.capitalTroops);
-    const frontierShare = totalTroops > 0 ? playerMetric.frontierTroops / totalTroops : 0;
-    const capitalShare = totalTroops > 0 ? playerMetric.capitalTroops / totalTroops : 0;
-    const recruitUtilization = playerMetric.recruitOpportunities > 0
+    const totalTroops = Math.max(AI_NUM.N_0, playerMetric.frontierTroops) + Math.max(AI_NUM.N_0, playerMetric.capitalTroops);
+    const frontierShare = totalTroops > AI_NUM.N_0 ? playerMetric.frontierTroops / totalTroops : AI_NUM.N_0;
+    const capitalShare = totalTroops > AI_NUM.N_0 ? playerMetric.capitalTroops / totalTroops : AI_NUM.N_0;
+    const recruitUtilization = playerMetric.recruitOpportunities > AI_NUM.N_0
       ? playerMetric.recruits / playerMetric.recruitOpportunities
-      : 0;
-    const incumbentSupportRate = playerMetric.coupVotes > 0
+      : AI_NUM.N_0;
+    const incumbentSupportRate = playerMetric.coupVotes > AI_NUM.N_0
       ? playerMetric.supportIncumbentVotes / playerMetric.coupVotes
-      : 0;
-    const selfSupportRate = playerMetric.coupVotes > 0
+      : AI_NUM.N_0;
+    const selfSupportRate = playerMetric.coupVotes > AI_NUM.N_0
       ? playerMetric.supportSelfVotes / playerMetric.coupVotes
-      : 0;
-    const goldHoardingRate = clamp(Number(playerMetric.finalCategoryShares?.gold) || 0, 0, 1);
+      : AI_NUM.N_0;
+    const goldHoardingRate = clamp(Number(playerMetric.finalCategoryShares?.gold) || AI_NUM.N_0, AI_NUM.N_0, AI_NUM.N_1);
 
     accumulator.matches++;
     accumulator.weightedWins += winCredit;
@@ -1170,6 +1198,7 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     if (game.empireFall) accumulator.empireFalls++;
     if (game.guardTriggered) accumulator.guardAborts++;
 
+    updateSeatStats(accumulator.scenarioStats, `${matchSpec.playerCount}p-${matchSpec.deckSize}d`, winCredit, fitness);
     updateSeatStats(accumulator.seatStats, matchSpec.focalSeat, winCredit, fitness);
     if (game.startingBasileusId === playerMetric.playerId) {
       accumulator.basileusSeatMatches++;
@@ -1181,12 +1210,12 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
 
     const bucketCounts = new Map();
     for (const bucket of opponentBuckets) {
-      bucketCounts.set(bucket, (bucketCounts.get(bucket) || 0) + 1);
+      bucketCounts.set(bucket, (bucketCounts.get(bucket) || AI_NUM.N_0) + AI_NUM.N_1);
     }
     for (const [bucketKey, count] of bucketCounts.entries()) {
-      const weight = count / Math.max(1, opponentBuckets.length);
+      const weight = count / Math.max(AI_NUM.N_1, opponentBuckets.length);
       addWeightedBucketStats(accumulator.opponentTypeStats, bucketKey, weight, winCredit, fitness);
-      const bucketClass = String(bucketKey).split(':')[0];
+      const bucketClass = String(bucketKey).split(':')[AI_NUM.N_0];
       addWeightedBucketStats(accumulator.opponentClassStats, bucketClass, weight, winCredit, fitness);
     }
 
@@ -1195,33 +1224,33 @@ function evaluateCandidateOnSuite(candidate, suite, context, fitnessWeights) {
     accumulator.behaviorTotals.landBuys += playerMetric.landBuys;
     accumulator.behaviorTotals.churchGifts += playerMetric.themesGifted;
     accumulator.behaviorTotals.revocations += playerMetric.revocations;
-    accumulator.behaviorTotals.defenderRewards += playerMetric.defenderRewards || 0;
-    accumulator.behaviorTotals.defenderGoldChoices += playerMetric.defenderGoldChoices || 0;
-    accumulator.behaviorTotals.defenderRestoreChoices += playerMetric.defenderRestoreChoices || 0;
-    accumulator.behaviorTotals.defenderRewardGold += playerMetric.defenderRewardGold || 0;
+    accumulator.behaviorTotals.defenderRewards += playerMetric.defenderRewards || AI_NUM.N_0;
+    accumulator.behaviorTotals.defenderGoldChoices += playerMetric.defenderGoldChoices || AI_NUM.N_0;
+    accumulator.behaviorTotals.defenderRestoreChoices += playerMetric.defenderRestoreChoices || AI_NUM.N_0;
+    accumulator.behaviorTotals.defenderRewardGold += playerMetric.defenderRewardGold || AI_NUM.N_0;
     accumulator.behaviorTotals.throneCaptures += playerMetric.throneCaptures;
-    accumulator.behaviorTotals.titleShuffles += playerMetric.titleShuffles || 0;
-    accumulator.behaviorTotals.supporterTitleRewards += playerMetric.supporterTitleRewards || 0;
-    accumulator.behaviorTotals.rivalOfficeDenials += playerMetric.rivalOfficeDenials || 0;
+    accumulator.behaviorTotals.titleShuffles += playerMetric.titleShuffles || AI_NUM.N_0;
+    accumulator.behaviorTotals.supporterTitleRewards += playerMetric.supporterTitleRewards || AI_NUM.N_0;
+    accumulator.behaviorTotals.rivalOfficeDenials += playerMetric.rivalOfficeDenials || AI_NUM.N_0;
     accumulator.behaviorTotals.incumbentSupportRate += incumbentSupportRate;
     accumulator.behaviorTotals.selfSupportRate += selfSupportRate;
     accumulator.behaviorTotals.goldHoardingRate += goldHoardingRate;
     accumulator.behaviorTotals.mercSpend += playerMetric.mercSpend;
     accumulator.behaviorTotals.recruitmentUtilization += recruitUtilization;
-    accumulator.behaviorTotals.dealsProposed += playerMetric.dealsProposed || 0;
-    accumulator.behaviorTotals.dealsAccepted += playerMetric.dealsAccepted || 0;
-    accumulator.behaviorTotals.dealsCountered += playerMetric.dealsCountered || 0;
-    accumulator.behaviorTotals.dealsRefused += playerMetric.dealsRefused || 0;
-    accumulator.behaviorTotals.dealUtility += playerMetric.dealUtility || 0;
-    accumulator.behaviorTotals.badAcceptedDeals += playerMetric.badAcceptedDeals || 0;
-    accumulator.behaviorTotals.coordinatedClaimantDeals += playerMetric.coordinatedClaimantDeals || 0;
-    accumulator.behaviorTotals.frontierCoordinationDeals += playerMetric.frontierCoordinationDeals || 0;
-    accumulator.behaviorTotals.systemicDecisionCount += playerMetric.systemicDecisionCount || 0;
-    accumulator.behaviorTotals.projectedUtility += playerMetric.projectedUtility || 0;
-    accumulator.behaviorTotals.projectedRisk += playerMetric.projectedRisk || 0;
-    accumulator.behaviorTotals.projectedFlexibility += playerMetric.projectedFlexibility || 0;
-    accumulator.behaviorTotals.projectionError += playerMetric.projectionError || 0;
-    accumulator.behaviorTotals.decisionQuality += playerMetric.decisionQuality || 0;
+    accumulator.behaviorTotals.dealsProposed += playerMetric.dealsProposed || AI_NUM.N_0;
+    accumulator.behaviorTotals.dealsAccepted += playerMetric.dealsAccepted || AI_NUM.N_0;
+    accumulator.behaviorTotals.dealsCountered += playerMetric.dealsCountered || AI_NUM.N_0;
+    accumulator.behaviorTotals.dealsRefused += playerMetric.dealsRefused || AI_NUM.N_0;
+    accumulator.behaviorTotals.dealUtility += playerMetric.dealUtility || AI_NUM.N_0;
+    accumulator.behaviorTotals.badAcceptedDeals += playerMetric.badAcceptedDeals || AI_NUM.N_0;
+    accumulator.behaviorTotals.coordinatedClaimantDeals += playerMetric.coordinatedClaimantDeals || AI_NUM.N_0;
+    accumulator.behaviorTotals.frontierCoordinationDeals += playerMetric.frontierCoordinationDeals || AI_NUM.N_0;
+    accumulator.behaviorTotals.systemicDecisionCount += playerMetric.systemicDecisionCount || AI_NUM.N_0;
+    accumulator.behaviorTotals.projectedUtility += playerMetric.projectedUtility || AI_NUM.N_0;
+    accumulator.behaviorTotals.projectedRisk += playerMetric.projectedRisk || AI_NUM.N_0;
+    accumulator.behaviorTotals.projectedFlexibility += playerMetric.projectedFlexibility || AI_NUM.N_0;
+    accumulator.behaviorTotals.projectionError += playerMetric.projectionError || AI_NUM.N_0;
+    accumulator.behaviorTotals.decisionQuality += playerMetric.decisionQuality || AI_NUM.N_0;
 
     if (game.empireFall) {
       const collapse = computeCollapseDefenseProfile(game, playerMetric);
@@ -1245,40 +1274,31 @@ export function evaluateWorkerPayload(payload = {}) {
     population = [],
     hallOfFame = [],
     config = {},
-    generation = 1,
+    generation = AI_NUM.N_1,
     fitnessWeights = DEFAULT_FITNESS_WEIGHTS,
   } = payload;
+
+  const evaluateSuite = (candidate, suite, scope) => evaluateCandidateOnSuite(candidate, suite, {
+    config,
+    generation,
+    scope,
+    population,
+    hallOfFame,
+  }, fitnessWeights);
 
   if (mode === 'generation') {
     return candidates.map(candidate => ({
       candidateId: candidate.id,
-      trainSummary: evaluateCandidateOnSuite(candidate, trainingSuite, {
-        config,
-        generation,
-        scope: 'training',
-        population,
-        hallOfFame,
-      }, fitnessWeights),
-      validationSummary: evaluateCandidateOnSuite(candidate, validationSuite, {
-        config,
-        generation,
-        scope: 'validation',
-        population,
-        hallOfFame,
-      }, fitnessWeights),
+      trainSummary: evaluateSuite(candidate, trainingSuite, 'training'),
+      validationSummary: evaluateSuite(candidate, validationSuite, 'validation'),
     }));
   }
 
-  if (mode === 'holdout') {
+  if (mode === 'holdout' || mode === 'audit') {
+    const suite = mode === 'audit' ? payload.auditSuite || holdoutSuite : holdoutSuite;
     return candidates.map(candidate => ({
       candidateId: candidate.id,
-      holdoutSummary: evaluateCandidateOnSuite(candidate, holdoutSuite, {
-        config,
-        generation,
-        scope: 'holdout',
-        population,
-        hallOfFame,
-      }, fitnessWeights),
+      holdoutSummary: evaluateSuite(candidate, suite, mode),
     }));
   }
 
@@ -1298,27 +1318,32 @@ function computeNoveltyScore(vector, archiveVectors, peerVectors) {
   for (const other of peerVectors) {
     if (other && other !== vector) comparisons.push(euclideanDistance(vector, other));
   }
-  if (!comparisons.length) return 1;
+  if (!comparisons.length) return AI_NUM.N_1;
   const distances = comparisons.sort((left, right) => left - right);
-  const k = Math.min(5, distances.length);
-  return roundTo(average(distances.slice(0, k)), 4);
+  const k = Math.min(AI_NUM.N_5, distances.length);
+  return roundTo(average(distances.slice(AI_NUM.N_0, k)), AI_NUM.N_4);
 }
 
 function computeDisplayScore(summary, noveltyScore) {
   return roundTo(
-    (summary.winShare * 10) +
-    ((1 - summary.empireFallRate - summary.guardRate) * 8) +
-    ((summary.scorePercentile ?? summary.wealthPercentile) * 4) +
-    (getClassWinRate(summary, 'scripted') * 4) +
-    (getClassWinRate(summary, 'hof') * 4) +
-    (noveltyScore * 2) -
-    (Math.sqrt(summary.opponentVariance) * 2.5) -
-    (Math.sqrt(summary.seatVariance) * 1.5),
-    4
+    ((summary.lowerConfidenceWinShare ?? summary.winShare) * AI_NUM.N_10) +
+    ((AI_NUM.N_1 - summary.empireFallRate - summary.guardRate) * AI_NUM.N_8) +
+    ((summary.lowerConfidenceScorePercentile ?? summary.scorePercentile ?? summary.wealthPercentile) * AI_NUM.N_4) +
+    (getClassWinRate(summary, 'scripted') * AI_NUM.N_4) +
+    (getClassWinRate(summary, 'hof') * AI_NUM.N_4) +
+    (noveltyScore * AI_NUM.N_2) -
+    (Math.sqrt(summary.opponentVariance) * AI_NUM.N_2_5) -
+    (Math.sqrt(summary.seatVariance) * AI_NUM.N_1_5),
+    AI_NUM.N_4
   );
 }
 
 function buildSelectionEntry(candidate, generation, trainSummary, validationSummary, noveltyScore) {
+  candidate.training = {
+    ...(candidate.training || {}),
+    worstMatchup: validationSummary.worstMatchup || null,
+  };
+  candidate.profile = createInternalProfile(candidate);
   return {
     candidate,
     generation,
@@ -1328,53 +1353,52 @@ function buildSelectionEntry(candidate, generation, trainSummary, validationSumm
     noveltyScore,
     displayScore: computeDisplayScore(validationSummary, noveltyScore),
     objectives: {
-      survivalRate: roundTo(1 - validationSummary.empireFallRate - validationSummary.guardRate, 4),
-      winShare: validationSummary.winShare,
-      scorePercentile: validationSummary.scorePercentile ?? validationSummary.wealthPercentile,
+      survivalRate: roundTo(AI_NUM.N_1 - validationSummary.empireFallRate - validationSummary.guardRate, AI_NUM.N_4),
+      winShare: validationSummary.lowerConfidenceWinShare ?? validationSummary.winShare,
+      scorePercentile: validationSummary.lowerConfidenceScorePercentile ?? validationSummary.scorePercentile ?? validationSummary.wealthPercentile,
       wealthPercentile: validationSummary.wealthPercentile,
-      legacyWinRate: getClassWinRate(validationSummary, 'legacy'),
       scriptedWinRate: getClassWinRate(validationSummary, 'scripted'),
       hallOfFameWinRate: getClassWinRate(validationSummary, 'hof'),
       emergentWinRate: getClassWinRate(validationSummary, 'emergent'),
-      opponentRobustness: roundTo(1 - Math.min(1, Math.sqrt(validationSummary.opponentVariance)), 4),
-      seatRobustness: roundTo(1 - Math.min(1, Math.sqrt(validationSummary.seatVariance) * 4), 4),
+      opponentRobustness: roundTo(AI_NUM.N_1 - Math.min(AI_NUM.N_1, Math.sqrt(validationSummary.opponentVariance)), AI_NUM.N_4),
+      seatRobustness: roundTo(AI_NUM.N_1 - Math.min(AI_NUM.N_1, Math.sqrt(validationSummary.seatVariance) * AI_NUM.N_4), AI_NUM.N_4),
       novelty: noveltyScore,
     },
     paretoRank: Number.POSITIVE_INFINITY,
-    crowdingDistance: 0,
+    crowdingDistance: AI_NUM.N_0,
   };
 }
 
 function dominates(left, right) {
   let strictlyBetter = false;
   for (const key of OBJECTIVE_KEYS) {
-    const leftValue = left.objectives[key] ?? 0;
-    const rightValue = right.objectives[key] ?? 0;
-    if (leftValue + 1e-9 < rightValue) return false;
-    if (leftValue > rightValue + 1e-9) strictlyBetter = true;
+    const leftValue = left.objectives[key] ?? AI_NUM.N_0;
+    const rightValue = right.objectives[key] ?? AI_NUM.N_0;
+    if (leftValue + AI_NUM.N_0_000000001 < rightValue) return false;
+    if (leftValue > rightValue + AI_NUM.N_0_000000001) strictlyBetter = true;
   }
   return strictlyBetter;
 }
 
 function assignCrowdingDistance(front) {
   if (!front.length) return;
-  for (const entry of front) entry.crowdingDistance = 0;
-  if (front.length <= 2) {
+  for (const entry of front) entry.crowdingDistance = AI_NUM.N_0;
+  if (front.length <= AI_NUM.N_2) {
     for (const entry of front) entry.crowdingDistance = Number.POSITIVE_INFINITY;
     return;
   }
 
   for (const key of OBJECTIVE_KEYS) {
-    const sorted = front.slice().sort((left, right) => (left.objectives[key] ?? 0) - (right.objectives[key] ?? 0));
-    const minValue = sorted[0].objectives[key] ?? 0;
-    const maxValue = sorted[sorted.length - 1].objectives[key] ?? 0;
-    sorted[0].crowdingDistance = Number.POSITIVE_INFINITY;
-    sorted[sorted.length - 1].crowdingDistance = Number.POSITIVE_INFINITY;
+    const sorted = front.slice().sort((left, right) => (left.objectives[key] ?? AI_NUM.N_0) - (right.objectives[key] ?? AI_NUM.N_0));
+    const minValue = sorted[AI_NUM.N_0].objectives[key] ?? AI_NUM.N_0;
+    const maxValue = sorted[sorted.length - AI_NUM.N_1].objectives[key] ?? AI_NUM.N_0;
+    sorted[AI_NUM.N_0].crowdingDistance = Number.POSITIVE_INFINITY;
+    sorted[sorted.length - AI_NUM.N_1].crowdingDistance = Number.POSITIVE_INFINITY;
     if (maxValue <= minValue) continue;
-    for (let index = 1; index < sorted.length - 1; index++) {
+    for (let index = AI_NUM.N_1; index < sorted.length - AI_NUM.N_1; index++) {
       if (!Number.isFinite(sorted[index].crowdingDistance)) continue;
-      const previous = sorted[index - 1].objectives[key] ?? 0;
-      const next = sorted[index + 1].objectives[key] ?? 0;
+      const previous = sorted[index - AI_NUM.N_1].objectives[key] ?? AI_NUM.N_0;
+      const next = sorted[index + AI_NUM.N_1].objectives[key] ?? AI_NUM.N_0;
       sorted[index].crowdingDistance += (next - previous) / (maxValue - minValue);
     }
   }
@@ -1383,7 +1407,7 @@ function assignCrowdingDistance(front) {
 function compareSelectionEntries(left, right) {
   return (
     (left.paretoRank - right.paretoRank) ||
-    ((right.crowdingDistance || 0) - (left.crowdingDistance || 0)) ||
+    ((right.crowdingDistance || AI_NUM.N_0) - (left.crowdingDistance || AI_NUM.N_0)) ||
     (right.displayScore - left.displayScore) ||
     (right.validationSummary.winShare - left.validationSummary.winShare) ||
     left.candidate.id.localeCompare(right.candidate.id)
@@ -1398,32 +1422,32 @@ function sortByPareto(entries) {
   const firstFront = [];
 
   for (const entry of working) {
-    dominationCounts.set(entry, 0);
+    dominationCounts.set(entry, AI_NUM.N_0);
     dominatesMap.set(entry, []);
     for (const rival of working) {
       if (entry === rival) continue;
       if (dominates(entry, rival)) {
         dominatesMap.get(entry).push(rival);
       } else if (dominates(rival, entry)) {
-        dominationCounts.set(entry, (dominationCounts.get(entry) || 0) + 1);
+        dominationCounts.set(entry, (dominationCounts.get(entry) || AI_NUM.N_0) + AI_NUM.N_1);
       }
     }
-    if ((dominationCounts.get(entry) || 0) === 0) {
-      entry.paretoRank = 1;
+    if ((dominationCounts.get(entry) || AI_NUM.N_0) === AI_NUM.N_0) {
+      entry.paretoRank = AI_NUM.N_1;
       firstFront.push(entry);
     }
   }
 
   fronts.push(firstFront);
-  let frontIndex = 0;
+  let frontIndex = AI_NUM.N_0;
   while (frontIndex < fronts.length && fronts[frontIndex].length) {
     const nextFront = [];
     for (const entry of fronts[frontIndex]) {
       for (const dominated of dominatesMap.get(entry) || []) {
-        const nextCount = (dominationCounts.get(dominated) || 0) - 1;
+        const nextCount = (dominationCounts.get(dominated) || AI_NUM.N_0) - AI_NUM.N_1;
         dominationCounts.set(dominated, nextCount);
-        if (nextCount === 0) {
-          dominated.paretoRank = frontIndex + 2;
+        if (nextCount === AI_NUM.N_0) {
+          dominated.paretoRank = frontIndex + AI_NUM.N_2;
           nextFront.push(dominated);
         }
       }
@@ -1438,10 +1462,10 @@ function sortByPareto(entries) {
 
 function tournamentSelect(entries, rng) {
   let best = null;
-  const sampleSize = Math.min(3, entries.length);
-  for (let index = 0; index < sampleSize; index++) {
+  const sampleSize = Math.min(AI_NUM.N_3, entries.length);
+  for (let index = AI_NUM.N_0; index < sampleSize; index++) {
     const entry = entries[Math.floor(rng() * entries.length)];
-    if (!best || compareSelectionEntries(entry, best) < 0) {
+    if (!best || compareSelectionEntries(entry, best) < AI_NUM.N_0) {
       best = entry;
     }
   }
@@ -1460,42 +1484,31 @@ function createHallOfFameEntry(entry, generation, index) {
 }
 
 function computeAdaptiveMutationScale(generation, totalGenerations, averageNoveltyScore) {
-  const progress = (generation - 1) / Math.max(1, totalGenerations - 1);
-  const noveltyPressure = averageNoveltyScore < 0.18 ? 1.25 : averageNoveltyScore > 0.35 ? 0.9 : 1;
-  return clamp((1.15 - (progress * 0.45)) * noveltyPressure, 0.65, 1.4);
+  const progress = (generation - AI_NUM.N_1) / Math.max(AI_NUM.N_1, totalGenerations - AI_NUM.N_1);
+  const noveltyPressure = averageNoveltyScore < AI_NUM.N_0_18 ? AI_NUM.N_1_25 : averageNoveltyScore > AI_NUM.N_0_35 ? AI_NUM.N_0_9 : AI_NUM.N_1;
+  return clamp((AI_NUM.N_1_15 - (progress * AI_NUM.N_0_45)) * noveltyPressure, AI_NUM.N_0_65, AI_NUM.N_1_4);
 }
 
 function describeBehaviorProfile(summary) {
   const behavior = summary.behaviorProfile;
   const levels = [];
-  levels.push(`${behavior.frontierTroopShare >= 0.58 ? 'high' : behavior.frontierTroopShare <= 0.35 ? 'low' : 'moderate'} frontier defense`);
-  levels.push(`${behavior.averageLandBuys >= 1.2 ? 'high' : behavior.averageLandBuys <= 0.4 ? 'low' : 'moderate'} land buying`);
-  levels.push(`${behavior.averageChurchGifts >= 0.4 ? 'high' : behavior.averageChurchGifts <= 0.1 ? 'low' : 'moderate'} church giving`);
-  levels.push(`${behavior.averageRevocations >= 0.6 ? 'high' : behavior.averageRevocations <= 0.15 ? 'low' : 'moderate'} revocation`);
-  levels.push(`${behavior.averageDealsProposed >= 0.8 ? 'active' : behavior.averageDealsProposed <= 0.15 ? 'rare' : 'selective'} dealmaking`);
+  levels.push(`${behavior.frontierTroopShare >= AI_NUM.N_0_58 ? 'high' : behavior.frontierTroopShare <= AI_NUM.N_0_35 ? 'low' : 'moderate'} frontier defense`);
+  levels.push(`${behavior.averageLandBuys >= AI_NUM.N_1_2 ? 'high' : behavior.averageLandBuys <= AI_NUM.N_0_4 ? 'low' : 'moderate'} land buying`);
+  levels.push(`${behavior.averageChurchGifts >= AI_NUM.N_0_4 ? 'high' : behavior.averageChurchGifts <= AI_NUM.N_0_1 ? 'low' : 'moderate'} church giving`);
+  levels.push(`${behavior.averageRevocations >= AI_NUM.N_0_6 ? 'high' : behavior.averageRevocations <= AI_NUM.N_0_15 ? 'low' : 'moderate'} revocation`);
+  levels.push(`${behavior.averageDealsProposed >= AI_NUM.N_0_8 ? 'active' : behavior.averageDealsProposed <= AI_NUM.N_0_15 ? 'rare' : 'selective'} dealmaking`);
   return levels.join(', ');
 }
 
 function buildChampionSummary(candidate, holdoutSummary) {
-  const traitLabels = {
-    wealth: 'score pressure',
-    land: 'land acquisition',
-    frontier: 'frontier defense',
-    capital: 'capital intrigue',
-    throne: 'throne pressure',
-    church: 'church leverage',
-    loyalty: 'coalition loyalty',
-    retaliation: 'retaliation',
-    selfAppointment: 'self-promotion',
-    mercenary: 'mercenary spending',
-    revocation: 'revocations',
-  };
-  const topTraits = dominantWeightKeys(candidate.weights, 2).map(key => traitLabels[key] || key);
-  return `Self-play champion focused on ${topTraits.join(' and ')}, with holdout behavior showing ${describeBehaviorProfile(holdoutSummary)}.`;
+  const topSignals = getPolicySignature(candidate.policy, AI_NUM.N_3)
+    .map(label => label.toLowerCase());
+  const focus = topSignals.length ? topSignals.join(' and ') : 'balanced policy scoring';
+  return `Self-play policy champion focused on ${focus}, with holdout behavior showing ${describeBehaviorProfile(holdoutSummary)}.`;
 }
 
 function chunkArray(items, chunkCount) {
-  if (chunkCount <= 1 || items.length <= 1) return [items.slice()];
+  if (chunkCount <= AI_NUM.N_1 || items.length <= AI_NUM.N_1) return [items.slice()];
   const chunks = Array.from({ length: Math.min(chunkCount, items.length) }, () => []);
   items.forEach((item, index) => {
     chunks[index % chunks.length].push(item);
@@ -1504,21 +1517,19 @@ function chunkArray(items, chunkCount) {
 }
 
 function getRecommendedParallelWorkerCount(config, candidateCount) {
-  if (config.parallelWorkers > 0) {
-    return Math.max(1, Math.min(config.parallelWorkers, candidateCount));
+  if (config.parallelWorkers > AI_NUM.N_0) {
+    return Math.max(AI_NUM.N_1, Math.min(config.parallelWorkers, candidateCount));
   }
-  if (typeof Worker !== 'function') return 1;
-  const hardware = Math.max(1, Number(globalThis.navigator?.hardwareConcurrency) || 1);
-  return Math.max(1, Math.min(candidateCount, Math.max(1, hardware - 1), 6));
+  if (typeof Worker !== 'function') return AI_NUM.N_1;
+  const hardware = Math.max(AI_NUM.N_1, Number(globalThis.navigator?.hardwareConcurrency) || AI_NUM.N_1);
+  return Math.max(AI_NUM.N_1, Math.min(candidateCount, Math.max(AI_NUM.N_1, hardware - AI_NUM.N_1), AI_NUM.N_6));
 }
 
-function runEvaluationWorkerPayload(payload) {
+function runEvaluationWorkerTask(worker, payload) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./evaluation.worker.js', import.meta.url), { type: 'module' });
     const cleanup = () => {
       worker.removeEventListener('message', onMessage);
       worker.removeEventListener('error', onError);
-      worker.terminate();
     };
     const onMessage = (event) => {
       const message = event.data || {};
@@ -1537,14 +1548,54 @@ function runEvaluationWorkerPayload(payload) {
   });
 }
 
-async function runParallelEvaluationPayloads(payloads, onChunkComplete = null) {
-  const results = await Promise.all(payloads.map(payload =>
-    runEvaluationWorkerPayload(payload).then(result => {
-      onChunkComplete?.(result);
-      return result;
-    })
-  ));
-  return results.flat();
+class EvaluationWorkerPool {
+  constructor(workerCount) {
+    this.workerCount = Math.max(AI_NUM.N_0, workerCount);
+    this.workers = [];
+    this.nextWorkerIndex = AI_NUM.N_0;
+  }
+
+  ensureWorkers() {
+    if (this.workerCount <= AI_NUM.N_1 || this.workers.length) return;
+    for (let index = AI_NUM.N_0; index < this.workerCount; index++) {
+      this.workers.push(new Worker(new URL('./evaluation.worker.js', import.meta.url), { type: 'module' }));
+    }
+  }
+
+  async runPayloads(payloads) {
+    if (!payloads.length) return [];
+    this.ensureWorkers();
+    if (!this.workers.length) throw new Error('No reusable evaluation workers are available.');
+
+    const results = Array.from({ length: payloads.length });
+    let cursor = AI_NUM.N_0;
+    const activeWorkers = this.workers.slice(AI_NUM.N_0, Math.min(this.workers.length, payloads.length));
+    const runNext = async (worker) => {
+      while (cursor < payloads.length) {
+        const taskIndex = cursor;
+        cursor++;
+        results[taskIndex] = await runEvaluationWorkerTask(worker, payloads[taskIndex]);
+      }
+    };
+
+    await Promise.all(activeWorkers.map(worker => runNext(worker)));
+    return results.flat();
+  }
+
+  async close() {
+    const workers = this.workers.splice(AI_NUM.N_0);
+    await Promise.all(workers.map(worker => Promise.resolve(worker.terminate()).catch(() => null)));
+  }
+}
+
+async function runParallelEvaluationPayloads(payloads, workerPool = null) {
+  if (workerPool) return workerPool.runPayloads(payloads);
+  const transientPool = new EvaluationWorkerPool(payloads.length);
+  try {
+    return await transientPool.runPayloads(payloads);
+  } finally {
+    await transientPool.close();
+  }
 }
 
 async function evaluateGenerationPopulation({
@@ -1555,10 +1606,16 @@ async function evaluateGenerationPopulation({
   generation,
   hallOfFame,
   workerCount,
+  workerPool = null,
+  onWorkerFallback = null,
   onEntry = null,
 }) {
   const candidateById = new Map(population.map(candidate => [candidate.id, candidate]));
+  const candidateOrder = new Map(population.map((candidate, index) => [candidate.id, index]));
   const evaluationEntries = [];
+  const sortEntriesByCandidateOrder = () => evaluationEntries.sort((left, right) => (
+    (candidateOrder.get(left.candidate.id) ?? AI_NUM.N_0) - (candidateOrder.get(right.candidate.id) ?? AI_NUM.N_0)
+  ));
 
   const consumeChunk = (chunkResults) => {
     for (const result of chunkResults) {
@@ -1574,7 +1631,7 @@ async function evaluateGenerationPopulation({
     }
   };
 
-  if (workerCount > 1) {
+  if (workerCount > AI_NUM.N_1) {
     try {
       const payloads = chunkArray(population, workerCount).map(candidates => ({
         mode: 'generation',
@@ -1587,10 +1644,11 @@ async function evaluateGenerationPopulation({
         generation,
         fitnessWeights: config.fitness,
       }));
-      const chunkResults = await runParallelEvaluationPayloads(payloads);
+      const chunkResults = await runParallelEvaluationPayloads(payloads, workerPool);
       consumeChunk(chunkResults);
-      return evaluationEntries;
+      return sortEntriesByCandidateOrder();
     } catch {
+      onWorkerFallback?.();
       // Fall through to deterministic sequential evaluation if nested workers
       // are unavailable in the current runtime.
     }
@@ -1618,7 +1676,27 @@ async function evaluateGenerationPopulation({
     onEntry?.(entry);
   }
 
-  return evaluationEntries;
+  return sortEntriesByCandidateOrder();
+}
+
+function buildEvaluatedFinalistEntry(finalist, holdoutSummary, hallOfFameVectors, finalistVectors) {
+  return {
+    ...finalist,
+    holdoutSummary,
+    displayScore: computeDisplayScore(holdoutSummary, finalist.noveltyScore),
+    objectives: {
+      survivalRate: roundTo(AI_NUM.N_1 - holdoutSummary.empireFallRate - holdoutSummary.guardRate, AI_NUM.N_4),
+      winShare: holdoutSummary.lowerConfidenceWinShare ?? holdoutSummary.winShare,
+      scorePercentile: holdoutSummary.lowerConfidenceScorePercentile ?? holdoutSummary.scorePercentile ?? holdoutSummary.wealthPercentile,
+      wealthPercentile: holdoutSummary.wealthPercentile,
+      scriptedWinRate: getClassWinRate(holdoutSummary, 'scripted'),
+      hallOfFameWinRate: getClassWinRate(holdoutSummary, 'hof'),
+      emergentWinRate: getClassWinRate(holdoutSummary, 'emergent'),
+      opponentRobustness: roundTo(AI_NUM.N_1 - Math.min(AI_NUM.N_1, Math.sqrt(holdoutSummary.opponentVariance)), AI_NUM.N_4),
+      seatRobustness: roundTo(AI_NUM.N_1 - Math.min(AI_NUM.N_1, Math.sqrt(holdoutSummary.seatVariance) * AI_NUM.N_4), AI_NUM.N_4),
+      novelty: computeNoveltyScore(holdoutSummary.behaviorVector, hallOfFameVectors, finalistVectors),
+    },
+  };
 }
 
 async function evaluateHoldoutPopulation({
@@ -1629,55 +1707,49 @@ async function evaluateHoldoutPopulation({
   population,
   hallOfFame,
   workerCount,
+  workerPool = null,
+  mode = 'holdout',
+  onWorkerFallback = null,
   onEntry = null,
 }) {
   const candidateById = new Map(finalists.map(entry => [entry.candidate.id, entry]));
+  const finalistOrder = new Map(finalists.map((entry, index) => [entry.candidate.id, index]));
   const holdoutEntries = [];
+  const sortEntriesByFinalistOrder = () => holdoutEntries.sort((left, right) => (
+    (finalistOrder.get(left.candidate.id) ?? AI_NUM.N_0) - (finalistOrder.get(right.candidate.id) ?? AI_NUM.N_0)
+  ));
+  const hallOfFameVectors = hallOfFame.map(item => item.behaviorVector);
+  const finalistVectors = finalists.map(item => item.trainSummary.behaviorVector);
 
   const consumeChunk = (chunkResults) => {
     for (const result of chunkResults) {
       const finalist = candidateById.get(result.candidateId);
       if (!finalist) continue;
       const holdoutSummary = result.holdoutSummary;
-      const entry = {
-        ...finalist,
-        holdoutSummary,
-        displayScore: computeDisplayScore(holdoutSummary, finalist.noveltyScore),
-        objectives: {
-          survivalRate: roundTo(1 - holdoutSummary.empireFallRate - holdoutSummary.guardRate, 4),
-          winShare: holdoutSummary.winShare,
-          scorePercentile: holdoutSummary.scorePercentile ?? holdoutSummary.wealthPercentile,
-          wealthPercentile: holdoutSummary.wealthPercentile,
-          legacyWinRate: getClassWinRate(holdoutSummary, 'legacy'),
-          scriptedWinRate: getClassWinRate(holdoutSummary, 'scripted'),
-          hallOfFameWinRate: getClassWinRate(holdoutSummary, 'hof'),
-          emergentWinRate: getClassWinRate(holdoutSummary, 'emergent'),
-          opponentRobustness: roundTo(1 - Math.min(1, Math.sqrt(holdoutSummary.opponentVariance)), 4),
-          seatRobustness: roundTo(1 - Math.min(1, Math.sqrt(holdoutSummary.seatVariance) * 4), 4),
-          novelty: computeNoveltyScore(holdoutSummary.behaviorVector, hallOfFame.map(item => item.behaviorVector), finalists.map(item => item.trainSummary.behaviorVector)),
-        },
-      };
+      const entry = buildEvaluatedFinalistEntry(finalist, holdoutSummary, hallOfFameVectors, finalistVectors);
       holdoutEntries.push(entry);
       onEntry?.(entry);
     }
   };
 
-  if (workerCount > 1) {
+  if (workerCount > AI_NUM.N_1) {
     try {
       const payloads = chunkArray(finalists.map(entry => entry.candidate), workerCount).map(candidates => ({
-        mode: 'holdout',
+        mode,
         candidates,
         holdoutSuite,
+        auditSuite: mode === 'audit' ? holdoutSuite : undefined,
         population,
         hallOfFame,
         config,
         generation,
         fitnessWeights: config.fitness,
       }));
-      const chunkResults = await runParallelEvaluationPayloads(payloads);
+      const chunkResults = await runParallelEvaluationPayloads(payloads, workerPool);
       consumeChunk(chunkResults);
-      return holdoutEntries;
+      return sortEntriesByFinalistOrder();
     } catch {
+      onWorkerFallback?.();
       // Fall through to sequential evaluation.
     }
   }
@@ -1686,33 +1758,16 @@ async function evaluateHoldoutPopulation({
     const holdoutSummary = evaluateCandidateOnSuite(finalist.candidate, holdoutSuite, {
       config,
       generation,
-      scope: 'holdout',
+      scope: mode,
       population,
       hallOfFame,
     }, config.fitness);
-    const entry = {
-      ...finalist,
-      holdoutSummary,
-      displayScore: computeDisplayScore(holdoutSummary, finalist.noveltyScore),
-      objectives: {
-        survivalRate: roundTo(1 - holdoutSummary.empireFallRate - holdoutSummary.guardRate, 4),
-        winShare: holdoutSummary.winShare,
-        scorePercentile: holdoutSummary.scorePercentile ?? holdoutSummary.wealthPercentile,
-        wealthPercentile: holdoutSummary.wealthPercentile,
-        legacyWinRate: getClassWinRate(holdoutSummary, 'legacy'),
-        scriptedWinRate: getClassWinRate(holdoutSummary, 'scripted'),
-        hallOfFameWinRate: getClassWinRate(holdoutSummary, 'hof'),
-        emergentWinRate: getClassWinRate(holdoutSummary, 'emergent'),
-        opponentRobustness: roundTo(1 - Math.min(1, Math.sqrt(holdoutSummary.opponentVariance)), 4),
-        seatRobustness: roundTo(1 - Math.min(1, Math.sqrt(holdoutSummary.seatVariance) * 4), 4),
-        novelty: computeNoveltyScore(holdoutSummary.behaviorVector, hallOfFame.map(item => item.behaviorVector), finalists.map(item => item.trainSummary.behaviorVector)),
-      },
-    };
+    const entry = buildEvaluatedFinalistEntry(finalist, holdoutSummary, hallOfFameVectors, finalistVectors);
     holdoutEntries.push(entry);
     onEntry?.(entry);
   }
 
-  return holdoutEntries;
+  return sortEntriesByFinalistOrder();
 }
 
 function materializeChampion(entry, rank, config, noveltyPercentile) {
@@ -1726,9 +1781,7 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
     summary: buildChampionSummary(entry.candidate, holdoutSummary),
     source: 'emergent-trained',
     basePersonalityId: null,
-    weights: entry.candidate.weights,
-    tactics: entry.candidate.tactics,
-    meta: entry.candidate.meta,
+    policy: entry.candidate.policy,
     training: {
       generation: entry.generation,
       matches: holdoutSummary.matches,
@@ -1767,18 +1820,41 @@ function materializeChampion(entry, rank, config, noveltyPercentile) {
       holdoutScorePercentile: holdoutSummary.scorePercentile,
       guardRate: holdoutSummary.guardRate,
       paretoFront: entry.paretoRank,
-      crowdingDistance: roundTo(entry.crowdingDistance, 4),
+      crowdingDistance: roundTo(entry.crowdingDistance, AI_NUM.N_4),
       noveltyScore: entry.noveltyScore,
       noveltyPercentile,
       seatBias: holdoutSummary.startingBasileusSeatBias,
       bestMatchup: holdoutSummary.bestMatchup?.tag || '',
       worstMatchup: holdoutSummary.worstMatchup?.tag || '',
-      averageProjectionError: holdoutSummary.behaviorProfile?.averageProjectionError || 0,
-      averageDecisionQuality: holdoutSummary.behaviorProfile?.averageDecisionQuality || 0,
+      averageProjectionError: holdoutSummary.behaviorProfile?.averageProjectionError || AI_NUM.N_0,
+      averageDecisionQuality: holdoutSummary.behaviorProfile?.averageDecisionQuality || AI_NUM.N_0,
       behaviorProfile: holdoutSummary.behaviorProfile,
       mainBehavior: describeBehaviorProfile(holdoutSummary),
     },
   });
+}
+
+function buildFinalAuditEntry(entry, rank, auditSummary) {
+  return {
+    rank,
+    candidateId: entry.candidate.id,
+    name: entry.candidate.name,
+    matches: auditSummary.matches,
+    winShare: auditSummary.winShare,
+    scorePercentile: auditSummary.scorePercentile ?? auditSummary.wealthPercentile,
+    empireFallRate: auditSummary.empireFallRate,
+    guardRate: auditSummary.guardRate,
+    robustness: {
+      scenario: roundTo(AI_NUM.N_1 - Math.min(AI_NUM.N_1, Math.sqrt(auditSummary.scenarioVariance || AI_NUM.N_0)), AI_NUM.N_4),
+      seat: roundTo(AI_NUM.N_1 - Math.min(AI_NUM.N_1, Math.sqrt(auditSummary.seatVariance || AI_NUM.N_0) * AI_NUM.N_4), AI_NUM.N_4),
+      opponent: roundTo(AI_NUM.N_1 - Math.min(AI_NUM.N_1, Math.sqrt(auditSummary.opponentVariance || AI_NUM.N_0)), AI_NUM.N_4),
+    },
+    perScenarioWinRate: auditSummary.perScenarioWinRate,
+    perSeatWinRate: auditSummary.perSeatWinRate,
+    perOpponentTypeWinRate: auditSummary.perOpponentTypeWinRate,
+    bestMatchup: auditSummary.bestMatchup,
+    worstMatchup: auditSummary.worstMatchup,
+  };
 }
 
 export function normalizeTrainingConfig(rawConfig = {}) {
@@ -1788,15 +1864,15 @@ export function normalizeTrainingConfig(rawConfig = {}) {
   const deckSizes = sanitizeDeckSizes(rawConfig.deckSizes ?? (
     rawConfig.deckSize == null ? DEFAULT_TRAINING_CONFIG.deckSizes : [rawConfig.deckSize]
   ));
-  const playerCount = playerCounts[0] ?? sanitizePlayerCount(rawConfig.playerCount);
-  const deckSize = deckSizes[0] ?? DEFAULT_TRAINING_CONFIG.deckSize;
+  const playerCount = playerCounts[AI_NUM.N_0] ?? sanitizePlayerCount(rawConfig.playerCount);
+  const deckSize = deckSizes[AI_NUM.N_0] ?? DEFAULT_TRAINING_CONFIG.deckSize;
   const fitnessPresetId = rawConfig.fitnessPresetId === 'custom'
     ? 'custom'
     : resolveFitnessPresetId(rawConfig.fitnessPresetId);
   const fitness = normalizeFitnessWeights(rawConfig.fitness, rawConfig.fitnessPresetId);
 
   return {
-    seed: randomSeed(),
+    seed: normalizeSeed(rawConfig.seed),
     playerCount,
     playerCounts,
     deckSize,
@@ -1804,29 +1880,105 @@ export function normalizeTrainingConfig(rawConfig = {}) {
     fitnessPresetId,
     fitness,
     populationSize: Math.max(Math.max(...playerCounts), toInt(rawConfig.populationSize, DEFAULT_TRAINING_CONFIG.populationSize)),
-    generations: Math.max(1, toInt(rawConfig.generations, DEFAULT_TRAINING_CONFIG.generations)),
-    matchesPerCandidate: Math.max(1, toInt(rawConfig.matchesPerCandidate, DEFAULT_TRAINING_CONFIG.matchesPerCandidate)),
-    validationMatchesPerCandidate: Math.max(1, toInt(rawConfig.validationMatchesPerCandidate, DEFAULT_TRAINING_CONFIG.validationMatchesPerCandidate)),
-    holdoutMatchesPerChampion: Math.max(16, toInt(rawConfig.holdoutMatchesPerChampion, DEFAULT_TRAINING_CONFIG.holdoutMatchesPerChampion)),
-    champions: Math.max(1, toInt(rawConfig.champions, DEFAULT_TRAINING_CONFIG.champions)),
-    hallOfFameSize: Math.max(0, toInt(rawConfig.hallOfFameSize, DEFAULT_TRAINING_CONFIG.hallOfFameSize)),
-    eliteFraction: clamp(toNumber(rawConfig.eliteFraction, DEFAULT_TRAINING_CONFIG.eliteFraction), 0.1, 0.4),
-    freshBloodRate: clamp(toNumber(rawConfig.freshBloodRate, DEFAULT_TRAINING_CONFIG.freshBloodRate), 0.05, 0.25),
-    hallOfFameMixFraction: clamp(toNumber(rawConfig.hallOfFameMixFraction, DEFAULT_TRAINING_CONFIG.hallOfFameMixFraction), 0, 1),
-    parallelWorkers: Math.max(0, toInt(rawConfig.parallelWorkers, DEFAULT_TRAINING_CONFIG.parallelWorkers)),
+    generations: Math.max(AI_NUM.N_1, toInt(rawConfig.generations, DEFAULT_TRAINING_CONFIG.generations)),
+    matchesPerCandidate: Math.max(AI_NUM.N_1, toInt(rawConfig.matchesPerCandidate, DEFAULT_TRAINING_CONFIG.matchesPerCandidate)),
+    validationMatchesPerCandidate: Math.max(AI_NUM.N_1, toInt(rawConfig.validationMatchesPerCandidate, DEFAULT_TRAINING_CONFIG.validationMatchesPerCandidate)),
+    holdoutMatchesPerChampion: Math.max(AI_NUM.N_1, toInt(rawConfig.holdoutMatchesPerChampion, DEFAULT_TRAINING_CONFIG.holdoutMatchesPerChampion)),
+    finalAuditMatchesPerChampion: Math.max(AI_NUM.N_0, toInt(rawConfig.finalAuditMatchesPerChampion, DEFAULT_TRAINING_CONFIG.finalAuditMatchesPerChampion)),
+    champions: Math.max(AI_NUM.N_1, toInt(rawConfig.champions, DEFAULT_TRAINING_CONFIG.champions)),
+    hallOfFameSize: Math.max(AI_NUM.N_0, toInt(rawConfig.hallOfFameSize, DEFAULT_TRAINING_CONFIG.hallOfFameSize)),
+    eliteFraction: clamp(toNumber(rawConfig.eliteFraction, DEFAULT_TRAINING_CONFIG.eliteFraction), AI_NUM.N_0_1, AI_NUM.N_0_4),
+    freshBloodRate: clamp(toNumber(rawConfig.freshBloodRate, DEFAULT_TRAINING_CONFIG.freshBloodRate), AI_NUM.N_0_05, AI_NUM.N_0_25),
+    hallOfFameMixFraction: clamp(toNumber(rawConfig.hallOfFameMixFraction, DEFAULT_TRAINING_CONFIG.hallOfFameMixFraction), AI_NUM.N_0, AI_NUM.N_1),
+    parallelWorkers: Math.max(AI_NUM.N_0, toInt(rawConfig.parallelWorkers, DEFAULT_TRAINING_CONFIG.parallelWorkers)),
   };
 }
 
 function getHoldoutFinalistCount(config) {
-  return Math.min(config.populationSize, Math.max(config.champions * 3, 8));
+  return Math.min(config.populationSize, Math.max(config.champions * AI_NUM.N_3, AI_NUM.N_8));
+}
+
+function getFinalAuditChampionCount(config) {
+  return Math.min(config.champions, getHoldoutFinalistCount(config));
 }
 
 export function estimateTrainingMatches(rawConfig = {}) {
   const config = normalizeTrainingConfig(rawConfig);
   return (
     config.generations * config.populationSize * (config.matchesPerCandidate + config.validationMatchesPerCandidate) +
-    (getHoldoutFinalistCount(config) * config.holdoutMatchesPerChampion)
+    (getHoldoutFinalistCount(config) * config.holdoutMatchesPerChampion) +
+    (getFinalAuditChampionCount(config) * config.finalAuditMatchesPerChampion)
   );
+}
+
+function createPerformanceTracker() {
+  return {
+    phases: {
+      training: AI_NUM.N_0,
+      validation: AI_NUM.N_0,
+      holdout: AI_NUM.N_0,
+      audit: AI_NUM.N_0,
+    },
+    workerFallbacks: AI_NUM.N_0,
+  };
+}
+
+function recordSplitPhaseDuration(performance, durationMs, split) {
+  const totalWeight = Object.values(split).reduce((total, value) => total + value, AI_NUM.N_0);
+  if (totalWeight <= AI_NUM.N_0) return;
+  for (const [phase, weight] of Object.entries(split)) {
+    performance.phases[phase] = (performance.phases[phase] || AI_NUM.N_0) + (durationMs * (weight / totalWeight));
+  }
+}
+
+function buildProgressPayload(config, startedAt, completedMatches, totalMatches, extra = {}) {
+  const {
+    phaseStartedAt = startedAt,
+    phaseCompletedMatches = completedMatches,
+    workerCount = AI_NUM.N_1,
+    activeWorkerCount = workerCount,
+    ...rest
+  } = extra;
+  const elapsedMs = Math.max(AI_NUM.N_1, Date.now() - startedAt);
+  const phaseElapsedMs = Math.max(AI_NUM.N_1, Date.now() - phaseStartedAt);
+  const matchesPerSecond = completedMatches / (elapsedMs / AI_NUM.N_1000);
+  const phaseMatchesPerSecond = phaseCompletedMatches / (phaseElapsedMs / AI_NUM.N_1000);
+  const remaining = Math.max(AI_NUM.N_0, totalMatches - completedMatches);
+  return {
+    ...rest,
+    completed: completedMatches,
+    total: totalMatches,
+    matchesPerSecond: roundTo(matchesPerSecond, AI_NUM.N_2),
+    phaseMatchesPerSecond: roundTo(phaseMatchesPerSecond, AI_NUM.N_2),
+    workerUtilization: roundTo(clamp(activeWorkerCount / Math.max(AI_NUM.N_1, workerCount), AI_NUM.N_0, AI_NUM.N_1), AI_NUM.N_4),
+    etaMs: matchesPerSecond > AI_NUM.N_0 ? Math.round((remaining / matchesPerSecond) * AI_NUM.N_1000) : null,
+    matchSplit: {
+      training: config.generations * config.populationSize * config.matchesPerCandidate,
+      validation: config.generations * config.populationSize * config.validationMatchesPerCandidate,
+      holdout: getHoldoutFinalistCount(config) * config.holdoutMatchesPerChampion,
+      audit: getFinalAuditChampionCount(config) * config.finalAuditMatchesPerChampion,
+    },
+  };
+}
+
+function buildPerformanceOverview(config, performance, workerCount) {
+  const split = {
+    training: config.generations * config.populationSize * config.matchesPerCandidate,
+    validation: config.generations * config.populationSize * config.validationMatchesPerCandidate,
+    holdout: getHoldoutFinalistCount(config) * config.holdoutMatchesPerChampion,
+    audit: getFinalAuditChampionCount(config) * config.finalAuditMatchesPerChampion,
+  };
+  const phaseMs = Object.fromEntries(Object.entries(performance.phases).map(([phase, ms]) => [phase, Math.round(ms)]));
+  const phaseMatchesPerSecond = Object.fromEntries(Object.entries(split).map(([phase, matches]) => [
+    phase,
+    phaseMs[phase] > AI_NUM.N_0 ? roundTo(matches / (phaseMs[phase] / AI_NUM.N_1000), AI_NUM.N_2) : AI_NUM.N_0,
+  ]));
+  return {
+    workerCount,
+    workerFallbacks: performance.workerFallbacks,
+    phaseMs,
+    phaseMatchesPerSecond,
+  };
 }
 
 export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
@@ -1834,21 +1986,27 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
   const config = normalizeTrainingConfig(rawConfig);
   const rng = createRng(config.seed);
   const generationWorkerCount = getRecommendedParallelWorkerCount(config, config.populationSize);
+  const performance = createPerformanceTracker();
+  const evaluationWorkerPool = generationWorkerCount > AI_NUM.N_1 ? new EvaluationWorkerPool(generationWorkerCount) : null;
   let population = buildInitialPopulation(config, rng);
-  const validationSuite = buildEvaluationSuite(config, 'validation', 0, config.validationMatchesPerCandidate, 'late');
-  const holdoutSuite = buildEvaluationSuite(config, 'holdout', 0, config.holdoutMatchesPerChampion, 'late');
+  const validationSuite = buildEvaluationSuite(config, 'validation', AI_NUM.N_0, config.validationMatchesPerCandidate, 'late');
+  const holdoutSuite = buildEvaluationSuite(config, 'holdout', AI_NUM.N_0, config.holdoutMatchesPerChampion, 'late');
   const totalMatches = estimateTrainingMatches(config);
-  let completedMatches = 0;
+  let completedMatches = AI_NUM.N_0;
   const generationHistory = [];
   const hallOfFame = [];
   let finalRankedEntries = [];
 
-  for (let generation = 1; generation <= config.generations; generation++) {
+  try {
+  for (let generation = AI_NUM.N_1; generation <= config.generations; generation++) {
     const stage = trainingStage(generation, config.generations);
     const trainingSuite = buildEvaluationSuite(config, 'training', generation, config.matchesPerCandidate, stage);
     const archiveVectors = hallOfFame.map(entry => entry.behaviorVector);
-    let evaluatedCandidateCount = 0;
-    const partialGenerationEntries = [];
+    let evaluatedCandidateCount = AI_NUM.N_0;
+    let phaseCompletedMatches = AI_NUM.N_0;
+    let partialLeader = null;
+    const phaseStartedAt = Date.now();
+    const activeWorkerCount = Math.min(generationWorkerCount, Math.max(AI_NUM.N_1, population.length));
     const evaluationEntries = await evaluateGenerationPopulation({
       population,
       trainingSuite,
@@ -1857,31 +2015,40 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       generation,
       hallOfFame,
       workerCount: generationWorkerCount,
+      workerPool: evaluationWorkerPool,
+      onWorkerFallback: () => {
+        performance.workerFallbacks++;
+      },
       onEntry: (entry) => {
-        partialGenerationEntries.push(entry);
         evaluatedCandidateCount++;
-        completedMatches += entry.trainSummary.matches + entry.validationSummary.matches;
-        const partialLeader = partialGenerationEntries
-          .map(item => ({
-            ...item,
-            displayScore: computeDisplayScore(item.validationSummary, 0),
-          }))
-          .sort((left, right) => right.displayScore - left.displayScore)[0];
+        const entryMatches = entry.trainSummary.matches + entry.validationSummary.matches;
+        completedMatches += entryMatches;
+        phaseCompletedMatches += entryMatches;
+        const entryDisplayScore = computeDisplayScore(entry.validationSummary, AI_NUM.N_0);
+        if (!partialLeader || entryDisplayScore > partialLeader.displayScore) {
+          partialLeader = { entry, displayScore: entryDisplayScore };
+        }
 
-        onProgress?.({
+        onProgress?.(buildProgressPayload(config, startedAt, completedMatches, totalMatches, {
           mode: 'training',
           generation,
           generations: config.generations,
-          completed: completedMatches,
-          total: totalMatches,
           matchesThisGeneration: population.length,
           currentMatch: evaluatedCandidateCount,
-          leaderName: partialLeader?.candidate?.name || 'Evaluating',
-          leaderFitness: partialLeader?.displayScore || 0,
+          leaderName: partialLeader?.entry?.candidate?.name || 'Evaluating',
+          leaderFitness: partialLeader?.displayScore || AI_NUM.N_0,
           stage,
+          phaseStartedAt,
+          phaseCompletedMatches,
+          workerCount: generationWorkerCount,
+          activeWorkerCount,
           hallOfFameSize: hallOfFame.length,
-        });
+        }));
       },
+    });
+    recordSplitPhaseDuration(performance, Date.now() - phaseStartedAt, {
+      training: config.matchesPerCandidate,
+      validation: config.validationMatchesPerCandidate,
     });
 
     const peerVectors = evaluationEntries.map(entry => entry.trainSummary.behaviorVector);
@@ -1898,45 +2065,45 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
     generationHistory.push({
       generation,
       stage,
-      leaderName: rankedEntries[0]?.candidate?.name || 'Unknown',
-      leaderParetoFront: rankedEntries[0]?.paretoRank || 0,
-      leaderCrowdingDistance: roundTo(rankedEntries[0]?.crowdingDistance || 0, 4),
-      trainWinShare: rankedEntries[0]?.trainSummary?.winShare || 0,
-      validationWinShare: rankedEntries[0]?.validationSummary?.winShare || 0,
-      validationEmpireFallRate: rankedEntries[0]?.validationSummary?.empireFallRate || 0,
-      validationGuardRate: rankedEntries[0]?.validationSummary?.guardRate || 0,
-      validationScorePercentile: rankedEntries[0]?.validationSummary?.scorePercentile || 0,
-      validationWealthPercentile: rankedEntries[0]?.validationSummary?.wealthPercentile || 0,
-      leaderNovelty: rankedEntries[0]?.noveltyScore || 0,
-      averageValidationWinShare: roundTo(average(rankedEntries.map(entry => entry.validationSummary.winShare)), 4),
-      averageValidationFallRate: roundTo(average(rankedEntries.map(entry => entry.validationSummary.empireFallRate)), 4),
+      leaderName: rankedEntries[AI_NUM.N_0]?.candidate?.name || 'Unknown',
+      leaderParetoFront: rankedEntries[AI_NUM.N_0]?.paretoRank || AI_NUM.N_0,
+      leaderCrowdingDistance: roundTo(rankedEntries[AI_NUM.N_0]?.crowdingDistance || AI_NUM.N_0, AI_NUM.N_4),
+      trainWinShare: rankedEntries[AI_NUM.N_0]?.trainSummary?.winShare || AI_NUM.N_0,
+      validationWinShare: rankedEntries[AI_NUM.N_0]?.validationSummary?.winShare || AI_NUM.N_0,
+      validationEmpireFallRate: rankedEntries[AI_NUM.N_0]?.validationSummary?.empireFallRate || AI_NUM.N_0,
+      validationGuardRate: rankedEntries[AI_NUM.N_0]?.validationSummary?.guardRate || AI_NUM.N_0,
+      validationScorePercentile: rankedEntries[AI_NUM.N_0]?.validationSummary?.scorePercentile || AI_NUM.N_0,
+      validationWealthPercentile: rankedEntries[AI_NUM.N_0]?.validationSummary?.wealthPercentile || AI_NUM.N_0,
+      leaderNovelty: rankedEntries[AI_NUM.N_0]?.noveltyScore || AI_NUM.N_0,
+      averageValidationWinShare: roundTo(average(rankedEntries.map(entry => entry.validationSummary.winShare)), AI_NUM.N_4),
+      averageValidationFallRate: roundTo(average(rankedEntries.map(entry => entry.validationSummary.empireFallRate)), AI_NUM.N_4),
       hallOfFameSize: hallOfFame.length,
     });
 
-    const hofAdditions = rankedEntries.slice(0, Math.min(2, rankedEntries.length));
+    const hofAdditions = rankedEntries.slice(AI_NUM.N_0, Math.min(AI_NUM.N_2, rankedEntries.length));
     hofAdditions.forEach((entry, index) => hallOfFame.push(createHallOfFameEntry(entry, generation, index)));
     hallOfFame.sort((left, right) => right.winShare - left.winShare);
     while (hallOfFame.length > config.hallOfFameSize) hallOfFame.pop();
 
     if (generation === config.generations) break;
 
-    const eliteCount = Math.max(2, Math.ceil(config.populationSize * config.eliteFraction));
-    const freshCount = Math.max(1, Math.round(config.populationSize * config.freshBloodRate));
+    const eliteCount = Math.max(AI_NUM.N_2, Math.ceil(config.populationSize * config.eliteFraction));
+    const freshCount = Math.max(AI_NUM.N_1, Math.round(config.populationSize * config.freshBloodRate));
     const mutationScale = computeAdaptiveMutationScale(generation, config.generations, average(rankedEntries.map(entry => entry.noveltyScore)));
     const nextPopulation = rankedEntries
-      .slice(0, eliteCount)
-      .map((entry, index) => cloneCandidate(entry.candidate, generation + 1, `elite${index}`));
+      .slice(AI_NUM.N_0, eliteCount)
+      .map((entry, index) => cloneCandidate(entry.candidate, generation + AI_NUM.N_1, `elite${index}`));
 
-    for (let index = 0; index < freshCount && nextPopulation.length < config.populationSize; index++) {
-      nextPopulation.push(createNeutralCandidate(rng, (generation * 1000) + index));
+    for (let index = AI_NUM.N_0; index < freshCount && nextPopulation.length < config.populationSize; index++) {
+      nextPopulation.push(createNeutralCandidate(rng, (generation * AI_NUM.N_1000) + index));
     }
 
     while (nextPopulation.length < config.populationSize) {
-      const parentA = tournamentSelect(rankedEntries, rng)?.candidate || rankedEntries[0].candidate;
-      const parentB = tournamentSelect(rankedEntries, rng)?.candidate || rankedEntries[0].candidate;
-      const child = rng() < 0.6
-        ? crossoverCandidates(parentA, parentB, rng, generation + 1, nextPopulation.length, mutationScale)
-        : mutateCandidate(parentA, rng, generation + 1, nextPopulation.length, mutationScale);
+      const parentA = tournamentSelect(rankedEntries, rng)?.candidate || rankedEntries[AI_NUM.N_0].candidate;
+      const parentB = tournamentSelect(rankedEntries, rng)?.candidate || rankedEntries[AI_NUM.N_0].candidate;
+      const child = rng() < AI_NUM.N_0_6
+        ? crossoverCandidates(parentA, parentB, rng, generation + AI_NUM.N_1, nextPopulation.length, mutationScale)
+        : mutateCandidate(parentA, rng, generation + AI_NUM.N_1, nextPopulation.length, mutationScale);
       nextPopulation.push(child);
     }
 
@@ -1944,10 +2111,13 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
   }
 
   const finalistCount = getHoldoutFinalistCount(config);
-  const finalists = finalRankedEntries.slice(0, finalistCount);
+  const finalists = finalRankedEntries.slice(AI_NUM.N_0, finalistCount);
   const holdoutWorkerCount = getRecommendedParallelWorkerCount(config, finalists.length);
-  let holdoutEvaluated = 0;
-  const partialHoldoutEntries = [];
+  let holdoutEvaluated = AI_NUM.N_0;
+  let holdoutPhaseCompletedMatches = AI_NUM.N_0;
+  let partialHoldoutLeader = null;
+  const holdoutPhaseStartedAt = Date.now();
+  const activeHoldoutWorkers = Math.min(holdoutWorkerCount, Math.max(AI_NUM.N_1, finalists.length));
   const holdoutEntries = await evaluateHoldoutPopulation({
     finalists,
     holdoutSuite,
@@ -1956,37 +2126,93 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
     population,
     hallOfFame,
     workerCount: holdoutWorkerCount,
+    workerPool: evaluationWorkerPool,
+    onWorkerFallback: () => {
+      performance.workerFallbacks++;
+    },
     onEntry: (entry) => {
-      partialHoldoutEntries.push(entry);
       holdoutEvaluated++;
       completedMatches += entry.holdoutSummary.matches;
-      onProgress?.({
+      holdoutPhaseCompletedMatches += entry.holdoutSummary.matches;
+      if (!partialHoldoutLeader || entry.displayScore > partialHoldoutLeader.displayScore) {
+        partialHoldoutLeader = entry;
+      }
+      onProgress?.(buildProgressPayload(config, startedAt, completedMatches, totalMatches, {
         mode: 'training',
         generation: config.generations,
         generations: config.generations,
-        completed: completedMatches,
-        total: totalMatches,
         matchesThisGeneration: finalists.length,
         currentMatch: holdoutEvaluated,
-        leaderName: partialHoldoutEntries
-          .slice()
-          .sort((left, right) => right.displayScore - left.displayScore)[0]?.candidate?.name || 'Holdout',
-        leaderFitness: partialHoldoutEntries
-          .slice()
-          .sort((left, right) => right.displayScore - left.displayScore)[0]?.displayScore || 0,
+        leaderName: partialHoldoutLeader?.candidate?.name || 'Holdout',
+        leaderFitness: partialHoldoutLeader?.displayScore || AI_NUM.N_0,
         stage: 'holdout',
+        phaseStartedAt: holdoutPhaseStartedAt,
+        phaseCompletedMatches: holdoutPhaseCompletedMatches,
+        workerCount: holdoutWorkerCount,
+        activeWorkerCount: activeHoldoutWorkers,
         hallOfFameSize: hallOfFame.length,
-      });
+      }));
     },
   });
+  performance.phases.holdout += Date.now() - holdoutPhaseStartedAt;
 
   const finalChampions = sortByPareto(holdoutEntries);
   const noveltyScores = finalChampions.map(entry => entry.noveltyScore).slice().sort((left, right) => left - right);
-  const champions = finalChampions.slice(0, config.champions).map((entry, index) => {
+  const champions = finalChampions.slice(AI_NUM.N_0, config.champions).map((entry, index) => {
     const lowerCount = noveltyScores.filter(score => score <= entry.noveltyScore).length;
-    const noveltyPercentile = roundTo(lowerCount / Math.max(1, noveltyScores.length), 4);
-    return materializeChampion(entry, index + 1, config, noveltyPercentile);
+    const noveltyPercentile = roundTo(lowerCount / Math.max(AI_NUM.N_1, noveltyScores.length), AI_NUM.N_4);
+    return materializeChampion(entry, index + AI_NUM.N_1, config, noveltyPercentile);
   });
+  const finalAuditSuite = buildEvaluationSuite(config, 'audit', config.generations + AI_NUM.N_1, config.finalAuditMatchesPerChampion, 'late');
+  const finalAuditChampionCount = Math.min(config.champions, finalChampions.length);
+  const auditFinalists = finalChampions.slice(AI_NUM.N_0, config.champions);
+  const auditRankByCandidateId = new Map(auditFinalists.map((entry, index) => [entry.candidate.id, index]));
+  let finalAudit = [];
+  if (finalAuditSuite.length) {
+    let auditEvaluated = AI_NUM.N_0;
+    let auditPhaseCompletedMatches = AI_NUM.N_0;
+    const auditWorkerCount = getRecommendedParallelWorkerCount(config, auditFinalists.length);
+    const activeAuditWorkers = Math.min(auditWorkerCount, Math.max(AI_NUM.N_1, auditFinalists.length));
+    const auditPhaseStartedAt = Date.now();
+    const auditEntries = await evaluateHoldoutPopulation({
+      finalists: auditFinalists,
+      holdoutSuite: finalAuditSuite,
+      config,
+      generation: config.generations + AI_NUM.N_1,
+      population,
+      hallOfFame,
+      workerCount: auditWorkerCount,
+      workerPool: evaluationWorkerPool,
+      mode: 'audit',
+      onWorkerFallback: () => {
+        performance.workerFallbacks++;
+      },
+      onEntry: (entry) => {
+        auditEvaluated++;
+        completedMatches += entry.holdoutSummary.matches;
+        auditPhaseCompletedMatches += entry.holdoutSummary.matches;
+        onProgress?.(buildProgressPayload(config, startedAt, completedMatches, totalMatches, {
+          mode: 'training',
+          generation: config.generations,
+          generations: config.generations,
+          matchesThisGeneration: finalAuditChampionCount,
+          currentMatch: auditEvaluated,
+          leaderName: entry.candidate.name,
+          leaderFitness: entry.holdoutSummary?.winShare || AI_NUM.N_0,
+          stage: 'audit',
+          phaseStartedAt: auditPhaseStartedAt,
+          phaseCompletedMatches: auditPhaseCompletedMatches,
+          workerCount: auditWorkerCount,
+          activeWorkerCount: activeAuditWorkers,
+          hallOfFameSize: hallOfFame.length,
+        }));
+      },
+    });
+    performance.phases.audit += Date.now() - auditPhaseStartedAt;
+    finalAudit = auditEntries
+      .sort((left, right) => (auditRankByCandidateId.get(left.candidate.id) ?? AI_NUM.N_0) - (auditRankByCandidateId.get(right.candidate.id) ?? AI_NUM.N_0))
+      .map((entry, index) => buildFinalAuditEntry(entry, index + AI_NUM.N_1, entry.holdoutSummary));
+  }
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1999,20 +2225,27 @@ export async function runEvolutionTraining(rawConfig = {}, onProgress = null) {
       trainingMatchesPerCandidate: config.matchesPerCandidate,
       validationMatchesPerCandidate: config.validationMatchesPerCandidate,
       holdoutMatchesPerChampion: config.holdoutMatchesPerChampion,
+      finalAuditMatchesPerChampion: config.finalAuditMatchesPerChampion,
       playerCounts: config.playerCounts,
       deckSizes: config.deckSizes,
       parallelWorkers: Math.max(generationWorkerCount, holdoutWorkerCount),
+      performance: buildPerformanceOverview(config, performance, Math.max(generationWorkerCount, holdoutWorkerCount)),
       selectionMethod: 'pareto-crowding',
-      bestFitness: finalChampions[0]?.displayScore || 0,
-      bestAverageScore: finalChampions[0]?.holdoutSummary?.averageScore || 0,
-      bestAverageWealth: finalChampions[0]?.holdoutSummary?.averageWealth || 0,
-      bestEmpireFallRate: finalChampions[0]?.holdoutSummary?.empireFallRate || 0,
-      bestRobustnessVariance: finalChampions[0]?.holdoutSummary?.opponentVariance || 0,
-      bestHoldoutWinShare: finalChampions[0]?.holdoutSummary?.winShare || 0,
-      bestGuardRate: finalChampions[0]?.holdoutSummary?.guardRate || 0,
+      bestFitness: finalChampions[AI_NUM.N_0]?.displayScore || AI_NUM.N_0,
+      bestAverageScore: finalChampions[AI_NUM.N_0]?.holdoutSummary?.averageScore || AI_NUM.N_0,
+      bestAverageWealth: finalChampions[AI_NUM.N_0]?.holdoutSummary?.averageWealth || AI_NUM.N_0,
+      bestEmpireFallRate: finalChampions[AI_NUM.N_0]?.holdoutSummary?.empireFallRate || AI_NUM.N_0,
+      bestRobustnessVariance: finalChampions[AI_NUM.N_0]?.holdoutSummary?.opponentVariance || AI_NUM.N_0,
+      bestHoldoutWinShare: finalChampions[AI_NUM.N_0]?.holdoutSummary?.winShare || AI_NUM.N_0,
+      bestAuditWinShare: finalAudit[AI_NUM.N_0]?.winShare || AI_NUM.N_0,
+      bestGuardRate: finalChampions[AI_NUM.N_0]?.holdoutSummary?.guardRate || AI_NUM.N_0,
     },
     generationHistory,
     champions,
+    finalAudit,
     hallOfFame: hallOfFame.map(entry => entry.profile),
   };
+  } finally {
+    await evaluationWorkerPool?.close();
+  }
 }

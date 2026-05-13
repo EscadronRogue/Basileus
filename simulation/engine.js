@@ -139,7 +139,7 @@ function buildScenarioPlan(config) {
   if (config.mode === 'focused') {
     return [{
       key: `${config.focused.playerCount}p-${config.focused.deckSize}d-trained`,
-      label: `${config.focused.playerCount} players / ${config.focused.deckSize} invasions / trained roster`,
+      label: `${config.focused.playerCount} players / ${config.focused.deckSize} invasions / policy roster`,
       playerCount: config.focused.playerCount,
       deckSize: config.focused.deckSize,
     }];
@@ -150,7 +150,7 @@ function buildScenarioPlan(config) {
     for (const deckSize of config.mixed.deckSizes) {
       plan.push({
         key: `${playerCount}p-${deckSize}d-trained`,
-        label: `${playerCount} players / ${deckSize} invasions / trained roster`,
+        label: `${playerCount} players / ${deckSize} invasions / policy roster`,
         playerCount,
         deckSize,
       });
@@ -503,7 +503,7 @@ export function runSingleSimulationGame(options = {}) {
   const seed = normalizeSeed(options.seed ?? Date.now());
   const scenario = {
     key: options.scenarioKey || `${playerCount}p-${deckSize}d-trained-custom`,
-    label: options.scenarioLabel || `${playerCount} players / ${deckSize} invasions / trained roster`,
+    label: options.scenarioLabel || `${playerCount} players / ${deckSize} invasions / policy roster`,
     playerCount,
     deckSize,
   };

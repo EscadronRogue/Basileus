@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
+import { createBaselineAiProfile } from '../ai/profileStore.js';
 import { readExportedPersonalitiesFromFolder } from '../simulation/personality-files.js';
 import { createRoom, createRoomFromSave } from './session.js';
 import { attachWebSocketServer } from './wsServer.js';
@@ -51,7 +52,9 @@ export class MultiplayerRoomManager {
   async getAvailableAiProfiles() {
     if (!this.aiProfilesPromise) {
       const exportRoot = resolve(process.cwd(), 'trained-personalities');
-      this.aiProfilesPromise = readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false }).catch(() => []);
+      this.aiProfilesPromise = readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false })
+        .then((profiles) => profiles.length ? profiles : [createBaselineAiProfile()])
+        .catch(() => [createBaselineAiProfile()]);
     }
     return this.aiProfilesPromise;
   }

@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createBaselineAiProfile } from '../ai/profileStore.js';
 import { readExportedPersonalitiesFromFolder } from './personality-files.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -76,7 +77,7 @@ async function loadSmokeProfiles() {
   const exportRoot = join(projectRoot, 'trained-personalities');
   const profiles = await readExportedPersonalitiesFromFolder(exportRoot, { includeRuns: false });
   if (profiles.length) return profiles.slice(0, 4);
-  throw new Error('Smoke test could not find any trained AI profile exports.');
+  return [createBaselineAiProfile()];
 }
 async function main() {
   const allowedProfiles = await loadSmokeProfiles();

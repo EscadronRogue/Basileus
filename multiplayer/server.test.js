@@ -292,7 +292,7 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
 
   const room = instance.manager.getRoom(created.roomCode);
   const aiProfile = room.aiMeta.players[2].profile;
-  assert.ok(aiProfile, 'AI seats should receive explicit trained profiles.');
+  assert.ok(aiProfile, 'AI seats should receive explicit policy profiles.');
   assert.equal(aiProfile.source, 'emergent-trained');
   assert.equal(aiProfile.basePersonalityId, null);
 

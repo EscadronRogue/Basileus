@@ -87,6 +87,7 @@ function configToArgs(config, outputPath) {
     'matchesPerCandidate',
     'validationMatchesPerCandidate',
     'holdoutMatchesPerChampion',
+    'finalAuditMatchesPerChampion',
     'champions',
     'hallOfFameSize',
     'eliteFraction',

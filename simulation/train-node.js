@@ -1,6 +1,6 @@
 import { installNodeWorkerShim } from './node-worker-shim.js';
 import { runEvolutionTraining, DEFAULT_TRAINING_CONFIG, estimateTrainingMatches } from './evolution.js';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { assignGreekNamesToChampions, slugifyGreekName } from './greek-name-service.js';
 import { join, resolve } from 'node:path';
 import { availableParallelism } from 'node:os';
@@ -89,6 +89,7 @@ async function exportChampionPersonalities(result, exportDir = 'trained-personal
   const latestDir = join(exportRoot, 'latest');
 
   await mkdir(runDir, { recursive: true });
+  await rm(latestDir, { recursive: true, force: true });
   await mkdir(latestDir, { recursive: true });
 
   const files = [];
@@ -164,6 +165,11 @@ async function main() {
       percent,
       leaderName: progress.leaderName,
       leaderFitness: progress.leaderFitness,
+      matchesPerSecond: progress.matchesPerSecond,
+      phaseMatchesPerSecond: progress.phaseMatchesPerSecond,
+      workerUtilization: progress.workerUtilization,
+      etaMs: progress.etaMs,
+      matchSplit: progress.matchSplit,
       elapsed: formatMs(now - startedAt),
     }));
   });
@@ -193,6 +199,7 @@ async function main() {
     personalityExport,
     bestChampion: result.champions?.[0]?.name || null,
     bestHoldoutWinShare: result.overview?.bestHoldoutWinShare ?? null,
+    bestAuditWinShare: result.overview?.bestAuditWinShare ?? null,
   }));
 }
 

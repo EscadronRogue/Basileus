@@ -1,8 +1,10 @@
+import { AI_NUM, withAINumericTuning } from './numericConstants.js';
 import { getPlayer } from '../engine/state.js';
 import { getMercenaryHireCost, getThemeOwnerIncome } from '../engine/rules.js';
 import { DEFAULT_META_PARAMS, NEUTRAL_PROFILE, PERSONALITIES } from './personalities.js';
 import { ensureAIContext, getAIPlayerIndicators, getAIPairIndicators } from './context.js';
 import { AI_ACTION_KINDS, createActionDescriptor } from './actionSpace.js';
+import { getPolicyImpactWeight } from './policyGenome.js';
 
 export const IMPACT_KEYS = Object.freeze([
   'scoreGain',
@@ -22,11 +24,11 @@ function clamp(value, min, max) {
 }
 
 function sum(values) {
-  return values.reduce((total, value) => total + value, 0);
+  return values.reduce((total, value) => total + value, AI_NUM.N_0);
 }
 
-function roundTo(value, digits = 4) {
-  const scale = 10 ** digits;
+function roundTo(value, digits = AI_NUM.N_4) {
+  const scale = AI_NUM.N_10 ** digits;
   return Math.round(value * scale) / scale;
 }
 
@@ -47,33 +49,37 @@ function getProfile(meta, playerId) {
 function getMeta(meta, playerId, key) {
   const profile = getProfile(meta, playerId);
   if (profile?.meta && profile.meta[key] != null) return profile.meta[key];
-  return DEFAULT_META_PARAMS[key] ?? 1;
+  return DEFAULT_META_PARAMS[key] ?? AI_NUM.N_1;
+}
+
+function getPolicy(meta, playerId) {
+  return getProfile(meta, playerId)?.policy || {};
 }
 
 function emptyImpact() {
-  return Object.fromEntries(IMPACT_KEYS.map(key => [key, 0]));
+  return Object.fromEntries(IMPACT_KEYS.map(key => [key, AI_NUM.N_0]));
 }
 
 function addImpact(impact, key, value) {
   if (!IMPACT_KEYS.includes(key)) return;
-  impact[key] = roundTo((impact[key] || 0) + (Number(value) || 0));
+  impact[key] = roundTo((impact[key] || AI_NUM.N_0) + (Number(value) || AI_NUM.N_0));
 }
 
 function addCostGainImpacts(impact, descriptor, actor) {
-  const goldCost = Number(descriptor.costs.gold) || 0;
-  const troopCost = Number(descriptor.costs.troops) || 0;
-  const goldGain = Number(descriptor.gains.gold) || 0;
-  const troopGain = Number(descriptor.gains.troops) || 0;
-  const incomeGain = Number(descriptor.gains.income) || 0;
-  const titleGain = Number(descriptor.gains.titles) || 0;
-  const scoreGain = Number(descriptor.gains.score) || 0;
+  const goldCost = Number(descriptor.costs.gold) || AI_NUM.N_0;
+  const troopCost = Number(descriptor.costs.troops) || AI_NUM.N_0;
+  const goldGain = Number(descriptor.gains.gold) || AI_NUM.N_0;
+  const troopGain = Number(descriptor.gains.troops) || AI_NUM.N_0;
+  const incomeGain = Number(descriptor.gains.income) || AI_NUM.N_0;
+  const titleGain = Number(descriptor.gains.titles) || AI_NUM.N_0;
+  const scoreGain = Number(descriptor.gains.score) || AI_NUM.N_0;
 
-  addImpact(impact, 'economic', (goldGain - goldCost) * 0.12 + incomeGain * 0.55);
-  addImpact(impact, 'military', (troopGain - troopCost) * 0.35);
-  addImpact(impact, 'political', titleGain * 0.55);
-  addImpact(impact, 'scoreGain', scoreGain * 0.7 + incomeGain * 0.18 + titleGain * 0.25);
-  addImpact(impact, 'flexibility', -goldCost * 0.05 - troopCost * 0.18);
-  if (actor?.gold != null && goldCost > actor.spendableGold) addImpact(impact, 'risk', 1.1);
+  addImpact(impact, 'economic', (goldGain - goldCost) * AI_NUM.N_0_12 + incomeGain * AI_NUM.N_0_55);
+  addImpact(impact, 'military', (troopGain - troopCost) * AI_NUM.N_0_35);
+  addImpact(impact, 'political', titleGain * AI_NUM.N_0_55);
+  addImpact(impact, 'scoreGain', scoreGain * AI_NUM.N_0_7 + incomeGain * AI_NUM.N_0_18 + titleGain * AI_NUM.N_0_25);
+  addImpact(impact, 'flexibility', -goldCost * AI_NUM.N_0_05 - troopCost * AI_NUM.N_0_18);
+  if (actor?.gold != null && goldCost > actor.spendableGold) addImpact(impact, 'risk', AI_NUM.N_1_1);
 }
 
 function getThemeFromDescriptor(state, descriptor) {
@@ -83,38 +89,38 @@ function getThemeFromDescriptor(state, descriptor) {
 
 function getRouteRiskFromState(state, themeId) {
   const route = state.currentInvasion?.route;
-  if (!Array.isArray(route) || !route.length) return 0;
+  if (!Array.isArray(route) || !route.length) return AI_NUM.N_0;
   const index = route.indexOf(themeId);
-  if (index === -1) return 0;
-  return clamp(1 - (index / Math.max(1, route.length - 2)), 0, 1);
+  if (index === -AI_NUM.N_1) return AI_NUM.N_0;
+  return clamp(AI_NUM.N_1 - (index / Math.max(AI_NUM.N_1, route.length - AI_NUM.N_2)), AI_NUM.N_0, AI_NUM.N_1);
 }
 
 function scoreRelativeTarget(context, actorId, targetId) {
   const pair = getAIPairIndicators(context, actorId, targetId);
-  if (!pair) return 0;
+  if (!pair) return AI_NUM.N_0;
   const targetRank = pair.target.normalized.rank;
   const targetThreatened = pair.target.normalized.threatened;
-  const actorBehind = pair.actor.positionScore < pair.target.positionScore ? 1 : 0;
-  return clamp((targetRank * 0.6) + (actorBehind * 0.45) - (targetThreatened * 0.12), 0, 1.6);
+  const actorBehind = pair.actor.positionScore < pair.target.positionScore ? AI_NUM.N_1 : AI_NUM.N_0;
+  return clamp((targetRank * AI_NUM.N_0_6) + (actorBehind * AI_NUM.N_0_45) - (targetThreatened * AI_NUM.N_0_12), AI_NUM.N_0, AI_NUM.N_1_6);
 }
 
 function evaluateAppointment(state, context, actorId, descriptor, impact) {
-  const appointeeId = Number(descriptor.payload.appointeeId ?? descriptor.beneficiaries[0]);
+  const appointeeId = Number(descriptor.payload.appointeeId ?? descriptor.beneficiaries[AI_NUM.N_0]);
   const type = descriptor.payload.type || descriptor.payload.titleType || '';
   const pair = getAIPairIndicators(context, actorId, appointeeId);
   const target = pair?.target;
-  const targetAhead = pair?.targetAhead ? 1 : 0;
+  const targetAhead = pair?.targetAhead ? AI_NUM.N_1 : AI_NUM.N_0;
   const relationValue = target
-    ? (target.relations.trustIn - target.relations.grievanceIn) * 0.04
-    : 0;
+    ? (target.relations.trustIn - target.relations.grievanceIn) * AI_NUM.N_0_04
+    : AI_NUM.N_0;
 
-  addImpact(impact, 'political', 0.75 + relationValue);
-  addImpact(impact, 'diplomacy', 0.35 + relationValue);
-  addImpact(impact, 'denial', targetAhead * -0.25);
-  addImpact(impact, 'risk', targetAhead * 0.22);
-  if (type === 'STRATEGOS') addImpact(impact, 'military', 0.55);
-  if (type === 'BISHOP') addImpact(impact, 'scoreGain', 0.35);
-  if (type === 'EMPRESS' || type === 'CHIEF_EUNUCHS') addImpact(impact, 'political', 0.45);
+  addImpact(impact, 'political', AI_NUM.N_0_75 + relationValue);
+  addImpact(impact, 'diplomacy', AI_NUM.N_0_35 + relationValue);
+  addImpact(impact, 'denial', targetAhead * -AI_NUM.N_0_25);
+  addImpact(impact, 'risk', targetAhead * AI_NUM.N_0_22);
+  if (type === 'STRATEGOS') addImpact(impact, 'military', AI_NUM.N_0_55);
+  if (type === 'BISHOP') addImpact(impact, 'scoreGain', AI_NUM.N_0_35);
+  if (type === 'EMPRESS' || type === 'CHIEF_EUNUCHS') addImpact(impact, 'political', AI_NUM.N_0_45);
 }
 
 function evaluateLandPurchase(state, context, actorId, descriptor, impact) {
@@ -122,14 +128,14 @@ function evaluateLandPurchase(state, context, actorId, descriptor, impact) {
   const theme = getThemeFromDescriptor(state, descriptor);
   if (!theme) return;
   const income = getThemeOwnerIncome(theme);
-  const risk = getRouteRiskFromState(state, theme.id) * (context.invasion.present ? 1 : 0.35);
-  const scarcity = actor?.themes === 0 ? 0.8 : actor?.themes <= 1 ? 0.35 : 0;
+  const risk = getRouteRiskFromState(state, theme.id) * (context.invasion.present ? AI_NUM.N_1 : AI_NUM.N_0_35);
+  const scarcity = actor?.themes === AI_NUM.N_0 ? AI_NUM.N_0_8 : actor?.themes <= AI_NUM.N_1 ? AI_NUM.N_0_35 : AI_NUM.N_0;
 
-  addImpact(impact, 'economic', income * 0.5 + scarcity);
-  addImpact(impact, 'scoreGain', income * 0.12 + (Number(theme.P) || 0) * 0.08);
-  addImpact(impact, 'military', (Number(theme.L) || 0) * 0.08);
-  addImpact(impact, 'risk', risk * 0.55);
-  addImpact(impact, 'flexibility', -(Number(descriptor.costs.gold) || 0) * 0.08);
+  addImpact(impact, 'economic', income * AI_NUM.N_0_5 + scarcity);
+  addImpact(impact, 'scoreGain', income * AI_NUM.N_0_12 + (Number(theme.P) || AI_NUM.N_0) * AI_NUM.N_0_08);
+  addImpact(impact, 'military', (Number(theme.L) || AI_NUM.N_0) * AI_NUM.N_0_08);
+  addImpact(impact, 'risk', risk * AI_NUM.N_0_55);
+  addImpact(impact, 'flexibility', -(Number(descriptor.costs.gold) || AI_NUM.N_0) * AI_NUM.N_0_08);
 }
 
 function evaluateChurchGift(state, context, actorId, descriptor, impact) {
@@ -137,134 +143,134 @@ function evaluateChurchGift(state, context, actorId, descriptor, impact) {
   if (!theme) return;
   const route = getRouteRiskFromState(state, theme.id);
   const income = getThemeOwnerIncome(theme);
-  const churchYield = (Number(theme.P) || 0) + (Number(theme.T) || 0) + (Number(theme.C) || 0);
-  addImpact(impact, 'scoreGain', churchYield * 0.18);
-  addImpact(impact, 'political', 0.38);
-  addImpact(impact, 'economic', -income * 0.48);
-  addImpact(impact, 'flexibility', -0.45);
-  addImpact(impact, 'risk', -route * 0.22);
+  const churchYield = (Number(theme.P) || AI_NUM.N_0) + (Number(theme.T) || AI_NUM.N_0) + (Number(theme.C) || AI_NUM.N_0);
+  addImpact(impact, 'scoreGain', churchYield * AI_NUM.N_0_18);
+  addImpact(impact, 'political', AI_NUM.N_0_38);
+  addImpact(impact, 'economic', -income * AI_NUM.N_0_48);
+  addImpact(impact, 'flexibility', -AI_NUM.N_0_45);
+  addImpact(impact, 'risk', -route * AI_NUM.N_0_22);
 }
 
 function evaluateRecruitDismiss(context, actorId, descriptor, impact) {
   const actor = getAIPlayerIndicators(context, actorId);
-  const count = Number(descriptor.payload.count ?? 1) || 1;
+  const count = Number(descriptor.payload.count ?? AI_NUM.N_1) || AI_NUM.N_1;
   if (descriptor.kind === AI_ACTION_KINDS.RECRUIT) {
-    addImpact(impact, 'military', 0.7 * count);
-    addImpact(impact, 'survival', actor?.frontierNeed ? actor.frontierNeed * 0.12 : 0.08);
-    addImpact(impact, 'flexibility', 0.18 * count);
-    addImpact(impact, 'economic', -0.2 * count);
+    addImpact(impact, 'military', AI_NUM.N_0_7 * count);
+    addImpact(impact, 'survival', actor?.frontierNeed ? actor.frontierNeed * AI_NUM.N_0_12 : AI_NUM.N_0_08);
+    addImpact(impact, 'flexibility', AI_NUM.N_0_18 * count);
+    addImpact(impact, 'economic', -AI_NUM.N_0_2 * count);
   } else {
-    addImpact(impact, 'military', -0.55 * count);
-    addImpact(impact, 'economic', 0.35 * count);
-    addImpact(impact, 'flexibility', 0.3 * count);
-    addImpact(impact, 'risk', actor?.frontierNeed ? actor.frontierNeed * 0.12 : 0.05);
+    addImpact(impact, 'military', -AI_NUM.N_0_55 * count);
+    addImpact(impact, 'economic', AI_NUM.N_0_35 * count);
+    addImpact(impact, 'flexibility', AI_NUM.N_0_3 * count);
+    addImpact(impact, 'risk', actor?.frontierNeed ? actor.frontierNeed * AI_NUM.N_0_12 : AI_NUM.N_0_05);
   }
 }
 
 function evaluateMercenaryHire(context, actorId, descriptor, impact) {
   const actor = getAIPlayerIndicators(context, actorId);
-  const count = Number(descriptor.payload.count ?? descriptor.gains.troops ?? 1) || 1;
-  const demand = (actor?.frontierNeed || 0) + (actor?.normalized.rivalry || 0);
-  addImpact(impact, 'military', 0.65 * count);
-  addImpact(impact, 'survival', Math.min(0.6, demand * 0.16 * count));
-  addImpact(impact, 'political', 0.2 * count);
-  addImpact(impact, 'economic', -(Number(descriptor.costs.gold) || 0) * 0.1);
-  addImpact(impact, 'flexibility', 0.12 * count);
+  const count = Number(descriptor.payload.count ?? descriptor.gains.troops ?? AI_NUM.N_1) || AI_NUM.N_1;
+  const demand = (actor?.frontierNeed || AI_NUM.N_0) + (actor?.normalized.rivalry || AI_NUM.N_0);
+  addImpact(impact, 'military', AI_NUM.N_0_65 * count);
+  addImpact(impact, 'survival', Math.min(AI_NUM.N_0_6, demand * AI_NUM.N_0_16 * count));
+  addImpact(impact, 'political', AI_NUM.N_0_2 * count);
+  addImpact(impact, 'economic', -(Number(descriptor.costs.gold) || AI_NUM.N_0) * AI_NUM.N_0_1);
+  addImpact(impact, 'flexibility', AI_NUM.N_0_12 * count);
 }
 
 function evaluateRevocation(context, actorId, descriptor, impact) {
-  const targetId = Number(descriptor.payload.targetPlayerId ?? descriptor.targets[0]);
+  const targetId = Number(descriptor.payload.targetPlayerId ?? descriptor.targets[AI_NUM.N_0]);
   const targetPressure = scoreRelativeTarget(context, actorId, targetId);
-  addImpact(impact, 'denial', 0.65 + targetPressure);
-  addImpact(impact, 'political', 0.35 + targetPressure * 0.25);
-  addImpact(impact, 'diplomacy', -0.75);
-  addImpact(impact, 'risk', 0.35 + targetPressure * 0.15);
-  addImpact(impact, 'flexibility', -(Number(descriptor.costs.troops) || 0) * 0.2);
+  addImpact(impact, 'denial', AI_NUM.N_0_65 + targetPressure);
+  addImpact(impact, 'political', AI_NUM.N_0_35 + targetPressure * AI_NUM.N_0_25);
+  addImpact(impact, 'diplomacy', -AI_NUM.N_0_75);
+  addImpact(impact, 'risk', AI_NUM.N_0_35 + targetPressure * AI_NUM.N_0_15);
+  addImpact(impact, 'flexibility', -(Number(descriptor.costs.troops) || AI_NUM.N_0) * AI_NUM.N_0_2);
 }
 
 function evaluateOrders(context, actorId, descriptor, impact) {
   const actor = getAIPlayerIndicators(context, actorId);
-  const capital = Number(descriptor.commitments.capitalTroops) || 0;
-  const frontier = Number(descriptor.commitments.frontierTroops) || 0;
-  const total = Math.max(1, capital + frontier);
+  const capital = Number(descriptor.commitments.capitalTroops) || AI_NUM.N_0;
+  const frontier = Number(descriptor.commitments.frontierTroops) || AI_NUM.N_0;
+  const total = Math.max(AI_NUM.N_1, capital + frontier);
   const frontierShare = frontier / total;
   const capitalShare = capital / total;
   const candidateId = Number(descriptor.payload.candidateId ?? descriptor.payload.candidate);
-  const supportsLeader = Number.isInteger(candidateId) && getAIPlayerIndicators(context, candidateId)?.rank === 1;
+  const supportsLeader = Number.isInteger(candidateId) && getAIPlayerIndicators(context, candidateId)?.rank === AI_NUM.N_1;
   const selfClaim = candidateId === actorId;
 
-  addImpact(impact, 'survival', frontierShare * (0.55 + (context.invasion.expectedStrength * 0.04) + (actor?.frontierNeed || 0) * 0.18));
-  addImpact(impact, 'political', capitalShare * (0.5 + (selfClaim ? 0.55 : 0.2)));
-  addImpact(impact, 'military', Math.min(1.2, total * 0.08));
-  addImpact(impact, 'denial', supportsLeader && !selfClaim ? -0.25 : capitalShare * 0.25);
-  addImpact(impact, 'risk', frontierShare < 0.35 && (actor?.frontierNeed || 0) > 0.8 ? 0.45 : 0);
-  addImpact(impact, 'flexibility', -Math.abs(frontierShare - capitalShare) * 0.08);
+  addImpact(impact, 'survival', frontierShare * (AI_NUM.N_0_55 + (context.invasion.expectedStrength * AI_NUM.N_0_04) + (actor?.frontierNeed || AI_NUM.N_0) * AI_NUM.N_0_18));
+  addImpact(impact, 'political', capitalShare * (AI_NUM.N_0_5 + (selfClaim ? AI_NUM.N_0_55 : AI_NUM.N_0_2)));
+  addImpact(impact, 'military', Math.min(AI_NUM.N_1_2, total * AI_NUM.N_0_08));
+  addImpact(impact, 'denial', supportsLeader && !selfClaim ? -AI_NUM.N_0_25 : capitalShare * AI_NUM.N_0_25);
+  addImpact(impact, 'risk', frontierShare < AI_NUM.N_0_35 && (actor?.frontierNeed || AI_NUM.N_0) > AI_NUM.N_0_8 ? AI_NUM.N_0_45 : AI_NUM.N_0);
+  addImpact(impact, 'flexibility', -Math.abs(frontierShare - capitalShare) * AI_NUM.N_0_08);
 }
 
 function evaluateDeal(state, context, actorId, descriptor, impact) {
   const clauses = descriptor.payload.clauses || [];
-  const counterpartyId = Number(descriptor.payload.counterpartyId ?? descriptor.targets[0]);
+  const counterpartyId = Number(descriptor.payload.counterpartyId ?? descriptor.targets[AI_NUM.N_0]);
   const targetPressure = scoreRelativeTarget(context, actorId, counterpartyId);
-  let goldNet = 0;
-  let troopCommitment = 0;
-  let estateNet = 0;
-  let appointmentPromises = 0;
-  let protection = 0;
+  let goldNet = AI_NUM.N_0;
+  let troopCommitment = AI_NUM.N_0;
+  let estateNet = AI_NUM.N_0;
+  let appointmentPromises = AI_NUM.N_0;
+  let protection = AI_NUM.N_0;
 
   for (const clause of clauses) {
     const actorGives = Number(clause.giverId) === Number(actorId);
-    const sign = actorGives ? -1 : 1;
-    if (clause.kind === 'gold') goldNet += sign * (Number(clause.payload?.totalAmount) || 0);
-    if (clause.kind === 'estate') estateNet += sign * 1;
+    const sign = actorGives ? -AI_NUM.N_1 : AI_NUM.N_1;
+    if (clause.kind === 'gold') goldNet += sign * (Number(clause.payload?.totalAmount) || AI_NUM.N_0);
+    if (clause.kind === 'estate') estateNet += sign * AI_NUM.N_1;
     if (clause.kind === 'coup_support' || clause.kind === 'frontier_support') {
-      troopCommitment += sign * (Number(clause.payload?.troopCount) || 0);
+      troopCommitment += sign * (Number(clause.payload?.troopCount) || AI_NUM.N_0);
     }
-    if (clause.kind === 'appointment_promise') appointmentPromises += sign * (Number(clause.payload?.appointmentCount) || 1);
-    if (clause.kind === 'non_revocation') protection += sign * (Number(clause.durationTurns) || 1);
+    if (clause.kind === 'appointment_promise') appointmentPromises += sign * (Number(clause.payload?.appointmentCount) || AI_NUM.N_1);
+    if (clause.kind === 'non_revocation') protection += sign * (Number(clause.durationTurns) || AI_NUM.N_1);
   }
 
-  addImpact(impact, 'economic', goldNet * 0.1 + estateNet * 0.65);
-  addImpact(impact, 'military', troopCommitment * 0.25);
-  addImpact(impact, 'political', appointmentPromises * 0.45 + protection * 0.18);
-  addImpact(impact, 'diplomacy', 0.35 + Math.max(0, -targetPressure) * 0.1);
-  addImpact(impact, 'flexibility', Math.min(0.6, troopCommitment * 0.12) - Math.max(0, -troopCommitment) * 0.3);
-  addImpact(impact, 'risk', Math.max(0, -goldNet) * 0.03 + Math.max(0, -troopCommitment) * 0.16);
+  addImpact(impact, 'economic', goldNet * AI_NUM.N_0_1 + estateNet * AI_NUM.N_0_65);
+  addImpact(impact, 'military', troopCommitment * AI_NUM.N_0_25);
+  addImpact(impact, 'political', appointmentPromises * AI_NUM.N_0_45 + protection * AI_NUM.N_0_18);
+  addImpact(impact, 'diplomacy', AI_NUM.N_0_35 + Math.max(AI_NUM.N_0, -targetPressure) * AI_NUM.N_0_1);
+  addImpact(impact, 'flexibility', Math.min(AI_NUM.N_0_6, troopCommitment * AI_NUM.N_0_12) - Math.max(AI_NUM.N_0, -troopCommitment) * AI_NUM.N_0_3);
+  addImpact(impact, 'risk', Math.max(AI_NUM.N_0, -goldNet) * AI_NUM.N_0_03 + Math.max(AI_NUM.N_0, -troopCommitment) * AI_NUM.N_0_16);
 }
 
 function evaluateDefenderReward(state, context, actorId, descriptor, impact) {
   const choice = descriptor.payload.choice;
   const theme = getThemeFromDescriptor(state, descriptor);
-  const gold = Number(descriptor.gains.gold ?? descriptor.payload.gold ?? 0) || 0;
-  const route = theme ? getRouteRiskFromState(state, theme.id) : 0;
+  const gold = Number(descriptor.gains.gold ?? descriptor.payload.gold ?? AI_NUM.N_0) || AI_NUM.N_0;
+  const route = theme ? getRouteRiskFromState(state, theme.id) : AI_NUM.N_0;
   if (choice === 'gold') {
-    addImpact(impact, 'economic', gold * 0.14);
-    addImpact(impact, 'scoreGain', gold * 0.06);
-    addImpact(impact, 'survival', -route * (0.45 + context.invasion.expectedStrength * 0.03));
-    addImpact(impact, 'risk', route * 0.45);
+    addImpact(impact, 'economic', gold * AI_NUM.N_0_14);
+    addImpact(impact, 'scoreGain', gold * AI_NUM.N_0_06);
+    addImpact(impact, 'survival', -route * (AI_NUM.N_0_45 + context.invasion.expectedStrength * AI_NUM.N_0_03));
+    addImpact(impact, 'risk', route * AI_NUM.N_0_45);
   } else {
-    addImpact(impact, 'survival', 0.65 + route * 0.75);
-    addImpact(impact, 'diplomacy', 0.25);
-    addImpact(impact, 'economic', -gold * 0.08);
-    addImpact(impact, 'risk', -route * 0.25);
+    addImpact(impact, 'survival', AI_NUM.N_0_65 + route * AI_NUM.N_0_75);
+    addImpact(impact, 'diplomacy', AI_NUM.N_0_25);
+    addImpact(impact, 'economic', -gold * AI_NUM.N_0_08);
+    addImpact(impact, 'risk', -route * AI_NUM.N_0_25);
   }
 }
 
 function evaluateTitleAssignment(context, actorId, descriptor, impact) {
   const assignment = descriptor.payload.assignment || {};
-  let loyalHolders = 0;
-  let leaderTitles = 0;
-  let rivalDenials = 0;
+  let loyalHolders = AI_NUM.N_0;
+  let leaderTitles = AI_NUM.N_0;
+  let rivalDenials = AI_NUM.N_0;
   for (const holderId of Object.values(assignment).map(Number)) {
     const pair = getAIPairIndicators(context, actorId, holderId);
     if (!pair) continue;
     if (pair.target.relations.trustIn >= pair.target.relations.grievanceIn) loyalHolders++;
-    if (pair.target.rank === 1 && holderId !== actorId) leaderTitles++;
+    if (pair.target.rank === AI_NUM.N_1 && holderId !== actorId) leaderTitles++;
     if (pair.targetAhead) rivalDenials++;
   }
-  addImpact(impact, 'political', loyalHolders * 0.32);
-  addImpact(impact, 'diplomacy', loyalHolders * 0.12);
-  addImpact(impact, 'denial', rivalDenials * 0.18 - leaderTitles * 0.2);
-  addImpact(impact, 'risk', leaderTitles * 0.16);
+  addImpact(impact, 'political', loyalHolders * AI_NUM.N_0_32);
+  addImpact(impact, 'diplomacy', loyalHolders * AI_NUM.N_0_12);
+  addImpact(impact, 'denial', rivalDenials * AI_NUM.N_0_18 - leaderTitles * AI_NUM.N_0_2);
+  addImpact(impact, 'risk', leaderTitles * AI_NUM.N_0_16);
 }
 
 function evaluateByKind(state, context, actorId, descriptor, impact) {
@@ -287,22 +293,24 @@ function weightedTotal(meta, actorId, impact) {
   const rivalDenialValue = getMeta(meta, actorId, 'rivalDenialValue');
   const uncertaintyTolerance = getMeta(meta, actorId, 'uncertaintyTolerance');
   const cooperationValue = getMeta(meta, actorId, 'cooperationValue');
+  const policy = getPolicy(meta, actorId);
 
   return roundTo(sensitivity * (
-    impact.scoreGain * 1.05 +
-    impact.survival * (0.85 + riskHorizon * 0.18) +
-    impact.military * 0.72 +
-    impact.political * 0.82 +
-    impact.economic * 0.76 +
-    impact.denial * (0.62 + rivalDenialValue * 0.22) +
-    impact.diplomacy * (0.48 + cooperationValue * 0.18) +
-    impact.flexibility * (0.45 + flexibilityValue * 0.22) +
-    impact.timing * 0.28 -
-    impact.risk * (0.72 + riskHorizon * 0.16 - uncertaintyTolerance * 0.18)
+    impact.scoreGain * getPolicyImpactWeight(policy, 'scoreGain') +
+    impact.survival * (getPolicyImpactWeight(policy, 'survival') + riskHorizon * AI_NUM.N_0_18) +
+    impact.military * getPolicyImpactWeight(policy, 'military') +
+    impact.political * getPolicyImpactWeight(policy, 'political') +
+    impact.economic * getPolicyImpactWeight(policy, 'economic') +
+    impact.denial * (getPolicyImpactWeight(policy, 'denial') + rivalDenialValue * AI_NUM.N_0_22) +
+    impact.diplomacy * (getPolicyImpactWeight(policy, 'diplomacy') + cooperationValue * AI_NUM.N_0_18) +
+    impact.flexibility * (getPolicyImpactWeight(policy, 'flexibility') + flexibilityValue * AI_NUM.N_0_22) +
+    impact.timing * getPolicyImpactWeight(policy, 'timing') +
+    impact.risk * (getPolicyImpactWeight(policy, 'risk') - riskHorizon * AI_NUM.N_0_16 + uncertaintyTolerance * AI_NUM.N_0_18)
   ));
 }
 
 export function evaluateActionConsequences(state, meta, actorId, rawDescriptor, context = null) {
+  return withAINumericTuning(getPolicy(meta, actorId).numericTuning, () => {
   const descriptor = rawDescriptor.kind ? createActionDescriptor(rawDescriptor) : rawDescriptor;
   const world = context || ensureAIContext(state, meta, descriptor.phase || state.phase);
   const actor = getAIPlayerIndicators(world, actorId);
@@ -311,20 +319,21 @@ export function evaluateActionConsequences(state, meta, actorId, rawDescriptor, 
   addCostGainImpacts(impact, descriptor, actor);
   evaluateByKind(state, world, actorId, descriptor, impact);
 
-  if (descriptor.timing === 'future') addImpact(impact, 'timing', -0.18);
-  if (descriptor.reversibility === 'low') addImpact(impact, 'flexibility', -0.28);
-  if (descriptor.reversibility === 'high') addImpact(impact, 'flexibility', 0.16);
+  if (descriptor.timing === 'future') addImpact(impact, 'timing', -AI_NUM.N_0_18);
+  if (descriptor.reversibility === 'low') addImpact(impact, 'flexibility', -AI_NUM.N_0_28);
+  if (descriptor.reversibility === 'high') addImpact(impact, 'flexibility', AI_NUM.N_0_16);
 
   const total = weightedTotal(meta, actorId, impact);
   return {
     descriptor,
     impact,
     total,
-    score: roundTo((Number(descriptor.baseScore) || 0) + total),
+    score: roundTo((Number(descriptor.baseScore) || AI_NUM.N_0) + total),
   };
+  });
 }
 
-export function scoreActionPolicy(state, meta, actorId, rawDescriptor, baseScore = 0, context = null) {
+export function scoreActionPolicy(state, meta, actorId, rawDescriptor, baseScore = AI_NUM.N_0, context = null) {
   const descriptor = createActionDescriptor({
     ...rawDescriptor,
     actorId,
@@ -334,13 +343,13 @@ export function scoreActionPolicy(state, meta, actorId, rawDescriptor, baseScore
 }
 
 export function rankWithConsequences(state, meta, actorId, actions, options = {}) {
-  const limit = Math.max(1, Number(options.limit) || 8);
+  const limit = Math.max(AI_NUM.N_1, Number(options.limit) || AI_NUM.N_8);
   const stage = options.stage || state.phase;
   const context = ensureAIContext(state, meta, stage);
   return actions
     .slice()
-    .sort((left, right) => (right.score || 0) - (left.score || 0))
-    .slice(0, limit)
+    .sort((left, right) => (right.score || AI_NUM.N_0) - (left.score || AI_NUM.N_0))
+    .slice(AI_NUM.N_0, limit)
     .map(action => {
       const evaluation = scoreActionPolicy(
         state,
@@ -357,7 +366,7 @@ export function rankWithConsequences(state, meta, actorId, actions, options = {}
           beneficiaries: action.beneficiaries || [],
           tags: action.tags || [],
         },
-        action.score || 0,
+        action.score || AI_NUM.N_0,
         context,
       );
       return {
@@ -377,7 +386,7 @@ export function projectAction(state, rawDescriptor) {
   const payload = descriptor.payload || {};
 
   if (descriptor.kind === AI_ACTION_KINDS.LAND_PURCHASE && actor && payload.themeId) {
-    const cost = Number(descriptor.costs.gold ?? payload.cost ?? 0) || 0;
+    const cost = Number(descriptor.costs.gold ?? payload.cost ?? AI_NUM.N_0) || AI_NUM.N_0;
     actor.gold -= cost;
     projected.landAuctions = projected.landAuctions || {};
     projected.landAuctions[payload.themeId] = {
@@ -394,17 +403,17 @@ export function projectAction(state, rawDescriptor) {
     projected.pendingProfessionalArmies = projected.pendingProfessionalArmies || {};
     projected.pendingProfessionalArmies[descriptor.actorId] = projected.pendingProfessionalArmies[descriptor.actorId] || {};
     projected.pendingProfessionalArmies[descriptor.actorId][payload.officeKey] =
-      (Number(projected.pendingProfessionalArmies[descriptor.actorId][payload.officeKey]) || 0) + 1;
+      (Number(projected.pendingProfessionalArmies[descriptor.actorId][payload.officeKey]) || AI_NUM.N_0) + AI_NUM.N_1;
   } else if (descriptor.kind === AI_ACTION_KINDS.DISMISS && actor && payload.officeKey) {
-    const count = Number(payload.count ?? 1) || 1;
-    actor.professionalArmies[payload.officeKey] = Math.max(0, (Number(actor.professionalArmies[payload.officeKey]) || 0) - count);
-    if (actor.professionalArmies[payload.officeKey] <= 0) delete actor.professionalArmies[payload.officeKey];
+    const count = Number(payload.count ?? AI_NUM.N_1) || AI_NUM.N_1;
+    actor.professionalArmies[payload.officeKey] = Math.max(AI_NUM.N_0, (Number(actor.professionalArmies[payload.officeKey]) || AI_NUM.N_0) - count);
+    if (actor.professionalArmies[payload.officeKey] <= AI_NUM.N_0) delete actor.professionalArmies[payload.officeKey];
   } else if (descriptor.kind === AI_ACTION_KINDS.MERCENARY_HIRE && actor) {
-    const count = Number(payload.count ?? 1) || 1;
-    const cost = Number(descriptor.costs.gold ?? getMercenaryHireCost(0, count)) || 0;
+    const count = Number(payload.count ?? AI_NUM.N_1) || AI_NUM.N_1;
+    const cost = Number(descriptor.costs.gold ?? getMercenaryHireCost(AI_NUM.N_0, count)) || AI_NUM.N_0;
     actor.gold -= cost;
     projected.currentMercenaryTroops = projected.currentMercenaryTroops || {};
-    projected.currentMercenaryTroops[descriptor.actorId] = (Number(projected.currentMercenaryTroops[descriptor.actorId]) || 0) + count;
+    projected.currentMercenaryTroops[descriptor.actorId] = (Number(projected.currentMercenaryTroops[descriptor.actorId]) || AI_NUM.N_0) + count;
   } else if (descriptor.kind === AI_ACTION_KINDS.APPOINTMENT) {
     const appointeeId = Number(payload.appointeeId);
     if (payload.type === 'EMPRESS') projected.empress = appointeeId;
@@ -424,7 +433,7 @@ export function projectAction(state, rawDescriptor) {
     });
   } else if (descriptor.kind === AI_ACTION_KINDS.DEFENDER_REWARD && payload.themeId && projected.themes?.[payload.themeId]) {
     if (payload.choice === 'gold') {
-      if (actor) actor.gold += Number(payload.gold || descriptor.gains.gold || 0) || 0;
+      if (actor) actor.gold += Number(payload.gold || descriptor.gains.gold || AI_NUM.N_0) || AI_NUM.N_0;
       projected.themes[payload.themeId].occupied = true;
     } else {
       projected.themes[payload.themeId].occupied = false;
@@ -448,24 +457,24 @@ export function projectAction(state, rawDescriptor) {
 export function recordSelectedActionProjection(meta, playerId, evaluation) {
   const stats = meta?.players?.[playerId]?.stats;
   if (!stats || !evaluation) return;
-  stats.systemicDecisionCount = (stats.systemicDecisionCount || 0) + 1;
-  stats.projectedUtilityTotal = (stats.projectedUtilityTotal || 0) + (Number(evaluation.total) || 0);
-  stats.projectedRiskTotal = (stats.projectedRiskTotal || 0) + (Number(evaluation.impact?.risk) || 0);
-  stats.projectedFlexibilityTotal = (stats.projectedFlexibilityTotal || 0) + (Number(evaluation.impact?.flexibility) || 0);
+  stats.systemicDecisionCount = (stats.systemicDecisionCount || AI_NUM.N_0) + AI_NUM.N_1;
+  stats.projectedUtilityTotal = (stats.projectedUtilityTotal || AI_NUM.N_0) + (Number(evaluation.total) || AI_NUM.N_0);
+  stats.projectedRiskTotal = (stats.projectedRiskTotal || AI_NUM.N_0) + (Number(evaluation.impact?.risk) || AI_NUM.N_0);
+  stats.projectedFlexibilityTotal = (stats.projectedFlexibilityTotal || AI_NUM.N_0) + (Number(evaluation.impact?.flexibility) || AI_NUM.N_0);
 }
 
-export function summarizePredictionStats(stats = {}, realizedUtility = 0) {
-  const count = Math.max(1, Number(stats.systemicDecisionCount) || 0);
-  const projectedUtility = (Number(stats.projectedUtilityTotal) || 0) / count;
-  const projectedRisk = (Number(stats.projectedRiskTotal) || 0) / count;
-  const projectedFlexibility = (Number(stats.projectedFlexibilityTotal) || 0) / count;
-  const normalizedRealized = clamp(Number(realizedUtility) || 0, -4, 4);
+export function summarizePredictionStats(stats = {}, realizedUtility = AI_NUM.N_0) {
+  const count = Math.max(AI_NUM.N_1, Number(stats.systemicDecisionCount) || AI_NUM.N_0);
+  const projectedUtility = (Number(stats.projectedUtilityTotal) || AI_NUM.N_0) / count;
+  const projectedRisk = (Number(stats.projectedRiskTotal) || AI_NUM.N_0) / count;
+  const projectedFlexibility = (Number(stats.projectedFlexibilityTotal) || AI_NUM.N_0) / count;
+  const normalizedRealized = clamp(Number(realizedUtility) || AI_NUM.N_0, -AI_NUM.N_4, AI_NUM.N_4);
   return {
-    systemicDecisionCount: Number(stats.systemicDecisionCount) || 0,
+    systemicDecisionCount: Number(stats.systemicDecisionCount) || AI_NUM.N_0,
     projectedUtility: roundTo(projectedUtility),
     projectedRisk: roundTo(projectedRisk),
     projectedFlexibility: roundTo(projectedFlexibility),
-    projectionError: roundTo(Math.abs(projectedUtility - normalizedRealized) / 4),
-    decisionQuality: roundTo(clamp(1 - (Math.abs(projectedUtility - normalizedRealized) / 4), 0, 1)),
+    projectionError: roundTo(Math.abs(projectedUtility - normalizedRealized) / AI_NUM.N_4),
+    decisionQuality: roundTo(clamp(AI_NUM.N_1 - (Math.abs(projectedUtility - normalizedRealized) / AI_NUM.N_4), AI_NUM.N_0, AI_NUM.N_1)),
   };
 }

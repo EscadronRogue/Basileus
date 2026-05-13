@@ -212,14 +212,15 @@ export function phaseAdministration(state) {
 // ─── Phase: Court (requires player input) ───
 // This phase doesn't auto-resolve — the UI drives it.
 // Players perform actions: appointments, purchases, gifts, negotiations, revocations.
-// When all mandatory appointments are done and players confirm, advance.
+// When all players confirm, advance. Appointments are valuable optional actions,
+// not mandatory gates.
 export function phaseCourt(state) {
   state.phase = 'court';
   const dealRound = startCourtDealRound(state);
   if (!dealRound.ok) {
     throw new Error(dealRound.reason || 'Failed to prepare the court deal state.');
   }
-  // Reset tracking for mandatory appointments this round
+  // Reset court action tracking for this round.
   state.courtActions = {
     basileusAppointed: false,
     domesticEastAppointed: false,
@@ -238,9 +239,7 @@ export function phaseCourt(state) {
 
 export function isCourtComplete(state) {
   const ca = state.courtActions;
-  return ca.basileusAppointed && ca.domesticEastAppointed &&
-    ca.domesticWestAppointed && ca.admiralAppointed && ca.patriarchAppointed &&
-    ca.playerConfirmed.size === state.players.length;
+  return ca.playerConfirmed.size === state.players.length;
 }
 
 // ─── Phase: Orders (secret, simultaneous — requires player input) ───

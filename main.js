@@ -125,8 +125,8 @@ function renderAiRoster() {
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
   if (!availableAiProfiles.length) {
-    setupAiRoster.innerHTML = '<div class="setup-hint">No trained AI profiles are available yet.</div>';
-    setupAiRosterHint.textContent = 'Open the Simulation Lab, save champions to the library or export trained profiles, then return here to use them in live games.';
+    setupAiRoster.innerHTML = '<div class="setup-hint">No AI policy profiles are available yet.</div>';
+    setupAiRosterHint.textContent = 'Open the Simulation Lab and export trained champions, then return here to use them in live games.';
     updateStartAvailability();
     return;
   }
@@ -141,8 +141,8 @@ function renderAiRoster() {
       <label class="setup-ai-seat">
         <span>Seat ${seat}</span>
         <select data-ai-seat="${seat}">
-          <option value="${AI_SELECTION_TRAINED_RANDOM}" ${selection === AI_SELECTION_TRAINED_RANDOM ? 'selected' : ''}>Random Trained Profile</option>
-          <optgroup label="Trained Profiles">
+          <option value="${AI_SELECTION_TRAINED_RANDOM}" ${selection === AI_SELECTION_TRAINED_RANDOM ? 'selected' : ''}>Random AI Policy</option>
+          <optgroup label="AI Policies">
             ${availableAiProfiles.map((profile) => {
               const value = `${AI_SELECTION_PROFILE_PREFIX}${profile.id}`;
               return `<option value="${value}" ${value === selection ? 'selected' : ''}>${escapeHtml(profile.name)}</option>`;
@@ -154,9 +154,9 @@ function renderAiRoster() {
   }).join('');
 
   if (seatAssignmentUnresolved) {
-    setupAiRosterHint.textContent = `Each seat can already be configured from the trained roster; once player count and your seat resolve, unavailable seats and your final human seat ignore their AI assignments. ${availableAiProfiles.length} trained profile${availableAiProfiles.length === 1 ? '' : 's'} loaded.`;
+    setupAiRosterHint.textContent = `Each seat can already be configured from the AI policy roster; once player count and your seat resolve, unavailable seats and your final human seat ignore their AI assignments. ${availableAiProfiles.length} AI profile${availableAiProfiles.length === 1 ? '' : 's'} loaded.`;
   } else {
-    setupAiRosterHint.textContent = `${availableAiProfiles.length} trained profile${availableAiProfiles.length === 1 ? '' : 's'} available. Each AI seat can use a specific trained opponent or a random trained profile.`;
+    setupAiRosterHint.textContent = `${availableAiProfiles.length} AI profile${availableAiProfiles.length === 1 ? '' : 's'} available. Each AI seat can use a specific policy or a random policy.`;
   }
 
   updateStartAvailability();
@@ -276,7 +276,7 @@ btnStart.addEventListener('click', async () => {
   const mode = resolveRandomValue(setupMode.value, modeChoices, setupRng, 'single');
 
   if (mode === 'single' && !availableAiProfiles.length) {
-    setupAiRosterHint.textContent = 'Single-player requires at least one trained AI profile. Open the Simulation Lab and save or export trained champions first.';
+    setupAiRosterHint.textContent = 'Single-player requires at least one AI policy profile. Open the Simulation Lab and export trained champions if none are available.';
     return;
   }
 

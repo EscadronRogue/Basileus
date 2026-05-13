@@ -8,6 +8,7 @@ export const AI_ACTION_KINDS = Object.freeze({
   REVOCATION: 'revocation',
   ORDERS: 'orders',
   DEAL: 'deal',
+  CONFIRM_COURT: 'confirm_court',
   DEFENDER_REWARD: 'defender_reward',
   TITLE_ASSIGNMENT: 'title_assignment',
 });
@@ -98,6 +99,7 @@ export function getActionFamily(descriptor) {
   ) return 'military';
   if (kind === AI_ACTION_KINDS.LAND_PURCHASE || kind === AI_ACTION_KINDS.CHURCH_GIFT) return 'economic';
   if (kind === AI_ACTION_KINDS.DEAL) return 'diplomatic';
+  if (kind === AI_ACTION_KINDS.CONFIRM_COURT) return 'tempo';
   if (kind === AI_ACTION_KINDS.DEFENDER_REWARD) return 'recovery';
   return 'general';
 }

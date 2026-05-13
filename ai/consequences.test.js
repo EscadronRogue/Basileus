@@ -105,13 +105,13 @@ test('old profiles receive new consequence meta defaults', () => {
     id: 'old-trained-profile',
     name: 'Old Trained Profile',
     weights: { wealth: 1.5 },
-    meta: { dealProposalThreshold: 0.5 },
+    meta: { dealCounterThreshold: -1.5 },
   });
 
   assert.equal(typeof profile.meta.consequenceSensitivity, 'number');
   assert.equal(typeof profile.meta.riskHorizon, 'number');
   assert.equal(typeof profile.meta.flexibilityValue, 'number');
-  assert.equal(profile.meta.dealProposalThreshold, 0.5);
+  assert.equal(profile.meta.dealCounterThreshold, -1.5);
 });
 
 test('prediction stats compare projected and realized utility', () => {

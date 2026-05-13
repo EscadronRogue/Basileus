@@ -300,7 +300,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
 export function confirmCourt(state, playerId) {
   if (state.phase !== 'court') return fail('Court confirmation is not available right now.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
-  passMandatoryAppointmentsForPlayer(state, playerId);
   state.courtActions.playerConfirmed.add(playerId);
   autoRefuseAwaitingDeals(state, playerId);
   recordHistoryEvent(state, {

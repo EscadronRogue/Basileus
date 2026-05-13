@@ -51,6 +51,14 @@ function formatInteger(value) {
   return `${Math.round(value || 0)}`;
 }
 
+function formatEta(ms) {
+  if (!Number.isFinite(Number(ms))) return 'ETA n/a';
+  const seconds = Math.max(0, Math.round(Number(ms) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `ETA ${minutes}m ${rest}s` : `ETA ${rest}s`;
+}
+
 function formatNumberList(values, fallback) {
   const list = Array.isArray(values) && values.length ? values : [fallback].filter(value => value != null);
   return list.map(value => formatInteger(value)).join('/');
@@ -83,10 +91,20 @@ function setStatus(message, variant = 'idle') {
   statusEl.dataset.variant = variant;
 }
 
-function setProgress(completed, total) {
-  const progress = total ? (completed / total) * 100 : 0;
-  byId('progressFill').style.width = `${progress}%`;
-  byId('progressMeta').textContent = total ? `${completed} / ${total}` : 'Idle';
+function setProgress(completed, total, progress = null) {
+  const progressPercent = total ? (completed / total) * 100 : 0;
+  byId('progressFill').style.width = `${progressPercent}%`;
+  if (!total) {
+    byId('progressMeta').textContent = 'Idle';
+    return;
+  }
+  const rate = progress?.matchesPerSecond ? `${formatNumber(progress.matchesPerSecond, 2)} matches/s` : null;
+  const phaseRate = progress?.phaseMatchesPerSecond ? `${formatNumber(progress.phaseMatchesPerSecond, 2)} phase/s` : null;
+  const eta = progress?.etaMs != null ? formatEta(progress.etaMs) : null;
+  const split = progress?.matchSplit
+    ? `train ${formatInteger(progress.matchSplit.training)} / val ${formatInteger(progress.matchSplit.validation)} / holdout ${formatInteger(progress.matchSplit.holdout)} / audit ${formatInteger(progress.matchSplit.audit)}`
+    : null;
+  byId('progressMeta').textContent = [ `${completed} / ${total}`, rate, phaseRate, eta, split ].filter(Boolean).join(' | ');
 }
 
 function populateCheckboxGroup(containerId, items, checkedIds, labelBuilder) {
@@ -216,6 +234,7 @@ function populateControls() {
   byId('trainingMatchesPerCandidate').value = DEFAULT_TRAINING_CONFIG.matchesPerCandidate;
   byId('trainingValidationMatchesPerCandidate').value = DEFAULT_TRAINING_CONFIG.validationMatchesPerCandidate;
   byId('trainingHoldoutMatchesPerChampion').value = DEFAULT_TRAINING_CONFIG.holdoutMatchesPerChampion;
+  byId('trainingFinalAuditMatchesPerChampion').value = DEFAULT_TRAINING_CONFIG.finalAuditMatchesPerChampion;
   byId('trainingParallelWorkers').value = DEFAULT_TRAINING_CONFIG.parallelWorkers;
   byId('trainingChampions').value = DEFAULT_TRAINING_CONFIG.champions;
   applyTrainingFitnessPreset(DEFAULT_TRAINING_CONFIG.fitnessPresetId);
@@ -263,6 +282,7 @@ function readTrainingConfigFromForm() {
     matchesPerCandidate: Number(byId('trainingMatchesPerCandidate').value),
     validationMatchesPerCandidate: Number(byId('trainingValidationMatchesPerCandidate').value),
     holdoutMatchesPerChampion: Number(byId('trainingHoldoutMatchesPerChampion').value),
+    finalAuditMatchesPerChampion: Number(byId('trainingFinalAuditMatchesPerChampion').value),
     parallelWorkers: Number(byId('trainingParallelWorkers').value),
     champions: Number(byId('trainingChampions').value),
   });
@@ -505,6 +525,7 @@ function renderTrainingResult(result) {
     ['Score reward', formatNumber(result.config.fitness.wealthReward, 2)],
     ['Validation matches', formatInteger(result.config.validationMatchesPerCandidate ?? 0)],
     ['Holdout matches', formatInteger(result.config.holdoutMatchesPerChampion ?? 0)],
+    ['Final audit matches', formatInteger(result.config.finalAuditMatchesPerChampion ?? 0)],
     ['Selection', result.overview.selectionMethod || 'pareto-crowding'],
   ];
 
@@ -513,8 +534,11 @@ function renderTrainingResult(result) {
     { label: 'Population', value: formatInteger(result.overview.populationSize) },
     { label: 'Matches', value: formatInteger(result.overview.totalMatches) },
     { label: 'Workers', value: formatInteger(result.overview.parallelWorkers || 1) },
+    { label: 'Train Speed', value: result.overview.performance?.phaseMatchesPerSecond?.training ? `${formatNumber(result.overview.performance.phaseMatchesPerSecond.training, 2)}/s` : 'n/a' },
+    { label: 'Worker Fallbacks', value: formatInteger(result.overview.performance?.workerFallbacks || 0) },
     { label: 'Best Score', value: formatNumber(result.overview.bestFitness, 3) },
     { label: 'Best Holdout Win', value: formatPercent(result.overview.bestHoldoutWinShare || 0) },
+    { label: 'Best Audit Win', value: formatPercent(result.overview.bestAuditWinShare || 0) },
     { label: 'Best Holdout Score', value: formatNumber(result.overview.bestAverageScore ?? result.overview.bestAverageWealth, 2) },
     { label: 'Best Fall Rate', value: formatPercent(result.overview.bestEmpireFallRate) },
     { label: 'Best Guard Rate', value: formatPercent(result.overview.bestGuardRate || 0) },
@@ -548,6 +572,21 @@ function renderTrainingResult(result) {
         <p>${escapeHtml(profile.training.mainBehavior || '')}</p>
       </article>
     `).join('');
+  const auditCards = (result.finalAudit || []).map((entry) => `
+      <article class="training-champion-card">
+        <div class="training-card-head">
+          <h3>#${formatInteger(entry.rank)} ${escapeHtml(entry.name || entry.candidateId || 'Champion')}</h3>
+          <span class="meta-chip">Audit ${formatPercent(entry.winShare || 0)}</span>
+        </div>
+        <div class="training-meta">
+          <span class="meta-chip">Scenario ${formatPercent(entry.robustness?.scenario || 0)}</span>
+          <span class="meta-chip">Seat ${formatPercent(entry.robustness?.seat || 0)}</span>
+          <span class="meta-chip">Opponent ${formatPercent(entry.robustness?.opponent || 0)}</span>
+          <span class="meta-chip">Fall ${formatPercent(entry.empireFallRate || 0)}</span>
+          <span class="meta-chip">Guard ${formatPercent(entry.guardRate || 0)}</span>
+        </div>
+      </article>
+    `).join('');
 
   const generationLines = result.generationHistory.map(entry => `
     <li>Generation ${entry.generation}: ${escapeHtml(entry.leaderName || 'Leader')} on Pareto front ${formatInteger(entry.leaderParetoFront || 0)}, validation win ${formatPercent(entry.validationWinShare || 0)}, validation fall ${formatPercent(entry.validationEmpireFallRate || 0)}, novelty ${formatNumber(entry.leaderNovelty || 0, 3)}.</li>
@@ -558,12 +597,12 @@ function renderTrainingResult(result) {
     <section class="results-section">
       <div class="section-head">
         <h2>Exported Personality Files</h2>
-        <p>Individual Greek-named champion JSON files were written automatically by the Node trainer. The local game server scans this folder directly, so moving valid personality JSON files in or out changes the usable roster without editing a manifest.</p>
+        <p>Individual Greek-named champion JSON files were written automatically by the Node trainer. The latest folder is replaced on each export, and the local game server scans valid policy profile JSON files directly.</p>
       </div>
       <ul class="training-list">
         <li>Latest folder: <code>${escapeHtml(result.personalityExport.latestDir || '')}</code></li>
         <li>Archived run folder: <code>${escapeHtml(result.personalityExport.runDir || '')}</code></li>
-        <li>Compatibility manifest: <code>${escapeHtml(result.personalityExport.manifestFile || '')}</code></li>
+        <li>Run manifest: <code>${escapeHtml(result.personalityExport.manifestFile || '')}</code></li>
       </ul>
     </section>
   `
@@ -594,6 +633,17 @@ function renderTrainingResult(result) {
         ${championCards}
       </div>
     </section>
+    ${auditCards ? `
+      <section class="results-section">
+        <div class="section-head">
+          <h2>Final Audit</h2>
+          <p>Champion robustness measured after selection.</p>
+        </div>
+        <div class="training-champion-grid">
+          ${auditCards}
+        </div>
+      </section>
+    ` : ''}
     <section class="results-section">
       <div class="section-head">
         <h2>Criteria Used</h2>
@@ -790,16 +840,17 @@ function handleLocalTrainerEvent(message) {
   }
 
   if (message.event === 'progress') {
-    setProgress(message.completed, message.total);
+    setProgress(message.completed, message.total, message);
+    const workerText = message.workerUtilization != null ? ` Workers ${formatPercent(message.workerUtilization)}.` : '';
     setStatus(
-      `Node training ${message.percent}%. Generation ${message.generation}, ${message.stage}. Leader: ${message.leaderName || 'Evaluating'} (score ${formatNumber(message.leaderFitness, 3)}).`,
+      `Node training ${message.percent}%. Generation ${message.generation}, ${message.stage}. Leader: ${message.leaderName || 'Evaluating'} (score ${formatNumber(message.leaderFitness, 3)}).${workerText}`,
       'running'
     );
     return;
   }
 
   if (message.event === 'personalities-exported') {
-    setStatus(`Node trainer exported ${message.files || 0} personality file${message.files === 1 ? '' : 's'} to ${message.latestDir || message.exportRoot || 'trained-personalities'}.`, 'running');
+    setStatus(`Node trainer exported ${message.files || 0} policy profile${message.files === 1 ? '' : 's'} to ${message.latestDir || message.exportRoot || 'trained-personalities'}.`, 'running');
     return;
   }
 
@@ -884,13 +935,13 @@ function startBrowserWorkerJob(kind, config) {
 
     if (payload.type === 'progress') {
       if (payload.mode === 'training') {
-        setProgress(payload.progress.completed, payload.progress.total);
+        setProgress(payload.progress.completed, payload.progress.total, payload.progress);
         setStatus(
           `Generation ${payload.progress.generation}/${payload.progress.generations}, evaluation ${payload.progress.currentMatch}/${payload.progress.matchesThisGeneration}. Current leader: ${payload.progress.leaderName} (score ${formatNumber(payload.progress.leaderFitness, 3)}).`,
           'running'
         );
       } else {
-        setProgress(payload.progress.completed, payload.progress.total);
+        setProgress(payload.progress.completed, payload.progress.total, payload.progress);
         setStatus(
           `Processed ${payload.progress.completed} simulations. Latest scenario: ${payload.progress.scenarioLabel}.`,
           'running'
