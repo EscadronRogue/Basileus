@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { startMultiplayerServer } from './server.js';
+import { createNetwork } from '../ai/network.js';
 
 class SocketHarness {
   constructor(url) {
@@ -360,7 +361,10 @@ async function createStartedFourPlayerRoom(baseUrl, manager) {
 }
 
 async function withServer(run) {
-  const instance = await startMultiplayerServer({ port: 0 });
+  const instance = await startMultiplayerServer({
+    port: 0,
+    loadAiModel: () => createNetwork({ seed: 20260514 }),
+  });
   try {
     await run(instance);
   } finally {

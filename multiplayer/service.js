@@ -41,8 +41,9 @@ function normalizePlayerName(rawName) {
 }
 
 export class MultiplayerRoomManager {
-  constructor() {
+  constructor(options = {}) {
     this.rooms = new Map();
+    this.loadAiModel = typeof options.loadAiModel === 'function' ? options.loadAiModel : undefined;
   }
 
   createSessionToken() {
@@ -57,12 +58,14 @@ export class MultiplayerRoomManager {
         hostSessionId: sessionToken,
         hostPlayerName: normalizePlayerName(playerName),
         saveGame,
+        loadAiModel: this.loadAiModel,
       })
       : createRoom({
         existingRoomCodes: new Set(this.rooms.keys()),
         hostSessionId: sessionToken,
         hostPlayerName: normalizePlayerName(playerName),
         config,
+        loadAiModel: this.loadAiModel,
       });
     this.rooms.set(room.roomCode, room);
 

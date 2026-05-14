@@ -74,7 +74,9 @@ function applyCorsHeaders(req, res) {
 }
 
 export async function startMultiplayerServer(options = {}) {
-  const manager = new MultiplayerRoomManager();
+  const manager = new MultiplayerRoomManager({
+    loadAiModel: options.loadAiModel,
+  });
   const host = options.host || '127.0.0.1';
   const port = Number(options.port ?? process.env.PORT ?? 8133);
 

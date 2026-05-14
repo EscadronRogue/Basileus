@@ -85,10 +85,10 @@ function serializeAiMeta(aiMeta) {
   };
 }
 
-function hydrateAiMeta(rawMeta, state) {
+function hydrateAiMeta(rawMeta, state, loadAiModel = loadModelFileSync) {
   if (!rawMeta) return null;
   const { humanPlayerIds = [] } = clonePlain(rawMeta);
-  return createAIMeta(state, { humanPlayerIds, model: loadModelFileSync() });
+  return createAIMeta(state, { humanPlayerIds, model: loadAiModel() });
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
@@ -135,10 +135,11 @@ function getAiSeatIds(room) {
 }
 
 export class MultiplayerRoom {
-  constructor({ roomCode, hostSessionId, hostPlayerName, config = {} }) {
+  constructor({ roomCode, hostSessionId, hostPlayerName, config = {}, loadAiModel = loadModelFileSync }) {
     this.roomCode = roomCode;
     this.hostSessionId = hostSessionId;
     this.config = normalizeRoomConfig(config);
+    this.loadAiModel = typeof loadAiModel === 'function' ? loadAiModel : loadModelFileSync;
     this.seats = Array.from({ length: this.config.playerCount }, (_, seatId) => createOpenSeat(seatId));
     this.connections = new Map();
     this.sessions = new Map();
@@ -325,7 +326,7 @@ export class MultiplayerRoom {
 
     const humanPlayerIds = getHumanSeatIds(this);
     const aiSeatIds = getAiSeatIds(this);
-    const model = loadModelFileSync();
+    const model = this.loadAiModel();
     assert(!aiSeatIds.length || model, AI_MODEL_MISSING_MESSAGE);
     this.aiMeta = createAIMeta(this.gameState, {
       humanPlayerIds,
@@ -734,16 +735,17 @@ export function createRoomCode(existingRoomCodes = new Set()) {
   }
 }
 
-export function createRoom({ existingRoomCodes, hostSessionId, hostPlayerName, config }) {
+export function createRoom({ existingRoomCodes, hostSessionId, hostPlayerName, config, loadAiModel = loadModelFileSync }) {
   return new MultiplayerRoom({
     roomCode: createRoomCode(existingRoomCodes),
     hostSessionId,
     hostPlayerName,
     config,
+    loadAiModel,
   });
 }
 
-export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlayerName, saveGame }) {
+export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlayerName, saveGame, loadAiModel = loadModelFileSync }) {
   assert(saveGame?.schema === SAVE_SCHEMA, 'Save file is not a Basileus multiplayer save.');
   assert(saveGame.version === SAVE_VERSION, 'Save file version is not supported.');
   const savedRoom = saveGame.room;
@@ -760,11 +762,12 @@ export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlaye
     hostSessionId,
     hostPlayerName,
     config,
+    loadAiModel,
   });
 
   room.config = config;
   room.gameState = gameState;
-  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState);
+  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, loadAiModel);
   room.pendingAiTitleAssignment = clonePlain(savedRoom.pendingAiTitleAssignment);
   room.finishedAt = savedRoom.finishedAt || null;
   room.gameOverSent = false;
