@@ -196,6 +196,7 @@ export class GameController {
         court: this.createCourtHandlers(this.activePlayer),
         lockOrders: (orders) => this.lockOrders(orders),
         includeNewGame: true,
+        downloadHumanFeedback: this.isSinglePlayer() ? () => this.downloadHumanFeedback() : null,
       },
       resolution: {
         allowManualTitleReassignment: !this.pendingAiTitleAssignment,

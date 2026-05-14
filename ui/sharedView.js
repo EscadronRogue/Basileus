@@ -171,6 +171,11 @@ export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
   scoring: '',
 };
 
+function getActionPanelTitle(state) {
+  if (state?.gameOver || state?.phase === 'scoring') return 'Final Reckoning';
+  return ACTION_PANEL_TITLE_BY_PHASE[state?.phase] || 'Action Panel';
+}
+
 export function renderTopBar(state) {
   if (!state) return;
   const roundEl = document.getElementById('roundDisplay');
@@ -297,7 +302,7 @@ export function renderActionShell(panel, state, uiState) {
       <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="action" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Phase Panel</span>
-          <span class="sidebar-panel-title">${ACTION_PANEL_TITLE_BY_PHASE[state.phase] || 'Action Panel'}</span>
+          <span class="sidebar-panel-title">${getActionPanelTitle(state)}</span>
           ${ACTION_PANEL_SUBTITLE_BY_PHASE[state.phase] ? `<span class="sidebar-panel-subtitle">${ACTION_PANEL_SUBTITLE_BY_PHASE[state.phase]}</span>` : ''}
         </span>
       </button>
@@ -414,8 +419,12 @@ export function renderScoringHtml(state, options = {}) {
   const scores = buildScores(state);
   const topScore = scores[0]?.points ?? 0;
   const newGameButton = options.includeNewGame
-    ? '<button class="btn-new-game" onclick="location.reload()">New Game</button>'
+    ? '<button class="btn-new-game" type="button" onclick="location.reload()">New Game</button>'
     : '';
+  const humanFeedbackButton = options.includeHumanFeedbackDownload
+    ? '<button class="btn-download-training" type="button" data-action="download-human-feedback">Download AI Training Data</button>'
+    : '';
+  const actionButtons = [humanFeedbackButton, newGameButton].filter(Boolean).join('');
 
   return `
     <div class="scoring-panel">
@@ -433,7 +442,7 @@ export function renderScoringHtml(state, options = {}) {
           </div>`;
         }).join('')}
       </div>
-      ${newGameButton}
+      ${actionButtons ? `<div class="scoring-actions">${actionButtons}</div>` : ''}
     </div>
   `;
 }
@@ -470,7 +479,7 @@ export function renderGameActionPanel({
   const body = renderActionShell(panel, state, uiState);
   if (!body) return null;
 
-  if (!canControl && state.phase !== 'scoring') {
+  if (!canControl && state.phase !== 'scoring' && !state.gameOver) {
     renderSpectatorPanel(body, state, activePlayerId, spectatorMessage);
     return body;
   }
@@ -481,6 +490,17 @@ export function renderGameActionPanel({
 
   const shell = document.createElement('div');
   body.appendChild(shell);
+
+  if (state.gameOver || state.phase === 'scoring') {
+    shell.innerHTML = renderScoringHtml(state, {
+      includeNewGame: Boolean(handlers.includeNewGame),
+      includeHumanFeedbackDownload: Boolean(handlers.downloadHumanFeedback),
+    });
+    shell.querySelector('[data-action="download-human-feedback"]')?.addEventListener('click', () => {
+      handlers.downloadHumanFeedback?.();
+    });
+    return body;
+  }
 
   switch (state.phase) {
     case 'court':
@@ -533,10 +553,6 @@ export function renderGameActionPanel({
       });
       break;
     }
-
-    case 'scoring':
-      shell.innerHTML = renderScoringHtml(state, { includeNewGame: Boolean(handlers.includeNewGame) });
-      break;
 
     default:
       shell.innerHTML = '<div class="panel-empty"><p>Processing...</p></div>';
