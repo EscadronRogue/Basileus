@@ -86,6 +86,7 @@ export function createAIMeta(state, options = {}) {
     runtimeTemperature: Number.isFinite(Number(options.runtimeTemperature)) ? Number(options.runtimeTemperature) : 0,
     publicLog: [],
     decisionLog: createDecisionLog(),
+    humanFeedback: options.humanFeedback || null,
     pendingNeuralRuntime: !options.model,
   };
 }

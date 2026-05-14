@@ -348,6 +348,35 @@ function getOrderTroopCapacity(state, playerId, destination) {
   return total;
 }
 
+function rankedPositiveAmounts(maxValue, preferred = [5, 3, 1]) {
+  const max = Math.max(0, Math.floor(Number(maxValue) || 0));
+  if (max <= 0) return [];
+  return [...new Set(
+    preferred
+      .map((amount) => Math.min(max, amount))
+      .filter((amount) => amount > 0),
+  )].sort((left, right) => right - left);
+}
+
+function dealClauseMagnitude(clause = {}) {
+  if (clause.kind === DEAL_CLAUSE_KINDS.GOLD) return Number(clause.amount) || 0;
+  if (clause.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT || clause.kind === DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT) {
+    return Number(clause.troopCount) || 0;
+  }
+  if (clause.kind === DEAL_CLAUSE_KINDS.ESTATE) return 4;
+  if (clause.kind === DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE) return 3;
+  if (clause.kind === DEAL_CLAUSE_KINDS.NON_REVOCATION) return Number(clause.durationTurns) || 1;
+  return 1;
+}
+
+function sortDealClausesBySignal(clauses) {
+  return clauses.slice().sort((left, right) => {
+    const rightSignal = dealClauseMagnitude(right) + (right.startTriggerType === DEAL_TRIGGER_TYPES.IMMEDIATE ? 0.25 : 0);
+    const leftSignal = dealClauseMagnitude(left) + (left.startTriggerType === DEAL_TRIGGER_TYPES.IMMEDIATE ? 0.25 : 0);
+    return rightSignal - leftSignal;
+  });
+}
+
 function buildDealClauseTemplates(state, actorId, counterpartyId) {
   const clauses = [];
   const triggers = [
@@ -362,13 +391,24 @@ function buildDealClauseTemplates(state, actorId, counterpartyId) {
   for (const trigger of triggers) {
     for (const direction of directions) {
       const giverId = direction === 'give' ? actorId : counterpartyId;
-      clauses.push({
-        kind: DEAL_CLAUSE_KINDS.GOLD,
-        direction,
-        amount: 1,
-        durationTurns: 1,
-        ...trigger,
-      });
+      for (const amount of rankedPositiveAmounts(getSpendableGold(state, giverId), [5, 3, 1])) {
+        clauses.push({
+          kind: DEAL_CLAUSE_KINDS.GOLD,
+          direction,
+          amount,
+          durationTurns: 1,
+          ...trigger,
+        });
+        if (amount >= 4) {
+          clauses.push({
+            kind: DEAL_CLAUSE_KINDS.GOLD,
+            direction,
+            amount,
+            durationTurns: 2,
+            ...trigger,
+          });
+        }
+      }
 
       for (const theme of getPrivateThemesOwnedBy(state, giverId).slice(0, 2)) {
         clauses.push({
@@ -379,27 +419,33 @@ function buildDealClauseTemplates(state, actorId, counterpartyId) {
         });
       }
 
-      if (getOrderTroopCapacity(state, giverId, 'capital') > 0) {
+      const capitalCapacity = getOrderTroopCapacity(state, giverId, 'capital');
+      if (capitalCapacity > 0) {
         for (const candidateId of candidateIds) {
+          for (const troopCount of rankedPositiveAmounts(capitalCapacity, [5, 3, 1])) {
+            clauses.push({
+              kind: DEAL_CLAUSE_KINDS.COUP_SUPPORT,
+              direction,
+              candidateId,
+              troopCount,
+              durationTurns: 1,
+              ...trigger,
+            });
+          }
+        }
+      }
+
+      const frontierCapacity = getOrderTroopCapacity(state, giverId, 'frontier');
+      if (frontierCapacity > 0) {
+        for (const troopCount of rankedPositiveAmounts(frontierCapacity, [5, 3, 1])) {
           clauses.push({
-            kind: DEAL_CLAUSE_KINDS.COUP_SUPPORT,
+            kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT,
             direction,
-            candidateId,
-            troopCount: 1,
+            troopCount,
             durationTurns: 1,
             ...trigger,
           });
         }
-      }
-
-      if (getOrderTroopCapacity(state, giverId, 'frontier') > 0) {
-        clauses.push({
-          kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT,
-          direction,
-          troopCount: 1,
-          durationTurns: 1,
-          ...trigger,
-        });
       }
 
       clauses.push({
@@ -411,13 +457,94 @@ function buildDealClauseTemplates(state, actorId, counterpartyId) {
       clauses.push({
         kind: DEAL_CLAUSE_KINDS.NON_REVOCATION,
         direction,
+        durationTurns: 2,
+        ...trigger,
+      });
+      clauses.push({
+        kind: DEAL_CLAUSE_KINDS.NON_REVOCATION,
+        direction,
         durationTurns: 1,
         ...trigger,
       });
     }
   }
 
-  return clauses;
+  return sortDealClausesBySignal(clauses);
+}
+
+function uniqueDealTemplates(templates) {
+  const seen = new Set();
+  const out = [];
+  for (const clauses of templates) {
+    if (!Array.isArray(clauses) || clauses.length === 0) continue;
+    const key = stablePayload(clauses);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clauses);
+  }
+  return out;
+}
+
+function buildReciprocalDealTemplates(state, actorId, counterpartyId) {
+  const immediate = { startTriggerType: DEAL_TRIGGER_TYPES.IMMEDIATE };
+  const actorGold = rankedPositiveAmounts(getSpendableGold(state, actorId), [5, 3, 1]).slice(0, 2);
+  const counterpartyGold = rankedPositiveAmounts(getSpendableGold(state, counterpartyId), [5, 3, 1]).slice(0, 2);
+  const actorFrontier = rankedPositiveAmounts(getOrderTroopCapacity(state, actorId, 'frontier'), [5, 3, 1]).slice(0, 2);
+  const counterpartyFrontier = rankedPositiveAmounts(getOrderTroopCapacity(state, counterpartyId, 'frontier'), [5, 3, 1]).slice(0, 2);
+  const actorCapital = rankedPositiveAmounts(getOrderTroopCapacity(state, actorId, 'capital'), [5, 3, 1]).slice(0, 2);
+  const counterpartyCapital = rankedPositiveAmounts(getOrderTroopCapacity(state, counterpartyId, 'capital'), [5, 3, 1]).slice(0, 2);
+  const templates = [];
+
+  for (const amount of actorGold) {
+    for (const troopCount of counterpartyFrontier) {
+      templates.push([
+        { kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'give', amount, durationTurns: 1, ...immediate },
+        { kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, direction: 'ask', troopCount, durationTurns: 1, ...immediate },
+      ]);
+    }
+    for (const troopCount of counterpartyCapital) {
+      templates.push([
+        { kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'give', amount, durationTurns: 1, ...immediate },
+        { kind: DEAL_CLAUSE_KINDS.COUP_SUPPORT, direction: 'ask', candidateId: actorId, troopCount, durationTurns: 1, ...immediate },
+      ]);
+    }
+  }
+
+  for (const amount of counterpartyGold) {
+    for (const troopCount of actorFrontier) {
+      templates.push([
+        { kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT, direction: 'give', troopCount, durationTurns: 1, ...immediate },
+        { kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'ask', amount, durationTurns: 1, ...immediate },
+      ]);
+    }
+    for (const troopCount of actorCapital) {
+      templates.push([
+        { kind: DEAL_CLAUSE_KINDS.COUP_SUPPORT, direction: 'give', candidateId: counterpartyId, troopCount, durationTurns: 1, ...immediate },
+        { kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'ask', amount, durationTurns: 1, ...immediate },
+      ]);
+    }
+  }
+
+  for (const amount of actorGold) {
+    templates.push([
+      { kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'give', amount, durationTurns: 1, ...immediate },
+      { kind: DEAL_CLAUSE_KINDS.NON_REVOCATION, direction: 'ask', durationTurns: 2, ...immediate },
+    ]);
+  }
+  for (const amount of counterpartyGold) {
+    templates.push([
+      { kind: DEAL_CLAUSE_KINDS.NON_REVOCATION, direction: 'give', durationTurns: 2, ...immediate },
+      { kind: DEAL_CLAUSE_KINDS.GOLD, direction: 'ask', amount, durationTurns: 1, ...immediate },
+    ]);
+  }
+
+  return templates;
+}
+
+function buildDealOfferTemplates(state, actorId, counterpartyId) {
+  const reciprocal = buildReciprocalDealTemplates(state, actorId, counterpartyId);
+  const singleClauses = buildDealClauseTemplates(state, actorId, counterpartyId).map((clause) => [clause]);
+  return uniqueDealTemplates([...reciprocal, ...singleClauses]);
 }
 
 function appendDealActions(actions, state, playerId) {
@@ -436,22 +563,22 @@ function appendDealActions(actions, state, playerId) {
     }, 'refuse deal');
 
     const counterpartyId = thread.playerIds.find((id) => id !== playerId);
-    for (const clause of buildDealClauseTemplates(state, playerId, counterpartyId).slice(0, 48)) {
+    for (const clauses of buildDealOfferTemplates(state, playerId, counterpartyId).slice(0, 72)) {
       pushLegalCourtAction(actions, state, playerId, {
         action: 'deal-counter',
         ...basePayload,
         counterpartyId,
-        clauses: [clause],
+        clauses,
       }, 'counter deal');
     }
   }
 
   for (const counterpartyId of getOtherDealPlayerIds(state, playerId)) {
-    for (const clause of buildDealClauseTemplates(state, playerId, counterpartyId).slice(0, 48)) {
+    for (const clauses of buildDealOfferTemplates(state, playerId, counterpartyId).slice(0, 72)) {
       pushLegalCourtAction(actions, state, playerId, {
         action: 'deal-send',
         counterpartyId,
-        clauses: [clause],
+        clauses,
       }, 'send deal');
     }
   }

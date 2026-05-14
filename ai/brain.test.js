@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -29,6 +29,15 @@ import {
   listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
+import {
+  appendHumanFeedbackSample,
+  createHumanCourtActionSample,
+  HUMAN_FEEDBACK_SCHEMA,
+  humanFeedbackSamplesToTransitions,
+} from './humanFeedback.js';
+import {
+  loadHumanFeedbackDatasetSync,
+} from './humanFeedbackStore.js';
 import {
   buildCandidateInputs,
   NETWORK_INPUT_SIZE,
@@ -254,6 +263,19 @@ test('generated reward and title-assignment actions are legal', () => {
   }
 });
 
+test('deal action space includes scaled and bundled bargains', () => {
+  const state = prepareInteractiveState({ playerCount: 3, deckSize: 2, seed: 26 });
+  for (const player of state.players) player.gold = Math.max(player.gold, 8);
+
+  const actions = listLegalCourtActions(state, 0, { includeDeals: true });
+  const deals = actions.filter((action) => action.payload?.action === 'deal-send');
+
+  assert.ok(deals.some((action) => action.payload.clauses.length >= 2));
+  assert.ok(deals.some((action) => action.payload.clauses.some((clause) => (
+    Number(clause.amount || clause.troopCount || 0) >= 3
+  ))));
+});
+
 test('Constantinople fall gives every player a losing terminal reward', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 41 });
   state.gameOver = { type: 'fall', message: 'Constantinople has fallen.' };
@@ -297,7 +319,11 @@ test('training CLI defaults to automatic workers and sampled game setup', () => 
   assert.equal(defaults.includeDeals, false);
   assert.equal(defaults.opponentMix, true);
   assert.equal(defaults.heuristicOpponentRate, 0);
+  assert.equal(defaults.humanOpponentRate, 0.25);
   assert.equal(defaults.trainingEpochs, 3);
+  assert.equal(defaults.humanOpponentEpochs, 8);
+  assert.equal(defaults.humanFeedbackWeight, 0);
+  assert.equal(defaults.humanFeedbackReturn, 0.75);
   assert.ok(defaults.checkpointInterval >= 1);
 
   const fixed = resolveTrainingOptions({
@@ -370,6 +396,53 @@ test('self-play episode completes with legal neural decisions', () => {
   assert.ok(result.transitions.length > 0);
 });
 
+test('self-play stats expose behavior returns, frontier share, and income shares', () => {
+  const network = createNetwork({ seed: 64 });
+  const result = runSelfPlayEpisode({
+    network,
+    playerCount: 3,
+    deckSize: 1,
+    seed: 64,
+    maxSteps: 200,
+    maxCourtActionsPerPlayer: 2,
+  });
+
+  assert.ok(Object.keys(result.stats.actionStats.outcomes.byKind).length > 0);
+  assert.ok(result.stats.actionStats.orderFrontierShare.count > 0);
+  assert.ok(result.stats.actionStats.economics.incomeShare.gold.count > 0);
+});
+
+test('human feedback samples replay as imitation transitions', () => {
+  const state = prepareInteractiveState({ playerCount: 3, deckSize: 1, seed: 65 });
+  const meta = createAIMeta(state, { humanPlayerIds: [0], model: createNetwork({ seed: 65 }) });
+  const actions = listLegalCourtActions(state, 0, { includeDeals: false });
+  const action = actions.find((entry) => entry.kind === 'court') || actions[0];
+
+  const sample = createHumanCourtActionSample(state, 0, action.payload);
+  assert.equal(appendHumanFeedbackSample(meta, sample), true);
+
+  const transitions = humanFeedbackSamplesToTransitions(meta.humanFeedback.samples, { returnValue: 0.5 });
+  assert.equal(transitions.length, 1);
+  assert.equal(transitions[0].return, 0.5);
+  assert.ok(transitions[0].inputs.length > 0);
+
+  const dir = mkdtempSync(join(tmpdir(), 'basileus-human-games-'));
+  const nested = join(dir, 'nested');
+  mkdirSync(nested);
+  const payload = JSON.stringify({
+    schema: HUMAN_FEEDBACK_SCHEMA,
+    version: 1,
+    samples: [sample],
+  });
+  writeFileSync(join(dir, 'one.json'), payload);
+  writeFileSync(join(nested, 'two.json'), payload);
+
+  const dataset = loadHumanFeedbackDatasetSync(dir, { returnValue: 0.5 });
+  assert.equal(dataset.files.length, 2);
+  assert.equal(dataset.samples.length, 2);
+  assert.equal(dataset.transitions.length, 2);
+});
+
 test('neural inputs expose extended neutral game indicators', () => {
   const state = prepareInteractiveState({ playerCount: 3, deckSize: 2, seed: 66 });
   const actions = listLegalCourtActions(state, 0, { includeDeals: false });
@@ -415,6 +488,7 @@ test('tournament harness compares a model against baselines', () => {
   const network = createNetwork({ seed: 91 });
   const report = runTournament({
     network,
+    humanOpponentNetwork: createNetwork({ seed: 92 }),
     episodes: 1,
     playerCount: 3,
     deckSize: 1,
@@ -426,6 +500,9 @@ test('tournament harness compares a model against baselines', () => {
   assert.equal(typeof report.score, 'number');
   assert.ok(report.matchups.modelVsRandom);
   assert.ok(report.matchups.modelVsHeuristic);
+  assert.ok(report.matchups.modelVsHuman);
+  assert.ok(report.matchups.humanVsModel);
+  assert.equal(report.matchups.humanVsModel.weight, 0);
   assert.ok(report.matchups.selfPlay);
   assert.ok(report.matchups.randomBaseline);
 });

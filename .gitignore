@@ -41,6 +41,7 @@ ai/models/*.json
 !ai/models/latest.json
 ai/checkpoints/
 ai/runs/
+ai/human-games/
 
 # --- Logs ---
 logs/

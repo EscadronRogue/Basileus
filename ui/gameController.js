@@ -12,6 +12,7 @@ import {
   startInteractiveRuntime,
 } from '../engine/runtime.js';
 import { createAIMeta, hydrateNeuralModel, loadBrowserNeuralModel } from '../ai/brain.js';
+import { exportHumanFeedbackPayload } from '../ai/humanFeedback.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG } from '../render/mapRenderer.js';
 import {
@@ -92,6 +93,30 @@ export class GameController {
 
   isHumanPlayer(playerId) {
     return this.config.humanPlayerIds.includes(playerId);
+  }
+
+  exportHumanFeedback() {
+    return exportHumanFeedbackPayload(this.aiMeta, {
+      mode: this.config.mode,
+      playerCount: this.config.playerCount,
+      deckSize: this.config.deckSize,
+      seed: this.config.seed,
+      humanPlayerIds: this.config.humanPlayerIds,
+    });
+  }
+
+  downloadHumanFeedback() {
+    const payload = this.exportHumanFeedback();
+    const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `basileus-human-feedback-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    return payload;
   }
 
   isControllablePlayer(playerId) {

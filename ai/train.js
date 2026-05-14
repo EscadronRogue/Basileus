@@ -1,7 +1,7 @@
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { availableParallelism } from 'node:os';
 import { basename, extname, resolve } from 'node:path';
-import { createNetwork } from './network.js';
+import { createNetwork, trainBatch } from './network.js';
 import {
   deserializeNetwork,
   serializeNetwork,
@@ -13,11 +13,16 @@ import {
   saveModelFileSync,
 } from './modelStore.js';
 import {
+  DEFAULT_HUMAN_GAMES_DIR,
+  loadHumanFeedbackDatasetSync,
+} from './humanFeedbackStore.js';
+import {
   createEntropySeed,
   resolveEpisodeSeed,
   runSelfPlayEpisode,
   trainSelfPlay,
   trainTransitions,
+  createActionStats,
   mergeActionStats,
   mergePolicyMixStats,
 } from './selfPlay.js';
@@ -154,10 +159,15 @@ export function resolveTrainingOptions(args = {}) {
     opponentMix: booleanArg(args, 'opponentMix', true),
     randomOpponentRate: Math.max(0, numberArg(args, 'randomOpponentRate', 0.3)),
     heuristicOpponentRate: Math.max(0, numberArg(args, 'heuristicOpponentRate', 0)),
+    humanOpponentRate: Math.max(0, numberArg(args, 'humanOpponentRate', 0.25)),
+    humanOpponentEpochs: Math.max(1, Math.floor(numberArg(args, 'humanOpponentEpochs', 8))),
+    humanOpponentLearningRate: numberArg(args, 'humanOpponentLearningRate', 0.001),
     checkpointOpponentRate: Math.max(0, numberArg(args, 'checkpointOpponentRate', 0.2)),
     checkpointInterval: Math.max(0, checkpointInterval),
     checkpointEvalEpisodes: Math.max(1, Math.floor(numberArg(args, 'checkpointEvalEpisodes', 4))),
     checkpointOpponentLimit: Math.max(0, Math.floor(numberArg(args, 'checkpointOpponentLimit', 3))),
+    humanFeedbackWeight: Math.max(0, numberArg(args, 'humanFeedbackWeight', 0)),
+    humanFeedbackReturn: numberArg(args, 'humanFeedbackReturn', 0.75),
     quiet: booleanArg(args, 'quiet', false),
   };
 }
@@ -181,6 +191,28 @@ function formatDistribution(distribution, suffix) {
   const entries = Object.entries(distribution || {})
     .sort(([left], [right]) => Number(left) - Number(right));
   return entries.length ? entries.map(([key, count]) => `${key}${suffix}:${count}`).join(',') : '-';
+}
+
+function formatTopReturnAverages(distribution, limit = 4) {
+  const entries = Object.entries(distribution || {})
+    .filter(([, bucket]) => bucket?.count > 0)
+    .map(([key, bucket]) => [key, bucket.returnSum / Math.max(1, bucket.count), bucket.count])
+    .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
+    .slice(0, limit);
+  return entries.length
+    ? entries.map(([key, average, count]) => `${key}:${average.toFixed(2)}(${count})`).join(',')
+    : '-';
+}
+
+function averageStatPercent(stat) {
+  return stat?.count ? formatPercent(stat.sum / stat.count) : '-';
+}
+
+function formatIncomeShares(economics = {}) {
+  const shares = economics.incomeShare || {};
+  return ['church', 'estate', 'tax', 'gold']
+    .map((key) => `${key}:${averageStatPercent(shares[key])}`)
+    .join(',');
 }
 
 function createProgressReporter(options, outputPath, resumed) {
@@ -214,6 +246,16 @@ function createProgressReporter(options, outputPath, resumed) {
         + ` | epochs=${options.trainingEpochs}`,
       );
       console.log(`[ai:train] learningRate=${options.learningRate} entropyBeta=${options.entropyBeta} temperature=${options.temperature} out=${outputPath}`);
+      if (options.humanFeedbackTransitions?.length) {
+        console.log(
+          `[ai:train] humanGames=${options.humanFeedbackFiles?.length || 0} files`
+          + ` samples=${options.humanFeedbackSampleCount || options.humanFeedbackTransitions.length}`
+          + ` transitions=${options.humanFeedbackTransitions.length}`
+          + ` opponentRate=${options.humanOpponentRate}`
+          + ` imitationWeight=${options.humanFeedbackWeight}`
+          + ` targetReturn=${options.humanFeedbackReturn}`,
+        );
+      }
     },
     update(snapshot) {
       const completed = Math.min(total, Number(snapshot.completed) || 0);
@@ -233,6 +275,10 @@ function createProgressReporter(options, outputPath, resumed) {
       const roundMix = formatDistribution(stats.roundLengths, 'r');
       const policyMix = formatDistribution(stats.policyMix, '');
       const courtMix = formatDistribution(stats.actionStats?.courtActions, '');
+      const valueMix = formatDistribution(stats.actionStats?.actionValueBuckets, '');
+      const returnMix = formatTopReturnAverages(stats.actionStats?.outcomes?.byKind);
+      const frontierShare = averageStatPercent(stats.actionStats?.orderFrontierShare);
+      const incomeShares = formatIncomeShares(stats.actionStats?.economics);
       const lastSeed = snapshot.last?.seed ? ` | lastSeed=${snapshot.last.seed}` : '';
 
       console.log(
@@ -247,6 +293,10 @@ function createProgressReporter(options, outputPath, resumed) {
         + ` | rounds=${roundMix}`
         + ` | policies=${policyMix}`
         + ` | court=${courtMix}`
+        + ` | value=${valueMix}`
+        + ` | returns=${returnMix}`
+        + ` | frontier=${frontierShare}`
+        + ` | income=${incomeShares}`
         + ` | transitions=${transitions}`
         + lastSeed
         + ` | elapsed=${formatDuration(elapsed)}`,
@@ -261,6 +311,8 @@ function createProgressReporter(options, outputPath, resumed) {
         + ` truncated=${stats.truncated || 0}`
         + ` avgRounds=${Number(stats.averageRounds || 0).toFixed(2)}`
         + ` avgLoss=${Number(stats.loss || 0).toFixed(4)}`
+        + ` frontier=${averageStatPercent(stats.actionStats?.orderFrontierShare)}`
+        + ` income=${formatIncomeShares(stats.actionStats?.economics)}`
         + ` elapsed=${formatDuration(elapsed)}`,
       );
       console.log(`[ai:train] saved ${outputPath}`);
@@ -316,16 +368,7 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
     rounds: 0,
     playerCounts: {},
     roundLengths: {},
-    actionStats: {
-      total: 0,
-      byKind: {},
-      byPhase: {},
-      courtActions: {},
-      rewardChoices: {},
-      orderDeployments: { frontier: 0, capital: 0 },
-      titleAssignments: 0,
-      confirmations: 0,
-    },
+    actionStats: createActionStats(),
     policyMix: {},
     loss: 0,
   };
@@ -334,7 +377,14 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
   let nextCheckpoint = checkpointInterval;
   while (completed < episodes) {
     const batchSize = Math.min(workers, episodes - completed);
-    const workerOptions = { ...options, onProgress: undefined, onCheckpoint: undefined, quiet: undefined, logInterval: undefined };
+    const workerOptions = {
+      ...options,
+      humanFeedbackTransitions: undefined,
+      onProgress: undefined,
+      onCheckpoint: undefined,
+      quiet: undefined,
+      logInterval: undefined,
+    };
     const jobs = Array.from({ length: batchSize }, (_, index) => (
       runWorkerEpisode(
         network,
@@ -396,6 +446,26 @@ function cloneNetwork(network) {
   return deserializeNetwork(serializeNetwork(network));
 }
 
+function createHumanOpponentNetwork(transitions = [], options = {}) {
+  if (!transitions.length) return null;
+  const network = createNetwork({
+    seed: deriveStableSeed(options.modelSeed || options.seed || 1, 211),
+  });
+  const epochs = Math.max(1, Math.floor(Number(options.humanOpponentEpochs) || 1));
+  for (let epoch = 0; epoch < epochs; epoch += 1) {
+    trainBatch(network, transitions, {
+      learningRate: options.humanOpponentLearningRate || options.learningRate || 0.001,
+      entropyBeta: 0,
+      temperature: 1,
+    });
+  }
+  return network;
+}
+
+function resolveHumanGamesPath(args = {}) {
+  return args.humanGames || args.humanData || args.humanFeedback || DEFAULT_HUMAN_GAMES_DIR;
+}
+
 function checkpointPathFor(outputPath, checkpointDir, completed) {
   const extension = extname(outputPath) || '.json';
   const stem = basename(outputPath, extension) || 'model';
@@ -415,6 +485,7 @@ function createCheckpointManager(trainingOptions, outputPath, args = {}) {
     return runTournament({
       network,
       previousNetwork,
+      humanOpponentNetwork: trainingOptions.humanOpponentNetwork,
       episodes: trainingOptions.checkpointEvalEpisodes,
       seed: evaluationSeed,
       includeDeals: trainingOptions.includeDeals,
@@ -484,6 +555,22 @@ export async function runTrainingCli(argv = process.argv) {
   const args = parseArgs(argv);
   const resumePath = args.resume === true ? DEFAULT_MODEL_PATH : args.resume;
   const trainingOptions = resolveTrainingOptions(args);
+  const humanGamesPath = resolveHumanGamesPath(args);
+  const explicitHumanGamesPath = Boolean(args.humanGames || args.humanData || args.humanFeedback);
+  const humanDataset = loadHumanFeedbackDatasetSync(humanGamesPath, {
+    returnValue: trainingOptions.humanFeedbackReturn,
+    required: explicitHumanGamesPath,
+  });
+  if (humanDataset.transitions.length) {
+    trainingOptions.humanFeedbackTransitions = humanDataset.transitions;
+    trainingOptions.humanFeedbackPath = resolve(humanGamesPath);
+    trainingOptions.humanFeedbackFiles = humanDataset.files;
+    trainingOptions.humanFeedbackSampleCount = humanDataset.samples.length;
+    trainingOptions.humanOpponentNetwork = createHumanOpponentNetwork(
+      humanDataset.transitions,
+      trainingOptions,
+    );
+  }
   const network = resumePath
     ? (loadModelFileSync(resumePath) || createNetwork({ seed: trainingOptions.modelSeed }))
     : createNetwork({ seed: trainingOptions.modelSeed });
@@ -514,6 +601,7 @@ export async function runTrainingCli(argv = process.argv) {
     network: cloneNetwork(network),
     tournament: runTournament({
       network,
+      humanOpponentNetwork: trainingOptions.humanOpponentNetwork,
       episodes: trainingOptions.checkpointEvalEpisodes,
       seed: deriveCheckpointSeed(trainingOptions),
       includeDeals: trainingOptions.includeDeals,
@@ -543,8 +631,16 @@ export async function runTrainingCli(argv = process.argv) {
     opponentMix: trainingOptions.opponentMix,
     randomOpponentRate: trainingOptions.randomOpponentRate,
     heuristicOpponentRate: trainingOptions.heuristicOpponentRate,
+    humanOpponentRate: trainingOptions.humanOpponentRate,
+    humanOpponentEpochs: trainingOptions.humanOpponentEpochs,
     checkpointOpponentRate: trainingOptions.checkpointOpponentRate,
     trainingEpochs: trainingOptions.trainingEpochs,
+    humanFeedbackPath: trainingOptions.humanFeedbackPath || null,
+    humanFeedbackFiles: trainingOptions.humanFeedbackFiles || [],
+    humanFeedbackSamples: trainingOptions.humanFeedbackSampleCount || 0,
+    humanFeedbackTransitions: trainingOptions.humanFeedbackTransitions?.length || 0,
+    humanFeedbackWeight: trainingOptions.humanFeedbackWeight,
+    humanFeedbackReturn: trainingOptions.humanFeedbackReturn,
     checkpointInterval: trainingOptions.checkpointInterval,
     checkpointEvalEpisodes: trainingOptions.checkpointEvalEpisodes,
     checkpointDir: checkpoints.checkpointDir,

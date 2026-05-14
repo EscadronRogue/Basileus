@@ -420,6 +420,79 @@ function firstDealClause(action) {
   return action?.payload?.clauses?.[0] || null;
 }
 
+function dealClauses(action) {
+  return Array.isArray(action?.payload?.clauses) ? action.payload.clauses : [];
+}
+
+function clauseAmount(clause = {}) {
+  if (clause.kind === 'gold') return Number(clause.amount ?? clause.payload?.totalAmount) || 0;
+  if (clause.kind === 'coup_support' || clause.kind === 'frontier_support') {
+    return Number(clause.troopCount ?? clause.payload?.troopCount) || 0;
+  }
+  if (clause.kind === 'appointment_promise') return Number(clause.appointmentCount ?? clause.payload?.appointmentCount) || 1;
+  if (clause.kind === 'non_revocation') return Number(clause.durationTurns ?? clause.turns) || 1;
+  if (clause.kind === 'estate') return 4;
+  return 1;
+}
+
+function actionDealShape(action) {
+  const totals = {
+    clauseCount: 0,
+    goldGiven: 0,
+    goldAsked: 0,
+    troopPromised: 0,
+    troopAsked: 0,
+    estateGiven: 0,
+    estateAsked: 0,
+    protectionGiven: 0,
+    protectionAsked: 0,
+    thronebound: 0,
+  };
+  for (const clause of dealClauses(action)) {
+    totals.clauseCount += 1;
+    const amount = clauseAmount(clause);
+    const give = clause.direction === 'give';
+    const ask = clause.direction === 'ask';
+    if (clause.startTriggerType === 'when_player_is_basileus') totals.thronebound += 1;
+    if (clause.kind === 'gold') {
+      if (give) totals.goldGiven += amount;
+      if (ask) totals.goldAsked += amount;
+    } else if (clause.kind === 'coup_support' || clause.kind === 'frontier_support') {
+      if (give) totals.troopPromised += amount;
+      if (ask) totals.troopAsked += amount;
+    } else if (clause.kind === 'estate') {
+      if (give) totals.estateGiven += 1;
+      if (ask) totals.estateAsked += 1;
+    } else if (clause.kind === 'non_revocation') {
+      if (give) totals.protectionGiven += amount;
+      if (ask) totals.protectionAsked += amount;
+    }
+  }
+  return totals;
+}
+
+function estimateActionScale(action) {
+  if (!action) return 0;
+  if (action.kind === 'court-confirm') return 0;
+  if (action.kind === 'orders') {
+    const orders = action.orders || {};
+    return Object.keys(orders.deployments || {}).length || 1;
+  }
+  if (action.kind === 'reward') return action.choice === 'empire' ? 4 : 2;
+  if (action.kind === 'title-assignment') return Object.keys(action.assignments || {}).length || 1;
+  if (action.kind !== 'court') return 1;
+  const courtAction = action.payload?.action;
+  if (courtAction === 'buy') return Number(action.payload?.amount) || 1;
+  if (courtAction === 'hire-mercenaries' || courtAction === 'dismiss') return Number(action.payload?.count) || 1;
+  if (courtAction === 'recruit') return 3;
+  if (courtAction === 'gift' || courtAction === 'revoke') return 4;
+  if (courtAction === 'basileus-appoint' || courtAction === 'appoint-strategos' || courtAction === 'appoint-bishop') return 3;
+  if (courtAction?.startsWith('deal-')) {
+    return dealClauses(action).reduce((total, clause) => total + Math.max(1, clauseAmount(clause)), 0);
+  }
+  return 1;
+}
+
 function actionRewardFeatures(state, action) {
   if (action?.kind !== 'reward') return Array(8).fill(0);
   const reward = (state.pendingDefenderRewards || []).find((entry) => entry.id === action.rewardId);
@@ -440,12 +513,31 @@ function actionMagnitudeFeatures(state, playerId, action, clause) {
   const amount = Number(action?.payload?.amount || action?.payload?.count || clause?.amount || clause?.troopCount || 0) || 0;
   const player = getPlayer(state, playerId);
   const spendable = Math.max(0, Number(player?.gold) || 0);
+  const dealShape = actionDealShape(action);
+  const netGold = dealShape.goldAsked - dealShape.goldGiven;
+  const netTroops = dealShape.troopAsked - dealShape.troopPromised;
+  const netEstates = dealShape.estateAsked - dealShape.estateGiven;
+  const scale = estimateActionScale(action);
   return [
     norm(amount, 20),
     norm(clause?.durationTurns || 0, 5),
     norm(spendable, 60),
     amount > 0 ? norm(amount, Math.max(1, spendable)) : 0,
     spendable >= amount && amount > 0 ? 1 : 0,
+    norm(dealShape.clauseCount, 4),
+    dealShape.clauseCount > 1 ? 1 : 0,
+    norm(dealShape.goldGiven, 20),
+    norm(dealShape.goldAsked, 20),
+    norm(netGold, 20),
+    norm(dealShape.troopPromised, 20),
+    norm(dealShape.troopAsked, 20),
+    norm(netTroops, 20),
+    norm(netEstates, 4),
+    norm(dealShape.protectionGiven - dealShape.protectionAsked, 5),
+    norm(dealShape.thronebound, 4),
+    norm(scale, 20),
+    scale >= 6 ? 1 : 0,
+    action?.kind === 'court-confirm' ? 0 : 1,
   ];
 }
 

@@ -30,6 +30,14 @@ import {
   observeCourtAction,
   runAICourtAutomation,
 } from '../ai/brain.js';
+import {
+  appendHumanFeedbackSample,
+  createHumanCourtActionSample,
+  createHumanCourtConfirmationSample,
+  createHumanOrdersSample,
+  createHumanRewardSample,
+  createHumanTitleAssignmentSample,
+} from '../ai/humanFeedback.js';
 
 function fail(reason, extra = {}) {
   return { ok: false, reason, ...extra };
@@ -231,8 +239,10 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already confirmed court actions this round.');
 
   autoResolveUnavailableHumanAppointments(state, playerId);
+  const feedbackSample = aiMeta ? createHumanCourtActionSample(state, playerId, payload) : null;
   const result = applyCourtAction(state, playerId, payload);
   if (!result.ok) return result;
+  appendHumanFeedbackSample(aiMeta, feedbackSample);
 
   writePending(context, processPostHumanAction(state, aiMeta, {
     ...options,
@@ -247,8 +257,10 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
 export function handleHumanCourtConfirmation(state, aiMeta, context = {}, playerId, options = {}) {
   ensureRuntimeContext(context);
   autoResolveUnavailableHumanAppointments(state, playerId);
+  const feedbackSample = aiMeta ? createHumanCourtConfirmationSample(state, playerId) : null;
   const result = confirmCourt(state, playerId);
   if (!result.ok) return result;
+  appendHumanFeedbackSample(aiMeta, feedbackSample);
 
   writePending(context, processPostHumanAction(state, aiMeta, {
     ...options,
@@ -262,8 +274,10 @@ export function handleHumanCourtConfirmation(state, aiMeta, context = {}, player
 
 export function handleHumanOrders(state, aiMeta, context = {}, playerId, orders = {}, options = {}) {
   ensureRuntimeContext(context);
+  const feedbackSample = aiMeta ? createHumanOrdersSample(state, playerId, orders) : null;
   const result = submitHumanOrders(state, playerId, orders);
   if (!result.ok) return result;
+  appendHumanFeedbackSample(aiMeta, feedbackSample);
 
   if (aiMeta) {
     writePending(context, processAiFlow(state, aiMeta, {
@@ -282,8 +296,10 @@ export function handleManualTitleReassignment(state, aiMeta, context = {}, playe
   if (!state || state.phase !== 'resolution') return fail('Major title reassignment is only allowed during resolution.');
   if (state.nextBasileusId === state.basileusId) return fail('No new Basileus needs to reassign titles.');
   if (playerId !== state.nextBasileusId) return fail('Only the new Basileus may assign major titles.');
+  const feedbackSample = aiMeta ? createHumanTitleAssignmentSample(state, playerId, assignments) : null;
   const result = applyManualTitleReassignment(state, aiMeta, playerId, assignments);
   if (!result.ok) return result;
+  appendHumanFeedbackSample(aiMeta, feedbackSample);
   context.pendingAiTitleAssignment = null;
   return { ok: true, pendingAiTitleAssignment: null };
 }
@@ -291,8 +307,10 @@ export function handleManualTitleReassignment(state, aiMeta, context = {}, playe
 export function handleDefenderRewardChoice(state, aiMeta, context = {}, playerId, rewardId, choice) {
   ensureRuntimeContext(context);
   if (!state || state.phase !== 'resolution') return fail('Defender rewards are only available during resolution.');
+  const feedbackSample = aiMeta ? createHumanRewardSample(state, playerId, String(rewardId || ''), choice) : null;
   const result = applyDefenderRewardChoice(state, String(rewardId || ''), playerId, choice);
   if (!result.ok) return result;
+  appendHumanFeedbackSample(aiMeta, feedbackSample);
   recordDefenderRewardsForAiMeta(aiMeta, [result.reward]);
   return { ok: true, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }

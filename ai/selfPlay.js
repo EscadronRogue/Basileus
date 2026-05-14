@@ -1,5 +1,14 @@
-import { createGameState, makeRng } from '../engine/state.js';
+import { runAdministration } from '../engine/cascade.js';
+import {
+  createGameState,
+  getOfficeHolder,
+  getPlayer,
+  getPlayerMercenaryTroops,
+  makeRng,
+  MERCENARY_COMPANY_KEY,
+} from '../engine/state.js';
 import { setDealParticipantIds } from '../engine/deals.js';
+import { getPlayerOrderOfficeKeys, isCapitalLockedOfficeKey } from '../engine/orders.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import {
   advanceToNextInteractivePhase,
@@ -26,6 +35,7 @@ const DEFAULT_PLAYER_MIN = 3;
 const DEFAULT_PLAYER_MAX = 5;
 const DEFAULT_ROUND_MIN = 6;
 const DEFAULT_ROUND_MAX = 12;
+const SCORE_CATEGORY_KEYS = ['church', 'estate', 'tax', 'gold'];
 
 export function createEntropySeed() {
   return ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 1;
@@ -116,19 +126,128 @@ function increment(map, key, amount = 1) {
   map[normalized] = (map[normalized] || 0) + amount;
 }
 
-function createActionStats() {
+function createReturnBucket() {
+  return {
+    count: 0,
+    returnSum: 0,
+    positive: 0,
+    negative: 0,
+    neutral: 0,
+    min: 0,
+    max: 0,
+  };
+}
+
+function recordReturn(map, key, value) {
+  if (!map) return;
+  const normalized = String(key ?? 'unknown');
+  if (!map[normalized]) map[normalized] = createReturnBucket();
+  const bucket = map[normalized];
+  const reward = Number.isFinite(Number(value)) ? Number(value) : 0;
+  bucket.count += 1;
+  bucket.returnSum += reward;
+  if (reward > 0.05) bucket.positive += 1;
+  else if (reward < -0.05) bucket.negative += 1;
+  else bucket.neutral += 1;
+  bucket.min = bucket.count === 1 ? reward : Math.min(bucket.min, reward);
+  bucket.max = bucket.count === 1 ? reward : Math.max(bucket.max, reward);
+}
+
+function mergeReturnBucket(target, source = {}) {
+  target.count += source.count || 0;
+  target.returnSum += source.returnSum || 0;
+  target.positive += source.positive || 0;
+  target.negative += source.negative || 0;
+  target.neutral += source.neutral || 0;
+  if (source.count) {
+    target.min = target.count === source.count ? source.min : Math.min(target.min, source.min);
+    target.max = target.count === source.count ? source.max : Math.max(target.max, source.max);
+  }
+}
+
+function mergeReturnMaps(target = {}, source = {}) {
+  for (const [key, value] of Object.entries(source || {})) {
+    if (!target[key]) target[key] = createReturnBucket();
+    mergeReturnBucket(target[key], value);
+  }
+  return target;
+}
+
+function createOutcomeStats() {
+  return {
+    byKind: {},
+    courtActions: {},
+    dealClauses: {},
+    rewardChoices: {},
+    actionValueBuckets: {},
+    orderFrontierShare: {},
+  };
+}
+
+function mergeOutcomeStats(target = createOutcomeStats(), source = {}) {
+  mergeReturnMaps(target.byKind, source.byKind);
+  mergeReturnMaps(target.courtActions, source.courtActions);
+  mergeReturnMaps(target.dealClauses, source.dealClauses);
+  mergeReturnMaps(target.rewardChoices, source.rewardChoices);
+  mergeReturnMaps(target.actionValueBuckets, source.actionValueBuckets);
+  mergeReturnMaps(target.orderFrontierShare, source.orderFrontierShare);
+  return target;
+}
+
+function createAverageStat() {
+  return { sum: 0, count: 0 };
+}
+
+function addAverage(stat, value) {
+  if (!stat) return;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return;
+  stat.sum += number;
+  stat.count += 1;
+}
+
+function mergeAverageStat(target, source = {}) {
+  target.sum += source.sum || 0;
+  target.count += source.count || 0;
+  return target;
+}
+
+function createEconomicStats() {
+  return {
+    incomeShare: Object.fromEntries(SCORE_CATEGORY_KEYS.map((key) => [key, createAverageStat()])),
+  };
+}
+
+function mergeEconomicStats(target = createEconomicStats(), source = {}) {
+  for (const key of SCORE_CATEGORY_KEYS) {
+    mergeAverageStat(target.incomeShare[key], source.incomeShare?.[key]);
+  }
+  return target;
+}
+
+export function createActionStats() {
   return {
     total: 0,
     byKind: {},
     byPhase: {},
     courtActions: {},
+    dealClauses: {},
+    dealClauseAmounts: {},
+    actionValueBuckets: {},
     rewardChoices: {},
     orderDeployments: {
       frontier: 0,
       capital: 0,
     },
+    orderTroops: {
+      frontier: 0,
+      capital: 0,
+    },
+    orderFrontierShare: createAverageStat(),
     titleAssignments: 0,
     confirmations: 0,
+    outcomes: createOutcomeStats(),
+    economics: createEconomicStats(),
   };
 }
 
@@ -137,28 +256,206 @@ export function mergeActionStats(target = createActionStats(), source = {}) {
   for (const [key, value] of Object.entries(source.byKind || {})) increment(target.byKind, key, value);
   for (const [key, value] of Object.entries(source.byPhase || {})) increment(target.byPhase, key, value);
   for (const [key, value] of Object.entries(source.courtActions || {})) increment(target.courtActions, key, value);
+  for (const [key, value] of Object.entries(source.dealClauses || {})) increment(target.dealClauses, key, value);
+  for (const [key, value] of Object.entries(source.dealClauseAmounts || {})) {
+    target.dealClauseAmounts[key] = (target.dealClauseAmounts[key] || 0) + value;
+  }
+  for (const [key, value] of Object.entries(source.actionValueBuckets || {})) increment(target.actionValueBuckets, key, value);
   for (const [key, value] of Object.entries(source.rewardChoices || {})) increment(target.rewardChoices, key, value);
   for (const [key, value] of Object.entries(source.orderDeployments || {})) {
     target.orderDeployments[key] = (target.orderDeployments[key] || 0) + value;
   }
+  for (const [key, value] of Object.entries(source.orderTroops || {})) {
+    target.orderTroops[key] = (target.orderTroops[key] || 0) + value;
+  }
+  mergeAverageStat(target.orderFrontierShare, source.orderFrontierShare);
   target.titleAssignments += source.titleAssignments || 0;
   target.confirmations += source.confirmations || 0;
+  mergeOutcomeStats(target.outcomes, source.outcomes);
+  mergeEconomicStats(target.economics, source.economics);
   return target;
 }
 
-function recordAction(stats, action) {
+function rawClauseAmount(clause = {}) {
+  if (!clause || typeof clause !== 'object') return 0;
+  if (clause.kind === 'gold') return Number(clause.amount ?? clause.payload?.totalAmount) || 0;
+  if (clause.kind === 'coup_support' || clause.kind === 'frontier_support') {
+    return Number(clause.troopCount ?? clause.payload?.troopCount) || 0;
+  }
+  if (clause.kind === 'appointment_promise') return Number(clause.appointmentCount ?? clause.payload?.appointmentCount) || 1;
+  if (clause.kind === 'non_revocation') return Number(clause.durationTurns ?? clause.turns) || 1;
+  if (clause.kind === 'estate') return 4;
+  return 1;
+}
+
+function dealClausesForAction(action) {
+  return Array.isArray(action?.payload?.clauses) ? action.payload.clauses : [];
+}
+
+function orderTroopSplit(state, playerId, orders = {}) {
+  const out = { frontier: 0, capital: 0 };
+  if (!state) return out;
+  const player = getPlayer(state, playerId);
+  if (!player) return out;
+  for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
+    const professional = officeKey === MERCENARY_COMPANY_KEY
+      ? 0
+      : Math.max(0, Number(player.professionalArmies?.[officeKey]) || 0);
+    const levies = officeKey === MERCENARY_COMPANY_KEY
+      ? 0
+      : (getOfficeHolder(state, officeKey) === playerId ? Math.max(0, Number(state.currentLevies?.[officeKey]) || 0) : 0);
+    const mercenaries = officeKey === MERCENARY_COMPANY_KEY
+      ? getPlayerMercenaryTroops(state, playerId)
+      : 0;
+    const total = professional + levies + mercenaries;
+    const destination = isCapitalLockedOfficeKey(officeKey)
+      ? 'capital'
+      : (orders.deployments?.[officeKey] || 'frontier');
+    if (destination === 'capital') out.capital += total;
+    else out.frontier += total;
+  }
+  return out;
+}
+
+function orderFrontierShareBucket(share) {
+  if (!Number.isFinite(share)) return 'none';
+  if (share >= 0.8) return 'frontier-heavy';
+  if (share >= 0.55) return 'frontier-lean';
+  if (share >= 0.45) return 'balanced';
+  if (share >= 0.2) return 'capital-lean';
+  return 'capital-heavy';
+}
+
+function estimateActionMagnitude(action, state, playerId) {
+  if (!action) return 0;
+  if (action.kind === 'court-confirm') return 0;
+  if (action.kind === 'reward') return action.choice === 'gold' ? 2 : 4;
+  if (action.kind === 'title-assignment') return Math.max(1, Object.keys(action.assignments || {}).length);
+  if (action.kind === 'orders') {
+    const split = orderTroopSplit(state, playerId, action.orders);
+    return split.frontier + split.capital;
+  }
+  if (action.kind !== 'court') return 1;
+
+  const courtAction = action.payload?.action;
+  if (courtAction === 'buy') return Number(action.payload?.amount) || 1;
+  if (courtAction === 'hire-mercenaries' || courtAction === 'dismiss') return Number(action.payload?.count) || 1;
+  if (courtAction === 'recruit') return 3;
+  if (courtAction === 'gift' || courtAction === 'revoke') return 4;
+  if (courtAction?.startsWith('appoint') || courtAction === 'basileus-appoint') return 3;
+  if (courtAction?.startsWith('deal-')) {
+    const clauses = dealClausesForAction(action);
+    return clauses.reduce((total, clause) => total + Math.max(1, rawClauseAmount(clause)), 0);
+  }
+  return 1;
+}
+
+function actionValueBucket(action, state, playerId) {
+  const magnitude = estimateActionMagnitude(action, state, playerId);
+  const clauseCount = dealClausesForAction(action).length;
+  if (action?.kind === 'court-confirm') return 'confirm';
+  if (clauseCount >= 2 || magnitude >= 6) return 'major';
+  if (magnitude >= 3) return 'standard';
+  return 'minor';
+}
+
+function describeActionForStats(action, state, playerId) {
+  const clauses = dealClausesForAction(action);
+  let frontierShare = null;
+  if (action?.kind === 'orders') {
+    const split = orderTroopSplit(state, playerId, action.orders);
+    const total = split.frontier + split.capital;
+    frontierShare = total > 0 ? split.frontier / total : 0;
+  }
+  return {
+    kind: action?.kind || 'unknown',
+    phase: action?.phase || state?.phase || 'unknown',
+    courtAction: action?.kind === 'court' ? (action.payload?.action || 'court') : null,
+    rewardChoice: action?.kind === 'reward' ? (action.choice || 'unknown') : null,
+    dealClauseKinds: clauses.map((clause) => clause.kind || 'unknown'),
+    dealClauseCount: clauses.length,
+    valueBucket: actionValueBucket(action, state, playerId),
+    orderFrontierShare: frontierShare,
+    orderFrontierShareBucket: frontierShare == null ? null : orderFrontierShareBucket(frontierShare),
+  };
+}
+
+function recordAction(stats, action, state = null) {
   if (!stats || !action) return;
+  const behavior = describeActionForStats(action, state, action.playerId);
   stats.total += 1;
   increment(stats.byKind, action.kind);
   increment(stats.byPhase, action.phase);
+  increment(stats.actionValueBuckets, behavior.valueBucket);
   if (action.kind === 'court') increment(stats.courtActions, action.payload?.action || 'court');
   if (action.kind === 'court-confirm') stats.confirmations += 1;
   if (action.kind === 'reward') increment(stats.rewardChoices, action.choice || 'unknown');
   if (action.kind === 'title-assignment') stats.titleAssignments += 1;
+  for (const clause of dealClausesForAction(action)) {
+    increment(stats.dealClauses, clause.kind || 'unknown');
+    stats.dealClauseAmounts[clause.kind || 'unknown'] = (stats.dealClauseAmounts[clause.kind || 'unknown'] || 0) + rawClauseAmount(clause);
+  }
   if (action.kind === 'orders') {
     for (const destination of Object.values(action.orders?.deployments || {})) {
       if (destination === 'capital') stats.orderDeployments.capital += 1;
       else if (destination === 'frontier') stats.orderDeployments.frontier += 1;
+    }
+    if (state) {
+      const split = orderTroopSplit(state, action.playerId, action.orders);
+      stats.orderTroops.frontier += split.frontier;
+      stats.orderTroops.capital += split.capital;
+      const total = split.frontier + split.capital;
+      if (total > 0) addAverage(stats.orderFrontierShare, split.frontier / total);
+    }
+  }
+}
+
+function recordTransitionOutcomes(actionStats, transitions = []) {
+  if (!actionStats?.outcomes) return;
+  for (const transition of transitions) {
+    const behavior = transition.behavior;
+    if (!behavior) continue;
+    const reward = Number(transition.return) || 0;
+    recordReturn(actionStats.outcomes.byKind, behavior.kind, reward);
+    if (behavior.courtAction) recordReturn(actionStats.outcomes.courtActions, behavior.courtAction, reward);
+    if (behavior.rewardChoice) recordReturn(actionStats.outcomes.rewardChoices, behavior.rewardChoice, reward);
+    for (const clauseKind of behavior.dealClauseKinds || []) {
+      recordReturn(actionStats.outcomes.dealClauses, clauseKind, reward);
+    }
+    recordReturn(actionStats.outcomes.actionValueBuckets, behavior.valueBucket, reward);
+    if (behavior.orderFrontierShareBucket) {
+      recordReturn(actionStats.outcomes.orderFrontierShare, behavior.orderFrontierShareBucket, reward);
+    }
+  }
+}
+
+function categoryValuesForPlayer(state, administration, playerId) {
+  const player = getPlayer(state, playerId);
+  return {
+    church: Math.max(0, Number(administration.incomeBreakdown?.church?.[playerId]) || 0),
+    estate: Math.max(0, Number(administration.incomeBreakdown?.estate?.[playerId]) || 0),
+    tax: Math.max(0, Number(administration.incomeBreakdown?.tax?.[playerId]) || 0),
+    gold: Math.max(0, Number(player?.gold) || 0),
+  };
+}
+
+function recordEconomicSnapshot(economics, state, playerIds = []) {
+  if (!economics || !state || !playerIds.length) return;
+  let administration = null;
+  try {
+    administration = runAdministration(state);
+  } catch {
+    return;
+  }
+  const totals = Object.fromEntries(SCORE_CATEGORY_KEYS.map((key) => [key, 0]));
+  for (const player of state.players || []) {
+    const values = categoryValuesForPlayer(state, administration, player.id);
+    for (const key of SCORE_CATEGORY_KEYS) totals[key] += values[key];
+  }
+  for (const playerId of playerIds) {
+    const values = categoryValuesForPlayer(state, administration, playerId);
+    for (const key of SCORE_CATEGORY_KEYS) {
+      addAverage(economics.incomeShare[key], values[key] / Math.max(1, totals[key] || 1));
     }
   }
 }
@@ -168,6 +465,7 @@ function createPolicyMixStats() {
     learner: 0,
     random: 0,
     heuristic: 0,
+    human: 0,
     checkpoint: 0,
     custom: 0,
   };
@@ -274,6 +572,7 @@ export function createNetworkPolicy(network, options = {}) {
         inputs,
         chosenIndex: selection.index,
         return: 0,
+        behavior: describeActionForStats(actions[selection.index], state, playerId),
       });
     }
     return selection.index;
@@ -283,13 +582,19 @@ export function createNetworkPolicy(network, options = {}) {
 function roleFromRates(roleRng, options, opponentNetworks) {
   const randomRate = Math.max(0, Number(options.randomOpponentRate) || 0);
   const heuristicRate = Math.max(0, Number(options.heuristicOpponentRate) || 0);
+  const humanRate = options.humanOpponentNetwork
+    ? Math.max(0, Number(options.humanOpponentRate) || 0)
+    : 0;
   const checkpointRate = opponentNetworks.length
     ? Math.max(0, Number(options.checkpointOpponentRate) || 0)
     : 0;
   const roll = roleRng();
   if (roll < randomRate) return { kind: 'random' };
   if (roll < randomRate + heuristicRate) return { kind: 'heuristic' };
-  if (roll < randomRate + heuristicRate + checkpointRate) {
+  if (roll < randomRate + heuristicRate + humanRate) {
+    return { kind: 'human', network: options.humanOpponentNetwork };
+  }
+  if (roll < randomRate + heuristicRate + humanRate + checkpointRate) {
     return {
       kind: 'checkpoint',
       network: opponentNetworks[Math.floor(roleRng() * opponentNetworks.length)],
@@ -349,6 +654,13 @@ function createEpisodePolicy(options, state, transitions, seed) {
       const role = roles.get(playerId) || { kind: 'learner' };
       if (role.kind === 'random') return chooseRandom(actions, rng);
       if (role.kind === 'heuristic') return defensivePolicy({ state: currentState, playerId, actions, rng });
+      if (role.kind === 'human' && role.network) {
+        const inputs = buildCandidateInputs(currentState, playerId, actions);
+        return selectActionWithNetwork(role.network, inputs, rng, {
+          greedy: options.humanOpponentGreedy ?? true,
+          temperature: options.humanOpponentTemperature ?? 0,
+        }).index;
+      }
       if (role.kind === 'checkpoint' && role.network) {
         const inputs = buildCandidateInputs(currentState, playerId, actions);
         return selectActionWithNetwork(role.network, inputs, rng, {
@@ -366,6 +678,7 @@ function createEpisodePolicy(options, state, transitions, seed) {
         inputs,
         chosenIndex: selection.index,
         return: 0,
+        behavior: describeActionForStats(actions[selection.index], currentState, playerId),
       });
       return selection.index;
     },
@@ -403,7 +716,7 @@ function runCourtPhase(state, policy, rng, options) {
       if (!action) break;
       const result = applyLegalAction(state, action);
       if (!result.ok) break;
-      recordAction(options.actionStats, action);
+      recordAction(options.actionStats, action, state);
       madeProgress = true;
       courtActions += 1;
       if (isCourtComplete(state)) {
@@ -428,7 +741,7 @@ function runOrdersPhase(state, policy, rng, actionStats = null) {
     if (!action) continue;
     const result = applyLegalAction(state, action);
     if (!result.ok) continue;
-    recordAction(actionStats, action);
+    recordAction(actionStats, action, state);
     madeProgress = true;
   }
   if (allOrdersSubmitted(state)) {
@@ -451,7 +764,7 @@ function runResolutionPhase(state, policy, rng, actionStats = null) {
     if (action) {
       const result = applyLegalAction(state, action);
       if (result.ok) {
-        recordAction(actionStats, action);
+        recordAction(actionStats, action, state);
         madeProgress = true;
       }
     }
@@ -472,7 +785,7 @@ function runResolutionPhase(state, policy, rng, actionStats = null) {
     if (!action) break;
     const result = applyLegalAction(state, action);
     if (!result.ok) break;
-    recordAction(actionStats, action);
+    recordAction(actionStats, action, state);
     madeProgress = true;
   }
 
@@ -539,6 +852,8 @@ export function runSelfPlayEpisode(options = {}) {
   for (const transition of transitions) {
     transition.return = rewards[transition.playerId] ?? -1;
   }
+  recordTransitionOutcomes(actionStats, transitions);
+  recordEconomicSnapshot(actionStats.economics, state, [...new Set(transitions.map((entry) => entry.playerId))]);
 
   return {
     state,
@@ -564,6 +879,20 @@ function trainingEpochCount(options = {}) {
   return Math.max(1, Math.floor(Number(options.trainingEpochs) || 1));
 }
 
+function blendHumanFeedbackTransitions(network, transitions, options = {}) {
+  const human = Array.isArray(options.humanFeedbackTransitions) ? options.humanFeedbackTransitions : [];
+  const weight = Math.max(0, Number(options.humanFeedbackWeight) || 0);
+  if (!human.length || weight <= 0) return transitions;
+  const baseCount = Math.max(1, transitions.length || human.length);
+  const targetCount = Math.max(1, Math.ceil(baseCount * weight));
+  const start = Math.max(0, Number(network?.step) || 0) % human.length;
+  const mixed = transitions.slice();
+  for (let index = 0; index < targetCount; index += 1) {
+    mixed.push(human[(start + index) % human.length]);
+  }
+  return mixed;
+}
+
 export function trainTransitions(network, transitions, options = {}) {
   const epochs = trainingEpochCount(options);
   let loss = 0;
@@ -571,7 +900,7 @@ export function trainTransitions(network, transitions, options = {}) {
   let valueLoss = 0;
   let count = 0;
   for (let epoch = 0; epoch < epochs; epoch += 1) {
-    const report = trainBatch(network, transitions, {
+    const report = trainBatch(network, blendHumanFeedbackTransitions(network, transitions, options), {
       learningRate: options.learningRate || 0.001,
       entropyBeta: options.entropyBeta ?? 0.01,
       temperature: options.temperature ?? 1,

@@ -80,6 +80,22 @@ export function runTournament(options = {}) {
         policy: createHeadToHeadPolicy(options.network, { kind: 'heuristic' }),
       })),
     };
+    if (options.humanOpponentNetwork) {
+      matchups.modelVsHuman = {
+        weight: 1,
+        ...attachScore(evaluatePolicy({
+          ...common,
+          policy: createHeadToHeadPolicy(options.network, { network: options.humanOpponentNetwork }),
+        })),
+      };
+      matchups.humanVsModel = {
+        weight: 0,
+        ...attachScore(evaluatePolicy({
+          ...common,
+          policy: createHeadToHeadPolicy(options.humanOpponentNetwork, { network: options.network }),
+        })),
+      };
+    }
     matchups.selfPlay = {
       weight: 0.5,
       ...attachScore(evaluatePolicy({

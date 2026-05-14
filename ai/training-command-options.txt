@@ -1,0 +1,250 @@
+Basileus AI Training Command Options
+===================================
+
+Base command on Windows:
+
+  npm.cmd run ai:train -- [options]
+
+Base command on macOS/Linux:
+
+  npm run ai:train -- [options]
+
+Options can be written as either:
+
+  --include-deals true
+  --include-deals=true
+
+Boolean options accept true/false. A boolean flag with no value counts as true.
+
+
+Common Examples
+---------------
+
+Normal training:
+
+  npm.cmd run ai:train -- --episodes 1000
+
+Training with deals enabled:
+
+  npm.cmd run ai:train -- --episodes 1000 --include-deals true
+
+Training from human games in the default folder ai/human-games:
+
+  npm.cmd run ai:train -- --episodes 1000 --include-deals true
+
+Training from a specific human games folder:
+
+  npm.cmd run ai:train -- --episodes 1000 --include-deals true --human-games path\to\human-games
+
+Small deterministic test run:
+
+  npm.cmd run ai:train -- --episodes 20 --players 4 --rounds 6 --seed 1 --workers 1
+
+Resume training from the default model:
+
+  npm.cmd run ai:train -- --resume --episodes 1000
+
+Write the trained model somewhere else:
+
+  npm.cmd run ai:train -- --episodes 1000 --out ai\models\experiment.json
+
+
+Output And Resume Options
+-------------------------
+
+--out PATH
+  Where to write the promoted trained model.
+  Default: ai/models/latest.json
+
+--resume
+  Resume from ai/models/latest.json.
+
+--resume PATH
+  Resume from a specific model file.
+
+--quiet true|false
+  Hide progress logs.
+  Default: false
+
+--log-interval NUMBER
+  Print progress every N completed episodes.
+  Default: about episodes / 20, minimum 1.
+
+
+Training Size And Reproducibility
+---------------------------------
+
+--episodes NUMBER
+  Number of self-play episodes to train from.
+  Default: 10
+
+--workers NUMBER|auto
+  Number of parallel self-play workers.
+  Default: auto, using available CPU parallelism.
+
+--seed NUMBER
+  Makes episode seeds and the initial model seed deterministic.
+  Default: no fixed seed, so each run gets fresh random episode seeds.
+
+
+Game Setup Options
+------------------
+
+--players NUMBER
+  Fixed player count for every training game.
+  Allowed range: 3 to 5.
+  Default: not fixed.
+
+--player-min NUMBER
+  Minimum sampled player count when --players is not set.
+  Allowed range: 3 to 5.
+  Default: 3
+
+--player-max NUMBER
+  Maximum sampled player count when --players is not set.
+  Allowed range: 3 to 5.
+  Default: 5
+
+--rounds NUMBER
+  Fixed invasion deck length / round count.
+  Allowed range: 1 to 99.
+  Default: not fixed.
+
+--deck-size NUMBER
+  Same as --rounds.
+
+--round-min NUMBER
+  Minimum sampled invasion deck length when --rounds is not set.
+  Allowed range: 1 to 99.
+  Default: 6
+
+--round-max NUMBER
+  Maximum sampled invasion deck length when --rounds is not set.
+  Allowed range: 1 to 99.
+  Default: 12
+
+
+Learning Options
+----------------
+
+--learning-rate NUMBER
+  Neural network learning rate.
+  Default: 0.001
+
+--entropy-beta NUMBER
+  Entropy regularization strength. Higher values encourage more exploration.
+  Default: 0.01
+
+--temperature NUMBER
+  Action sampling temperature during learner training.
+  Default: 1
+
+--training-epochs NUMBER
+  How many optimization passes to run over each collected training batch.
+  Default: 3
+
+
+Action Space Options
+--------------------
+
+--include-deals true|false
+  Include deal proposal actions in the training action space.
+  Default: false
+
+
+Opponent Mix Options
+--------------------
+
+--opponent-mix true|false
+  Mix learner seats with other opponent types.
+  Default: true
+
+--random-opponent-rate NUMBER
+  Chance for each non-forced seat to use random legal actions.
+  Default: 0.3
+
+--heuristic-opponent-rate NUMBER
+  Chance for each non-forced seat to use the scripted defensive heuristic.
+  Default: 0
+
+--checkpoint-opponent-rate NUMBER
+  Chance for each non-forced seat to use a previous checkpoint model, when available.
+  Default: 0.2
+
+--checkpoint-opponent-limit NUMBER
+  Number of recent checkpoint models kept as training opponents.
+  Default: 3
+
+
+Human Games / RLHF-Style Options
+--------------------------------
+
+--human-games PATH
+  Folder or JSON file containing exported human games.
+  Default: ai/human-games
+
+--human-data PATH
+  Alias for --human-games.
+
+--human-feedback PATH
+  Older alias for --human-games. Can point at one JSON file or a folder.
+
+--human-opponent-rate NUMBER
+  Chance for each non-forced seat to use the distilled human-style opponent.
+  Only active when human games are found.
+  Default: 0.25
+
+--human-opponent-epochs NUMBER
+  How many passes are used to train the human-style opponent from exported games.
+  Default: 8
+
+--human-opponent-learning-rate NUMBER
+  Learning rate for the distilled human-style opponent.
+  Default: 0.001
+
+--human-feedback-weight NUMBER
+  Optional direct imitation mix added to the learner's training batch.
+  0 means no direct imitation; the AI still trains against the human-style opponent.
+  Default: 0
+
+--human-feedback-return NUMBER
+  Target value assigned to optional human imitation samples.
+  Default: 0.75
+
+
+Checkpoint And Promotion Options
+--------------------------------
+
+--checkpoint-interval NUMBER
+  Save and evaluate a checkpoint every N episodes.
+  0 disables checkpointing.
+  Default: about episodes / 5, minimum 1.
+
+--checkpoint-eval-episodes NUMBER
+  Episodes per checkpoint tournament evaluation.
+  Default: 4
+
+--checkpoint-eval-seed NUMBER
+  Fixed seed for checkpoint tournament evaluation.
+  Default: derived from the training seed/model seed.
+
+--checkpoint-dir PATH
+  Folder where checkpoint models are written.
+  Default: ai/checkpoints
+
+
+Notes
+-----
+
+The trainer currently promotes the best evaluated checkpoint, not simply the last network state.
+
+If human game JSON files exist in ai/human-games, they are loaded automatically. The AI uses them mainly by training against a human-style neural opponent. Direct imitation stays off unless you set --human-feedback-weight above 0.
+
+Useful human-game workflow:
+
+  1. Play a local game.
+  2. In the browser console, run:
+       window.__basileus.downloadHumanFeedback()
+  3. Put the downloaded JSON into ai/human-games.
+  4. Run:
+       npm.cmd run ai:train -- --episodes 1000 --include-deals true

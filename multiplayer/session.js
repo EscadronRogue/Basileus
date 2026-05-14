@@ -87,8 +87,8 @@ function serializeAiMeta(aiMeta) {
 
 function hydrateAiMeta(rawMeta, state, loadAiModel = loadModelFileSync) {
   if (!rawMeta) return null;
-  const { humanPlayerIds = [] } = clonePlain(rawMeta);
-  return createAIMeta(state, { humanPlayerIds, model: loadAiModel() });
+  const { humanPlayerIds = [], humanFeedback = null } = clonePlain(rawMeta);
+  return createAIMeta(state, { humanPlayerIds, humanFeedback, model: loadAiModel() });
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
