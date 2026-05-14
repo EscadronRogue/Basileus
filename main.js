@@ -99,11 +99,11 @@ function renderAiRoster() {
   setupAiRoster.innerHTML = aiSeats.map((seat) => `
     <div class="setup-ai-seat">
       <span>Seat ${seat}</span>
-      <span>AI runtime slot</span>
+      <span>Neural AI seat</span>
     </div>
   `).join('');
 
-  setupAiRosterHint.textContent = 'AI seats are preserved for the upcoming neural runtime. The first required AI decision will fail clearly until that runtime is implemented.';
+  setupAiRosterHint.textContent = 'AI seats use the local neural model from ai/models/latest.json. Run npm run ai:train before starting a match with AI seats.';
   updateStartAvailability();
 }
 

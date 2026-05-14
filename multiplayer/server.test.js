@@ -174,13 +174,23 @@ async function createStartedThreePlayerRoom(t) {
   await guestSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-guest');
   const guestPrivate = await guestSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 1);
 
-  hostSocket.send({
-    type: 'set_seat_kind',
-    requestId: 'seat-two-ai',
-    seatId: 2,
-    kind: 'ai',
+  const thirdJoin = await joinRoom(instance.url, createPayload.roomCode, {
+    playerName: 'Third',
   });
-  await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'seat-two-ai');
+  const thirdSocket = await connectSocket(instance.url, {
+    roomCode: thirdJoin.roomCode,
+    sessionToken: thirdJoin.sessionToken,
+    playerName: 'Third',
+  });
+
+  thirdSocket.send({
+    type: 'claim_seat',
+    requestId: 'claim-third',
+    seatId: 2,
+    playerName: 'Third',
+  });
+  await thirdSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'claim-third');
+  const thirdPrivate = await thirdSocket.waitFor((message) => message.type === 'private_snapshot' && message.seatId === 2);
 
   hostSocket.send({
     type: 'start_game',
@@ -189,6 +199,7 @@ async function createStartedThreePlayerRoom(t) {
   await hostSocket.waitFor((message) => message.type === 'action_accepted' && message.requestId === 'start-room');
   const hostGame = await hostSocket.waitFor((message) => message.type === 'game_snapshot');
   const guestGame = await guestSocket.waitFor((message) => message.type === 'game_snapshot');
+  const thirdGame = await thirdSocket.waitFor((message) => message.type === 'game_snapshot');
 
   return {
     instance,
@@ -205,6 +216,12 @@ async function createStartedThreePlayerRoom(t) {
       sessionToken: joinPayload.sessionToken,
       seatToken: guestPrivate.seatToken,
       game: guestGame,
+    },
+    third: {
+      socket: thirdSocket,
+      sessionToken: thirdJoin.sessionToken,
+      seatToken: thirdPrivate.seatToken,
+      game: thirdGame,
     },
   };
 }
@@ -293,7 +310,6 @@ test('multiplayer server enforces lobby ownership and starts a live room', async
   const room = instance.manager.getRoom(created.roomCode);
   assert.equal(room.aiMeta.players[2].isAI, true);
   assert.equal(room.aiMeta.players[2].displayName, 'AI Seat 3');
-  assert.equal(room.aiMeta.players[2].profile, undefined);
 
   await guestSocket.close();
   await hostSocket.close();

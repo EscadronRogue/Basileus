@@ -20,6 +20,7 @@ import {
 } from '../engine/publicState.js';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, resolveConfiguredSeed, toInt } from '../engine/setup.js';
 import { createAIMeta } from '../ai/brain.js';
+import { loadModelFileSync } from '../ai/modelStore.js';
 import { getAiDisplayName } from '../ai/names.js';
 
 export const ROOM_STATUS = {
@@ -69,10 +70,12 @@ function serializeAiMeta(aiMeta) {
     decisionLog,
     fastCache,
     roundContext,
+    model,
     ...rest
   } = aiMeta;
   void fastCache;
   void roundContext;
+  void model;
   return {
     ...clonePlain(rest),
     humanPlayerIds: [...(humanPlayerIds || new Set())],
@@ -85,7 +88,7 @@ function serializeAiMeta(aiMeta) {
 function hydrateAiMeta(rawMeta, state) {
   if (!rawMeta) return null;
   const { humanPlayerIds = [] } = clonePlain(rawMeta);
-  return createAIMeta(state, { humanPlayerIds });
+  return createAIMeta(state, { humanPlayerIds, model: loadModelFileSync() });
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
@@ -323,6 +326,7 @@ export class MultiplayerRoom {
     const humanPlayerIds = getHumanSeatIds(this);
     this.aiMeta = createAIMeta(this.gameState, {
       humanPlayerIds,
+      model: loadModelFileSync(),
     });
     setDealParticipantIds(this.gameState, this.gameState.players.map((player) => player.id));
     this.assignPlayerFirstNames();

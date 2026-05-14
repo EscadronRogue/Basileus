@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, keeps single-player and multiplayer AI seat infrastructure wired for the next AI runtime, and includes a pure Node WebSocket multiplayer server.
+Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes local neural self-play AI seats, and includes a pure Node WebSocket multiplayer server.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **AI seat infrastructure.** Single-player and multiplayer can still mark seats as AI, but the old AI logic has been removed. Any required AI decision fails clearly until the new neural runtime is implemented.
+- **Local neural AI.** AI seats use a pure Node self-play trainer and the same engine validators as human actions.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -60,8 +60,11 @@ npm run serve:multiplayer
 | --- | --- |
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
+| `npm run ai:train` | Runs local neural self-play and writes `ai/models/latest.json`. |
+| `npm run ai:evaluate` | Evaluates the current local neural model. |
+| `npm run ai:tournament` | Runs the richer model-vs-baseline evaluation harness. |
 | `npm run test:economy` | Engine/economy rules tests. |
-| `npm run test:ai` | AI stub and purge contract tests. |
+| `npm run test:ai` | Neural AI runtime, action, and trainer smoke tests. |
 | `npm run test:ui` | Browser controller and panel tests. |
 | `npm run test:multiplayer` | End-to-end multiplayer protocol verifier. |
 | `npm test` | Runs the full local test suite. |
@@ -90,7 +93,7 @@ Render notes:
 .
 ├── index.html              # Live game entry point
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
-├── ai/                     # Minimal AI runtime contract stubs
+├── ai/                     # Local neural self-play trainer and runtime
 ├── assets/                 # SVG map, hitzones, stylesheets
 ├── data/                   # Static game data (provinces, titles, invasion decks)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
@@ -113,8 +116,22 @@ Useful entry points:
 
 - `engine/state.js` - game state shape and reducers
 - `engine/turnflow.js` - round/phase orchestration
-- `ai/brain.js` - neural-runtime integration contract stubs
+- `ai/brain.js` - neural runtime integration
 - `multiplayer/wsServer.js` - handcoded WebSocket framing
+
+## Local Neural AI
+
+Train a model locally:
+
+```bash
+npm run ai:train -- --episodes 1000
+```
+
+By default, training samples a fresh mix of 3-5 player games and 6-12 round invasion decks, gives every episode its own random seed, and chooses a worker count from the machine's available CPU parallelism. It also trains for multiple epochs per collected batch, adds small reward-shaping signals for defense, useful recruiting, estate growth, and empire-restoring reward choices, mixes learner seats against random/defensive/checkpoint opponents, and temporarily disables deal actions to reduce the court action space while the core survival policy learns. Pass `--include-deals true` to re-enable deal actions in training later. Pass `--reward-shaping false` to train only on terminal rewards. Pass `--players 4`, `--rounds 9`, `--seed 1`, or `--workers 4` when you want to pin any of those for a controlled run. You can also tune ranges with `--player-min`, `--player-max`, `--round-min`, and `--round-max`.
+
+The trainer prints live progress with episode count, speed, loss, survival/fall/truncation rates, sampled player/round mix, policy mix, action distribution, average rounds, and transition count. It writes checkpoints to `ai/checkpoints/`, evaluates them with a small tournament, and promotes the best checkpoint to `ai/models/latest.json` instead of blindly saving the last update. Use `--checkpoint-interval 100`, `--checkpoint-eval-episodes 8`, `--training-epochs 4`, `--log-interval 25`, or `--quiet true` to tune the run.
+
+Generated model files are intentionally ignored by git. The browser and multiplayer server load `ai/models/latest.json` when present; if an AI seat must act before a local model exists, the game raises a clear error asking you to run the trainer. Evaluation defaults to player 1 using the neural model against random legal opponents and reports survival, fall, truncation, reward, scoring, win-rate, policy-mix, and action metrics. Pass `--opponent path/to/model.json` to compare against another checkpoint, `--self-play` to put the same model in every seat, or run `npm run ai:tournament -- --episodes 20` for model-vs-random, model-vs-defensive, self-play, and random-baseline matchups.
 
 ## License
 

@@ -36,6 +36,11 @@ coverage/
 .parcel-cache/
 .eslintcache
 
+# --- Local neural AI artifacts ---
+ai/models/*.json
+ai/checkpoints/
+ai/runs/
+
 # --- Logs ---
 logs/
 *.log

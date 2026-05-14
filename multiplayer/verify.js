@@ -455,10 +455,9 @@ async function verifyLobbyAndStart() {
     assert.equal(gameSnapshot.status, 'in_progress');
     assert.equal(gameSnapshot.state.phase, 'court');
     const room = instance.manager.getRoom(created.roomCode);
-    assert.equal(room.aiMeta.pendingNeuralRuntime, true);
+    assert.equal(room.aiMeta.pendingNeuralRuntime, !room.aiMeta.neuralModelAvailable);
     assert.equal(room.aiMeta.players[2].isAI, true);
     assert.equal(room.aiMeta.players[2].displayName, 'AI Seat 3');
-    assert.equal(room.aiMeta.players[2].profile, undefined);
 
     await guestSocket.close();
     await hostSocket.close();

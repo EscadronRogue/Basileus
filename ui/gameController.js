@@ -11,7 +11,7 @@ import {
   resolvePendingTitleReassignment,
   startInteractiveRuntime,
 } from '../engine/runtime.js';
-import { createAIMeta } from '../ai/brain.js';
+import { createAIMeta, loadBrowserNeuralModel } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG } from '../render/mapRenderer.js';
 import {
@@ -49,8 +49,10 @@ export class GameController {
     // already validate per-actor; gating belonged to UI copy, not state.
     setDealParticipantIds(this.state, this.state.players.map((player) => player.id));
     if (this.config.mode === 'single') {
+      const model = await loadBrowserNeuralModel();
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
+        model,
       });
       this.ensureHumanFocus();
     }
