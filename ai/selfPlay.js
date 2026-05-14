@@ -9,7 +9,11 @@ import {
 } from '../engine/state.js';
 import { setDealParticipantIds } from '../engine/deals.js';
 import { getPlayerOrderOfficeKeys, isCapitalLockedOfficeKey } from '../engine/orders.js';
-import { buildFinalScores } from '../engine/scoring.js';
+import {
+  buildFinalScores,
+  SCORE_CATEGORIES,
+  SCORE_SHARE_THRESHOLDS,
+} from '../engine/scoring.js';
 import {
   advanceToNextInteractivePhase,
   allOrdersSubmitted,
@@ -36,6 +40,12 @@ const DEFAULT_PLAYER_MAX = 5;
 const DEFAULT_ROUND_MIN = 6;
 const DEFAULT_ROUND_MAX = 12;
 const SCORE_CATEGORY_KEYS = ['church', 'estate', 'tax', 'gold'];
+const MAX_OFFICIAL_SCORE = SCORE_CATEGORIES.length * SCORE_SHARE_THRESHOLDS.length;
+export const TRAINING_MODES = Object.freeze({
+  EPISODE: 'episode',
+  ROUND: 'round',
+  HYBRID: 'hybrid',
+});
 export const TERMINAL_REWARD_MODES = Object.freeze({
   SPARSE: 'sparse',
   SCORE: 'score',
@@ -74,6 +84,17 @@ export function normalizeTerminalRewardMode(value) {
   return TERMINAL_REWARD_MODES.SPARSE;
 }
 
+export function normalizeTrainingMode(value) {
+  const mode = String(value ?? TRAINING_MODES.EPISODE).toLowerCase();
+  if (['round', 'rounds', 'snapshot', 'snapshots', 'short-rollout', 'short'].includes(mode)) {
+    return TRAINING_MODES.ROUND;
+  }
+  if (['hybrid', 'mixed', 'mix', 'episode-round', 'round-episode'].includes(mode)) {
+    return TRAINING_MODES.HYBRID;
+  }
+  return TRAINING_MODES.EPISODE;
+}
+
 function terminalRewardValues(options = {}) {
   const overrides = options.terminalRewardValues || {};
   return Object.fromEntries(
@@ -86,6 +107,72 @@ function normalizedReturnDiscount(options = {}) {
   const discount = finiteNumber(options.returnDiscount);
   if (discount == null) return 1;
   return Math.max(0, Math.min(1, discount));
+}
+
+function normalizedRoundModeRate(options = {}) {
+  const rate = finiteNumber(options.roundModeRate);
+  if (rate == null) return 0.5;
+  return Math.max(0, Math.min(1, rate));
+}
+
+function gameProgress(state) {
+  const maxRounds = Math.max(1, Number(state?.maxRounds) || 1);
+  const round = Math.max(0, Math.min(maxRounds, Number(state?.round) || 0));
+  return round / maxRounds;
+}
+
+export function computeScorePotentials(state) {
+  const progress = gameProgress(state);
+  try {
+    const final = buildFinalScores(state);
+    const scoreByPlayer = new Map(final.scores.map((entry) => [entry.playerId, Number(entry.points) || 0]));
+    return Object.fromEntries((state.players || []).map((player) => [
+      player.id,
+      progress * (scoreByPlayer.get(player.id) || 0) / Math.max(1, MAX_OFFICIAL_SCORE),
+    ]));
+  } catch {
+    return Object.fromEntries((state?.players || []).map((player) => [player.id, 0]));
+  }
+}
+
+export function assignRoundPotentialRewards(transitions = [], startIndex = 0, before = {}, after = {}) {
+  const first = Math.max(0, Math.min(transitions.length, Math.floor(Number(startIndex) || 0)));
+  const lastTransitionByPlayer = new Map();
+  for (let index = first; index < transitions.length; index += 1) {
+    const playerId = transitions[index]?.playerId;
+    if (playerId == null) continue;
+    lastTransitionByPlayer.set(String(playerId), index);
+  }
+
+  const deltas = {};
+  const playerIds = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  for (const playerId of playerIds) {
+    const index = lastTransitionByPlayer.get(String(playerId));
+    if (index == null) continue;
+    const delta = (finiteNumber(after?.[playerId]) ?? 0) - (finiteNumber(before?.[playerId]) ?? 0);
+    if (delta === 0) continue;
+    transitions[index].reward = (finiteNumber(transitions[index].reward) ?? 0) + delta;
+    deltas[playerId] = delta;
+  }
+  return deltas;
+}
+
+function createRoundRewardTracker(state, transitions) {
+  return {
+    round: state.round,
+    startIndex: transitions.length,
+    potentials: computeScorePotentials(state),
+  };
+}
+
+function settleRoundPotentialRewards(tracker, state, transitions) {
+  if (!tracker) return null;
+  return assignRoundPotentialRewards(
+    transitions,
+    tracker.startIndex,
+    tracker.potentials,
+    computeScorePotentials(state),
+  );
 }
 
 function clampInteger(value, min, max) {
@@ -635,6 +722,15 @@ export function createDefensivePolicy() {
 export function computeTerminalRewards(state, options = {}) {
   const values = terminalRewardValues(options);
   if (state.gameOver?.type === 'fall') {
+    const blameShares = computeFallBlameShares(state);
+    if (blameShares) {
+      return Object.fromEntries(state.players.map((player) => [
+        player.id,
+        (finiteNumber(blameShares[player.id]) ?? 0) === 0
+          ? 0
+          : values.fall * (finiteNumber(blameShares[player.id]) ?? 0),
+      ]));
+    }
     return Object.fromEntries(state.players.map((player) => [player.id, values.fall]));
   }
 
@@ -660,30 +756,88 @@ export function computeTerminalRewards(state, options = {}) {
   }));
 }
 
+export function computeFallBlameShares(state) {
+  if (state?.gameOver?.type !== 'fall' || !state.lastWarResult?.reachedCPL) return null;
+
+  const actualByPlayer = new Map((state.lastWarResult.contributions || [])
+    .map((entry) => [Number(entry.playerId), Math.max(0, Number(entry.troops) || 0)]));
+  const capacities = new Map((state.players || []).map((player) => [
+    player.id,
+    Math.max(0, orderTroopSplit(state, player.id, { deployments: {} }).frontier),
+  ]));
+  const totalCapacity = [...capacities.values()].reduce((sum, value) => sum + value, 0);
+  if (totalCapacity <= 0) return null;
+
+  const totalActual = [...actualByPlayer.values()].reduce((sum, value) => sum + value, 0);
+  const gaps = new Map();
+  let totalGap = 0;
+  for (const player of state.players || []) {
+    const expectedShare = (capacities.get(player.id) || 0) / totalCapacity;
+    const actualShare = totalActual > 0 ? (actualByPlayer.get(player.id) || 0) / totalActual : 0;
+    const gap = Math.max(0, expectedShare - actualShare);
+    gaps.set(player.id, gap);
+    totalGap += gap;
+  }
+
+  if (totalGap <= Number.EPSILON) {
+    return Object.fromEntries((state.players || []).map((player) => [player.id, 0]));
+  }
+  return Object.fromEntries((state.players || []).map((player) => [
+    player.id,
+    (gaps.get(player.id) || 0) / totalGap,
+  ]));
+}
+
 export function assignTerminalReturns(transitions = [], rewards = {}, options = {}) {
   const discount = normalizedReturnDiscount(options);
-  const futureDecisionsByPlayer = new Map();
+  const lastTransitionByPlayer = new Map();
+  for (let index = 0; index < transitions.length; index += 1) {
+    const playerId = transitions[index]?.playerId;
+    if (playerId == null) continue;
+    lastTransitionByPlayer.set(String(playerId), index);
+  }
+
+  const nextReturnByPlayer = new Map();
   for (let index = transitions.length - 1; index >= 0; index -= 1) {
     const transition = transitions[index];
     const playerId = transition?.playerId;
     const key = String(playerId);
-    const futureDecisions = futureDecisionsByPlayer.get(key) || 0;
-    const terminalReward = finiteNumber(rewards?.[playerId]) ?? DEFAULT_TERMINAL_REWARD_VALUES.fall;
-    transition.return = terminalReward * (discount ** futureDecisions);
-    futureDecisionsByPlayer.set(key, futureDecisions + 1);
+    const terminalReward = lastTransitionByPlayer.get(key) === index
+      ? (finiteNumber(rewards?.[playerId]) ?? DEFAULT_TERMINAL_REWARD_VALUES.fall)
+      : 0;
+    const futureReturn = nextReturnByPlayer.get(key) || 0;
+    const immediateReward = finiteNumber(transition.reward) ?? 0;
+    const currentReturn = immediateReward + terminalReward + discount * futureReturn;
+    transition.return = currentReturn;
+    nextReturnByPlayer.set(key, currentReturn);
   }
   return transitions;
 }
 
-function computePlayerOutcomes(state, roleByPlayer = {}, terminalReason = null) {
-  const fell = state.gameOver?.type === 'fall';
-  const survived = state.phase === 'scoring' && !fell;
+function computeScoreWinnerIds(state) {
+  const final = buildFinalScores(state);
+  return new Set(final.winners.map((entry) => entry.playerId));
+}
+
+function normalizeWinnerIds(winnerIds = null) {
+  if (winnerIds instanceof Set) return winnerIds;
+  if (Array.isArray(winnerIds)) return new Set(winnerIds);
+  return null;
+}
+
+function computePlayerOutcomes(state, roleByPlayer = {}, terminalReason = null, options = {}) {
+  const fell = options.fell == null
+    ? state.gameOver?.type === 'fall'
+    : Boolean(options.fell);
+  const survived = !fell && (
+    options.survived == null
+      ? state.phase === 'scoring'
+      : Boolean(options.survived)
+  );
   const truncated = terminalReason === 'stalled' || terminalReason === 'max-steps';
-  let winners = new Set();
-  if (survived) {
-    const final = buildFinalScores(state);
-    winners = new Set(final.winners.map((entry) => entry.playerId));
-  }
+  const winners = survived
+    ? (normalizeWinnerIds(options.winnerIds) || computeScoreWinnerIds(state))
+    : new Set();
   return (state.players || []).map((player) => ({
     playerId: player.id,
     role: roleByPlayer[player.id] || roleByPlayer[String(player.id)] || 'unknown',
@@ -711,6 +865,7 @@ export function createNetworkPolicy(network, options = {}) {
         playerId,
         inputs,
         chosenIndex: selection.index,
+        reward: 0,
         return: 0,
         behavior: describeActionForStats(actions[selection.index], state, playerId),
       });
@@ -831,6 +986,7 @@ function createEpisodePolicy(options, state, transitions, seed) {
         playerId,
         inputs,
         chosenIndex: selection.index,
+        reward: 0,
         return: 0,
         behavior: describeActionForStats(actions[selection.index], currentState, playerId),
       });
@@ -952,6 +1108,86 @@ function runResolutionPhase(state, policy, rng, actionStats = null) {
   return madeProgress;
 }
 
+function runTrainingStep(state, policy, rng, options = {}) {
+  if (state.phase === 'court') {
+    return runCourtPhase(state, policy, rng, {
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      includeDeals: false,
+      actionStats: options.actionStats || null,
+    });
+  }
+  if (state.phase === 'orders') return runOrdersPhase(state, policy, rng, options.actionStats || null);
+  if (state.phase === 'resolution') return runResolutionPhase(state, policy, rng, options.actionStats || null);
+  advanceToNextInteractivePhase(state);
+  return true;
+}
+
+function snapshotRoundRange(options = {}, deckSize = 1) {
+  const maxRound = Math.max(1, Math.floor(Number(deckSize) || 1));
+  const fixed = clampInteger(options.snapshotRound ?? options.startRound, 1, maxRound);
+  if (fixed != null) return { min: fixed, max: fixed };
+  const min = clampInteger(options.snapshotRoundMin, 1, maxRound) ?? 1;
+  const max = clampInteger(options.snapshotRoundMax, 1, maxRound) ?? maxRound;
+  return min <= max ? { min, max } : { min: max, max: min };
+}
+
+function chooseSnapshotRound(settings, seed, options = {}) {
+  const range = snapshotRoundRange(options, settings.deckSize);
+  const rng = makeRng(deriveEpisodeSeed(seed, 53));
+  return randomIntInclusive(rng, range.min, range.max);
+}
+
+function generateLegalSnapshot(options, settings, seed) {
+  const targetRound = chooseSnapshotRound(settings, seed, options);
+  const state = createGameState({
+    playerCount: settings.playerCount,
+    deckSize: settings.deckSize,
+    seed,
+    historyEnabled: false,
+  });
+  setDealParticipantIds(state, state.players.map((player) => player.id));
+  const rng = makeRng(seed);
+  const preludePolicy = createRandomPolicy();
+  advanceToNextInteractivePhase(state);
+
+  let steps = 0;
+  let terminalReason = null;
+  const maxSteps = options.snapshotMaxSteps || options.maxSteps || DEFAULT_MAX_STEPS;
+  while (
+    !state.gameOver
+    && state.phase !== 'scoring'
+    && state.round < targetRound
+    && steps < maxSteps
+  ) {
+    steps += 1;
+    const progressed = runTrainingStep(state, preludePolicy, rng, {
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      actionStats: null,
+    });
+    if (!progressed) {
+      terminalReason = 'stalled';
+      break;
+    }
+  }
+
+  if (terminalReason === 'stalled' && !state.gameOver && state.phase !== 'scoring') {
+    state.gameOver = { type: 'fall', message: 'Training snapshot generation stalled before reaching the sampled round.' };
+  }
+
+  if (!state.gameOver && state.phase !== 'scoring' && steps >= maxSteps) {
+    state.gameOver = { type: 'fall', message: 'Training snapshot generation reached its safety step limit.' };
+    terminalReason = 'max-steps';
+  }
+
+  return {
+    state,
+    rng,
+    targetRound,
+    preludeSteps: steps,
+    terminalReason,
+  };
+}
+
 export function runSelfPlayEpisode(options = {}) {
   const settings = resolveEpisodeSettings(options, options.episodeIndex || 0);
   const seed = settings.seed;
@@ -968,24 +1204,24 @@ export function runSelfPlayEpisode(options = {}) {
   const { policy, policyMix, roleByPlayer } = createEpisodePolicy(options, state, transitions, seed);
 
   advanceToNextInteractivePhase(state);
+  let roundRewardTracker = createRoundRewardTracker(state, transitions);
   let steps = 0;
   let terminalReason = null;
   while (!state.gameOver && state.phase !== 'scoring' && steps < (options.maxSteps || DEFAULT_MAX_STEPS)) {
     steps += 1;
-    let progressed = false;
-    if (state.phase === 'court') {
-      progressed = runCourtPhase(state, policy, rng, {
-        maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
-        includeDeals: false,
-        actionStats,
-      });
-    } else if (state.phase === 'orders') {
-      progressed = runOrdersPhase(state, policy, rng, actionStats);
-    } else if (state.phase === 'resolution') {
-      progressed = runResolutionPhase(state, policy, rng, actionStats);
-    } else {
-      advanceToNextInteractivePhase(state);
-      progressed = true;
+    const progressed = runTrainingStep(state, policy, rng, {
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      actionStats,
+    });
+    if (
+      progressed
+      && roundRewardTracker
+      && (state.gameOver || state.phase === 'scoring' || state.round !== roundRewardTracker.round)
+    ) {
+      settleRoundPotentialRewards(roundRewardTracker, state, transitions);
+      roundRewardTracker = state.gameOver || state.phase === 'scoring'
+        ? null
+        : createRoundRewardTracker(state, transitions);
     }
     if (!progressed) {
       terminalReason = 'stalled';
@@ -1003,6 +1239,11 @@ export function runSelfPlayEpisode(options = {}) {
     terminalReason ||= 'stalled';
   }
 
+  if (roundRewardTracker && (state.gameOver || state.phase === 'scoring')) {
+    settleRoundPotentialRewards(roundRewardTracker, state, transitions);
+    roundRewardTracker = null;
+  }
+
   const rewards = computeTerminalRewards(state, options);
   assignTerminalReturns(transitions, rewards, options);
   const playerOutcomes = computePlayerOutcomes(state, roleByPlayer, terminalReason);
@@ -1017,8 +1258,10 @@ export function runSelfPlayEpisode(options = {}) {
       steps,
       fell: state.gameOver?.type === 'fall',
       survived: state.phase === 'scoring' && state.gameOver?.type !== 'fall',
+      outcomeCounted: true,
       truncated: terminalReason === 'stalled' || terminalReason === 'max-steps',
       terminalReason: terminalReason || (state.phase === 'scoring' ? 'scoring' : state.gameOver?.type || 'unknown'),
+      trainingMode: TRAINING_MODES.EPISODE,
       rounds: state.round,
       playerCount: settings.playerCount,
       deckSize: settings.deckSize,
@@ -1028,6 +1271,137 @@ export function runSelfPlayEpisode(options = {}) {
       playerOutcomes,
     },
   };
+}
+
+export function runSelfPlayRoundEpisode(options = {}) {
+  const settings = resolveEpisodeSettings(options, options.episodeIndex || 0);
+  const seed = settings.seed;
+  const snapshot = generateLegalSnapshot(options, settings, seed);
+  const { state, rng, targetRound, preludeSteps } = snapshot;
+  const transitions = [];
+  const actionStats = createActionStats();
+  const { policy, policyMix, roleByPlayer } = createEpisodePolicy(options, state, transitions, seed);
+  const rolloutRoundsTarget = Math.max(1, Math.floor(Number(options.rolloutRounds) || 1));
+  const maxSteps = options.rolloutMaxSteps || options.maxSteps || DEFAULT_MAX_STEPS;
+
+  let roundRewardTracker = state.gameOver || state.phase === 'scoring'
+    ? null
+    : createRoundRewardTracker(state, transitions);
+  let steps = 0;
+  let completedRolloutRounds = 0;
+  let terminalReason = snapshot.terminalReason;
+  while (
+    !state.gameOver
+    && state.phase !== 'scoring'
+    && completedRolloutRounds < rolloutRoundsTarget
+    && steps < maxSteps
+  ) {
+    steps += 1;
+    const progressed = runTrainingStep(state, policy, rng, {
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      actionStats,
+    });
+    if (
+      progressed
+      && roundRewardTracker
+      && (state.gameOver || state.phase === 'scoring' || state.round !== roundRewardTracker.round)
+    ) {
+      settleRoundPotentialRewards(roundRewardTracker, state, transitions);
+      completedRolloutRounds += 1;
+      roundRewardTracker = state.gameOver
+        || state.phase === 'scoring'
+        || completedRolloutRounds >= rolloutRoundsTarget
+        ? null
+        : createRoundRewardTracker(state, transitions);
+    }
+    if (!progressed) {
+      terminalReason = 'stalled';
+      break;
+    }
+  }
+
+  if (!state.gameOver && state.phase !== 'scoring' && steps >= maxSteps) {
+    state.gameOver = { type: 'fall', message: 'Training round rollout reached its safety step limit.' };
+    terminalReason = 'max-steps';
+  }
+
+  if (roundRewardTracker && (state.gameOver || state.phase === 'scoring')) {
+    settleRoundPotentialRewards(roundRewardTracker, state, transitions);
+    completedRolloutRounds += 1;
+    roundRewardTracker = null;
+  }
+
+  const playedRollout = transitions.length > 0;
+  const fell = state.gameOver?.type === 'fall';
+  const terminal = state.gameOver || state.phase === 'scoring';
+  const rolloutSurvived = playedRollout
+    && !fell
+    && (state.phase === 'scoring' || completedRolloutRounds >= rolloutRoundsTarget);
+  const rolloutOutcome = playedRollout && (terminal || completedRolloutRounds >= rolloutRoundsTarget);
+  const rewards = rolloutOutcome
+    ? computeTerminalRewards(state, options)
+    : Object.fromEntries((state.players || []).map((player) => [player.id, 0]));
+  assignTerminalReturns(transitions, rewards, options);
+  const playerOutcomes = playedRollout
+    ? computePlayerOutcomes(
+      state,
+      roleByPlayer,
+      terminalReason || (terminal ? null : 'round-rollout'),
+      {
+        fell,
+        survived: rolloutSurvived,
+        winnerIds: rolloutSurvived ? computeScoreWinnerIds(state) : null,
+      },
+    )
+    : [];
+  recordTransitionOutcomes(actionStats, transitions);
+  recordEconomicSnapshot(actionStats.economics, state, [...new Set(transitions.map((entry) => entry.playerId))]);
+
+  return {
+    state,
+    transitions,
+    rewards,
+    stats: {
+      steps,
+      preludeSteps,
+      snapshotRound: targetRound,
+      rolloutRounds: completedRolloutRounds,
+      trainingMode: TRAINING_MODES.ROUND,
+      fell: playedRollout && fell,
+      survived: rolloutSurvived,
+      outcomeCounted: playedRollout,
+      truncated: playedRollout && (terminalReason === 'stalled' || terminalReason === 'max-steps'),
+      terminalReason: terminalReason || (state.phase === 'scoring' ? 'scoring' : state.gameOver?.type || 'round-rollout'),
+      rounds: completedRolloutRounds,
+      playerCount: settings.playerCount,
+      deckSize: settings.deckSize,
+      seed,
+      actionStats,
+      policyMix,
+      playerOutcomes,
+    },
+  };
+}
+
+export function runTrainingEpisode(options = {}) {
+  const mode = normalizeTrainingMode(options.trainingMode);
+  if (mode === TRAINING_MODES.ROUND) return runSelfPlayRoundEpisode(options);
+  if (mode === TRAINING_MODES.HYBRID) {
+    const seed = resolveEpisodeSeed(options, options.episodeIndex || 0);
+    const rng = makeRng(deriveEpisodeSeed(seed, 71));
+    const selectedMode = rng() < normalizedRoundModeRate(options)
+      ? TRAINING_MODES.ROUND
+      : TRAINING_MODES.EPISODE;
+    const selectedOptions = {
+      ...options,
+      episodeSeed: seed,
+      trainingMode: selectedMode,
+    };
+    return selectedMode === TRAINING_MODES.ROUND
+      ? runSelfPlayRoundEpisode(selectedOptions)
+      : runSelfPlayEpisode(selectedOptions);
+  }
+  return runSelfPlayEpisode(options);
 }
 
 function trainingEpochCount(options = {}) {
@@ -1081,6 +1455,7 @@ export function trainSelfPlay(network, options = {}) {
   const checkpointInterval = Math.max(0, Math.floor(Number(options.checkpointInterval) || 0));
   const stats = {
     episodes,
+    outcomeEpisodes: 0,
     falls: 0,
     survivals: 0,
     truncated: 0,
@@ -1088,6 +1463,7 @@ export function trainSelfPlay(network, options = {}) {
     rounds: 0,
     playerCounts: {},
     roundLengths: {},
+    trainingModes: {},
     actionStats: createActionStats(),
     policyMix: createPolicyMixStats(),
     playerOutcomes: createPlayerOutcomeStats(),
@@ -1102,20 +1478,23 @@ export function trainSelfPlay(network, options = {}) {
   };
 
   for (let episode = 0; episode < episodes; episode += 1) {
-    const result = runSelfPlayEpisode({
+    const result = runTrainingEpisode({
       ...options,
       network,
       episodeSeed: resolveEpisodeSeed(options, episode),
       episodeIndex: episode,
     });
     const report = trainTransitions(network, result.transitions, options);
-    stats.falls += result.stats.fell ? 1 : 0;
-    stats.survivals += result.stats.survived ? 1 : 0;
-    stats.truncated += result.stats.truncated ? 1 : 0;
+    const outcomeCounted = result.stats.outcomeCounted !== false;
+    stats.outcomeEpisodes += outcomeCounted ? 1 : 0;
+    stats.falls += outcomeCounted && result.stats.fell ? 1 : 0;
+    stats.survivals += outcomeCounted && result.stats.survived ? 1 : 0;
+    stats.truncated += outcomeCounted && result.stats.truncated ? 1 : 0;
     stats.transitions += result.transitions.length;
     stats.rounds += result.stats.rounds;
     addDistributionValue(stats, 'playerCounts', result.stats.playerCount);
     addDistributionValue(stats, 'roundLengths', result.stats.deckSize);
+    addDistributionValue(stats, 'trainingModes', result.stats.trainingMode || TRAINING_MODES.EPISODE);
     mergeActionStats(stats.actionStats, result.stats.actionStats);
     mergePolicyMixStats(stats.policyMix, result.stats.policyMix);
     recordPlayerOutcomes(stats.playerOutcomes, result.stats.playerOutcomes);
@@ -1138,9 +1517,11 @@ export function trainSelfPlay(network, options = {}) {
         last: {
           fell: result.stats.fell,
           survived: result.stats.survived,
+          outcomeCounted: result.stats.outcomeCounted,
           truncated: result.stats.truncated,
           terminalReason: result.stats.terminalReason,
           rounds: result.stats.rounds,
+          trainingMode: result.stats.trainingMode,
           playerCount: result.stats.playerCount,
           deckSize: result.stats.deckSize,
           seed: result.stats.seed,
@@ -1164,6 +1545,7 @@ export function trainSelfPlay(network, options = {}) {
         },
         last: {
           seed: result.stats.seed,
+          trainingMode: result.stats.trainingMode,
           loss: report.loss,
           transitions: result.transitions.length,
           trainingEpochs: report.epochs,

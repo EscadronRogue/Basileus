@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { createGameState } from '../engine/state.js';
+import { buildFinalScores } from '../engine/scoring.js';
 import {
   DEAL_CLAUSE_KINDS,
   setDealParticipantIds,
@@ -47,12 +48,17 @@ import {
 import { createNetwork } from './network.js';
 import { loadModelFileSync, saveModelFileSync } from './modelStore.js';
 import {
+  assignRoundPotentialRewards,
   assignTerminalReturns,
+  computeFallBlameShares,
+  computeScorePotentials,
   computeTerminalRewards,
   evaluatePolicy,
   resolveEpisodeSettings,
   resolveEpisodeSeed,
   runSelfPlayEpisode,
+  runSelfPlayRoundEpisode,
+  runTrainingEpisode,
   trainSelfPlay,
 } from './selfPlay.js';
 import {
@@ -305,17 +311,92 @@ test('terminal rewards default to sparse outcomes with score shaping opt-in', ()
   assert.notDeepEqual([scoreShaped[0], scoreShaped[1], scoreShaped[2]], [1, 0, 0]);
 });
 
+test('fall rewards punish defensive free-riding instead of every player equally', () => {
+  const state = createGameState({ playerCount: 3, deckSize: 1, seed: 43 });
+  state.gameOver = { type: 'fall', message: 'Constantinople has fallen.' };
+  state.lastWarResult = {
+    reachedCPL: true,
+    contributions: [{ playerId: 1, troops: 4 }],
+  };
+  state.currentLevies = {};
+  state.currentMercenaryTroops = {};
+  state.basileusId = 0;
+  for (const player of state.players) {
+    player.majorTitles = [];
+    player.professionalArmies = {};
+  }
+  state.players[0].professionalArmies.BASILEUS = 4;
+  state.players[1].majorTitles = ['DOM_EAST'];
+  state.players[1].professionalArmies.DOM_EAST = 4;
+  state.players[2].majorTitles = ['PATRIARCH'];
+
+  const blame = computeFallBlameShares(state);
+  assert.deepEqual(blame, { 0: 1, 1: 0, 2: 0 });
+
+  const rewards = computeTerminalRewards(state);
+  assert.deepEqual(rewards, { 0: -1, 1: 0, 2: 0 });
+
+  state.lastWarResult.contributions = [
+    { playerId: 0, troops: 4 },
+    { playerId: 1, troops: 4 },
+  ];
+  assert.deepEqual(computeTerminalRewards(state), { 0: 0, 1: 0, 2: 0 });
+});
+
+test('score potential follows official score points and game progress', () => {
+  const state = createGameState({ playerCount: 3, deckSize: 2, seed: 44 });
+  state.round = 1;
+  for (const theme of Object.values(state.themes)) theme.occupied = true;
+  state.players[0].gold = 12;
+  state.players[1].gold = 0;
+  state.players[2].gold = 0;
+
+  const potentials = computeScorePotentials(state);
+  assert.equal(potentials[0], 0.125);
+  assert.equal(potentials[1], 0);
+  assert.equal(potentials[2], 0);
+});
+
+test('round score shaping is attached once to the latest player decision', () => {
+  const transitions = [
+    { playerId: 0, reward: 0 },
+    { playerId: 1, reward: 0 },
+    { playerId: 0, reward: 0 },
+  ];
+
+  const deltas = assignRoundPotentialRewards(
+    transitions,
+    0,
+    { 0: 0.1, 1: 0.2 },
+    { 0: 0.3, 1: 0.1 },
+  );
+
+  assert.deepEqual(deltas, { 0: 0.19999999999999998, 1: -0.1 });
+  assert.deepEqual(transitions.map((transition) => transition.reward), [0, -0.1, 0.19999999999999998]);
+});
+
 test('terminal returns are assigned to every neural decision', () => {
   const transitions = [
-    { playerId: 0 },
-    { playerId: 1 },
-    { playerId: 0 },
-    { playerId: 0 },
+    { playerId: 0, reward: 0 },
+    { playerId: 1, reward: 0 },
+    { playerId: 0, reward: 0 },
+    { playerId: 0, reward: 0 },
   ];
 
   assignTerminalReturns(transitions, { 0: 1, 1: -1 }, { returnDiscount: 0.5 });
 
   assert.deepEqual(transitions.map((transition) => transition.return), [0.25, -1, 0.5, 1]);
+});
+
+test('cumulative returns include intermediate shaped rewards', () => {
+  const transitions = [
+    { playerId: 0, reward: 0.25 },
+    { playerId: 0, reward: 0.5 },
+  ];
+
+  assignTerminalReturns(transitions, { 0: 1 }, { returnDiscount: 0.5 });
+
+  assert.deepEqual(transitions.map((transition) => transition.return), [1, 1.5]);
 });
 
 test('trainer defaults sample varied legal player counts, round lengths, and seeds', () => {
@@ -376,6 +457,33 @@ test('training CLI defaults to automatic workers and sampled game setup', () => 
   assert.equal(fixed.seedMode, 'deterministic-derived');
   assert.equal(fixed.playerCount, 4);
   assert.equal(fixed.deckSize, 8);
+});
+
+test('training CLI exposes round snapshot rollout mode', () => {
+  const options = resolveTrainingOptions({
+    mode: 'snapshot',
+    rolloutRounds: '3',
+    snapshotRoundMin: '4',
+    snapshotRoundMax: '2',
+  });
+
+  assert.equal(options.trainingMode, 'round');
+  assert.equal(options.rolloutRounds, 3);
+  assert.equal(options.snapshotRound, undefined);
+  assert.equal(options.snapshotRoundMin, 2);
+  assert.equal(options.snapshotRoundMax, 4);
+  assert.equal(resolveTrainingOptions({ trainingMode: 'episode' }).trainingMode, 'episode');
+});
+
+test('training CLI exposes hybrid episode and round rollout mode', () => {
+  const options = resolveTrainingOptions({
+    trainingMode: 'mixed',
+    roundModeRate: '0.25',
+  });
+
+  assert.equal(options.trainingMode, 'hybrid');
+  assert.equal(options.roundModeRate, 0.25);
+  assert.equal(resolveTrainingOptions({ mode: 'mix', roundSnapshotRate: '0.75' }).roundModeRate, 0.75);
 });
 
 test('resume training continues checkpoint numbering from previous work', () => {
@@ -492,6 +600,156 @@ test('local trainer smoke run writes and reloads a neural model', () => {
   saveModelFileSync(network, path, { test: true });
   const loaded = loadModelFileSync(path);
   assert.equal(loaded.inputSize, network.inputSize);
+});
+
+test('round snapshot episode trains from a legal short rollout', () => {
+  const network = createNetwork({ seed: 73 });
+  const result = runSelfPlayRoundEpisode({
+    network,
+    playerCount: 3,
+    deckSize: 3,
+    seed: 73,
+    snapshotRound: 2,
+    rolloutRounds: 1,
+    maxSteps: 300,
+    maxCourtActionsPerPlayer: 2,
+    opponentMix: false,
+  });
+
+  assert.equal(result.stats.trainingMode, 'round');
+  assert.equal(result.stats.snapshotRound, 2);
+  assert.equal(result.stats.rolloutRounds, 1);
+  assert.equal(result.stats.rounds, 1);
+  assert.ok(result.stats.preludeSteps > 0);
+  assert.ok(result.state.round >= 2);
+  assert.ok(result.transitions.length > 0);
+  assert.equal(result.transitions.every((transition) => Number.isFinite(transition.return)), true);
+});
+
+test('completed round rollouts count as survival with current score leaders as winners', () => {
+  const network = createNetwork({ seed: 78 });
+  const result = runSelfPlayRoundEpisode({
+    network,
+    playerCount: 3,
+    deckSize: 3,
+    seed: 78,
+    snapshotRound: 2,
+    rolloutRounds: 1,
+    maxSteps: 300,
+    maxCourtActionsPerPlayer: 2,
+    opponentMix: false,
+  });
+  const expectedWinners = new Set(buildFinalScores(result.state).winners.map((entry) => entry.playerId));
+  const actualWinners = new Set(result.stats.playerOutcomes
+    .filter((outcome) => outcome.won)
+    .map((outcome) => outcome.playerId));
+
+  for (const player of result.state.players) {
+    assert.equal(result.rewards[player.id], expectedWinners.has(player.id) ? 1 : 0);
+  }
+  assert.equal(result.stats.fell, false);
+  assert.equal(result.stats.survived, true);
+  assert.equal(result.stats.outcomeCounted, true);
+  assert.equal(result.stats.playerOutcomes.every((outcome) => outcome.survived), true);
+  assert.deepEqual(actualWinners, expectedWinners);
+});
+
+test('round rollout feedback and rewards ignore snapshots that fall before learner play', () => {
+  const result = runSelfPlayRoundEpisode({
+    network: createNetwork({ seed: 79 }),
+    playerCount: 3,
+    deckSize: 3,
+    seed: 79,
+    snapshotRound: 3,
+    snapshotMaxSteps: 1,
+    rolloutRounds: 1,
+    maxCourtActionsPerPlayer: 2,
+    opponentMix: false,
+  });
+
+  assert.equal(result.transitions.length, 0);
+  assert.equal(result.stats.outcomeCounted, false);
+  assert.equal(result.stats.fell, false);
+  assert.equal(result.stats.survived, false);
+  assert.equal(result.stats.truncated, false);
+  assert.deepEqual(result.stats.playerOutcomes, []);
+  assert.deepEqual(Object.values(result.rewards), [0, 0, 0]);
+});
+
+test('trainer can run full training using only round snapshot rollouts', () => {
+  const network = createNetwork({ seed: 74 });
+  const stats = trainSelfPlay(network, {
+    episodes: 2,
+    trainingMode: 'round',
+    playerCount: 3,
+    deckSize: 3,
+    seed: 74,
+    snapshotRound: 2,
+    rolloutRounds: 1,
+    maxSteps: 300,
+    maxCourtActionsPerPlayer: 2,
+    opponentMix: false,
+  });
+
+  assert.equal(stats.episodes, 2);
+  assert.equal(stats.outcomeEpisodes, 2);
+  assert.ok(stats.transitions > 0);
+  assert.equal(stats.averageRounds, 1);
+  assert.equal(stats.survivals, 2);
+  assert.ok(stats.returnCount > 0);
+});
+
+test('hybrid training can select full games and round rollouts', () => {
+  const roundResult = runTrainingEpisode({
+    network: createNetwork({ seed: 75 }),
+    trainingMode: 'hybrid',
+    roundModeRate: 1,
+    playerCount: 3,
+    deckSize: 3,
+    seed: 75,
+    snapshotRound: 2,
+    rolloutRounds: 1,
+    maxSteps: 300,
+    maxCourtActionsPerPlayer: 2,
+    opponentMix: false,
+  });
+  assert.equal(roundResult.stats.trainingMode, 'round');
+  assert.equal(roundResult.stats.rounds, 1);
+
+  const episodeResult = runTrainingEpisode({
+    network: createNetwork({ seed: 76 }),
+    trainingMode: 'hybrid',
+    roundModeRate: 0,
+    playerCount: 3,
+    deckSize: 1,
+    seed: 76,
+    maxSteps: 300,
+    maxCourtActionsPerPlayer: 2,
+    opponentMix: false,
+  });
+  assert.equal(episodeResult.stats.trainingMode, 'episode');
+  assert.ok(episodeResult.stats.fell || episodeResult.state.phase === 'scoring');
+});
+
+test('trainer records the actual mix used by hybrid training', () => {
+  const network = createNetwork({ seed: 77 });
+  const stats = trainSelfPlay(network, {
+    episodes: 8,
+    trainingMode: 'hybrid',
+    roundModeRate: 0.5,
+    playerCount: 3,
+    deckSize: 3,
+    seed: 77,
+    snapshotRound: 2,
+    rolloutRounds: 1,
+    maxSteps: 300,
+    maxCourtActionsPerPlayer: 2,
+    opponentMix: false,
+  });
+
+  assert.equal(stats.episodes, 8);
+  assert.ok((stats.trainingModes.episode || 0) > 0);
+  assert.ok((stats.trainingModes.round || 0) > 0);
 });
 
 test('training progress logs use only the latest feedback window', () => {

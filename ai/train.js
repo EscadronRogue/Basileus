@@ -20,8 +20,9 @@ import {
 } from './humanFeedbackStore.js';
 import {
   createEntropySeed,
+  normalizeTrainingMode,
   resolveEpisodeSeed,
-  runSelfPlayEpisode,
+  runTrainingEpisode,
   trainSelfPlay,
   trainTransitions,
   recordTrainingReturns,
@@ -39,7 +40,7 @@ import {
 
 if (!isMainThread && workerData?.kind === 'self-play-episode') {
   const network = deserializeNetwork(workerData.network);
-  const result = runSelfPlayEpisode({
+  const result = runTrainingEpisode({
     ...(workerData.options || {}),
     network,
     episodeSeed: workerData.seed,
@@ -148,6 +149,21 @@ export function resolveTrainingOptions(args = {}) {
   const seed = seedWasSpecified ? numberArg(args, 'seed', 1) : undefined;
   const workerOptions = resolveWorkers(args);
   const episodes = numberArg(args, 'episodes', 10);
+  const roundModeRate = hasArg(args, 'roundModeRate')
+    ? unitIntervalArg(args, 'roundModeRate', 0.5)
+    : (
+      hasArg(args, 'roundSnapshotRate')
+        ? unitIntervalArg(args, 'roundSnapshotRate', 0.5)
+        : unitIntervalArg(args, 'snapshotModeRate', 0.5)
+    );
+  const snapshotRound = hasArg(args, 'snapshotRound') ? clampInteger(args.snapshotRound, 1, 99, 1) : undefined;
+  const hasSnapshotRange = hasArg(args, 'snapshotRoundMin') || hasArg(args, 'snapshotRoundMax');
+  const [snapshotRoundMin, snapshotRoundMax] = hasSnapshotRange
+    ? normalizeRange(
+      clampInteger(args.snapshotRoundMin, 1, 99, 1),
+      clampInteger(args.snapshotRoundMax, 1, 99, 99),
+    )
+    : [undefined, undefined];
   const checkpointInterval = Math.floor(numberArg(
     args,
     'checkpointInterval',
@@ -166,6 +182,12 @@ export function resolveTrainingOptions(args = {}) {
     entropyBeta: numberArg(args, 'entropyBeta', 0.01),
     temperature: numberArg(args, 'temperature', 1),
     trainingEpochs: Math.max(1, Math.floor(numberArg(args, 'trainingEpochs', 3))),
+    trainingMode: normalizeTrainingMode(args.trainingMode ?? args.mode),
+    roundModeRate,
+    rolloutRounds: Math.max(1, Math.floor(numberArg(args, 'rolloutRounds', 1))),
+    snapshotRound,
+    snapshotRoundMin,
+    snapshotRoundMax,
     terminalRewardMode: normalizeTerminalRewardMode(args.terminalRewardMode ?? args.rewardMode),
     returnDiscount: unitIntervalArg(args, 'returnDiscount', 1),
     includeDeals: false,
@@ -300,6 +322,7 @@ function subtractTrainingStats(current = {}, previous = {}, completed = 0, previ
   const episodes = Math.max(0, countDelta(completed, previousCompleted));
   return {
     episodes,
+    outcomeEpisodes: countDelta(current.outcomeEpisodes ?? completed, previous.outcomeEpisodes ?? previousCompleted),
     falls: countDelta(current.falls, previous.falls),
     survivals: countDelta(current.survivals, previous.survivals),
     truncated: countDelta(current.truncated, previous.truncated),
@@ -307,6 +330,7 @@ function subtractTrainingStats(current = {}, previous = {}, completed = 0, previ
     rounds: countDelta(current.rounds, previous.rounds),
     playerCounts: subtractCountMap(current.playerCounts, previous.playerCounts),
     roundLengths: subtractCountMap(current.roundLengths, previous.roundLengths),
+    trainingModes: subtractCountMap(current.trainingModes, previous.trainingModes),
     actionStats: subtractActionStats(current.actionStats, previous.actionStats),
     policyMix: subtractCountMap(current.policyMix, previous.policyMix),
     playerOutcomes: subtractPlayerOutcomeStats(current.playerOutcomes, previous.playerOutcomes),
@@ -355,6 +379,20 @@ function formatPolicyRoles(distribution = {}) {
   const entries = Object.entries(distribution || {}).filter(([, value]) => numericValue(value) > 0);
   const total = entries.reduce((sum, [, value]) => sum + numericValue(value), 0);
   if (total <= 0) return '-';
+  const ordered = [
+    ...order.filter((key) => numericValue(distribution[key]) > 0),
+    ...entries.map(([key]) => key).filter((key) => !order.includes(key)).sort(),
+  ];
+  return ordered
+    .map((key) => `${key}:${formatPercent(numericValue(distribution[key]) / total)}`)
+    .join(',');
+}
+
+function formatTrainingModes(distribution = {}) {
+  const order = ['episode', 'round', 'hybrid'];
+  const entries = Object.entries(distribution || {}).filter(([, value]) => numericValue(value) > 0);
+  const total = entries.reduce((sum, [, value]) => sum + numericValue(value), 0);
+  if (total <= 0) return '';
   const ordered = [
     ...order.filter((key) => numericValue(distribution[key]) > 0),
     ...entries.map(([key]) => key).filter((key) => !order.includes(key)).sort(),
@@ -458,6 +496,7 @@ function summarizeCountShares(counts = {}, playerKeys = false) {
 
 function summarizeTrainingStats(stats = {}) {
   const episodes = Math.max(1, Number(stats.episodes) || 1);
+  const outcomeEpisodes = Math.max(1, Number(stats.outcomeEpisodes ?? stats.episodes) || 1);
   const decisions = numericValue(stats.transitions);
   const frontier = stats.actionStats?.orderFrontierShare;
   return {
@@ -469,11 +508,13 @@ function summarizeTrainingStats(stats = {}) {
     valueLoss: roundMetric(stats.valueLoss),
     averageReturn: roundMetric(averageReturn(stats), 3),
     positiveReturnRate: stats.returnCount ? roundMetric(stats.positiveReturns / stats.returnCount, 4) : 0,
-    survivalRate: roundMetric((stats.survivals || 0) / episodes, 4),
-    fallRate: roundMetric((stats.falls || 0) / episodes, 4),
-    stalledRate: roundMetric((stats.truncated || 0) / episodes, 4),
+    outcomeEpisodes: Number(stats.outcomeEpisodes ?? stats.episodes) || 0,
+    survivalRate: roundMetric((stats.survivals || 0) / outcomeEpisodes, 4),
+    fallRate: roundMetric((stats.falls || 0) / outcomeEpisodes, 4),
+    stalledRate: roundMetric((stats.truncated || 0) / outcomeEpisodes, 4),
     averageRounds: roundMetric(stats.averageRounds ?? ((stats.rounds || 0) / episodes), 2),
     frontierTroopShare: frontier?.count ? roundMetric(frontier.sum / frontier.count, 4) : null,
+    trainingModes: summarizeCountShares(stats.trainingModes),
     roles: summarizePolicyRoles(stats.policyMix),
     outcomes: summarizePlayerOutcomes(stats.playerOutcomes),
   };
@@ -504,6 +545,7 @@ export function createProgressReporter(options, outputPath, resumed) {
         `[ai:train] ${source}`
         + ` | episodes=${total}`
         + ` | workers=${workers}`
+        + ` | mode=${options.trainingMode || 'episode'}`
         + ` | players=${describeRange(options.playerCount, options.playerMin, options.playerMax, 'p')}`
         + ` | rounds=${describeRange(options.deckSize, options.roundMin, options.roundMax, 'r')}`
         + ` | seed=${seed}`
@@ -517,6 +559,8 @@ export function createProgressReporter(options, outputPath, resumed) {
         + ` temperature=${options.temperature}`
         + ` reward=${options.terminalRewardMode}`
         + ` returnDiscount=${options.returnDiscount}`
+        + ` rolloutRounds=${options.rolloutRounds}`
+        + ` roundModeRate=${options.roundModeRate}`
         + ` out=${outputPath}`,
       );
       if (options.humanFeedbackTransitions?.length) {
@@ -544,14 +588,16 @@ export function createProgressReporter(options, outputPath, resumed) {
       const elapsed = now - startedAt;
       const windowElapsed = now - lastPrintedAt;
       const episodesPerSecond = windowEpisodes / Math.max(0.001, windowElapsed / 1000);
-      const survivalRate = windowStats.survivals / windowEpisodes;
-      const fallRate = windowStats.falls / windowEpisodes;
-      const truncatedRate = windowStats.truncated / windowEpisodes;
+      const windowOutcomeEpisodes = Math.max(1, Number(windowStats.outcomeEpisodes ?? windowEpisodes) || 0);
+      const survivalRate = windowStats.survivals / windowOutcomeEpisodes;
+      const fallRate = windowStats.falls / windowOutcomeEpisodes;
+      const truncatedRate = windowStats.truncated / windowOutcomeEpisodes;
       const averageRounds = windowStats.rounds / windowEpisodes;
       const loss = Number.isFinite(windowStats.loss) ? windowStats.loss : 0;
       const policyLoss = Number.isFinite(windowStats.policyLoss) ? windowStats.policyLoss : 0;
       const valueLoss = Number.isFinite(windowStats.valueLoss) ? windowStats.valueLoss : 0;
       const frontierShare = averageStatPercent(windowStats.actionStats?.orderFrontierShare);
+      const trainingModes = formatTrainingModes(windowStats.trainingModes);
       const roleMix = formatPolicyRoles(windowStats.policyMix);
       const playerOutcomes = formatPlayerOutcomes(windowStats.playerOutcomes);
       const roleOutcomes = formatRoleOutcomes(windowStats.playerOutcomes);
@@ -565,6 +611,7 @@ export function createProgressReporter(options, outputPath, resumed) {
         + ` | window=${formatInteger(windowEpisodes)} eps`
         + ` | speed=${episodesPerSecond.toFixed(2)} ep/s`
         + ` | ${formatDecisions(windowStats)}`
+        + (trainingModes ? ` | samples=${trainingModes}` : '')
         + ` | loss=${loss.toFixed(4)} policy=${policyLoss.toFixed(4)} value=${valueLoss.toFixed(4)}`
         + ` | ${formatReturnStats(windowStats)}`
         + ` | survived=${formatPercent(survivalRate)}`
@@ -582,11 +629,14 @@ export function createProgressReporter(options, outputPath, resumed) {
     finish(stats) {
       const elapsed = Date.now() - startedAt;
       const episodes = Math.max(1, Number(stats.episodes) || 1);
+      const outcomeEpisodes = Math.max(1, Number(stats.outcomeEpisodes ?? stats.episodes) || 1);
+      const trainingModes = formatTrainingModes(stats.trainingModes);
       console.log(
         `[ai:train] done | episodes=${stats.episodes}`
-        + ` survived=${formatPercent((stats.survivals || 0) / episodes)}`
-        + ` fell=${formatPercent((stats.falls || 0) / episodes)}`
-        + ` stalled=${formatPercent((stats.truncated || 0) / episodes)}`
+        + (trainingModes ? ` samples=${trainingModes}` : '')
+        + ` survived=${formatPercent((stats.survivals || 0) / outcomeEpisodes)}`
+        + ` fell=${formatPercent((stats.falls || 0) / outcomeEpisodes)}`
+        + ` stalled=${formatPercent((stats.truncated || 0) / outcomeEpisodes)}`
         + ` avgRounds=${Number(stats.averageRounds || 0).toFixed(2)}`
         + ` decisions=${formatInteger(stats.transitions || 0)}`
         + ` ${formatReturnStats(stats)}`
@@ -604,11 +654,16 @@ export function createProgressReporter(options, outputPath, resumed) {
 }
 
 function mergeEpisodeStats(target, result) {
-  target.falls += result.stats.fell ? 1 : 0;
-  target.survivals += result.stats.survived ? 1 : 0;
-  target.truncated += result.stats.truncated ? 1 : 0;
+  const outcomeCounted = result.stats.outcomeCounted !== false;
+  target.outcomeEpisodes += outcomeCounted ? 1 : 0;
+  target.falls += outcomeCounted && result.stats.fell ? 1 : 0;
+  target.survivals += outcomeCounted && result.stats.survived ? 1 : 0;
+  target.truncated += outcomeCounted && result.stats.truncated ? 1 : 0;
   target.transitions += result.transitions.length;
   target.rounds += result.stats.rounds;
+  target.trainingModes[result.stats.trainingMode || 'episode'] = (
+    target.trainingModes[result.stats.trainingMode || 'episode'] || 0
+  ) + 1;
   const playerCount = String(result.stats.playerCount);
   const roundLength = String(result.stats.deckSize);
   target.playerCounts[playerCount] = (target.playerCounts[playerCount] || 0) + 1;
@@ -644,6 +699,7 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
   const checkpointInterval = Math.max(0, Math.floor(Number(options.checkpointInterval) || 0));
   const stats = {
     episodes,
+    outcomeEpisodes: 0,
     falls: 0,
     survivals: 0,
     truncated: 0,
@@ -651,6 +707,7 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
     rounds: 0,
     playerCounts: {},
     roundLengths: {},
+    trainingModes: {},
     actionStats: createActionStats(),
     policyMix: {},
     playerOutcomes: createPlayerOutcomeStats(),
@@ -918,6 +975,12 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
       checkpointRunEpisode: snapshot.completed,
       checkpointScore: score,
       checkpointTournament: tournament,
+      trainingMode: trainingOptions.trainingMode,
+      roundModeRate: trainingOptions.roundModeRate,
+      rolloutRounds: trainingOptions.rolloutRounds,
+      snapshotRound: trainingOptions.snapshotRound,
+      snapshotRoundMin: trainingOptions.snapshotRoundMin,
+      snapshotRoundMax: trainingOptions.snapshotRoundMax,
       terminalRewardMode: trainingOptions.terminalRewardMode,
       returnDiscount: trainingOptions.returnDiscount,
     };
@@ -1065,6 +1128,12 @@ export async function runTrainingCli(argv = process.argv) {
     deckSize: trainingOptions.deckSize,
     roundRange: [trainingOptions.roundMin, trainingOptions.roundMax],
     includeDeals: trainingOptions.includeDeals,
+    trainingMode: trainingOptions.trainingMode,
+    roundModeRate: trainingOptions.roundModeRate,
+    rolloutRounds: trainingOptions.rolloutRounds,
+    snapshotRound: trainingOptions.snapshotRound,
+    snapshotRoundMin: trainingOptions.snapshotRoundMin,
+    snapshotRoundMax: trainingOptions.snapshotRoundMax,
     terminalRewardMode: trainingOptions.terminalRewardMode,
     returnDiscount: trainingOptions.returnDiscount,
     opponentMix: trainingOptions.opponentMix,

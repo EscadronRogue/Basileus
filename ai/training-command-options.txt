@@ -24,6 +24,14 @@ Normal training:
 
   npm.cmd run ai:train -- --episodes 1000
 
+Full training using only legal round snapshots and short rollouts:
+
+  npm.cmd run ai:train -- --training-mode round --episodes 1000 --rollout-rounds 1
+
+Hybrid training with both full games and legal round snapshots:
+
+  npm.cmd run ai:train -- --training-mode hybrid --round-mode-rate 0.5 --episodes 1000 --rollout-rounds 1
+
 Training from human games in the default folder ai/human-games:
 
   npm.cmd run ai:train -- --episodes 1000
@@ -87,6 +95,46 @@ Training Size And Reproducibility
   Makes episode seeds and the initial model seed deterministic.
   Default: no fixed seed, so each run gets fresh random episode seeds.
 
+--training-mode episode|round|hybrid
+  episode plays full self-play games.
+  round generates a legal snapshot by replaying random legal actions to a
+  sampled round, then trains only on a short rollout from that state.
+  hybrid samples between episode and round mode per training episode.
+  Aliases for round: snapshot, snapshots, rounds, short-rollout, short.
+  Aliases for hybrid: mixed, mix, episode-round, round-episode.
+  Alias: --mode
+  Default: episode
+
+--round-mode-rate NUMBER
+  In --training-mode hybrid, chance that a training episode uses the legal
+  round-snapshot rollout path instead of a full game.
+  Aliases: --round-snapshot-rate, --snapshot-mode-rate
+  Allowed range: 0 to 1.
+  Default: 0.5
+
+--rollout-rounds NUMBER
+  Number of completed rounds to train after a generated legal snapshot when
+  --training-mode round or a hybrid round sample is active.
+  A completed rollout without Constantinople falling counts as survival for
+  both training reward and feedback metrics. The current official score leader
+  at the rollout boundary counts as the winner. Snapshot failures before the
+  learner plays the rollout do not count as rollout outcomes.
+  Default: 1
+
+--snapshot-round NUMBER
+  Fixed starting round for --training-mode round snapshots.
+  Default: not fixed.
+
+--snapshot-round-min NUMBER
+  Minimum sampled starting round for --training-mode round snapshots when
+  --snapshot-round is not set.
+  Default: 1
+
+--snapshot-round-max NUMBER
+  Maximum sampled starting round for --training-mode round snapshots when
+  --snapshot-round is not set.
+  Default: sampled game's deck size
+
 
 Game Setup Options
 ------------------
@@ -145,18 +193,33 @@ Learning Options
   Default: 3
 
 --terminal-reward-mode sparse|score
-  Terminal reward objective. sparse gives -1 for empire fall, +1 for winning a
-  survived game, and 0 for surviving without winning. score uses the older
-  score-shaped formula based on final score share and placement.
+  Terminal reward objective. sparse gives +1 for winning a survived game and 0
+  for surviving without winning. If Constantinople falls, sparse assigns the
+  fall penalty only to players who under-contributed to the defense relative to
+  their legal frontier troop capacity. score uses the older score-shaped formula
+  based on final score share and placement when the empire survives.
   Alias: --reward-mode
   Default: sparse
 
 --return-discount NUMBER
-  Discount applied to earlier decisions by the same player when assigning the
-  terminal reward back through the episode. 1 gives every decision the same
-  terminal return; lower values make later decisions receive more credit/blame.
+  Discount applied when cumulative future returns are propagated backward through
+  one player's neural decisions. Round-end score-progress rewards and terminal
+  rewards are both included in that cumulative return.
   Allowed range: 0 to 1.
   Default: 1
+
+Round-End Score Shaping
+-----------------------
+
+Training adds a potential-based reward at completed round boundaries. The
+potential is derived from the official game score:
+
+  (round / maxRounds) * (projected score points / maximum possible score)
+
+The maximum possible score is derived from the rules: four scoring categories
+with three thresholds each. This reward is attached once to the latest neural
+decision made by that player during the round, then propagated backward by
+--return-discount.
 
 
 Action Space Options
