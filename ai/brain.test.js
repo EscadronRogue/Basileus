@@ -23,6 +23,10 @@ import {
   listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
+import {
+  buildCandidateInputs,
+  NETWORK_INPUT_SIZE,
+} from './features.js';
 import { createNetwork } from './network.js';
 import { loadModelFileSync, saveModelFileSync } from './modelStore.js';
 import {
@@ -180,7 +184,7 @@ test('training CLI defaults to automatic workers and sampled game setup', () => 
   assert.deepEqual([defaults.roundMin, defaults.roundMax], [6, 12]);
   assert.equal(defaults.includeDeals, false);
   assert.equal(defaults.opponentMix, true);
-  assert.equal(defaults.rewardShaping, true);
+  assert.equal(defaults.heuristicOpponentRate, 0);
   assert.equal(defaults.trainingEpochs, 3);
   assert.ok(defaults.checkpointInterval >= 1);
 
@@ -252,6 +256,16 @@ test('self-play episode completes with legal neural decisions', () => {
   });
   assert.ok(result.stats.fell || result.state.phase === 'scoring');
   assert.ok(result.transitions.length > 0);
+});
+
+test('neural inputs expose extended neutral game indicators', () => {
+  const state = prepareInteractiveState({ playerCount: 3, deckSize: 2, seed: 66 });
+  const actions = listLegalCourtActions(state, 0, { includeDeals: false });
+  assert.ok(actions.length > 0);
+  const [input] = buildCandidateInputs(state, 0, actions.slice(0, 1));
+  assert.equal(input.length, NETWORK_INPUT_SIZE);
+  assert.ok(NETWORK_INPUT_SIZE > 288);
+  assert.ok(Array.from(input.slice(288)).some((value) => Math.abs(value) > 0));
 });
 
 test('stalled or step-limited training episodes receive losing terminal rewards', () => {

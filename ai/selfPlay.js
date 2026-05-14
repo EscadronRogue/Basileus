@@ -214,44 +214,6 @@ function actionScore(action, state, playerId) {
   return (scores[courtAction] ?? 0) + Math.min(1, affordability / 30);
 }
 
-function clampReward(value, min = -0.1, max = 0.1) {
-  return Math.max(min, Math.min(max, Number(value) || 0));
-}
-
-function shapeActionReward(state, playerId, action) {
-  if (!action) return 0;
-  if (action.kind === 'reward') return action.choice === 'empire' ? 0.06 : -0.03;
-  if (action.kind === 'title-assignment') return 0.01;
-  if (action.kind === 'orders') {
-    const deployments = Object.values(action.orders?.deployments || {});
-    const total = Math.max(1, deployments.length);
-    const frontier = deployments.filter((destination) => destination === 'frontier').length;
-    const frontierShare = frontier / total;
-    const pressure = state?.currentInvasion ? 1 : 0.5;
-    const selfVote = action.orders?.candidate === playerId ? 0.005 : 0;
-    return clampReward((frontierShare - 0.35) * 0.12 * pressure + selfVote);
-  }
-  if (action.kind !== 'court') return 0;
-
-  const courtAction = action.payload?.action;
-  const values = {
-    recruit: 0.035,
-    'hire-mercenaries': 0.03,
-    buy: 0.015,
-    'basileus-appoint': 0.01,
-    'appoint-strategos': 0.012,
-    'appoint-bishop': 0.008,
-    gift: 0.002,
-    revoke: -0.005,
-    dismiss: -0.025,
-    'deal-send': 0,
-    'deal-counter': 0,
-    'deal-accept': 0,
-    'deal-refuse': 0,
-  };
-  return clampReward(values[courtAction] ?? 0, -0.05, 0.05);
-}
-
 function chooseBestScored(actions, rng, scorer) {
   let bestScore = -Infinity;
   const best = [];
@@ -307,13 +269,11 @@ export function createNetworkPolicy(network, options = {}) {
       greedy: options.greedy || false,
     });
     if (transitions) {
-      const chosenAction = actions[selection.index];
       transitions.push({
         playerId,
         inputs,
         chosenIndex: selection.index,
         return: 0,
-        shapingReward: options.rewardShaping ? shapeActionReward(state, playerId, chosenAction) : 0,
       });
     }
     return selection.index;
@@ -401,13 +361,11 @@ function createEpisodePolicy(options, state, transitions, seed) {
         temperature: options.temperature ?? 1,
         greedy: options.greedy || false,
       });
-      const chosenAction = actions[selection.index];
       transitions.push({
         playerId,
         inputs,
         chosenIndex: selection.index,
         return: 0,
-        shapingReward: options.rewardShaping ? shapeActionReward(currentState, playerId, chosenAction) : 0,
       });
       return selection.index;
     },
@@ -578,11 +536,8 @@ export function runSelfPlayEpisode(options = {}) {
   }
 
   const rewards = computeTerminalRewards(state);
-  let shapingRewards = 0;
   for (const transition of transitions) {
-    const shaped = Number(transition.shapingReward) || 0;
-    shapingRewards += shaped;
-    transition.return = (rewards[transition.playerId] ?? -1) + shaped;
+    transition.return = rewards[transition.playerId] ?? -1;
   }
 
   return {
@@ -601,7 +556,6 @@ export function runSelfPlayEpisode(options = {}) {
       seed,
       actionStats,
       policyMix,
-      shapingRewards,
     },
   };
 }
@@ -652,7 +606,6 @@ export function trainSelfPlay(network, options = {}) {
     roundLengths: {},
     actionStats: createActionStats(),
     policyMix: createPolicyMixStats(),
-    shapingRewards: 0,
     loss: 0,
   };
 
@@ -673,7 +626,6 @@ export function trainSelfPlay(network, options = {}) {
     addDistributionValue(stats, 'roundLengths', result.stats.deckSize);
     mergeActionStats(stats.actionStats, result.stats.actionStats);
     mergePolicyMixStats(stats.policyMix, result.stats.policyMix);
-    stats.shapingRewards += result.stats.shapingRewards || 0;
     stats.loss += report.loss;
     const completed = episode + 1;
     if (onProgress) {
@@ -737,7 +689,6 @@ export function evaluatePolicy(options = {}) {
     topScoreRateByPlayer: {},
     actionStats: createActionStats(),
     policyMix: createPolicyMixStats(),
-    shapingRewards: 0,
   };
 
   for (let episode = 0; episode < episodes; episode += 1) {
@@ -755,7 +706,6 @@ export function evaluatePolicy(options = {}) {
     addDistributionValue(stats, 'roundLengths', result.stats.deckSize);
     mergeActionStats(stats.actionStats, result.stats.actionStats);
     mergePolicyMixStats(stats.policyMix, result.stats.policyMix);
-    stats.shapingRewards += result.stats.shapingRewards || 0;
     for (const [playerId, reward] of Object.entries(result.rewards)) {
       stats.rewardByPlayer[playerId] = (stats.rewardByPlayer[playerId] || 0) + reward;
       stats.appearancesByPlayer[playerId] = (stats.appearancesByPlayer[playerId] || 0) + 1;

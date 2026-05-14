@@ -150,11 +150,10 @@ export function resolveTrainingOptions(args = {}) {
     entropyBeta: numberArg(args, 'entropyBeta', 0.01),
     temperature: numberArg(args, 'temperature', 1),
     trainingEpochs: Math.max(1, Math.floor(numberArg(args, 'trainingEpochs', 3))),
-    rewardShaping: booleanArg(args, 'rewardShaping', true),
     includeDeals: booleanArg(args, 'includeDeals', false),
     opponentMix: booleanArg(args, 'opponentMix', true),
     randomOpponentRate: Math.max(0, numberArg(args, 'randomOpponentRate', 0.3)),
-    heuristicOpponentRate: Math.max(0, numberArg(args, 'heuristicOpponentRate', 0.25)),
+    heuristicOpponentRate: Math.max(0, numberArg(args, 'heuristicOpponentRate', 0)),
     checkpointOpponentRate: Math.max(0, numberArg(args, 'checkpointOpponentRate', 0.2)),
     checkpointInterval: Math.max(0, checkpointInterval),
     checkpointEvalEpisodes: Math.max(1, Math.floor(numberArg(args, 'checkpointEvalEpisodes', 4))),
@@ -212,7 +211,6 @@ function createProgressReporter(options, outputPath, resumed) {
         + ` | seed=${seed}`
         + ` | includeDeals=${options.includeDeals ? 'true' : 'false'}`
         + ` | opponentMix=${options.opponentMix ? 'true' : 'false'}`
-        + ` | rewardShaping=${options.rewardShaping ? 'true' : 'false'}`
         + ` | epochs=${options.trainingEpochs}`,
       );
       console.log(`[ai:train] learningRate=${options.learningRate} entropyBeta=${options.entropyBeta} temperature=${options.temperature} out=${outputPath}`);
@@ -235,7 +233,6 @@ function createProgressReporter(options, outputPath, resumed) {
       const roundMix = formatDistribution(stats.roundLengths, 'r');
       const policyMix = formatDistribution(stats.policyMix, '');
       const courtMix = formatDistribution(stats.actionStats?.courtActions, '');
-      const shaping = (stats.shapingRewards || 0) / Math.max(1, completed);
       const lastSeed = snapshot.last?.seed ? ` | lastSeed=${snapshot.last.seed}` : '';
 
       console.log(
@@ -250,7 +247,6 @@ function createProgressReporter(options, outputPath, resumed) {
         + ` | rounds=${roundMix}`
         + ` | policies=${policyMix}`
         + ` | court=${courtMix}`
-        + ` | shaping=${shaping.toFixed(3)}`
         + ` | transitions=${transitions}`
         + lastSeed
         + ` | elapsed=${formatDuration(elapsed)}`,
@@ -278,7 +274,6 @@ function mergeEpisodeStats(target, result) {
   target.truncated += result.stats.truncated ? 1 : 0;
   target.transitions += result.transitions.length;
   target.rounds += result.stats.rounds;
-  target.shapingRewards += result.stats.shapingRewards || 0;
   const playerCount = String(result.stats.playerCount);
   const roundLength = String(result.stats.deckSize);
   target.playerCounts[playerCount] = (target.playerCounts[playerCount] || 0) + 1;
@@ -332,7 +327,6 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
       confirmations: 0,
     },
     policyMix: {},
-    shapingRewards: 0,
     loss: 0,
   };
 
@@ -546,7 +540,6 @@ export async function runTrainingCli(argv = process.argv) {
     deckSize: trainingOptions.deckSize,
     roundRange: [trainingOptions.roundMin, trainingOptions.roundMax],
     includeDeals: trainingOptions.includeDeals,
-    rewardShaping: trainingOptions.rewardShaping,
     opponentMix: trainingOptions.opponentMix,
     randomOpponentRate: trainingOptions.randomOpponentRate,
     heuristicOpponentRate: trainingOptions.heuristicOpponentRate,
