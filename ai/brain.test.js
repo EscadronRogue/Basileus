@@ -5,7 +5,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { createGameState } from '../engine/state.js';
-import { setDealParticipantIds } from '../engine/deals.js';
+import {
+  DEAL_CLAUSE_KINDS,
+  setDealParticipantIds,
+} from '../engine/deals.js';
+import { submitHumanOrders } from '../engine/commands.js';
 import {
   advanceToNextInteractivePhase,
   phaseOrders,
@@ -150,6 +154,47 @@ test('reactive AI court turns do not spend their one action confirming', () => {
   for (const player of state.players.filter((entry) => entry.id !== 1)) {
     assert.equal(state.courtActions.playerConfirmed.has(player.id), false);
   }
+});
+
+test('AI orders fail impossible troop commitments instead of crashing', () => {
+  const state = prepareInteractiveState({ seed: 23 });
+  state.historyEnabled = true;
+  state.history = [];
+  state.historySeq = 0;
+  state.round = 3;
+  phaseOrders(state);
+
+  const aiPlayerId = 2;
+  state.activeDealObligations.push({
+    id: 'test-impossible-frontier',
+    threadId: 'test-thread',
+    pairKey: '0:2',
+    giverId: aiPlayerId,
+    receiverId: 0,
+    kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT,
+    startTrigger: { type: 'immediate' },
+    durationTurns: 1,
+    payload: { troopCount: 99 },
+    status: 'active',
+    createdRound: 2,
+    activatedRound: 3,
+    nextDueRound: 3,
+    remainingTurns: 1,
+  });
+
+  assert.ok(listLegalOrderActions(state, aiPlayerId).length > 0);
+
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [1],
+    model: createNetwork({ seed: 20260514 }),
+  });
+  const orders = buildAIOrders(state, meta, aiPlayerId);
+  const result = submitHumanOrders(state, aiPlayerId, orders);
+
+  assert.equal(result.ok, true);
+  assert.ok(state.allOrders[aiPlayerId]);
+  assert.equal(state.activeDealObligations.some((entry) => entry.id === 'test-impossible-frontier'), false);
+  assert.equal(state.history.some((entry) => entry.type === 'deal_obligation_failed'), true);
 });
 
 test('generated court and order actions are accepted by engine validators', () => {

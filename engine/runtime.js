@@ -13,7 +13,6 @@ import {
   phaseCleanup,
   phaseOrders,
   phaseResolution,
-  submitOrders,
 } from './turnflow.js';
 import {
   applyCourtAction,
@@ -144,7 +143,10 @@ export function processAiFlow(state, aiMeta, options = {}) {
           if (!isAIPlayer(aiMeta, player.id)) continue;
           if (state.allOrders[player.id]) continue;
           const orders = buildAIOrders(state, aiMeta, player.id);
-          submitOrders(state, player.id, orders);
+          const result = submitHumanOrders(state, player.id, orders);
+          if (!result.ok) {
+            throw new Error(result.reason || `AI player ${player.id} could not lock orders.`);
+          }
         }
       }
 

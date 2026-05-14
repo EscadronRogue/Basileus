@@ -45,7 +45,7 @@ export function normalizeMercenaryOrders(rawMercenaries = []) {
   return [...totals.entries()].map(([officeKey, count]) => ({ officeKey, count }));
 }
 
-export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
+export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = {}) {
   const player = getPlayer(state, playerId);
   if (!player) return orderFailure('Player not found.');
 
@@ -73,7 +73,11 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}) {
     deployments,
     candidate,
   };
-  const dealLocks = normalizeOrdersWithDealLocks(state, playerId, normalizedOrders);
+  if (rawOrders?.debug) normalizedOrders.debug = rawOrders.debug;
+
+  const dealLocks = normalizeOrdersWithDealLocks(state, playerId, normalizedOrders, {
+    resolveImpossibleLocks: Boolean(options.resolveImpossibleLocks),
+  });
   if (!dealLocks.ok) return orderFailure(dealLocks.reason || 'Accepted deal commitments can no longer be fulfilled.');
 
   return {

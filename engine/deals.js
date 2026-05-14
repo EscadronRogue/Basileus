@@ -1183,8 +1183,32 @@ export function buildOrderLocksForPlayer(state, playerId) {
   );
 }
 
-export function normalizeOrdersWithDealLocks(state, playerId, orders) {
-  const locks = buildOrderLocksForPlayer(state, playerId);
+function failDueTroopObligations(state, playerId, reason) {
+  ensureDealState(state);
+  let failed = 0;
+  for (const obligation of state.activeDealObligations || []) {
+    if (obligation.giverId !== playerId) continue;
+    if (!TROOP_CLAUSE_KINDS.has(obligation.kind)) continue;
+    if (obligation.status !== 'active') continue;
+    if (Number(obligation.nextDueRound) !== Number(state.round)) continue;
+    obligation.status = 'completed';
+    obligation.failedRound = state.round;
+    obligation.failureReason = reason;
+    recordPublicObligationFailure(state, obligation, reason);
+    failed += 1;
+  }
+  if (failed > 0) filterActiveObligations(state);
+  return failed;
+}
+
+export function normalizeOrdersWithDealLocks(state, playerId, orders, options = {}) {
+  let locks = buildOrderLocksForPlayer(state, playerId);
+  if (!locks.ok && options.resolveImpossibleLocks) {
+    const reason = locks.reason || 'Accepted deal commitments can no longer be fulfilled.';
+    if (failDueTroopObligations(state, playerId, reason) > 0) {
+      locks = buildOrderLocksForPlayer(state, playerId);
+    }
+  }
   if (!locks.ok) return locks;
   const nextOrders = {
     ...orders,

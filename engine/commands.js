@@ -315,11 +315,14 @@ export function confirmCourt(state, playerId) {
 // ─── Order submission ──────────────────────────────────────────────────────
 // Single source of truth for human order locking: validates the deployment plan
 // and candidate, then seals the orders.
-export function submitHumanOrders(state, playerId, orders) {
+export function submitHumanOrders(state, playerId, orders, options = {}) {
   if (state.phase !== 'orders') return fail('Orders cannot be submitted right now.');
   if (state.allOrders?.[playerId]) return fail('Orders are already locked for this seat.');
 
-  const normalized = normalizeHumanOrders(state, playerId, orders);
+  const normalized = normalizeHumanOrders(state, playerId, orders, {
+    ...options,
+    resolveImpossibleLocks: options.resolveImpossibleLocks !== false,
+  });
   if (!normalized.ok) return fail(normalized.reason || 'Invalid orders.');
   submitOrders(state, playerId, normalized.orders);
   return { ok: true, orders: normalized.orders, totalCost: normalized.totalCost };
