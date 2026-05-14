@@ -94,7 +94,7 @@ export function runEvaluationCli(argv = process.argv) {
   const common = {
     episodes: numberArg(args, 'episodes', 20),
     seed: hasArg(args, 'seed') ? numberArg(args, 'seed', 10_000) : undefined,
-    includeDeals: booleanArg(args, 'includeDeals', false),
+    includeDeals: false,
     ...resolvePlayerOptions(args),
     ...resolveRoundOptions(args),
   };
@@ -121,9 +121,13 @@ export function runEvaluationCli(argv = process.argv) {
       return selectActionWithNetwork(model, inputs, rng, { greedy: true, temperature: 0 }).index;
     }
     : null;
+  const policyRoleForPlayer = policy
+    ? (playerId) => (playerId === 0 ? 'learner' : (opponentNetwork ? 'checkpoint' : 'random'))
+    : null;
   const stats = evaluatePolicy({
     network,
     policy,
+    policyRoleForPlayer,
     ...common,
     greedy: args.greedy !== 'false',
   });

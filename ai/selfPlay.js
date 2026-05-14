@@ -82,6 +82,66 @@ function addDistributionValue(stats, key, value) {
   stats[key][normalized] = (stats[key][normalized] || 0) + 1;
 }
 
+export function recordTrainingReturns(stats, transitions = []) {
+  for (const transition of transitions) {
+    const reward = Number(transition.return);
+    if (!Number.isFinite(reward)) continue;
+    stats.returnSum += reward;
+    stats.returnCount += 1;
+    if (reward > 0.05) stats.positiveReturns += 1;
+    else if (reward < -0.05) stats.negativeReturns += 1;
+    else stats.neutralReturns += 1;
+  }
+}
+
+function createOutcomeBucket() {
+  return {
+    appearances: 0,
+    wins: 0,
+    survivals: 0,
+    falls: 0,
+    truncated: 0,
+    roleCounts: {},
+    playerCounts: {},
+  };
+}
+
+export function createPlayerOutcomeStats() {
+  return {
+    byPlayer: {},
+    byRole: {},
+  };
+}
+
+function incrementOutcomeCounter(map, key) {
+  const normalized = String(key ?? 'unknown');
+  map[normalized] = (map[normalized] || 0) + 1;
+}
+
+function recordOutcomeBucket(bucket, outcome) {
+  bucket.appearances += 1;
+  bucket.wins += outcome.won ? 1 : 0;
+  bucket.survivals += outcome.survived ? 1 : 0;
+  bucket.falls += outcome.fell ? 1 : 0;
+  bucket.truncated += outcome.truncated ? 1 : 0;
+  incrementOutcomeCounter(bucket.roleCounts, outcome.role);
+  incrementOutcomeCounter(bucket.playerCounts, outcome.playerId);
+}
+
+export function recordPlayerOutcomes(stats, outcomes = []) {
+  if (!stats) return;
+  if (!stats.byPlayer) stats.byPlayer = {};
+  if (!stats.byRole) stats.byRole = {};
+  for (const outcome of outcomes || []) {
+    const playerKey = String(outcome.playerId);
+    const roleKey = String(outcome.role || 'unknown');
+    if (!stats.byPlayer[playerKey]) stats.byPlayer[playerKey] = createOutcomeBucket();
+    if (!stats.byRole[roleKey]) stats.byRole[roleKey] = createOutcomeBucket();
+    recordOutcomeBucket(stats.byPlayer[playerKey], outcome);
+    recordOutcomeBucket(stats.byRole[roleKey], outcome);
+  }
+}
+
 export function resolveEpisodeSeed(options = {}, episodeIndex = 0) {
   const explicitEpisodeSeed = finiteNumber(options.episodeSeed);
   if (explicitEpisodeSeed != null) return explicitEpisodeSeed;
@@ -471,6 +531,10 @@ function createPolicyMixStats() {
   };
 }
 
+function roleMapForPlayers(state, role) {
+  return Object.fromEntries((state.players || []).map((player) => [player.id, role]));
+}
+
 export function mergePolicyMixStats(target = createPolicyMixStats(), source = {}) {
   for (const [key, value] of Object.entries(source || {})) {
     target[key] = (target[key] || 0) + (value || 0);
@@ -554,6 +618,25 @@ export function computeTerminalRewards(state) {
   }));
 }
 
+function computePlayerOutcomes(state, roleByPlayer = {}, terminalReason = null) {
+  const fell = state.gameOver?.type === 'fall';
+  const survived = state.phase === 'scoring' && !fell;
+  const truncated = terminalReason === 'stalled' || terminalReason === 'max-steps';
+  let winners = new Set();
+  if (survived) {
+    const final = buildFinalScores(state);
+    winners = new Set(final.winners.map((entry) => entry.playerId));
+  }
+  return (state.players || []).map((player) => ({
+    playerId: player.id,
+    role: roleByPlayer[player.id] || roleByPlayer[String(player.id)] || 'unknown',
+    won: survived && winners.has(player.id),
+    survived,
+    fell,
+    truncated,
+  }));
+}
+
 export function createRandomPolicy() {
   return ({ actions, rng }) => chooseRandom(actions, rng);
 }
@@ -605,9 +688,21 @@ function roleFromRates(roleRng, options, opponentNetworks) {
 
 function createEpisodePolicy(options, state, transitions, seed) {
   if (options.policy) {
+    const roleByPlayer = options.policyRoles
+      ? Object.fromEntries((state.players || []).map((player) => [
+        player.id,
+        options.policyRoles[player.id] || options.policyRoles[String(player.id)] || options.policyRole || 'custom',
+      ]))
+      : Object.fromEntries((state.players || []).map((player) => [
+        player.id,
+        typeof options.policyRoleForPlayer === 'function'
+          ? (options.policyRoleForPlayer(player.id, state) || options.policyRole || 'custom')
+          : (options.policyRole || 'custom'),
+      ]));
     return {
       policy: options.policy,
       policyMix: { ...createPolicyMixStats(), custom: state.players.length },
+      roleByPlayer,
     };
   }
 
@@ -615,6 +710,7 @@ function createEpisodePolicy(options, state, transitions, seed) {
     return {
       policy: createRandomPolicy(),
       policyMix: { ...createPolicyMixStats(), random: state.players.length },
+      roleByPlayer: roleMapForPlayers(state, 'random'),
     };
   }
 
@@ -626,6 +722,7 @@ function createEpisodePolicy(options, state, transitions, seed) {
         greedy: options.greedy || false,
       }),
       policyMix: { ...createPolicyMixStats(), learner: state.players.length },
+      roleByPlayer: roleMapForPlayers(state, 'learner'),
     };
   }
 
@@ -683,6 +780,7 @@ function createEpisodePolicy(options, state, transitions, seed) {
       return selection.index;
     },
     policyMix,
+    roleByPlayer: Object.fromEntries([...roles.entries()].map(([playerId, role]) => [playerId, role.kind])),
   };
 }
 
@@ -711,7 +809,7 @@ function runCourtPhase(state, policy, rng, options) {
     ) {
       const actions = courtActions >= options.maxCourtActionsPerPlayer - 1
         ? [forceCourtConfirmation(state, player.id)].filter(Boolean)
-        : listLegalCourtActions(state, player.id, { includeDeals: options.includeDeals });
+        : listLegalCourtActions(state, player.id, { includeDeals: false });
       const action = chooseAction(policy, { state, playerId: player.id, actions, rng });
       if (!action) break;
       const result = applyLegalAction(state, action);
@@ -810,7 +908,7 @@ export function runSelfPlayEpisode(options = {}) {
   setDealParticipantIds(state, state.players.map((player) => player.id));
   const transitions = [];
   const actionStats = createActionStats();
-  const { policy, policyMix } = createEpisodePolicy(options, state, transitions, seed);
+  const { policy, policyMix, roleByPlayer } = createEpisodePolicy(options, state, transitions, seed);
 
   advanceToNextInteractivePhase(state);
   let steps = 0;
@@ -821,7 +919,7 @@ export function runSelfPlayEpisode(options = {}) {
     if (state.phase === 'court') {
       progressed = runCourtPhase(state, policy, rng, {
         maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
-        includeDeals: options.includeDeals,
+        includeDeals: false,
         actionStats,
       });
     } else if (state.phase === 'orders') {
@@ -852,6 +950,7 @@ export function runSelfPlayEpisode(options = {}) {
   for (const transition of transitions) {
     transition.return = rewards[transition.playerId] ?? -1;
   }
+  const playerOutcomes = computePlayerOutcomes(state, roleByPlayer, terminalReason);
   recordTransitionOutcomes(actionStats, transitions);
   recordEconomicSnapshot(actionStats.economics, state, [...new Set(transitions.map((entry) => entry.playerId))]);
 
@@ -871,6 +970,7 @@ export function runSelfPlayEpisode(options = {}) {
       seed,
       actionStats,
       policyMix,
+      playerOutcomes,
     },
   };
 }
@@ -935,7 +1035,15 @@ export function trainSelfPlay(network, options = {}) {
     roundLengths: {},
     actionStats: createActionStats(),
     policyMix: createPolicyMixStats(),
+    playerOutcomes: createPlayerOutcomeStats(),
     loss: 0,
+    policyLoss: 0,
+    valueLoss: 0,
+    returnSum: 0,
+    returnCount: 0,
+    positiveReturns: 0,
+    negativeReturns: 0,
+    neutralReturns: 0,
   };
 
   for (let episode = 0; episode < episodes; episode += 1) {
@@ -955,14 +1063,23 @@ export function trainSelfPlay(network, options = {}) {
     addDistributionValue(stats, 'roundLengths', result.stats.deckSize);
     mergeActionStats(stats.actionStats, result.stats.actionStats);
     mergePolicyMixStats(stats.policyMix, result.stats.policyMix);
+    recordPlayerOutcomes(stats.playerOutcomes, result.stats.playerOutcomes);
+    recordTrainingReturns(stats, result.transitions);
     stats.loss += report.loss;
+    stats.policyLoss += report.policyLoss;
+    stats.valueLoss += report.valueLoss;
     const completed = episode + 1;
     if (onProgress) {
       onProgress({
         completed,
         batchSize: 1,
         episodes,
-        stats: { ...stats, loss: stats.loss / completed },
+        stats: {
+          ...stats,
+          loss: stats.loss / completed,
+          policyLoss: stats.policyLoss / completed,
+          valueLoss: stats.valueLoss / completed,
+        },
         last: {
           fell: result.stats.fell,
           survived: result.stats.survived,
@@ -984,7 +1101,12 @@ export function trainSelfPlay(network, options = {}) {
         batchSize: 1,
         episodes,
         network,
-        stats: { ...stats, loss: stats.loss / completed },
+        stats: {
+          ...stats,
+          loss: stats.loss / completed,
+          policyLoss: stats.policyLoss / completed,
+          valueLoss: stats.valueLoss / completed,
+        },
         last: {
           seed: result.stats.seed,
           loss: report.loss,
@@ -996,6 +1118,8 @@ export function trainSelfPlay(network, options = {}) {
   }
 
   stats.loss /= episodes;
+  stats.policyLoss /= episodes;
+  stats.valueLoss /= episodes;
   stats.averageRounds = stats.rounds / episodes;
   return stats;
 }
@@ -1016,6 +1140,8 @@ export function evaluatePolicy(options = {}) {
     winRateByPlayer: {},
     averagePointsByPlayer: {},
     topScoreRateByPlayer: {},
+    survivalRateByPlayer: {},
+    playerOutcomes: createPlayerOutcomeStats(),
     actionStats: createActionStats(),
     policyMix: createPolicyMixStats(),
   };
@@ -1035,6 +1161,7 @@ export function evaluatePolicy(options = {}) {
     addDistributionValue(stats, 'roundLengths', result.stats.deckSize);
     mergeActionStats(stats.actionStats, result.stats.actionStats);
     mergePolicyMixStats(stats.policyMix, result.stats.policyMix);
+    recordPlayerOutcomes(stats.playerOutcomes, result.stats.playerOutcomes);
     for (const [playerId, reward] of Object.entries(result.rewards)) {
       stats.rewardByPlayer[playerId] = (stats.rewardByPlayer[playerId] || 0) + reward;
       stats.appearancesByPlayer[playerId] = (stats.appearancesByPlayer[playerId] || 0) + 1;
@@ -1057,6 +1184,7 @@ export function evaluatePolicy(options = {}) {
     stats.averagePointsByPlayer[playerId] = (stats.averagePointsByPlayer[playerId] || 0) / appearances;
     stats.winRateByPlayer[playerId] = (stats.winsByPlayer[playerId] || 0) / appearances;
     stats.topScoreRateByPlayer[playerId] = stats.winRateByPlayer[playerId];
+    stats.survivalRateByPlayer[playerId] = (stats.playerOutcomes.byPlayer[playerId]?.survivals || 0) / appearances;
   }
   stats.fallRate = stats.falls / episodes;
   stats.survivalRate = stats.survivals / episodes;

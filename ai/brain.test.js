@@ -23,6 +23,7 @@ import {
   runAICourtAutomation,
 } from './brain.js';
 import {
+  AI_DEALS_ENABLED,
   applyLegalAction,
   listLegalCourtActions,
   listLegalOrderActions,
@@ -56,6 +57,7 @@ import {
 import {
   checkpointPathFor,
   createCheckpointManager,
+  createProgressReporter,
   resolveResumeEpisodeOffset,
   resolveTrainingOptions,
 } from './train.js';
@@ -268,17 +270,15 @@ test('generated reward and title-assignment actions are legal', () => {
   }
 });
 
-test('deal action space includes scaled and bundled bargains', () => {
+test('AI deal actions are temporarily disabled even when requested', () => {
   const state = prepareInteractiveState({ playerCount: 3, deckSize: 2, seed: 26 });
   for (const player of state.players) player.gold = Math.max(player.gold, 8);
 
   const actions = listLegalCourtActions(state, 0, { includeDeals: true });
-  const deals = actions.filter((action) => action.payload?.action === 'deal-send');
+  const deals = actions.filter((action) => action.payload?.action?.startsWith('deal-'));
 
-  assert.ok(deals.some((action) => action.payload.clauses.length >= 2));
-  assert.ok(deals.some((action) => action.payload.clauses.some((clause) => (
-    Number(clause.amount || clause.troopCount || 0) >= 3
-  ))));
+  assert.equal(AI_DEALS_ENABLED, false);
+  assert.equal(deals.length, 0);
 });
 
 test('Constantinople fall gives every player a losing terminal reward', () => {
@@ -322,6 +322,7 @@ test('training CLI defaults to automatic workers and sampled game setup', () => 
   assert.equal(defaults.deckSize, undefined);
   assert.deepEqual([defaults.roundMin, defaults.roundMax], [6, 12]);
   assert.equal(defaults.includeDeals, false);
+  assert.equal(resolveTrainingOptions({ includeDeals: 'true' }).includeDeals, false);
   assert.equal(defaults.opponentMix, true);
   assert.equal(defaults.heuristicOpponentRate, 0);
   assert.equal(defaults.humanOpponentRate, 0.25);
@@ -442,15 +443,109 @@ test('local trainer smoke run writes and reloads a neural model', () => {
   });
   assert.equal(stats.episodes, 1);
   assert.ok(stats.transitions > 0);
+  assert.equal(typeof stats.policyLoss, 'number');
+  assert.equal(typeof stats.valueLoss, 'number');
+  assert.equal(typeof stats.returnSum, 'number');
+  assert.equal(stats.returnCount, stats.transitions);
+  assert.ok(stats.playerOutcomes.byPlayer['0'].appearances > 0);
+  assert.ok(stats.playerOutcomes.byRole.learner.appearances > 0);
   assert.equal(progress.length, 1);
   assert.equal(progress[0].completed, 1);
   assert.equal(progress[0].stats.transitions, stats.transitions);
+  assert.equal(typeof progress[0].stats.policyLoss, 'number');
+  assert.equal(typeof progress[0].stats.valueLoss, 'number');
 
   const dir = mkdtempSync(join(tmpdir(), 'basileus-ai-'));
   const path = join(dir, 'model.json');
   saveModelFileSync(network, path, { test: true });
   const loaded = loadModelFileSync(path);
   assert.equal(loaded.inputSize, network.inputSize);
+});
+
+test('training progress logs use only the latest feedback window', () => {
+  const lines = [];
+  const originalLog = console.log;
+  console.log = (line) => lines.push(String(line));
+  try {
+    const reporter = createProgressReporter({
+      episodes: 4,
+      logInterval: 2,
+      quiet: false,
+    }, 'ai/models/test.json', false);
+    reporter.update({
+      completed: 2,
+      stats: {
+        survivals: 1,
+        falls: 1,
+        truncated: 0,
+        rounds: 12,
+        transitions: 20,
+        loss: 2,
+        policyLoss: 0.75,
+        valueLoss: 1.25,
+        returnSum: 0,
+        returnCount: 2,
+        positiveReturns: 1,
+        negativeReturns: 1,
+        policyMix: { learner: 4, random: 2 },
+        playerOutcomes: {
+          byPlayer: {
+            0: { appearances: 2, wins: 1, survivals: 1, falls: 1, truncated: 0, roleCounts: { learner: 2 }, playerCounts: { 0: 2 } },
+            1: { appearances: 2, wins: 0, survivals: 1, falls: 1, truncated: 0, roleCounts: { random: 2 }, playerCounts: { 1: 2 } },
+          },
+          byRole: {
+            learner: { appearances: 2, wins: 1, survivals: 1, falls: 1, truncated: 0, roleCounts: { learner: 2 }, playerCounts: { 0: 2 } },
+            random: { appearances: 2, wins: 0, survivals: 1, falls: 1, truncated: 0, roleCounts: { random: 2 }, playerCounts: { 1: 2 } },
+          },
+        },
+      },
+      last: { seed: 11 },
+    });
+    reporter.update({
+      completed: 4,
+      stats: {
+        survivals: 3,
+        falls: 1,
+        truncated: 0,
+        rounds: 30,
+        transitions: 50,
+        loss: 3,
+        policyLoss: 1.25,
+        valueLoss: 1.75,
+        returnSum: 2,
+        returnCount: 4,
+        positiveReturns: 3,
+        negativeReturns: 1,
+        policyMix: { learner: 10, random: 3 },
+        playerOutcomes: {
+          byPlayer: {
+            0: { appearances: 4, wins: 3, survivals: 3, falls: 1, truncated: 0, roleCounts: { learner: 4 }, playerCounts: { 0: 4 } },
+            1: { appearances: 4, wins: 0, survivals: 3, falls: 1, truncated: 0, roleCounts: { random: 4 }, playerCounts: { 1: 4 } },
+          },
+          byRole: {
+            learner: { appearances: 4, wins: 3, survivals: 3, falls: 1, truncated: 0, roleCounts: { learner: 4 }, playerCounts: { 0: 4 } },
+            random: { appearances: 4, wins: 0, survivals: 3, falls: 1, truncated: 0, roleCounts: { random: 4 }, playerCounts: { 1: 4 } },
+          },
+        },
+      },
+      last: { seed: 12 },
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /window=2 eps/);
+  assert.match(lines[0], /survived=50\.0%/);
+  assert.match(lines[0], /loss=2\.0000 policy=0\.7500 value=1\.2500/);
+  assert.match(lines[1], /window=2 eps/);
+  assert.match(lines[1], /30 decisions \(15\.0\/ep\)/);
+  assert.match(lines[1], /survived=100\.0%/);
+  assert.match(lines[1], /fell=0\.0%/);
+  assert.match(lines[1], /loss=4\.0000 policy=1\.7500 value=2\.2500/);
+  assert.match(lines[1], /return=1\.00 positive=100\.0%/);
+  assert.match(lines[1], /players=p1\(learner\) win:100\.0% surv:100\.0%;p2\(random\) win:0\.0% surv:100\.0%/);
+  assert.match(lines[1], /controllers=learner win:100\.0% surv:100\.0%;random win:0\.0% surv:100\.0%/);
 });
 
 test('unseeded trainer episodes use independent random seeds', () => {
@@ -568,6 +663,8 @@ test('evaluation reports survival, scoring, action, and policy metrics', () => {
   assert.equal(stats.episodes, 1);
   assert.equal(typeof stats.fallRate, 'number');
   assert.equal(typeof stats.survivalRate, 'number');
+  assert.equal(typeof stats.survivalRateByPlayer[0], 'number');
+  assert.ok(stats.playerOutcomes.byPlayer[0].appearances > 0);
   assert.ok(stats.actionStats.total > 0);
   assert.ok(Object.keys(stats.policyMix).length > 0);
 });

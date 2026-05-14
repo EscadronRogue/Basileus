@@ -162,7 +162,7 @@ export function runAICourtAutomation(state, meta, options = {}) {
     if (state.courtActions?.playerConfirmed?.has(player.id)) continue;
 
     for (let step = 0; step < maxActions; step += 1) {
-      const actions = listLegalCourtActions(state, player.id);
+      const actions = listLegalCourtActions(state, player.id, { includeDeals: false });
       if (!actions.length) break;
       const actionCandidates = mode === 'react' ? playableCourtActions(actions) : actions;
       const action = step === maxActions - 1 && mode !== 'react'

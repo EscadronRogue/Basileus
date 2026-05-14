@@ -11,8 +11,8 @@ Base command on macOS/Linux:
 
 Options can be written as either:
 
-  --include-deals true
-  --include-deals=true
+  --quiet true
+  --quiet=true
 
 Boolean options accept true/false. A boolean flag with no value counts as true.
 
@@ -24,17 +24,13 @@ Normal training:
 
   npm.cmd run ai:train -- --episodes 1000
 
-Training with deals enabled:
-
-  npm.cmd run ai:train -- --episodes 1000 --include-deals true
-
 Training from human games in the default folder ai/human-games:
 
-  npm.cmd run ai:train -- --episodes 1000 --include-deals true
+  npm.cmd run ai:train -- --episodes 1000
 
 Training from a specific human games folder:
 
-  npm.cmd run ai:train -- --episodes 1000 --include-deals true --human-games path\to\human-games
+  npm.cmd run ai:train -- --episodes 1000 --human-games path\to\human-games
 
 Small deterministic test run:
 
@@ -71,6 +67,8 @@ Output And Resume Options
 
 --log-interval NUMBER
   Print progress every N completed episodes.
+  Each progress line reports only the episodes since the previous progress line.
+  The final JSON printed to stdout is concise; full diagnostics remain in saved model metadata.
   Default: about episodes / 20, minimum 1.
 
 
@@ -151,7 +149,7 @@ Action Space Options
 --------------------
 
 --include-deals true|false
-  Include deal proposal actions in the training action space.
+  Temporarily ignored. AI deal actions are disabled in training and runtime games.
   Default: false
 
 
@@ -243,7 +241,7 @@ The trainer currently promotes the best evaluated checkpoint, not simply the las
 On resumed runs, the loaded model is also scored as a baseline; if no new checkpoint
 beats it, the loaded model remains the promoted model.
 
-If human game JSON files exist in ai/human-games, they are loaded automatically. The AI uses them mainly by training against a human-style neural opponent. Direct imitation stays off unless you set --human-feedback-weight above 0.
+If human game JSON files exist in ai/human-games, they are loaded automatically. The AI uses them mainly by training against a human-style neural opponent. Direct imitation stays off unless you set --human-feedback-weight above 0. Deal demonstrations are ignored while AI deal actions are temporarily disabled.
 
 Useful human-game workflow:
 
@@ -252,4 +250,4 @@ Useful human-game workflow:
        window.__basileus.downloadHumanFeedback()
   3. Put the downloaded JSON into ai/human-games.
   4. Run:
-       npm.cmd run ai:train -- --episodes 1000 --include-deals true
+       npm.cmd run ai:train -- --episodes 1000

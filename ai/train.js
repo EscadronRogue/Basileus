@@ -24,6 +24,9 @@ import {
   runSelfPlayEpisode,
   trainSelfPlay,
   trainTransitions,
+  recordTrainingReturns,
+  createPlayerOutcomeStats,
+  recordPlayerOutcomes,
   createActionStats,
   mergeActionStats,
   mergePolicyMixStats,
@@ -157,7 +160,7 @@ export function resolveTrainingOptions(args = {}) {
     entropyBeta: numberArg(args, 'entropyBeta', 0.01),
     temperature: numberArg(args, 'temperature', 1),
     trainingEpochs: Math.max(1, Math.floor(numberArg(args, 'trainingEpochs', 3))),
-    includeDeals: booleanArg(args, 'includeDeals', false),
+    includeDeals: false,
     opponentMix: booleanArg(args, 'opponentMix', true),
     randomOpponentRate: Math.max(0, numberArg(args, 'randomOpponentRate', 0.3)),
     heuristicOpponentRate: Math.max(0, numberArg(args, 'heuristicOpponentRate', 0)),
@@ -189,35 +192,286 @@ function describeRange(fixed, min, max, suffix = '') {
   return fixed == null ? `${min}-${max}${suffix} sampled` : `${fixed}${suffix} fixed`;
 }
 
-function formatDistribution(distribution, suffix) {
-  const entries = Object.entries(distribution || {})
-    .sort(([left], [right]) => Number(left) - Number(right));
-  return entries.length ? entries.map(([key, count]) => `${key}${suffix}:${count}`).join(',') : '-';
+function clonePlain(value) {
+  if (value == null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((entry) => clonePlain(entry));
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, clonePlain(entry)]));
 }
 
-function formatTopReturnAverages(distribution, limit = 4) {
-  const entries = Object.entries(distribution || {})
-    .filter(([, bucket]) => bucket?.count > 0)
-    .map(([key, bucket]) => [key, bucket.returnSum / Math.max(1, bucket.count), bucket.count])
-    .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
-    .slice(0, limit);
-  return entries.length
-    ? entries.map(([key, average, count]) => `${key}:${average.toFixed(2)}(${count})`).join(',')
-    : '-';
+function numericValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function numericDelta(current, previous) {
+  return numericValue(current) - numericValue(previous);
+}
+
+function countDelta(current, previous) {
+  return Math.max(0, numericDelta(current, previous));
+}
+
+function subtractCountMap(current = {}, previous = {}) {
+  const out = {};
+  const keys = new Set([...Object.keys(current || {}), ...Object.keys(previous || {})]);
+  for (const key of keys) {
+    const value = countDelta(current?.[key], previous?.[key]);
+    if (value > 0) out[key] = value;
+  }
+  return out;
+}
+
+function subtractOutcomeBucket(current = {}, previous = {}) {
+  return {
+    appearances: countDelta(current.appearances, previous.appearances),
+    wins: countDelta(current.wins, previous.wins),
+    survivals: countDelta(current.survivals, previous.survivals),
+    falls: countDelta(current.falls, previous.falls),
+    truncated: countDelta(current.truncated, previous.truncated),
+    roleCounts: subtractCountMap(current.roleCounts, previous.roleCounts),
+    playerCounts: subtractCountMap(current.playerCounts, previous.playerCounts),
+  };
+}
+
+function subtractOutcomeBucketMap(current = {}, previous = {}) {
+  const out = {};
+  const keys = new Set([...Object.keys(current || {}), ...Object.keys(previous || {})]);
+  for (const key of keys) {
+    const bucket = subtractOutcomeBucket(current?.[key], previous?.[key]);
+    if (bucket.appearances > 0) out[key] = bucket;
+  }
+  return out;
+}
+
+function subtractPlayerOutcomeStats(current = {}, previous = {}) {
+  return {
+    byPlayer: subtractOutcomeBucketMap(current.byPlayer, previous.byPlayer),
+    byRole: subtractOutcomeBucketMap(current.byRole, previous.byRole),
+  };
+}
+
+function subtractAverageStat(current = {}, previous = {}) {
+  return {
+    sum: numericDelta(current?.sum, previous?.sum),
+    count: countDelta(current?.count, previous?.count),
+  };
+}
+
+function subtractActionStats(current = {}, previous = {}) {
+  const out = createActionStats();
+  out.total = countDelta(current.total, previous.total);
+  out.byKind = subtractCountMap(current.byKind, previous.byKind);
+  out.byPhase = subtractCountMap(current.byPhase, previous.byPhase);
+  out.courtActions = subtractCountMap(current.courtActions, previous.courtActions);
+  out.dealClauses = subtractCountMap(current.dealClauses, previous.dealClauses);
+  out.dealClauseAmounts = subtractCountMap(current.dealClauseAmounts, previous.dealClauseAmounts);
+  out.actionValueBuckets = subtractCountMap(current.actionValueBuckets, previous.actionValueBuckets);
+  out.rewardChoices = subtractCountMap(current.rewardChoices, previous.rewardChoices);
+  out.orderDeployments = {
+    frontier: countDelta(current.orderDeployments?.frontier, previous.orderDeployments?.frontier),
+    capital: countDelta(current.orderDeployments?.capital, previous.orderDeployments?.capital),
+  };
+  out.orderTroops = {
+    frontier: countDelta(current.orderTroops?.frontier, previous.orderTroops?.frontier),
+    capital: countDelta(current.orderTroops?.capital, previous.orderTroops?.capital),
+  };
+  out.orderFrontierShare = subtractAverageStat(current.orderFrontierShare, previous.orderFrontierShare);
+  out.titleAssignments = countDelta(current.titleAssignments, previous.titleAssignments);
+  out.confirmations = countDelta(current.confirmations, previous.confirmations);
+  return out;
+}
+
+function averageWindowValue(currentAverage, previousAverage, currentCount, previousCount) {
+  const windowCount = Math.max(1, countDelta(currentCount, previousCount));
+  const currentTotal = numericValue(currentAverage) * Math.max(0, numericValue(currentCount));
+  const previousTotal = numericValue(previousAverage) * Math.max(0, numericValue(previousCount));
+  return (currentTotal - previousTotal) / windowCount;
+}
+
+function subtractTrainingStats(current = {}, previous = {}, completed = 0, previousCompleted = 0) {
+  const episodes = Math.max(0, countDelta(completed, previousCompleted));
+  return {
+    episodes,
+    falls: countDelta(current.falls, previous.falls),
+    survivals: countDelta(current.survivals, previous.survivals),
+    truncated: countDelta(current.truncated, previous.truncated),
+    transitions: countDelta(current.transitions, previous.transitions),
+    rounds: countDelta(current.rounds, previous.rounds),
+    playerCounts: subtractCountMap(current.playerCounts, previous.playerCounts),
+    roundLengths: subtractCountMap(current.roundLengths, previous.roundLengths),
+    actionStats: subtractActionStats(current.actionStats, previous.actionStats),
+    policyMix: subtractCountMap(current.policyMix, previous.policyMix),
+    playerOutcomes: subtractPlayerOutcomeStats(current.playerOutcomes, previous.playerOutcomes),
+    loss: averageWindowValue(current.loss, previous.loss, completed, previousCompleted),
+    policyLoss: averageWindowValue(current.policyLoss, previous.policyLoss, completed, previousCompleted),
+    valueLoss: averageWindowValue(current.valueLoss, previous.valueLoss, completed, previousCompleted),
+    returnSum: numericDelta(current.returnSum, previous.returnSum),
+    returnCount: countDelta(current.returnCount, previous.returnCount),
+    positiveReturns: countDelta(current.positiveReturns, previous.positiveReturns),
+    negativeReturns: countDelta(current.negativeReturns, previous.negativeReturns),
+    neutralReturns: countDelta(current.neutralReturns, previous.neutralReturns),
+  };
+}
+
+function formatInteger(value) {
+  return Math.round(numericValue(value)).toLocaleString('en-US');
 }
 
 function averageStatPercent(stat) {
   return stat?.count ? formatPercent(stat.sum / stat.count) : '-';
 }
 
-function formatIncomeShares(economics = {}) {
-  const shares = economics.incomeShare || {};
-  return ['church', 'estate', 'tax', 'gold']
-    .map((key) => `${key}:${averageStatPercent(shares[key])}`)
+function averageReturn(stats = {}) {
+  return stats.returnCount ? stats.returnSum / stats.returnCount : 0;
+}
+
+function roundMetric(value, digits = 4) {
+  const number = numericValue(value);
+  const scale = 10 ** digits;
+  return Math.round(number * scale) / scale;
+}
+
+function formatReturnStats(stats = {}) {
+  if (!stats.returnCount) return 'return=-';
+  return `return=${averageReturn(stats).toFixed(2)} positive=${formatPercent(stats.positiveReturns / stats.returnCount)}`;
+}
+
+function formatDecisions(stats = {}) {
+  const episodes = Math.max(1, numericValue(stats.episodes));
+  const decisions = numericValue(stats.transitions);
+  return `${formatInteger(decisions)} decisions (${(decisions / episodes).toFixed(1)}/ep)`;
+}
+
+function formatPolicyRoles(distribution = {}) {
+  const order = ['learner', 'checkpoint', 'human', 'heuristic', 'random', 'custom'];
+  const entries = Object.entries(distribution || {}).filter(([, value]) => numericValue(value) > 0);
+  const total = entries.reduce((sum, [, value]) => sum + numericValue(value), 0);
+  if (total <= 0) return '-';
+  const ordered = [
+    ...order.filter((key) => numericValue(distribution[key]) > 0),
+    ...entries.map(([key]) => key).filter((key) => !order.includes(key)).sort(),
+  ];
+  return ordered
+    .map((key) => `${key}:${formatPercent(numericValue(distribution[key]) / total)}`)
     .join(',');
 }
 
-function createProgressReporter(options, outputPath, resumed) {
+function topOutcomeLabel(counts = {}) {
+  const entries = Object.entries(counts || {})
+    .filter(([, count]) => numericValue(count) > 0)
+    .sort((left, right) => numericValue(right[1]) - numericValue(left[1]) || String(left[0]).localeCompare(String(right[0])));
+  if (!entries.length) return 'unknown';
+  if (entries.length === 1) return entries[0][0];
+  return entries.slice(0, 2).map(([key]) => key).join('/');
+}
+
+function formatOutcomeRates(bucket = {}) {
+  const appearances = Math.max(1, numericValue(bucket.appearances));
+  return `win:${formatPercent(numericValue(bucket.wins) / appearances)} surv:${formatPercent(numericValue(bucket.survivals) / appearances)}`;
+}
+
+function formatPlayerOutcomes(outcomes = {}) {
+  const entries = Object.entries(outcomes.byPlayer || {})
+    .filter(([, bucket]) => numericValue(bucket.appearances) > 0)
+    .sort(([left], [right]) => Number(left) - Number(right));
+  if (!entries.length) return '-';
+  return entries
+    .map(([playerId, bucket]) => `p${Number(playerId) + 1}(${topOutcomeLabel(bucket.roleCounts)}) ${formatOutcomeRates(bucket)}`)
+    .join(';');
+}
+
+function formatRoleOutcomes(outcomes = {}) {
+  const order = ['learner', 'checkpoint', 'human', 'heuristic', 'random', 'custom', 'unknown'];
+  const entries = Object.entries(outcomes.byRole || {})
+    .filter(([, bucket]) => numericValue(bucket.appearances) > 0);
+  if (!entries.length) return '-';
+  const keys = [
+    ...order.filter((key) => outcomes.byRole?.[key]?.appearances > 0),
+    ...entries.map(([key]) => key).filter((key) => !order.includes(key)).sort(),
+  ];
+  return keys
+    .map((key) => `${key} ${formatOutcomeRates(outcomes.byRole[key])}`)
+    .join(';');
+}
+
+function summarizeOutcomeBucket(bucket = {}) {
+  const appearances = Math.max(1, numericValue(bucket.appearances));
+  return {
+    appearances: numericValue(bucket.appearances),
+    winRate: roundMetric(numericValue(bucket.wins) / appearances, 4),
+    survivalRate: roundMetric(numericValue(bucket.survivals) / appearances, 4),
+    fallRate: roundMetric(numericValue(bucket.falls) / appearances, 4),
+    stalledRate: roundMetric(numericValue(bucket.truncated) / appearances, 4),
+    roles: summarizeCountShares(bucket.roleCounts),
+    players: summarizeCountShares(bucket.playerCounts, true),
+  };
+}
+
+function summarizeOutcomeBucketMap(map = {}, playerKeys = false) {
+  return Object.fromEntries(
+    Object.entries(map || {})
+      .filter(([, bucket]) => numericValue(bucket.appearances) > 0)
+      .sort(([left], [right]) => Number(left) - Number(right) || String(left).localeCompare(String(right)))
+      .map(([key, bucket]) => [playerKeys ? `p${Number(key) + 1}` : key, summarizeOutcomeBucket(bucket)]),
+  );
+}
+
+function summarizePlayerOutcomes(outcomes = {}) {
+  return {
+    byPlayer: summarizeOutcomeBucketMap(outcomes.byPlayer, true),
+    byRole: summarizeOutcomeBucketMap(outcomes.byRole, false),
+  };
+}
+
+function summarizePolicyRoles(distribution = {}) {
+  const order = ['learner', 'checkpoint', 'human', 'heuristic', 'random', 'custom'];
+  const entries = Object.entries(distribution || {}).filter(([, value]) => numericValue(value) > 0);
+  const total = entries.reduce((sum, [, value]) => sum + numericValue(value), 0);
+  if (total <= 0) return {};
+  const ordered = [
+    ...order.filter((key) => numericValue(distribution[key]) > 0),
+    ...entries.map(([key]) => key).filter((key) => !order.includes(key)).sort(),
+  ];
+  return Object.fromEntries(
+    ordered.map((key) => [key, roundMetric(numericValue(distribution[key]) / total, 4)]),
+  );
+}
+
+function summarizeCountShares(counts = {}, playerKeys = false) {
+  const entries = Object.entries(counts || {}).filter(([, value]) => numericValue(value) > 0);
+  const total = entries.reduce((sum, [, value]) => sum + numericValue(value), 0);
+  if (total <= 0) return {};
+  return Object.fromEntries(
+    entries
+      .sort(([left], [right]) => Number(left) - Number(right) || String(left).localeCompare(String(right)))
+      .map(([key, value]) => [playerKeys ? `p${Number(key) + 1}` : key, roundMetric(numericValue(value) / total, 4)]),
+  );
+}
+
+function summarizeTrainingStats(stats = {}) {
+  const episodes = Math.max(1, Number(stats.episodes) || 1);
+  const decisions = numericValue(stats.transitions);
+  const frontier = stats.actionStats?.orderFrontierShare;
+  return {
+    episodes: Number(stats.episodes) || 0,
+    decisions,
+    decisionsPerEpisode: roundMetric(decisions / episodes, 2),
+    loss: roundMetric(stats.loss),
+    policyLoss: roundMetric(stats.policyLoss),
+    valueLoss: roundMetric(stats.valueLoss),
+    averageReturn: roundMetric(averageReturn(stats), 3),
+    positiveReturnRate: stats.returnCount ? roundMetric(stats.positiveReturns / stats.returnCount, 4) : 0,
+    survivalRate: roundMetric((stats.survivals || 0) / episodes, 4),
+    fallRate: roundMetric((stats.falls || 0) / episodes, 4),
+    stalledRate: roundMetric((stats.truncated || 0) / episodes, 4),
+    averageRounds: roundMetric(stats.averageRounds ?? ((stats.rounds || 0) / episodes), 2),
+    frontierTroopShare: frontier?.count ? roundMetric(frontier.sum / frontier.count, 4) : null,
+    roles: summarizePolicyRoles(stats.policyMix),
+    outcomes: summarizePlayerOutcomes(stats.playerOutcomes),
+  };
+}
+
+export function createProgressReporter(options, outputPath, resumed) {
   if (options.quiet) {
     return {
       start() {},
@@ -230,6 +484,8 @@ function createProgressReporter(options, outputPath, resumed) {
   const total = Math.max(1, Number(options.episodes) || 1);
   const interval = Math.max(1, Math.floor(Number(options.logInterval) || 1));
   let lastPrinted = 0;
+  let lastPrintedAt = startedAt;
+  let lastPrintedStats = null;
 
   return {
     start() {
@@ -258,63 +514,73 @@ function createProgressReporter(options, outputPath, resumed) {
           + ` targetReturn=${options.humanFeedbackReturn}`,
         );
       }
+      console.log(`[ai:train] feedbackEvery=${interval} episodes | progress stats are since the previous feedback line`);
+      lastPrintedAt = Date.now();
     },
     update(snapshot) {
       const completed = Math.min(total, Number(snapshot.completed) || 0);
       if (completed < total && completed - lastPrinted < interval) return;
-      lastPrinted = completed;
 
       const stats = snapshot.stats || {};
-      const elapsed = Date.now() - startedAt;
-      const episodesPerSecond = completed / Math.max(0.001, elapsed / 1000);
-      const survivalRate = (stats.survivals || 0) / Math.max(1, completed);
-      const fallRate = (stats.falls || 0) / Math.max(1, completed);
-      const truncatedRate = (stats.truncated || 0) / Math.max(1, completed);
-      const averageRounds = (stats.rounds || 0) / Math.max(1, completed);
-      const loss = Number.isFinite(stats.loss) ? stats.loss : 0;
-      const transitions = stats.transitions || 0;
-      const playerMix = formatDistribution(stats.playerCounts, 'p');
-      const roundMix = formatDistribution(stats.roundLengths, 'r');
-      const policyMix = formatDistribution(stats.policyMix, '');
-      const courtMix = formatDistribution(stats.actionStats?.courtActions, '');
-      const valueMix = formatDistribution(stats.actionStats?.actionValueBuckets, '');
-      const returnMix = formatTopReturnAverages(stats.actionStats?.outcomes?.byKind);
-      const frontierShare = averageStatPercent(stats.actionStats?.orderFrontierShare);
-      const incomeShares = formatIncomeShares(stats.actionStats?.economics);
+      const now = Date.now();
+      const previousCompleted = lastPrinted;
+      const windowStats = subtractTrainingStats(stats, lastPrintedStats || {}, completed, previousCompleted);
+      const windowEpisodes = Math.max(1, windowStats.episodes);
+      const elapsed = now - startedAt;
+      const windowElapsed = now - lastPrintedAt;
+      const episodesPerSecond = windowEpisodes / Math.max(0.001, windowElapsed / 1000);
+      const survivalRate = windowStats.survivals / windowEpisodes;
+      const fallRate = windowStats.falls / windowEpisodes;
+      const truncatedRate = windowStats.truncated / windowEpisodes;
+      const averageRounds = windowStats.rounds / windowEpisodes;
+      const loss = Number.isFinite(windowStats.loss) ? windowStats.loss : 0;
+      const policyLoss = Number.isFinite(windowStats.policyLoss) ? windowStats.policyLoss : 0;
+      const valueLoss = Number.isFinite(windowStats.valueLoss) ? windowStats.valueLoss : 0;
+      const frontierShare = averageStatPercent(windowStats.actionStats?.orderFrontierShare);
+      const roleMix = formatPolicyRoles(windowStats.policyMix);
+      const playerOutcomes = formatPlayerOutcomes(windowStats.playerOutcomes);
+      const roleOutcomes = formatRoleOutcomes(windowStats.playerOutcomes);
       const lastSeed = snapshot.last?.seed ? ` | lastSeed=${snapshot.last.seed}` : '';
+      lastPrinted = completed;
+      lastPrintedAt = now;
+      lastPrintedStats = clonePlain(stats);
 
       console.log(
         `[ai:train] episode ${completed}/${total} (${formatPercent(completed / total)})`
-        + ` | ${episodesPerSecond.toFixed(2)} ep/s`
-        + ` | loss=${loss.toFixed(4)}`
+        + ` | window=${formatInteger(windowEpisodes)} eps`
+        + ` | speed=${episodesPerSecond.toFixed(2)} ep/s`
+        + ` | ${formatDecisions(windowStats)}`
+        + ` | loss=${loss.toFixed(4)} policy=${policyLoss.toFixed(4)} value=${valueLoss.toFixed(4)}`
+        + ` | ${formatReturnStats(windowStats)}`
         + ` | survived=${formatPercent(survivalRate)}`
         + ` | fell=${formatPercent(fallRate)}`
-        + ` | truncated=${formatPercent(truncatedRate)}`
+        + ` | stalled=${formatPercent(truncatedRate)}`
         + ` | avgRounds=${averageRounds.toFixed(2)}`
-        + ` | players=${playerMix}`
-        + ` | rounds=${roundMix}`
-        + ` | policies=${policyMix}`
-        + ` | court=${courtMix}`
-        + ` | value=${valueMix}`
-        + ` | returns=${returnMix}`
         + ` | frontier=${frontierShare}`
-        + ` | income=${incomeShares}`
-        + ` | transitions=${transitions}`
+        + ` | roles=${roleMix}`
+        + ` | players=${playerOutcomes}`
+        + ` | controllers=${roleOutcomes}`
         + lastSeed
         + ` | elapsed=${formatDuration(elapsed)}`,
       );
     },
     finish(stats) {
       const elapsed = Date.now() - startedAt;
+      const episodes = Math.max(1, Number(stats.episodes) || 1);
       console.log(
         `[ai:train] done | episodes=${stats.episodes}`
-        + ` survived=${stats.survivals}`
-        + ` fell=${stats.falls}`
-        + ` truncated=${stats.truncated || 0}`
+        + ` survived=${formatPercent((stats.survivals || 0) / episodes)}`
+        + ` fell=${formatPercent((stats.falls || 0) / episodes)}`
+        + ` stalled=${formatPercent((stats.truncated || 0) / episodes)}`
         + ` avgRounds=${Number(stats.averageRounds || 0).toFixed(2)}`
-        + ` avgLoss=${Number(stats.loss || 0).toFixed(4)}`
+        + ` decisions=${formatInteger(stats.transitions || 0)}`
+        + ` ${formatReturnStats(stats)}`
+        + ` loss=${Number(stats.loss || 0).toFixed(4)}`
+        + ` policy=${Number(stats.policyLoss || 0).toFixed(4)}`
+        + ` value=${Number(stats.valueLoss || 0).toFixed(4)}`
         + ` frontier=${averageStatPercent(stats.actionStats?.orderFrontierShare)}`
-        + ` income=${formatIncomeShares(stats.actionStats?.economics)}`
+        + ` players=${formatPlayerOutcomes(stats.playerOutcomes)}`
+        + ` controllers=${formatRoleOutcomes(stats.playerOutcomes)}`
         + ` elapsed=${formatDuration(elapsed)}`,
       );
       console.log(`[ai:train] saved ${outputPath}`);
@@ -372,7 +638,15 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
     roundLengths: {},
     actionStats: createActionStats(),
     policyMix: {},
+    playerOutcomes: createPlayerOutcomeStats(),
     loss: 0,
+    policyLoss: 0,
+    valueLoss: 0,
+    returnSum: 0,
+    returnCount: 0,
+    positiveReturns: 0,
+    negativeReturns: 0,
+    neutralReturns: 0,
   };
 
   let completed = 0;
@@ -400,16 +674,25 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
     for (const result of results) {
       transitions.push(...result.transitions);
       mergeEpisodeStats(stats, result);
+      recordPlayerOutcomes(stats.playerOutcomes, result.stats.playerOutcomes);
+      recordTrainingReturns(stats, result.transitions);
     }
     const report = trainTransitions(network, transitions, options);
     stats.loss += report.loss * batchSize;
+    stats.policyLoss += report.policyLoss * batchSize;
+    stats.valueLoss += report.valueLoss * batchSize;
     completed += batchSize;
     if (onProgress) {
       onProgress({
         completed,
         batchSize,
         episodes,
-        stats: { ...stats, loss: stats.loss / completed },
+        stats: {
+          ...stats,
+          loss: stats.loss / completed,
+          policyLoss: stats.policyLoss / completed,
+          valueLoss: stats.valueLoss / completed,
+        },
         last: {
           loss: report.loss,
           transitions: transitions.length,
@@ -428,7 +711,12 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
         batchSize,
         episodes,
         network,
-        stats: { ...stats, loss: stats.loss / completed },
+        stats: {
+          ...stats,
+          loss: stats.loss / completed,
+          policyLoss: stats.policyLoss / completed,
+          valueLoss: stats.valueLoss / completed,
+        },
         last: {
           loss: report.loss,
           transitions: transitions.length,
@@ -440,6 +728,8 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
   }
 
   stats.loss /= episodes;
+  stats.policyLoss /= episodes;
+  stats.valueLoss /= episodes;
   stats.averageRounds = stats.rounds / episodes;
   return stats;
 }
@@ -785,7 +1075,7 @@ export async function runTrainingCli(argv = process.argv) {
   console.log(JSON.stringify({
     ok: true,
     out,
-    stats,
+    stats: summarizeTrainingStats(stats),
     promoted: {
       path: promoted.path,
       episode: promoted.episode,

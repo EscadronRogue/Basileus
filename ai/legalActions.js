@@ -45,6 +45,8 @@ const STRATEGOS_TITLE_BY_REGION = {
   sea: 'ADMIRAL',
 };
 
+export const AI_DEALS_ENABLED = false;
+
 function cloneForValidation(state) {
   const clone = JSON.parse(JSON.stringify(state));
   clone.rng = state.rng;
@@ -593,7 +595,7 @@ export function listLegalCourtActions(state, playerId, options = {}) {
   appendEstateActions(actions, state, playerId);
   appendArmyActions(actions, state, playerId);
   appendRevocationActions(actions, state, playerId);
-  if (options.includeDeals !== false) appendDealActions(actions, state, playerId);
+  if (AI_DEALS_ENABLED && options.includeDeals !== false) appendDealActions(actions, state, playerId);
 
   const confirmation = legalCourtConfirmation(state, playerId);
   if (confirmation) actions.push(confirmation);
