@@ -144,6 +144,20 @@ Learning Options
   How many optimization passes to run over each collected training batch.
   Default: 3
 
+--terminal-reward-mode sparse|score
+  Terminal reward objective. sparse gives -1 for empire fall, +1 for winning a
+  survived game, and 0 for surviving without winning. score uses the older
+  score-shaped formula based on final score share and placement.
+  Alias: --reward-mode
+  Default: sparse
+
+--return-discount NUMBER
+  Discount applied to earlier decisions by the same player when assigning the
+  terminal reward back through the episode. 1 gives every decision the same
+  terminal return; lower values make later decisions receive more credit/blame.
+  Allowed range: 0 to 1.
+  Default: 1
+
 
 Action Space Options
 --------------------

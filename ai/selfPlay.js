@@ -36,6 +36,20 @@ const DEFAULT_PLAYER_MAX = 5;
 const DEFAULT_ROUND_MIN = 6;
 const DEFAULT_ROUND_MAX = 12;
 const SCORE_CATEGORY_KEYS = ['church', 'estate', 'tax', 'gold'];
+export const TERMINAL_REWARD_MODES = Object.freeze({
+  SPARSE: 'sparse',
+  SCORE: 'score',
+});
+export const DEFAULT_TERMINAL_REWARD_VALUES = Object.freeze({
+  fall: -1,
+  win: 1,
+  survival: 0,
+  scoreWinnerBase: 1,
+  scoreWinnerPlacementWeight: 0.1,
+  scoreLoserBase: -0.55,
+  scoreLoserShareWeight: 0.35,
+  scoreLoserPlacementWeight: 0.1,
+});
 
 export function createEntropySeed() {
   return ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 1;
@@ -52,6 +66,26 @@ export function deriveEpisodeSeed(baseSeed, episodeIndex = 0) {
 function finiteNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+export function normalizeTerminalRewardMode(value) {
+  const mode = String(value ?? TERMINAL_REWARD_MODES.SPARSE).toLowerCase();
+  if (['score', 'score-shaped', 'scores', 'legacy'].includes(mode)) return TERMINAL_REWARD_MODES.SCORE;
+  return TERMINAL_REWARD_MODES.SPARSE;
+}
+
+function terminalRewardValues(options = {}) {
+  const overrides = options.terminalRewardValues || {};
+  return Object.fromEntries(
+    Object.entries(DEFAULT_TERMINAL_REWARD_VALUES)
+      .map(([key, fallback]) => [key, finiteNumber(overrides[key]) ?? fallback]),
+  );
+}
+
+function normalizedReturnDiscount(options = {}) {
+  const discount = finiteNumber(options.returnDiscount);
+  if (discount == null) return 1;
+  return Math.max(0, Math.min(1, discount));
 }
 
 function clampInteger(value, min, max) {
@@ -598,13 +632,21 @@ export function createDefensivePolicy() {
   );
 }
 
-export function computeTerminalRewards(state) {
+export function computeTerminalRewards(state, options = {}) {
+  const values = terminalRewardValues(options);
   if (state.gameOver?.type === 'fall') {
-    return Object.fromEntries(state.players.map((player) => [player.id, -1]));
+    return Object.fromEntries(state.players.map((player) => [player.id, values.fall]));
   }
 
   const final = buildFinalScores(state);
   const winners = new Set(final.winners.map((entry) => entry.playerId));
+  if (normalizeTerminalRewardMode(options.terminalRewardMode ?? options.rewardMode) === TERMINAL_REWARD_MODES.SPARSE) {
+    return Object.fromEntries(state.players.map((player) => [
+      player.id,
+      winners.has(player.id) ? values.win : values.survival,
+    ]));
+  }
+
   const maxPoints = Math.max(1, final.topScore || 1);
   const scores = new Map(final.scores.map((entry, index) => [entry.playerId, { ...entry, rank: index + 1 }]));
   return Object.fromEntries(state.players.map((player) => {
@@ -612,10 +654,25 @@ export function computeTerminalRewards(state) {
     const share = (score?.points || 0) / maxPoints;
     const placement = 1 - ((score?.rank || state.players.length) - 1) / Math.max(1, state.players.length - 1);
     const value = winners.has(player.id)
-      ? 1 + 0.1 * placement
-      : -0.55 + 0.35 * share + 0.1 * placement;
+      ? values.scoreWinnerBase + values.scoreWinnerPlacementWeight * placement
+      : values.scoreLoserBase + values.scoreLoserShareWeight * share + values.scoreLoserPlacementWeight * placement;
     return [player.id, value];
   }));
+}
+
+export function assignTerminalReturns(transitions = [], rewards = {}, options = {}) {
+  const discount = normalizedReturnDiscount(options);
+  const futureDecisionsByPlayer = new Map();
+  for (let index = transitions.length - 1; index >= 0; index -= 1) {
+    const transition = transitions[index];
+    const playerId = transition?.playerId;
+    const key = String(playerId);
+    const futureDecisions = futureDecisionsByPlayer.get(key) || 0;
+    const terminalReward = finiteNumber(rewards?.[playerId]) ?? DEFAULT_TERMINAL_REWARD_VALUES.fall;
+    transition.return = terminalReward * (discount ** futureDecisions);
+    futureDecisionsByPlayer.set(key, futureDecisions + 1);
+  }
+  return transitions;
 }
 
 function computePlayerOutcomes(state, roleByPlayer = {}, terminalReason = null) {
@@ -946,10 +1003,8 @@ export function runSelfPlayEpisode(options = {}) {
     terminalReason ||= 'stalled';
   }
 
-  const rewards = computeTerminalRewards(state);
-  for (const transition of transitions) {
-    transition.return = rewards[transition.playerId] ?? -1;
-  }
+  const rewards = computeTerminalRewards(state, options);
+  assignTerminalReturns(transitions, rewards, options);
   const playerOutcomes = computePlayerOutcomes(state, roleByPlayer, terminalReason);
   recordTransitionOutcomes(actionStats, transitions);
   recordEconomicSnapshot(actionStats.economics, state, [...new Set(transitions.map((entry) => entry.playerId))]);

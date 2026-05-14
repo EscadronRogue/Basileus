@@ -30,6 +30,7 @@ import {
   createActionStats,
   mergeActionStats,
   mergePolicyMixStats,
+  normalizeTerminalRewardMode,
 } from './selfPlay.js';
 import {
   runTournament,
@@ -83,6 +84,11 @@ function booleanArg(args, key, fallback = false) {
   if (args[key] === true) return true;
   const value = String(args[key]).toLowerCase();
   return !['0', 'false', 'no', 'off'].includes(value);
+}
+
+function unitIntervalArg(args, key, fallback) {
+  const value = numberArg(args, key, fallback);
+  return Math.max(0, Math.min(1, value));
 }
 
 function clampInteger(value, min, max, fallback) {
@@ -160,6 +166,8 @@ export function resolveTrainingOptions(args = {}) {
     entropyBeta: numberArg(args, 'entropyBeta', 0.01),
     temperature: numberArg(args, 'temperature', 1),
     trainingEpochs: Math.max(1, Math.floor(numberArg(args, 'trainingEpochs', 3))),
+    terminalRewardMode: normalizeTerminalRewardMode(args.terminalRewardMode ?? args.rewardMode),
+    returnDiscount: unitIntervalArg(args, 'returnDiscount', 1),
     includeDeals: false,
     opponentMix: booleanArg(args, 'opponentMix', true),
     randomOpponentRate: Math.max(0, numberArg(args, 'randomOpponentRate', 0.3)),
@@ -503,7 +511,14 @@ export function createProgressReporter(options, outputPath, resumed) {
         + ` | opponentMix=${options.opponentMix ? 'true' : 'false'}`
         + ` | epochs=${options.trainingEpochs}`,
       );
-      console.log(`[ai:train] learningRate=${options.learningRate} entropyBeta=${options.entropyBeta} temperature=${options.temperature} out=${outputPath}`);
+      console.log(
+        `[ai:train] learningRate=${options.learningRate}`
+        + ` entropyBeta=${options.entropyBeta}`
+        + ` temperature=${options.temperature}`
+        + ` reward=${options.terminalRewardMode}`
+        + ` returnDiscount=${options.returnDiscount}`
+        + ` out=${outputPath}`,
+      );
       if (options.humanFeedbackTransitions?.length) {
         console.log(
           `[ai:train] humanGames=${options.humanFeedbackFiles?.length || 0} files`
@@ -854,6 +869,8 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
       deckSize: trainingOptions.deckSize,
       roundMin: trainingOptions.roundMin,
       roundMax: trainingOptions.roundMax,
+      terminalRewardMode: trainingOptions.terminalRewardMode,
+      returnDiscount: trainingOptions.returnDiscount,
       includeRandomBaseline: true,
     });
   }
@@ -901,6 +918,8 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
       checkpointRunEpisode: snapshot.completed,
       checkpointScore: score,
       checkpointTournament: tournament,
+      terminalRewardMode: trainingOptions.terminalRewardMode,
+      returnDiscount: trainingOptions.returnDiscount,
     };
     saveModelFileSync(candidate, path, metadata);
 
@@ -1023,6 +1042,8 @@ export async function runTrainingCli(argv = process.argv) {
       deckSize: trainingOptions.deckSize,
       roundMin: trainingOptions.roundMin,
       roundMax: trainingOptions.roundMax,
+      terminalRewardMode: trainingOptions.terminalRewardMode,
+      returnDiscount: trainingOptions.returnDiscount,
       includeRandomBaseline: true,
     }),
   };
@@ -1044,6 +1065,8 @@ export async function runTrainingCli(argv = process.argv) {
     deckSize: trainingOptions.deckSize,
     roundRange: [trainingOptions.roundMin, trainingOptions.roundMax],
     includeDeals: trainingOptions.includeDeals,
+    terminalRewardMode: trainingOptions.terminalRewardMode,
+    returnDiscount: trainingOptions.returnDiscount,
     opponentMix: trainingOptions.opponentMix,
     randomOpponentRate: trainingOptions.randomOpponentRate,
     heuristicOpponentRate: trainingOptions.heuristicOpponentRate,

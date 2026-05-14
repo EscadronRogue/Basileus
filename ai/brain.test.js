@@ -47,6 +47,7 @@ import {
 import { createNetwork } from './network.js';
 import { loadModelFileSync, saveModelFileSync } from './modelStore.js';
 import {
+  assignTerminalReturns,
   computeTerminalRewards,
   evaluatePolicy,
   resolveEpisodeSettings,
@@ -288,6 +289,35 @@ test('Constantinople fall gives every player a losing terminal reward', () => {
   assert.deepEqual(Object.values(rewards), [-1, -1, -1, -1]);
 });
 
+test('terminal rewards default to sparse outcomes with score shaping opt-in', () => {
+  const state = createGameState({ playerCount: 3, deckSize: 1, seed: 42 });
+  state.phase = 'scoring';
+  state.players[0].gold = 12;
+  state.players[1].gold = 0;
+  state.players[2].gold = 0;
+
+  const sparse = computeTerminalRewards(state);
+  assert.deepEqual([sparse[0], sparse[1], sparse[2]], [1, 0, 0]);
+
+  const scoreShaped = computeTerminalRewards(state, { terminalRewardMode: 'score' });
+  assert.equal(scoreShaped[0], 1.1);
+  assert.ok(scoreShaped[1] < 0);
+  assert.notDeepEqual([scoreShaped[0], scoreShaped[1], scoreShaped[2]], [1, 0, 0]);
+});
+
+test('terminal returns are assigned to every neural decision', () => {
+  const transitions = [
+    { playerId: 0 },
+    { playerId: 1 },
+    { playerId: 0 },
+    { playerId: 0 },
+  ];
+
+  assignTerminalReturns(transitions, { 0: 1, 1: -1 }, { returnDiscount: 0.5 });
+
+  assert.deepEqual(transitions.map((transition) => transition.return), [0.25, -1, 0.5, 1]);
+});
+
 test('trainer defaults sample varied legal player counts, round lengths, and seeds', () => {
   const samples = Array.from({ length: 24 }, (_, index) => resolveEpisodeSettings({ seed: 1234 }, index));
   const playerCounts = new Set(samples.map((sample) => sample.playerCount));
@@ -327,6 +357,8 @@ test('training CLI defaults to automatic workers and sampled game setup', () => 
   assert.equal(defaults.heuristicOpponentRate, 0);
   assert.equal(defaults.humanOpponentRate, 0.25);
   assert.equal(defaults.trainingEpochs, 3);
+  assert.equal(defaults.terminalRewardMode, 'sparse');
+  assert.equal(defaults.returnDiscount, 1);
   assert.equal(defaults.humanOpponentEpochs, 8);
   assert.equal(defaults.humanFeedbackWeight, 0);
   assert.equal(defaults.humanFeedbackReturn, 0.75);
