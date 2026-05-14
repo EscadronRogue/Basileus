@@ -16,6 +16,7 @@ import {
   createAIMeta,
   isAIPlayer,
   loadBrowserNeuralModel,
+  runAICourtAutomation,
 } from './brain.js';
 import {
   applyLegalAction,
@@ -27,6 +28,7 @@ import {
 import {
   buildCandidateInputs,
   NETWORK_INPUT_SIZE,
+  OBSERVATION_SIZE,
 } from './features.js';
 import { createNetwork } from './network.js';
 import { loadModelFileSync, saveModelFileSync } from './modelStore.js';
@@ -65,6 +67,29 @@ function cloneState(state) {
   return clone;
 }
 
+function createConfirmFavoringNetwork() {
+  const weights = new Float64Array(NETWORK_INPUT_SIZE * 2);
+  weights[OBSERVATION_SIZE + 1] = 10;
+  return {
+    version: 1,
+    inputSize: NETWORK_INPUT_SIZE,
+    hiddenSizes: [],
+    outputSize: 2,
+    step: 0,
+    layers: [{
+      inputSize: NETWORK_INPUT_SIZE,
+      outputSize: 2,
+      activation: 'linear',
+      weights,
+      biases: new Float64Array(2),
+      weightMoments: new Float64Array(weights.length),
+      weightVelocities: new Float64Array(weights.length),
+      biasMoments: new Float64Array(2),
+      biasVelocities: new Float64Array(2),
+    }],
+  };
+}
+
 test('AI metadata preserves human and AI seat boundaries', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 11 });
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
@@ -86,6 +111,13 @@ test('AI decisions fail clearly when no local model exists', () => {
   );
 });
 
+test('bundled default AI model loads for runtime play', () => {
+  const model = loadModelFileSync();
+  assert.ok(model, 'ai/models/latest.json must be committed with the app');
+  assert.equal(model.inputSize, NETWORK_INPUT_SIZE);
+  assert.ok(model.layers.length > 0);
+});
+
 test('browser model loader can make missing models a startup error', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 404 });
@@ -98,6 +130,25 @@ test('browser model loader can make missing models a startup error', async () =>
     );
   } finally {
     globalThis.fetch = previousFetch;
+  }
+});
+
+test('reactive AI court turns do not spend their one action confirming', () => {
+  const state = prepareInteractiveState({ seed: 21 });
+  const aiPlayerId = state.players.find((player) => player.id !== 1).id;
+  const legalActions = listLegalCourtActions(state, aiPlayerId);
+  assert.ok(legalActions.some((action) => action.kind !== 'court-confirm'));
+  assert.ok(legalActions.some((action) => action.kind === 'court-confirm'));
+
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [1],
+    model: createConfirmFavoringNetwork(),
+  });
+  const result = runAICourtAutomation(state, meta, { mode: 'react' });
+
+  assert.ok(result.actions > 0);
+  for (const player of state.players.filter((entry) => entry.id !== 1)) {
+    assert.equal(state.courtActions.playerConfirmed.has(player.id), false);
   }
 });
 

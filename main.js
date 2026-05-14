@@ -110,7 +110,7 @@ function renderAiRoster() {
     </div>
   `).join('');
 
-  setupAiRosterHint.textContent = 'AI seats use ai/models/latest.json when the server can serve it. If that path 404s, select the trained model JSON below.';
+  setupAiRosterHint.textContent = 'AI seats use the bundled ai/models/latest.json by default. Choose an override below only when you want to test another trained model.';
   updateStartAvailability();
 }
 

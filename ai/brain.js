@@ -145,6 +145,10 @@ function confirmAction(actions) {
   return actions.find((action) => action.kind === 'court-confirm') || actions[actions.length - 1] || null;
 }
 
+function playableCourtActions(actions) {
+  return actions.filter((action) => action.kind !== 'court-confirm');
+}
+
 export function runAICourtAutomation(state, meta, options = {}) {
   if (!state || state.phase !== 'court' || !meta) return { ok: true, actions: 0 };
   const mode = options.mode || 'finish';
@@ -159,13 +163,14 @@ export function runAICourtAutomation(state, meta, options = {}) {
     for (let step = 0; step < maxActions; step += 1) {
       const actions = listLegalCourtActions(state, player.id);
       if (!actions.length) break;
-      const action = step === maxActions - 1
+      const actionCandidates = mode === 'react' ? playableCourtActions(actions) : actions;
+      const action = step === maxActions - 1 && mode !== 'react'
         ? confirmAction(actions)
-        : chooseNeuralAction(state, meta, player.id, actions);
+        : chooseNeuralAction(state, meta, player.id, actionCandidates.length ? actionCandidates : actions);
       if (!action) break;
       const result = applyLegalAction(state, action, meta);
       if (!result.ok) {
-        const fallback = confirmAction(actions);
+        const fallback = mode === 'react' ? null : confirmAction(actions);
         if (!fallback || fallback.id === action.id) break;
         const fallbackResult = applyLegalAction(state, fallback, meta);
         if (!fallbackResult.ok) break;

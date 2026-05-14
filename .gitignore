@@ -38,6 +38,7 @@ coverage/
 
 # --- Local neural AI artifacts ---
 ai/models/*.json
+!ai/models/latest.json
 ai/checkpoints/
 ai/runs/
 
