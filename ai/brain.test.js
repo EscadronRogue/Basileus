@@ -53,7 +53,12 @@ import {
   runSelfPlayEpisode,
   trainSelfPlay,
 } from './selfPlay.js';
-import { resolveTrainingOptions } from './train.js';
+import {
+  checkpointPathFor,
+  createCheckpointManager,
+  resolveResumeEpisodeOffset,
+  resolveTrainingOptions,
+} from './train.js';
 import { runTournament } from './tournament.js';
 
 function prepareInteractiveState(options = {}) {
@@ -338,6 +343,89 @@ test('training CLI defaults to automatic workers and sampled game setup', () => 
   assert.equal(fixed.seedMode, 'deterministic-derived');
   assert.equal(fixed.playerCount, 4);
   assert.equal(fixed.deckSize, 8);
+});
+
+test('resume training continues checkpoint numbering from previous work', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'basileus-checkpoints-'));
+  const out = join(dir, 'latest.json');
+  writeFileSync(join(dir, 'latest-ep000405.json'), '{}');
+  writeFileSync(join(dir, 'latest-ep001000.json'), '{}');
+
+  assert.equal(
+    resolveResumeEpisodeOffset({ metadata: { episodes: 1000 } }, out, out, dir),
+    1000,
+  );
+  assert.equal(
+    checkpointPathFor(out, dir, 1210),
+    join(dir, 'latest-ep001210.json'),
+  );
+
+  writeFileSync(join(dir, 'latest-ep001210.json'), '{}');
+  assert.equal(
+    resolveResumeEpisodeOffset({ metadata: { episodes: 1000 } }, out, out, dir),
+    1210,
+  );
+
+  const checkpointPayload = {
+    metadata: {
+      checkpoint: true,
+      checkpointEpisode: 810,
+      episodes: 1000,
+    },
+  };
+  const emptyDir = mkdtempSync(join(tmpdir(), 'basileus-empty-checkpoints-'));
+  assert.equal(
+    resolveResumeEpisodeOffset(
+      checkpointPayload,
+      join(emptyDir, 'latest-ep000810.json'),
+      out,
+      emptyDir,
+    ),
+    810,
+  );
+  assert.equal(
+    resolveResumeEpisodeOffset(
+      checkpointPayload,
+      join(dir, 'latest-ep000810.json'),
+      out,
+      dir,
+      false,
+    ),
+    810,
+  );
+});
+
+test('resume checkpoint manager keeps the loaded model as promotion baseline', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'basileus-promotion-'));
+  const out = join(dir, 'latest.json');
+  const network = createNetwork({ seed: 57 });
+  const manager = createCheckpointManager({
+    episodes: 1,
+    playerCount: 3,
+    deckSize: 1,
+    seed: 57,
+    checkpointEvalEpisodes: 1,
+    checkpointOpponentLimit: 1,
+    includeDeals: false,
+    quiet: true,
+    promotionBaselineNetwork: network,
+    promotionBaselinePath: out,
+    trainingEpisodeOffset: 1000,
+  }, out, {
+    checkpointDir: dir,
+    checkpointEvalSeed: 57,
+  });
+
+  assert.equal(manager.best.baseline, true);
+  assert.equal(manager.best.episode, 1000);
+  const result = manager.saveCheckpoint({
+    completed: 1,
+    network,
+    stats: { episodes: 1, survivals: 0, falls: 1, truncated: 0 },
+  });
+
+  assert.equal(result.path, join(dir, 'latest-ep001001.json'));
+  assert.equal(manager.best.baseline, true);
 });
 
 test('local trainer smoke run writes and reloads a neural model', () => {

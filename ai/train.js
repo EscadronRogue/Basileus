@@ -1,5 +1,6 @@
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { availableParallelism } from 'node:os';
+import { readdirSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import { createNetwork, trainBatch } from './network.js';
 import {
@@ -9,6 +10,7 @@ import {
 import {
   DEFAULT_CHECKPOINT_DIR,
   DEFAULT_MODEL_PATH,
+  loadModelPayloadSync,
   loadModelFileSync,
   saveModelFileSync,
 } from './modelStore.js';
@@ -466,25 +468,92 @@ function resolveHumanGamesPath(args = {}) {
   return args.humanGames || args.humanData || args.humanFeedback || DEFAULT_HUMAN_GAMES_DIR;
 }
 
-function checkpointPathFor(outputPath, checkpointDir, completed) {
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function checkpointPathFor(outputPath, checkpointDir, completed) {
   const extension = extname(outputPath) || '.json';
   const stem = basename(outputPath, extension) || 'model';
   return resolve(checkpointDir, `${stem}-ep${String(completed).padStart(6, '0')}${extension}`);
 }
 
-function createCheckpointManager(trainingOptions, outputPath, args = {}) {
+function checkpointEpisodeFromName(name, outputPath) {
+  const extension = extname(outputPath) || '.json';
+  const stem = basename(outputPath, extension) || 'model';
+  const pattern = new RegExp(`^${escapeRegExp(stem)}-ep(\\d+)${escapeRegExp(extension)}$`);
+  const match = pattern.exec(name);
+  return match ? Number(match[1]) : 0;
+}
+
+function latestCheckpointEpisode(outputPath, checkpointDir) {
+  try {
+    return readdirSync(checkpointDir)
+      .map((name) => checkpointEpisodeFromName(name, outputPath))
+      .filter((episode) => Number.isFinite(episode) && episode > 0)
+      .reduce((max, episode) => Math.max(max, episode), 0);
+  } catch {
+    return 0;
+  }
+}
+
+function checkpointEpisodeFromPath(path) {
+  const extension = extname(path) || '';
+  const name = basename(path, extension);
+  const match = /-ep(\d+)$/.exec(name);
+  return match ? Number(match[1]) : 0;
+}
+
+function metadataEpisodeOffset(metadata = {}, resumePath = null) {
+  if (metadata.checkpoint && Number.isFinite(Number(metadata.checkpointEpisode))) {
+    return Math.max(0, Math.floor(Number(metadata.checkpointEpisode)));
+  }
+  if (Number.isFinite(Number(metadata.totalTrainingEpisodes))) {
+    return Math.max(0, Math.floor(Number(metadata.totalTrainingEpisodes)));
+  }
+  if (
+    Number.isFinite(Number(metadata.trainingEpisodeOffset))
+    && Number.isFinite(Number(metadata.episodes))
+  ) {
+    return Math.max(0, Math.floor(Number(metadata.trainingEpisodeOffset) + Number(metadata.episodes)));
+  }
+  if (Number.isFinite(Number(metadata.episodes))) {
+    return Math.max(0, Math.floor(Number(metadata.episodes)));
+  }
+  return resumePath ? checkpointEpisodeFromPath(resumePath) : 0;
+}
+
+export function resolveResumeEpisodeOffset(
+  resumePayload,
+  resumePath,
+  outputPath,
+  checkpointDir,
+  includeMatchingCheckpoints = true,
+) {
+  if (!resumePath) return 0;
+  const metadata = resumePayload?.metadata || {};
+  const modelOffset = metadataEpisodeOffset(metadata, resumePath);
+  const checkpointOffset = includeMatchingCheckpoints ? latestCheckpointEpisode(outputPath, checkpointDir) : 0;
+  return Math.max(modelOffset, checkpointOffset);
+}
+
+export function createCheckpointManager(trainingOptions, outputPath, args = {}) {
   const checkpointDir = args.checkpointDir || DEFAULT_CHECKPOINT_DIR;
   const evaluationSeed = hasArg(args, 'checkpointEvalSeed')
     ? numberArg(args, 'checkpointEvalSeed', 90_000)
     : deriveCheckpointSeed(trainingOptions);
   const checkpointOpponents = [];
+  const episodeOffset = Math.max(0, Math.floor(Number(trainingOptions.trainingEpisodeOffset) || 0));
+  const baselineNetwork = trainingOptions.promotionBaselineNetwork
+    ? cloneNetwork(trainingOptions.promotionBaselineNetwork)
+    : null;
   let best = null;
   let previousCheckpointNetwork = null;
 
   function evaluateCheckpoint(network, previousNetwork) {
     return runTournament({
       network,
-      previousNetwork,
+      previousNetwork: baselineNetwork || previousNetwork,
       humanOpponentNetwork: trainingOptions.humanOpponentNetwork,
       episodes: trainingOptions.checkpointEvalEpisodes,
       seed: evaluationSeed,
@@ -499,16 +568,47 @@ function createCheckpointManager(trainingOptions, outputPath, args = {}) {
     });
   }
 
+  if (baselineNetwork) {
+    const baselineTournament = evaluateCheckpoint(baselineNetwork, baselineNetwork);
+    best = {
+      baseline: true,
+      score: scoreTournamentReport(baselineTournament),
+      path: trainingOptions.promotionBaselinePath || null,
+      episode: episodeOffset,
+      runEpisode: 0,
+      network: cloneNetwork(baselineNetwork),
+      tournament: baselineTournament,
+    };
+    if (!trainingOptions.quiet) {
+      console.log(
+        `[ai:train] resume baseline ${best.path || 'loaded model'}`
+        + ` | episodeOffset=${episodeOffset}`
+        + ` | score=${best.score.toFixed(4)}`,
+      );
+    }
+    if (trainingOptions.checkpointOpponentLimit > 0) {
+      checkpointOpponents.unshift(cloneNetwork(baselineNetwork));
+      checkpointOpponents.splice(trainingOptions.checkpointOpponentLimit);
+      trainingOptions.opponentNetworks = checkpointOpponents.slice();
+      previousCheckpointNetwork = cloneNetwork(baselineNetwork);
+    }
+  }
+
   function saveCheckpoint(snapshot) {
     const candidate = cloneNetwork(snapshot.network);
     const previousNetwork = previousCheckpointNetwork ? cloneNetwork(previousCheckpointNetwork) : null;
     const tournament = evaluateCheckpoint(candidate, previousNetwork);
     const score = scoreTournamentReport(tournament);
-    const path = checkpointPathFor(outputPath, checkpointDir, snapshot.completed);
+    const checkpointEpisode = episodeOffset + snapshot.completed;
+    const path = checkpointPathFor(outputPath, checkpointDir, checkpointEpisode);
     const metadata = {
       ...snapshot.stats,
       checkpoint: true,
-      checkpointEpisode: snapshot.completed,
+      completedEpisodes: snapshot.completed,
+      trainingEpisodeOffset: episodeOffset,
+      totalTrainingEpisodes: checkpointEpisode,
+      checkpointEpisode,
+      checkpointRunEpisode: snapshot.completed,
       checkpointScore: score,
       checkpointTournament: tournament,
     };
@@ -518,9 +618,11 @@ function createCheckpointManager(trainingOptions, outputPath, args = {}) {
       best = {
         score,
         path,
-        episode: snapshot.completed,
+        episode: checkpointEpisode,
+        runEpisode: snapshot.completed,
         network: cloneNetwork(candidate),
         tournament,
+        baseline: false,
       };
     }
 
@@ -555,6 +657,8 @@ export async function runTrainingCli(argv = process.argv) {
   const args = parseArgs(argv);
   const resumePath = args.resume === true ? DEFAULT_MODEL_PATH : args.resume;
   const trainingOptions = resolveTrainingOptions(args);
+  const out = args.out || DEFAULT_MODEL_PATH;
+  const checkpointDir = args.checkpointDir || DEFAULT_CHECKPOINT_DIR;
   const humanGamesPath = resolveHumanGamesPath(args);
   const explicitHumanGamesPath = Boolean(args.humanGames || args.humanData || args.humanFeedback);
   const humanDataset = loadHumanFeedbackDatasetSync(humanGamesPath, {
@@ -571,17 +675,35 @@ export async function runTrainingCli(argv = process.argv) {
       trainingOptions,
     );
   }
-  const network = resumePath
-    ? (loadModelFileSync(resumePath) || createNetwork({ seed: trainingOptions.modelSeed }))
-    : createNetwork({ seed: trainingOptions.modelSeed });
-  const out = args.out || DEFAULT_MODEL_PATH;
+  const resumePayload = resumePath ? loadModelPayloadSync(resumePath) : null;
+  const resumedNetwork = resumePath ? loadModelFileSync(resumePath) : null;
+  const network = resumedNetwork || createNetwork({ seed: trainingOptions.modelSeed });
+  const shouldContinueMatchingCheckpoints = Boolean(
+    resumedNetwork
+    && resumePath
+    && resolve(resumePath) === resolve(out),
+  );
+  trainingOptions.trainingEpisodeOffset = resumedNetwork
+    ? resolveResumeEpisodeOffset(
+      resumePayload,
+      resumePath,
+      out,
+      checkpointDir,
+      shouldContinueMatchingCheckpoints,
+    )
+    : 0;
+  if (resumedNetwork) {
+    trainingOptions.promotionBaselineNetwork = cloneNetwork(resumedNetwork);
+    trainingOptions.promotionBaselinePath = resolve(resumePath);
+  }
   trainingOptions.logInterval = Math.max(
     1,
     Math.floor(numberArg(args, 'logInterval', Math.max(1, Math.floor(trainingOptions.episodes / 20)))),
   );
 
-  const progress = createProgressReporter(trainingOptions, out, Boolean(resumePath));
+  const progress = createProgressReporter(trainingOptions, out, Boolean(resumedNetwork));
   trainingOptions.onProgress = progress.update;
+  progress.start();
   const checkpoints = createCheckpointManager(trainingOptions, out, args);
   trainingOptions.onCheckpoint = (snapshot) => {
     const result = checkpoints.saveCheckpoint(snapshot);
@@ -589,7 +711,6 @@ export async function runTrainingCli(argv = process.argv) {
       console.log(`[ai:train] checkpoint ${result.path} | score=${result.score.toFixed(4)}`);
     }
   };
-  progress.start();
 
   const stats = trainingOptions.workers > 1
     ? await trainSelfPlayWithWorkers(network, trainingOptions)
@@ -597,7 +718,8 @@ export async function runTrainingCli(argv = process.argv) {
   const promoted = checkpoints.best || {
     score: -Infinity,
     path: null,
-    episode: trainingOptions.episodes,
+    episode: trainingOptions.trainingEpisodeOffset + trainingOptions.episodes,
+    runEpisode: trainingOptions.episodes,
     network: cloneNetwork(network),
     tournament: runTournament({
       network,
@@ -619,6 +741,10 @@ export async function runTrainingCli(argv = process.argv) {
     ...stats,
     workers: trainingOptions.workers,
     workersAuto: trainingOptions.workersAuto,
+    runEpisodes: stats.episodes,
+    trainingEpisodeOffset: trainingOptions.trainingEpisodeOffset,
+    totalTrainingEpisodes: trainingOptions.trainingEpisodeOffset + stats.episodes,
+    resumedFrom: resumedNetwork ? resolve(resumePath) : null,
     seed: trainingOptions.seed,
     seedWasSpecified: trainingOptions.seedWasSpecified,
     seedMode: trainingOptions.seedMode,
@@ -646,7 +772,9 @@ export async function runTrainingCli(argv = process.argv) {
     checkpointDir: checkpoints.checkpointDir,
     promotedCheckpoint: promoted.path,
     promotedCheckpointEpisode: promoted.episode,
+    promotedCheckpointRunEpisode: promoted.runEpisode ?? null,
     promotedCheckpointScore: promoted.score,
+    promotedBaseline: Boolean(promoted.baseline),
     promotedTournament: promoted.tournament,
     logInterval: trainingOptions.logInterval,
   });
@@ -661,7 +789,9 @@ export async function runTrainingCli(argv = process.argv) {
     promoted: {
       path: promoted.path,
       episode: promoted.episode,
+      runEpisode: promoted.runEpisode ?? null,
       score: promoted.score,
+      baseline: Boolean(promoted.baseline),
     },
   }, null, 2));
   return { network: promoted.network, out, stats, promoted };

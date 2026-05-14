@@ -58,9 +58,12 @@ Output And Resume Options
 
 --resume
   Resume from ai/models/latest.json.
+  Checkpoint numbering continues from the loaded model or latest matching checkpoint,
+  and the loaded model is kept as the promotion baseline.
 
 --resume PATH
   Resume from a specific model file.
+  Checkpoint numbering starts after that model/checkpoint when metadata is available.
 
 --quiet true|false
   Hide progress logs.
@@ -237,6 +240,8 @@ Notes
 -----
 
 The trainer currently promotes the best evaluated checkpoint, not simply the last network state.
+On resumed runs, the loaded model is also scored as a baseline; if no new checkpoint
+beats it, the loaded model remains the promoted model.
 
 If human game JSON files exist in ai/human-games, they are loaded automatically. The AI uses them mainly by training against a human-style neural opponent. Direct imitation stays off unless you set --human-feedback-weight above 0.
 
