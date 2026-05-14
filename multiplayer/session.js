@@ -19,7 +19,7 @@ import {
   serializePublicGameState,
 } from '../engine/publicState.js';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, resolveConfiguredSeed, toInt } from '../engine/setup.js';
-import { createAIMeta } from '../ai/brain.js';
+import { AI_MODEL_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
 import { loadModelFileSync } from '../ai/modelStore.js';
 import { getAiDisplayName } from '../ai/names.js';
 
@@ -324,9 +324,12 @@ export class MultiplayerRoom {
     });
 
     const humanPlayerIds = getHumanSeatIds(this);
+    const aiSeatIds = getAiSeatIds(this);
+    const model = loadModelFileSync();
+    assert(!aiSeatIds.length || model, AI_MODEL_MISSING_MESSAGE);
     this.aiMeta = createAIMeta(this.gameState, {
       humanPlayerIds,
-      model: loadModelFileSync(),
+      model,
     });
     setDealParticipantIds(this.gameState, this.gameState.players.map((player) => player.id));
     this.assignPlayerFirstNames();

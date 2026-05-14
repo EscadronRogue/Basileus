@@ -3783,6 +3783,7 @@ button.merc-button {
 #multiplayerActions .btn-start { flex: 1; min-width: 120px; }
 
 #setupMultiplayerError { color: var(--crimson-1); font-style: normal; }
+.setup-error { color: var(--crimson-1); font-style: normal; width: 100%; }
 
 /* Fold sections inside a dynasty-colored dashboard should blend with the role color */
 .player-dashboard .fold-section {

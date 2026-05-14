@@ -15,6 +15,7 @@ import {
   buildAIOrders,
   createAIMeta,
   isAIPlayer,
+  loadBrowserNeuralModel,
 } from './brain.js';
 import {
   applyLegalAction,
@@ -83,6 +84,21 @@ test('AI decisions fail clearly when no local model exists', () => {
     () => buildAIOrders(state, meta, 0),
     new RegExp(AI_MODEL_MISSING_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
   );
+});
+
+test('browser model loader can make missing models a startup error', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 404 });
+
+  try {
+    assert.equal(await loadBrowserNeuralModel('missing-model.json'), null);
+    await assert.rejects(
+      () => loadBrowserNeuralModel('missing-model.json', { required: true }),
+      /Neural AI model not found[\s\S]*HTTP 404/,
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test('generated court and order actions are accepted by engine validators', () => {

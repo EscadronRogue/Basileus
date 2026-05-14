@@ -19,10 +19,13 @@ const setupPlayerName = document.getElementById('setupPlayerName');
 const setupRoomCode = document.getElementById('setupRoomCode');
 const setupSaveFile = document.getElementById('setupSaveFile');
 const setupMultiplayerError = document.getElementById('setupMultiplayerError');
+const setupAiModelFile = document.getElementById('setupAiModelFile');
+const setupStartError = document.getElementById('setupStartError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
 
 let multiplayerLaunchInFlight = false;
+let gameLaunchInFlight = false;
 
 function getNonRandomOptionValues(select) {
   return [...select.options]
@@ -71,10 +74,14 @@ function refreshSeatOptions() {
 }
 
 function updateStartAvailability() {
-  btnStart.disabled = false;
+  btnStart.disabled = gameLaunchInFlight;
   if (btnJoinRoom) {
     btnJoinRoom.disabled = setupRoomCode.value.trim().length !== 6;
   }
+}
+
+function setSetupError(message = '') {
+  if (setupStartError) setupStartError.textContent = message;
 }
 
 function setMultiplayerError(message = '') {
@@ -103,7 +110,7 @@ function renderAiRoster() {
     </div>
   `).join('');
 
-  setupAiRosterHint.textContent = 'AI seats use the local neural model from ai/models/latest.json. Run npm run ai:train before starting a match with AI seats.';
+  setupAiRosterHint.textContent = 'AI seats use ai/models/latest.json when the server can serve it. If that path 404s, select the trained model JSON below.';
   updateStartAvailability();
 }
 
@@ -112,8 +119,19 @@ function refreshModeVisibility() {
   singlePlayerFields.hidden = mode !== 'single';
   multiplayerFields.hidden = mode !== 'multiplayer';
   if (defaultSetupActions) defaultSetupActions.hidden = mode === 'multiplayer';
+  setSetupError('');
   setMultiplayerError('');
   renderAiRoster();
+}
+
+async function readSelectedAiModelPayload() {
+  const file = setupAiModelFile?.files?.[0];
+  if (!file) return null;
+  try {
+    return JSON.parse(await file.text());
+  } catch {
+    throw new Error('AI model file must be valid JSON.');
+  }
 }
 
 async function readSelectedMultiplayerSave() {
@@ -129,6 +147,7 @@ async function readSelectedMultiplayerSave() {
 async function launchMultiplayerFlow(intent) {
   if (multiplayerLaunchInFlight) return;
   multiplayerLaunchInFlight = true;
+  setSetupError('');
   if (btnCreateRoom) btnCreateRoom.disabled = true;
   if (btnJoinRoom) btnJoinRoom.disabled = true;
 
@@ -175,7 +194,12 @@ async function launchMultiplayerFlow(intent) {
   }
 }
 
-btnStart.addEventListener('click', () => {
+btnStart.addEventListener('click', async () => {
+  if (gameLaunchInFlight) return;
+  gameLaunchInFlight = true;
+  setSetupError('');
+  updateStartAvailability();
+
   const seedInput = document.getElementById('setupSeed').value.trim();
   const seed = resolveConfiguredSeed(seedInput);
   const setupRng = makeChoiceRng(seed);
@@ -192,6 +216,8 @@ btnStart.addEventListener('click', () => {
   const mode = resolveRandomValue(setupMode.value, modeChoices, setupRng, 'single');
 
   if (setupMode.value === 'multiplayer') {
+    gameLaunchInFlight = false;
+    updateStartAvailability();
     return;
   }
 
@@ -201,20 +227,30 @@ btnStart.addEventListener('click', () => {
       : clampSeatIndex(setupSeat.value, playerCount))
     : 0;
 
-  setupDialog.style.display = 'none';
+  try {
+    const aiModelPayload = mode === 'single' ? await readSelectedAiModelPayload() : null;
+    setupDialog.style.display = 'none';
 
-  const game = new GameController({
-    playerCount,
-    deckSize,
-    seed,
-    mode,
-    humanPlayerIds: mode === 'single'
-      ? [seat]
-      : Array.from({ length: playerCount }, (_, index) => index),
-  });
-  game.init();
-
-  window.__basileus = game;
+    const game = new GameController({
+      playerCount,
+      deckSize,
+      seed,
+      mode,
+      aiModelPayload,
+      humanPlayerIds: mode === 'single'
+        ? [seat]
+        : Array.from({ length: playerCount }, (_, index) => index),
+    });
+    window.__basileus = game;
+    await game.init();
+  } catch (error) {
+    window.__basileus = null;
+    setupDialog.style.display = 'flex';
+    setSetupError(`Could not start game: ${error?.message || 'unknown error'}`);
+  } finally {
+    gameLaunchInFlight = false;
+    updateStartAvailability();
+  }
 });
 
 document.getElementById('setupSeed').addEventListener('keydown', (event) => {
@@ -245,6 +281,9 @@ setupPlayerName.addEventListener('input', () => {
 });
 setupSaveFile?.addEventListener('change', () => {
   setMultiplayerError('');
+});
+setupAiModelFile?.addEventListener('change', () => {
+  setSetupError('');
 });
 btnCreateRoom?.addEventListener('click', () => {
   void launchMultiplayerFlow('create');

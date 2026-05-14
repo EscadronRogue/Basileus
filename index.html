@@ -153,7 +153,13 @@
           <p id="setupAiRosterHint" class="setup-hint">AI seats are preserved for the upcoming neural runtime.</p>
         </div>
 
-        <p class="setup-hint">AI dynasties are wired as runtime slots, but decisions are intentionally unavailable until the new neural runtime is implemented.</p>
+        <div class="setup-field">
+          <label>AI Model File</label>
+          <input type="file" id="setupAiModelFile" accept="application/json,.json">
+          <p class="setup-hint">Optional. Select your trained JSON here when the server cannot serve ai/models/latest.json.</p>
+        </div>
+
+        <p class="setup-hint">AI dynasties act automatically during Court, Secret Orders, defender rewards, and title reassignment.</p>
       </div>
 
       <div id="multiplayerFields" hidden>
@@ -187,6 +193,7 @@
       </div>
 
       <div class="setup-actions" id="defaultSetupActions">
+        <p id="setupStartError" class="setup-hint setup-error" role="alert"></p>
         <button class="btn-start" id="btnStart">Begin</button>
       </div>
     </div>

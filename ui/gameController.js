@@ -11,7 +11,7 @@ import {
   resolvePendingTitleReassignment,
   startInteractiveRuntime,
 } from '../engine/runtime.js';
-import { createAIMeta, loadBrowserNeuralModel } from '../ai/brain.js';
+import { createAIMeta, hydrateNeuralModel, loadBrowserNeuralModel } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG } from '../render/mapRenderer.js';
 import {
@@ -30,6 +30,8 @@ export class GameController {
       seed: config.seed || Date.now(),
       historyEnabled: config.historyEnabled !== false,
       mode: config.mode || 'hotseat',
+      aiModel: config.aiModel || null,
+      aiModelPayload: config.aiModelPayload || null,
       humanPlayerIds: Array.isArray(config.humanPlayerIds)
         ? config.humanPlayerIds.slice()
         : Array.from({ length: config.playerCount || 4 }, (_, index) => index),
@@ -49,7 +51,9 @@ export class GameController {
     // already validate per-actor; gating belonged to UI copy, not state.
     setDealParticipantIds(this.state, this.state.players.map((player) => player.id));
     if (this.config.mode === 'single') {
-      const model = await loadBrowserNeuralModel();
+      const model = this.config.aiModel
+        || (this.config.aiModelPayload ? hydrateNeuralModel(this.config.aiModelPayload) : null)
+        || await loadBrowserNeuralModel(undefined, { required: true });
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
         model,

@@ -12,6 +12,7 @@ import {
 } from './network.js';
 
 export const AI_MODEL_MISSING_MESSAGE = 'Neural AI model not found. Run npm run ai:train to create ai/models/latest.json.';
+export const DEFAULT_BROWSER_MODEL_URL = 'ai/models/latest.json';
 
 function normalizeHumanPlayerIds(playerCount, humanPlayerIds = []) {
   return new Set(
@@ -44,13 +45,28 @@ export function hydrateNeuralModel(rawModel) {
   return deserializeNetwork(rawModel.network || rawModel);
 }
 
-export async function loadBrowserNeuralModel(url = 'ai/models/latest.json') {
-  if (typeof fetch !== 'function') return null;
+function modelLoadError(url, detail = '') {
+  return new Error(`${AI_MODEL_MISSING_MESSAGE} Could not load ${url}${detail ? `: ${detail}` : ''}.`);
+}
+
+export async function loadBrowserNeuralModel(url = DEFAULT_BROWSER_MODEL_URL, options = {}) {
+  const required = Boolean(options.required);
+  if (typeof fetch !== 'function') {
+    if (required) throw modelLoadError(url, 'browser fetch is unavailable');
+    return null;
+  }
   try {
     const response = await fetch(url, { cache: 'no-store' });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (required) throw modelLoadError(url, `HTTP ${response.status}`);
+      return null;
+    }
     return hydrateNeuralModel(await response.json());
-  } catch {
+  } catch (error) {
+    if (required) {
+      if (error?.message?.startsWith(AI_MODEL_MISSING_MESSAGE)) throw error;
+      throw modelLoadError(url, error?.message || 'request failed');
+    }
     return null;
   }
 }
