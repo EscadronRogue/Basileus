@@ -56,6 +56,22 @@ const ESTATE_CONTROL_ACTION_MAGNITUDE = SCORE_CATEGORIES.length;
 const MAJOR_CLAUSE_COUNT = SCORE_SHARE_THRESHOLDS.length - FEATURE_UNIT;
 const STANDARD_ACTION_MAGNITUDE = SCORE_SHARE_THRESHOLDS.length;
 const MAJOR_ACTION_MAGNITUDE = SCORE_CATEGORIES.length + SCORE_SHARE_THRESHOLDS.length - FEATURE_UNIT;
+const POSTURE_POSITION_DELTA_KEYS = Object.freeze([
+  'score.delta.totalPoints',
+  'score.delta.rank',
+  ...SCORE_CATEGORY_KEYS.flatMap((key) => [
+    `score.delta.${key}.share`,
+    `score.delta.${key}.points`,
+    `income.delta.${key}.share`,
+  ]),
+  ...['count', 'profit', 'tax', 'levies', 'church'].map((key) => `estate.delta.${key}.share`),
+  'power.delta.majorTitleShare',
+  'power.delta.strategosShare',
+  'power.delta.bishopShare',
+  'military.delta.troopShare',
+  'military.delta.professionalShare',
+  'treasury.delta.goldShare',
+]);
 export const TRAINING_MODES = Object.freeze({
   EPISODE: 'episode',
   ROUND: 'round',
@@ -237,6 +253,197 @@ function defaultMaxSteps(state) {
   const rounds = Math.max(1, Number(state?.maxRounds) || DEFAULT_ROUND_MAX);
   const players = Math.max(1, state?.players?.length || DEFAULT_PLAYER_MIN);
   return rounds * players * defaultMaxCourtActionsPerPlayer(state);
+}
+
+function clampShare(value) {
+  const number = finiteNumber(value) ?? 0;
+  return Math.max(0, Math.min(FEATURE_UNIT, number));
+}
+
+function clampDelta(value) {
+  const number = finiteNumber(value) ?? 0;
+  return Math.max(-FEATURE_UNIT, Math.min(FEATURE_UNIT, number));
+}
+
+function positivePart(value) {
+  return Math.max(0, finiteNumber(value) ?? 0);
+}
+
+function average(values = []) {
+  const usable = values.filter((value) => Number.isFinite(Number(value)));
+  if (!usable.length) return 0;
+  return usable.reduce((sum, value) => sum + Number(value), 0) / usable.length;
+}
+
+function positionDeltaFromFeatures(features = {}) {
+  let gain = 0;
+  let loss = 0;
+  let net = 0;
+  for (const key of POSTURE_POSITION_DELTA_KEYS) {
+    const value = clampDelta(features[key] || 0);
+    net += value;
+    if (value > 0) gain += value;
+    else if (value < 0) loss += -value;
+  }
+  const scale = Math.max(FEATURE_UNIT, POSTURE_POSITION_DELTA_KEYS.length);
+  return {
+    gain: gain / scale,
+    loss: loss / scale,
+    net: net / scale,
+  };
+}
+
+function cloneStateForPosture(state) {
+  const clone = JSON.parse(JSON.stringify(state));
+  clone.rng = state.rng;
+  if (state.courtActions) {
+    clone.courtActions = {
+      ...clone.courtActions,
+      playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
+    };
+  }
+  return clone;
+}
+
+function stateAfterActionForPosture(state, action) {
+  try {
+    const clone = cloneStateForPosture(state);
+    const result = applyLegalAction(clone, action, null);
+    return result.ok ? clone : null;
+  } catch {
+    return null;
+  }
+}
+
+function totalThemePublicValue(state) {
+  return Object.values(state?.themes || {}).reduce((total, theme) => {
+    if (!theme || theme.id === 'CPL') return total;
+    return total
+      + Math.max(0, finiteNumber(theme.P) ?? 0)
+      + Math.max(0, finiteNumber(theme.T) ?? 0)
+      + Math.max(0, finiteNumber(theme.L) ?? 0)
+      + Math.max(0, finiteNumber(theme.C) ?? 0);
+  }, 0);
+}
+
+function availableThemePublicValue(state) {
+  return Object.values(state?.themes || {}).reduce((total, theme) => {
+    if (!theme || theme.id === 'CPL' || theme.occupied) return total;
+    return total
+      + Math.max(0, finiteNumber(theme.P) ?? 0)
+      + Math.max(0, finiteNumber(theme.T) ?? 0)
+      + Math.max(0, finiteNumber(theme.L) ?? 0)
+      + Math.max(0, finiteNumber(theme.C) ?? 0);
+  }, 0);
+}
+
+function hasSubmittedOrders(state) {
+  return Object.keys(state?.allOrders || {}).length > 0;
+}
+
+function requiredInvasionTroops(state) {
+  const [low, high] = state?.currentInvasion?.strength || [0, 0];
+  const values = [finiteNumber(low), finiteNumber(high)].filter((value) => value != null && value > 0);
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function totalFrontierCommitment(state, committed = false) {
+  return (state?.players || []).reduce((total, player) => {
+    const orders = committed
+      ? (state.allOrders?.[player.id] || state.allOrders?.[String(player.id)] || { deployments: {} })
+      : { deployments: {} };
+    return total + orderTroopSplit(state, player.id, orders).frontier;
+  }, 0);
+}
+
+function totalTroopPool(state) {
+  return (state?.players || []).reduce((total, player) => (
+    total + orderTroopSplit(state, player.id).frontier + orderTroopSplit(state, player.id).capital
+  ), 0);
+}
+
+function publicResilienceSnapshot(state) {
+  const themeTotal = totalThemePublicValue(state);
+  const required = requiredInvasionTroops(state);
+  const metrics = {
+    productiveShare: themeTotal > 0
+      ? availableThemePublicValue(state) / themeTotal
+      : null,
+    troopPool: totalTroopPool(state),
+    frontierCapacityCoverage: required > 0
+      ? clampShare(totalFrontierCommitment(state, false) / required)
+      : null,
+    frontierCommitmentCoverage: required > 0 && hasSubmittedOrders(state)
+      ? clampShare(totalFrontierCommitment(state, true) / required)
+      : null,
+  };
+  return metrics;
+}
+
+function publicResilienceDelta(beforeState, afterState) {
+  if (!beforeState || !afterState) return 0;
+  const before = publicResilienceSnapshot(beforeState);
+  const after = publicResilienceSnapshot(afterState);
+  const deltas = [];
+  for (const key of ['productiveShare', 'frontierCapacityCoverage', 'frontierCommitmentCoverage']) {
+    if (before[key] == null || after[key] == null) continue;
+    deltas.push(clampDelta(after[key] - before[key]));
+  }
+  const troopDenominator = Math.max(
+    FEATURE_UNIT,
+    Math.abs(finiteNumber(before.troopPool) ?? 0),
+    Math.abs(finiteNumber(after.troopPool) ?? 0),
+  );
+  deltas.push(clampDelta(((finiteNumber(after.troopPool) ?? 0) - (finiteNumber(before.troopPool) ?? 0)) / troopDenominator));
+  return average(deltas);
+}
+
+function publicResilienceDeltaForAction(state, action) {
+  return publicResilienceDelta(state, stateAfterActionForPosture(state, action));
+}
+
+function buildDecisionPosture(state, playerId, actions = [], chosenIndex = -1, featureMaps = []) {
+  const action = actions[chosenIndex];
+  if (!action) return null;
+  const chosenFeatures = featureMaps[chosenIndex] || buildActionFeatureMap(state, playerId, action);
+  const actorPosition = positionDeltaFromFeatures(chosenFeatures);
+  const actorCandidateGains = featureMaps.length
+    ? featureMaps.map((features) => positionDeltaFromFeatures(features).gain)
+    : actions.map((candidate) => positionDeltaFromFeatures(buildActionFeatureMap(state, playerId, candidate)).gain);
+  const publicCandidateDeltas = actions.map((candidate) => publicResilienceDeltaForAction(state, candidate));
+  const publicDelta = publicCandidateDeltas[chosenIndex] ?? publicResilienceDeltaForAction(state, action);
+  const publicBenefit = positivePart(publicDelta);
+  const publicHarm = positivePart(-publicDelta);
+
+  const beneficiaries = {};
+  let otherGain = 0;
+  let otherLoss = 0;
+  const otherPlayers = (state.players || []).filter((player) => player.id !== playerId);
+  for (const player of otherPlayers) {
+    const position = positionDeltaFromFeatures(buildActionFeatureMap(state, player.id, action));
+    otherGain += position.gain;
+    otherLoss += position.loss;
+    if (position.gain > Number.EPSILON) beneficiaries[player.id] = position.gain;
+  }
+  const otherScale = Math.max(FEATURE_UNIT, otherPlayers.length);
+  const tableTransfer = otherGain / otherScale;
+  const rivalSuppression = otherLoss / otherScale;
+  const privateConsolidation = actorPosition.gain + rivalSuppression;
+  const publicOpportunityGap = positivePart(average(publicCandidateDeltas) - publicDelta);
+  const privateOpportunityGain = positivePart(privateConsolidation - average(actorCandidateGains));
+  const altruisticPressure = publicBenefit + tableTransfer;
+
+  return {
+    privateConsolidation,
+    publicBenefit,
+    publicHarm,
+    tableTransfer,
+    rivalSuppression,
+    riskExternalization: privateOpportunityGain + publicOpportunityGap + publicHarm,
+    altruisticExcess: positivePart(altruisticPressure - actorPosition.gain),
+    beneficiaries,
+  };
 }
 
 export function recordTrainingReturns(stats, transitions = []) {
@@ -754,27 +961,106 @@ export function createDefensivePolicy() {
   );
 }
 
+function addPostureValue(map, playerId, value) {
+  const amount = positivePart(value);
+  if (amount <= Number.EPSILON) return;
+  const key = String(playerId);
+  map[key] = (map[key] || 0) + amount;
+}
+
+function normalizePositiveShares(values = {}, playerIds = []) {
+  const entries = playerIds.map((playerId) => [
+    String(playerId),
+    positivePart(values?.[playerId] ?? values?.[String(playerId)]),
+  ]);
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  if (total <= Number.EPSILON) return null;
+  return Object.fromEntries(entries.map(([playerId, value]) => [playerId, value / total]));
+}
+
+function combineShareMaps(shareMaps = [], playerIds = []) {
+  const maps = shareMaps.filter(Boolean);
+  if (!maps.length) return null;
+  return Object.fromEntries(playerIds.map((playerId) => {
+    const key = String(playerId);
+    return [key, maps.reduce((sum, map) => sum + (finiteNumber(map[key]) ?? 0), 0) / maps.length];
+  }));
+}
+
+function summarizeTerminalPosture(transitions = [], state = null) {
+  const winnerIds = state?.phase === 'scoring' && !state.gameOver
+    ? computeScoreWinnerIds(state)
+    : new Set();
+  const posture = {
+    selfishRisk: {},
+    altruisticTransfer: {},
+    winnerTransfer: {},
+    privateConsolidation: {},
+    publicBenefit: {},
+    publicHarm: {},
+    tableTransfer: {},
+    rivalSuppression: {},
+  };
+
+  for (const transition of transitions || []) {
+    const playerId = transition?.playerId;
+    const entry = transition?.posture;
+    if (playerId == null || !entry) continue;
+    addPostureValue(posture.selfishRisk, playerId, entry.riskExternalization);
+    addPostureValue(posture.altruisticTransfer, playerId, entry.altruisticExcess);
+    addPostureValue(posture.privateConsolidation, playerId, entry.privateConsolidation);
+    addPostureValue(posture.publicBenefit, playerId, entry.publicBenefit);
+    addPostureValue(posture.publicHarm, playerId, entry.publicHarm);
+    addPostureValue(posture.tableTransfer, playerId, entry.tableTransfer);
+    addPostureValue(posture.rivalSuppression, playerId, entry.rivalSuppression);
+
+    for (const [beneficiaryId, value] of Object.entries(entry.beneficiaries || {})) {
+      if (winnerIds.has(Number(beneficiaryId))) {
+        addPostureValue(posture.winnerTransfer, playerId, value);
+      }
+    }
+  }
+  return posture;
+}
+
 export function computeTerminalRewards(state, options = {}) {
   const values = terminalRewardValues(options);
+  const playerIds = (state.players || []).map((player) => player.id);
+  const posture = options.terminalPosture || {};
   if (state.gameOver?.type === 'fall') {
     const blameShares = computeFallBlameShares(state);
-    if (blameShares) {
+    const selfishShares = normalizePositiveShares(posture.selfishRisk, playerIds);
+    const combinedShares = combineShareMaps([
+      normalizePositiveShares(blameShares, playerIds),
+      selfishShares,
+    ], playerIds);
+    if (combinedShares) {
       return Object.fromEntries(state.players.map((player) => [
         player.id,
-        (finiteNumber(blameShares[player.id]) ?? 0) === 0
+        (finiteNumber(combinedShares[player.id] ?? combinedShares[String(player.id)]) ?? 0) === 0
           ? 0
-          : values.fall * (finiteNumber(blameShares[player.id]) ?? 0),
+          : values.fall * (finiteNumber(combinedShares[player.id] ?? combinedShares[String(player.id)]) ?? 0),
       ]));
     }
+    if (blameShares) return Object.fromEntries(state.players.map((player) => [player.id, 0]));
     return Object.fromEntries(state.players.map((player) => [player.id, values.fall]));
   }
 
   const final = buildFinalScores(state);
   const winners = new Set(final.winners.map((entry) => entry.playerId));
+  const altruismShares = combineShareMaps([
+    normalizePositiveShares(posture.altruisticTransfer, playerIds),
+    normalizePositiveShares(posture.winnerTransfer, playerIds),
+  ], playerIds);
+  const adjustForLosingAltruism = (player, reward) => (
+    winners.has(player.id)
+      ? reward
+      : reward - (finiteNumber(altruismShares?.[String(player.id)] ?? altruismShares?.[player.id]) ?? 0)
+  );
   if (normalizeTerminalRewardMode(options.terminalRewardMode ?? options.rewardMode) === TERMINAL_REWARD_MODES.SPARSE) {
     return Object.fromEntries(state.players.map((player) => [
       player.id,
-      winners.has(player.id) ? values.win : values.survival,
+      adjustForLosingAltruism(player, winners.has(player.id) ? values.win : values.survival),
     ]));
   }
 
@@ -783,9 +1069,9 @@ export function computeTerminalRewards(state, options = {}) {
     const score = scores.get(player.id);
     return [
       player.id,
-      winners.has(player.id)
+      adjustForLosingAltruism(player, winners.has(player.id)
         ? values.win
-        : (Number(score?.points) || 0) / Math.max(1, MAX_OFFICIAL_SCORE),
+        : (Number(score?.points) || 0) / Math.max(1, MAX_OFFICIAL_SCORE)),
     ];
   }));
 }
@@ -906,6 +1192,7 @@ export function createLearningPolicyRuntime(aiPolicy, options = {}) {
         reward: 0,
         return: 0,
         behavior: describeActionForStats(actions[selection.index], state, playerId),
+        posture: buildDecisionPosture(state, playerId, actions, selection.index, features),
       });
     }
     return selection.index;
@@ -964,8 +1251,29 @@ function createEpisodePolicy(options, state, transitions, seed) {
           ? (options.policyRoleForPlayer(player.id, state) || options.policyRole || 'custom')
           : (options.policyRole || 'custom'),
       ]));
+    const wrappedPolicy = ({ state: currentState, playerId, actions, rng }) => {
+      const index = options.policy({ state: currentState, playerId, actions, rng });
+      const normalized = Number.isInteger(index) && index >= 0 && index < actions.length
+        ? index
+        : chooseRandom(actions, rng);
+      if (transitions) {
+        const features = buildCandidateFeatures(currentState, playerId, actions);
+        const personality = personalityByPlayer[playerId] || personalityByPlayer[String(playerId)] || {};
+        transitions.push({
+          playerId,
+          features,
+          chosenIndex: normalized,
+          personalityId: personality.id || personalityForSeat(playerId),
+          reward: 0,
+          return: 0,
+          behavior: describeActionForStats(actions[normalized], currentState, playerId),
+          posture: buildDecisionPosture(currentState, playerId, actions, normalized, features),
+        });
+      }
+      return normalized;
+    };
     return {
-      policy: options.policy,
+      policy: wrappedPolicy,
       policyMix: { ...createPolicyMixStats(), custom: state.players.length },
       roleByPlayer,
       personalityByPlayer,
@@ -1051,6 +1359,7 @@ function createEpisodePolicy(options, state, transitions, seed) {
         reward: 0,
         return: 0,
         behavior: describeActionForStats(actions[selection.index], currentState, playerId),
+        posture: buildDecisionPosture(currentState, playerId, actions, selection.index, features),
       });
       return selection.index;
     },
@@ -1316,7 +1625,8 @@ export function runSelfPlayEpisode(options = {}) {
     roundRewardTracker = null;
   }
 
-  const rewards = computeTerminalRewards(state, options);
+  const terminalPosture = summarizeTerminalPosture(transitions, state);
+  const rewards = computeTerminalRewards(state, { ...options, terminalPosture });
   assignTerminalReturns(transitions, rewards, options);
   const playerOutcomes = computePlayerOutcomes(state, roleByPlayer, terminalReason);
   recordTransitionOutcomes(actionStats, transitions);
@@ -1410,8 +1720,9 @@ export function runSelfPlayRoundEpisode(options = {}) {
     && !fell
     && (state.phase === 'scoring' || completedRolloutRounds >= rolloutRoundsTarget);
   const rolloutOutcome = playedRollout && (terminal || completedRolloutRounds >= rolloutRoundsTarget);
+  const terminalPosture = summarizeTerminalPosture(transitions, state);
   const rewards = rolloutOutcome
-    ? computeTerminalRewards(state, options)
+    ? computeTerminalRewards(state, { ...options, terminalPosture })
     : Object.fromEntries((state.players || []).map((player) => [player.id, 0]));
   assignTerminalReturns(transitions, rewards, options);
   const playerOutcomes = playedRollout

@@ -294,6 +294,33 @@ test('terminal reward punishes only fall free riding when blame can be assigned'
   assert.ok(rewards[2] <= 0);
 });
 
+test('terminal reward uses posture when collapse or losing survival exposes behavior', () => {
+  const fallState = prepareInteractiveState({ playerCount: 3, seed: 411 });
+  fallState.gameOver = { type: 'fall' };
+  const fallRewards = computeTerminalRewards(fallState, {
+    terminalPosture: {
+      selfishRisk: { 1: 4 },
+    },
+  });
+  assert.equal(fallRewards[1], -1);
+  assert.equal(fallRewards[0], 0);
+  assert.equal(fallRewards[2], 0);
+
+  const scoringState = prepareInteractiveState({ playerCount: 3, seed: 412 });
+  scoringState.phase = 'scoring';
+  scoringState.players[0].gold = 100;
+  const baseRewards = computeTerminalRewards(scoringState, { terminalRewardMode: 'score' });
+  const postureRewards = computeTerminalRewards(scoringState, {
+    terminalRewardMode: 'score',
+    terminalPosture: {
+      altruisticTransfer: { 1: 2 },
+      winnerTransfer: { 1: 2 },
+    },
+  });
+  assert.equal(postureRewards[0], baseRewards[0]);
+  assert.ok(postureRewards[1] < baseRewards[1]);
+});
+
 test('official scoring potential follows score shares and round progress', () => {
   const state = prepareInteractiveState({ playerCount: 3, deckSize: 3, seed: 42 });
   const before = computeScorePotentials(state);
@@ -685,7 +712,10 @@ test('stalled or step-limited learning episodes receive losing terminal rewards'
   assert.equal(result.stats.fell, true);
   assert.equal(result.stats.truncated, true);
   assert.equal(result.stats.terminalReason, 'max-steps');
-  assert.deepEqual(Object.values(result.rewards), [-1, -1, -1]);
+  assert.ok(Object.values(result.rewards).every((reward) => reward <= 0));
+  assert.ok(Math.abs(
+    Object.values(result.rewards).reduce((sum, reward) => sum + reward, 0) + 1,
+  ) <= Number.EPSILON);
 });
 
 test('evaluation reports survival, scoring, action, and policy metrics', () => {
