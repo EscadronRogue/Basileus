@@ -128,6 +128,8 @@ Evolve a policy locally:
 npm run ai:train -- --episodes 1000
 ```
 
+By default, training now mixes full games with short legal round rollouts, uses score-shaped terminal rewards, includes defensive heuristic opponents, and promotes checkpoints from multi-seed tournament confidence bounds.
+
 Evolve only from legal random midgame snapshots and short round rollouts:
 
 ```bash
@@ -142,7 +144,7 @@ npm run ai:train -- --training-mode hybrid --round-mode-rate 0.5 --episodes 1000
 
 The AI no longer uses layered black-box approximators or anonymous tensors. Every candidate action is described by named, rule-derived features: official score-share deltas, category-point deltas, title shifts, treasury changes, frontier troop coverage, reward choices, and target relations. Self-play learns transparent weights for those features.
 
-The reward is outcome-driven: winning a survived game is `+1`, surviving without winning is `0`, and a fall of Constantinople assigns blame only to players who under-contributed to the defense relative to their legal frontier troop capacity. At each completed round, the learner also receives potential-based shaping from the official scoring rules: `(round / maxRounds) * (projected score points / maximum possible score)`, where the maximum possible score is derived from the four scoring categories and their three point thresholds.
+The reward is outcome-driven and score-shaped by default: winning a survived game is `+1`, other surviving players receive their official score share, and a fall of Constantinople assigns blame only to players who under-contributed to the defense relative to their legal frontier troop capacity. Use `--reward-mode sparse` to return to winner-only terminal rewards. At each completed round, the learner also receives potential-based shaping from the official scoring rules: `(round / maxRounds) * (projected score points / maximum possible score)`, where the maximum possible score is derived from the four scoring categories and their three point thresholds.
 
 Each trained AI is one named opponent file. New policies receive a random romanized Greek first name, and the setup menu lists exactly the JSON files present in `ai/opponents/`; no manifest is used. Drop a policy into that folder to make it playable, or remove it from the folder to remove it from the menu.
 

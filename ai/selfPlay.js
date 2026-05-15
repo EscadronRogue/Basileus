@@ -1649,17 +1649,35 @@ export function evaluatePolicy(options = {}) {
     averagePointsByPlayer: {},
     topScoreRateByPlayer: {},
     survivalRateByPlayer: {},
+    rewardByRole: {},
+    appearancesByRole: {},
+    winsByRole: {},
+    survivalsByRole: {},
+    fallsByRole: {},
+    truncatedByRole: {},
+    winRateByRole: {},
+    averagePointsByRole: {},
+    topScoreRateByRole: {},
+    survivalRateByRole: {},
+    fallRateByRole: {},
+    truncatedRateByRole: {},
     playerOutcomes: createPlayerOutcomeStats(),
     actionStats: createActionStats(),
     policyMix: createPolicyMixStats(),
   };
 
   for (let episode = 0; episode < episodes; episode += 1) {
+    const episodeSeed = resolveEpisodeSeed(options, episode);
+    const episodeSettings = resolveEpisodeSettings({ ...options, episodeSeed }, episode);
+    const episodeOverrides = typeof options.episodeOptions === 'function'
+      ? options.episodeOptions({ episode, seed: episodeSeed, settings: episodeSettings }) || {}
+      : {};
     const result = runSelfPlayEpisode({
       ...options,
-      episodeSeed: resolveEpisodeSeed(options, episode),
+      episodeSeed,
       episodeIndex: episode,
       greedy: options.greedy ?? true,
+      ...episodeOverrides,
     });
     stats.falls += result.stats.fell ? 1 : 0;
     stats.survivals += result.stats.survived ? 1 : 0;
@@ -1674,13 +1692,31 @@ export function evaluatePolicy(options = {}) {
       stats.rewardByPlayer[playerId] = (stats.rewardByPlayer[playerId] || 0) + reward;
       stats.appearancesByPlayer[playerId] = (stats.appearancesByPlayer[playerId] || 0) + 1;
     }
+    for (const outcome of result.stats.playerOutcomes || []) {
+      const role = String(outcome.role || 'unknown');
+      const playerKey = String(outcome.playerId);
+      const reward = Number(result.rewards?.[playerKey] ?? result.rewards?.[outcome.playerId]) || 0;
+      stats.rewardByRole[role] = (stats.rewardByRole[role] || 0) + reward;
+      stats.appearancesByRole[role] = (stats.appearancesByRole[role] || 0) + 1;
+      stats.winsByRole[role] = (stats.winsByRole[role] || 0) + (outcome.won ? 1 : 0);
+      stats.survivalsByRole[role] = (stats.survivalsByRole[role] || 0) + (outcome.survived ? 1 : 0);
+      stats.fallsByRole[role] = (stats.fallsByRole[role] || 0) + (outcome.fell ? 1 : 0);
+      stats.truncatedByRole[role] = (stats.truncatedByRole[role] || 0) + (outcome.truncated ? 1 : 0);
+    }
     if (result.state.phase === 'scoring' && !result.state.gameOver) {
       const final = buildFinalScores(result.state);
       const winners = new Set(final.winners.map((entry) => String(entry.playerId)));
+      const pointsByPlayer = {};
       for (const entry of final.scores) {
         const key = String(entry.playerId);
+        pointsByPlayer[key] = entry.points;
         stats.averagePointsByPlayer[key] = (stats.averagePointsByPlayer[key] || 0) + entry.points;
         if (winners.has(key)) stats.winsByPlayer[key] = (stats.winsByPlayer[key] || 0) + 1;
+      }
+      for (const outcome of result.stats.playerOutcomes || []) {
+        const role = String(outcome.role || 'unknown');
+        const playerKey = String(outcome.playerId);
+        stats.averagePointsByRole[role] = (stats.averagePointsByRole[role] || 0) + (pointsByPlayer[playerKey] || 0);
       }
     }
   }
@@ -1693,6 +1729,16 @@ export function evaluatePolicy(options = {}) {
     stats.winRateByPlayer[playerId] = (stats.winsByPlayer[playerId] || 0) / appearances;
     stats.topScoreRateByPlayer[playerId] = stats.winRateByPlayer[playerId];
     stats.survivalRateByPlayer[playerId] = (stats.playerOutcomes.byPlayer[playerId]?.survivals || 0) / appearances;
+  }
+  for (const role of Object.keys(stats.appearancesByRole)) {
+    const appearances = stats.appearancesByRole[role] || 1;
+    stats.rewardByRole[role] /= appearances;
+    stats.averagePointsByRole[role] = (stats.averagePointsByRole[role] || 0) / appearances;
+    stats.winRateByRole[role] = (stats.winsByRole[role] || 0) / appearances;
+    stats.topScoreRateByRole[role] = stats.winRateByRole[role];
+    stats.survivalRateByRole[role] = (stats.survivalsByRole[role] || 0) / appearances;
+    stats.fallRateByRole[role] = (stats.fallsByRole[role] || 0) / appearances;
+    stats.truncatedRateByRole[role] = (stats.truncatedByRole[role] || 0) / appearances;
   }
   stats.fallRate = stats.falls / episodes;
   stats.survivalRate = stats.survivals / episodes;

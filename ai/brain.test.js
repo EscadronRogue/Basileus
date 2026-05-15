@@ -45,6 +45,9 @@ import {
 } from './features.js';
 import {
   createLearningPolicy,
+  hydrateLearningPolicy,
+  scoreFeatureMap,
+  trainFeatureBatch,
 } from './policy.js';
 import {
   loadOpponentRosterSync,
@@ -72,7 +75,11 @@ import {
   resolveResumeEpisodeOffset,
   resolveTrainingOptions,
 } from './train.js';
-import { runTournament } from './tournament.js';
+import {
+  runTournament,
+  runTournamentSuite,
+  scoreTournamentReport,
+} from './tournament.js';
 
 function prepareInteractiveState(options = {}) {
   const state = createGameState({
@@ -335,10 +342,15 @@ test('learning CLI defaults to automatic workers and sampled game setup', () => 
   assert.equal(defaults.roundMin, 6);
   assert.equal(defaults.roundMax, 12);
   assert.equal(resolveTrainingOptions({ includeDeals: 'true' }).includeDeals, false);
+  assert.equal(defaults.trainingMode, 'hybrid');
+  assert.equal(defaults.terminalRewardMode, 'score');
   assert.equal(defaults.opponentMix, true);
   assert.ok(defaults.randomOpponentRate > 0);
+  assert.ok(defaults.heuristicOpponentRate > 0);
   assert.equal(defaults.humanFeedbackWeight, 0);
   assert.equal(defaults.humanFeedbackReturn, 1);
+  assert.ok(defaults.checkpointEvalEpisodes > 4);
+  assert.ok(defaults.checkpointEvalSeedCount > 1);
 
   const fixed = resolveTrainingOptions({
     players: '3',
@@ -360,6 +372,42 @@ test('learning CLI exposes round and hybrid rollout modes', () => {
   assert.equal(resolveTrainingOptions({ mode: 'mix', roundSnapshotRate: '0.75' }).roundModeRate, 0.75);
 });
 
+test('feature training does not duplicate core weights into the personality bucket', () => {
+  const policy = createLearningPolicy({ seed: 52 });
+  const report = trainFeatureBatch(policy, [{
+    playerId: 0,
+    personalityId: 'core',
+    chosenIndex: 0,
+    return: 1,
+    features: [
+      { 'court.confirm': 1 },
+      { 'court.confirm': -1 },
+    ],
+  }], {
+    learningRate: 1,
+    temperature: 1,
+  });
+
+  assert.equal(report.count, 1);
+  assert.ok(policy.sharedWeights['court.confirm'] > 0);
+  assert.deepEqual(policy.personalities.core.weights, {});
+});
+
+test('legacy duplicated personality weights collapse on policy hydration', () => {
+  const policy = hydrateLearningPolicy({
+    schema: 'basileus.evolving-policy.v1',
+    sharedWeights: { 'court.confirm': 1.5 },
+    personalities: {
+      core: {
+        weights: { 'court.confirm': 1.5 },
+      },
+    },
+  });
+
+  assert.equal(scoreFeatureMap(policy, { 'court.confirm': 1 }), 1.5);
+  assert.deepEqual(policy.personalities.core.weights, {});
+});
+
 test('resume learning continues checkpoint numbering from previous work', () => {
   const dir = mkdtempSync(join(tmpdir(), 'basileus-policy-checkpoints-'));
   const out = join(dir, 'latest.json');
@@ -375,9 +423,12 @@ test('checkpoint manager keeps the loaded policy as promotion baseline', () => {
     promotionBaselinePath: 'baseline.json',
     trainingEpisodeOffset: 1000,
     checkpointEvalEpisodes: 1,
+    checkpointEvalSeedCount: 1,
     checkpointOpponentLimit: 1,
     playerCount: 3,
     deckSize: 1,
+    maxSteps: 200,
+    maxCourtActionsPerPlayer: 2,
     quiet: true,
   }, 'ai/opponents/latest.json', { checkpointDir: mkdtempSync(join(tmpdir(), 'basileus-policy-baseline-')) });
   assert.equal(checkpoints.best.baseline, true);
@@ -665,16 +716,34 @@ test('tournament harness compares a policy against baselines', () => {
     seed: 91,
     includeDeals: false,
     includeRandomBaseline: true,
+    maxSteps: 200,
+    maxCourtActionsPerPlayer: 2,
   });
   assert.equal(report.episodes, 1);
   assert.equal(typeof report.score, 'number');
   assert.ok(report.matchups.policyVsRandom);
+  assert.equal(typeof report.matchups.policyVsRandom.rewardByRole.learner, 'number');
   assert.ok(report.matchups.policyVsHeuristic);
   assert.ok(report.matchups.policyVsHuman);
   assert.ok(report.matchups.humanVsPolicy);
   assert.equal(report.matchups.humanVsPolicy.weight, 0);
   assert.ok(report.matchups.selfPlay);
   assert.ok(report.matchups.randomBaseline);
+
+  const suite = runTournamentSuite({
+    aiPolicy: policy,
+    episodes: 1,
+    seedCount: 2,
+    playerCount: 3,
+    deckSize: 1,
+    seed: 91,
+    maxSteps: 200,
+    maxCourtActionsPerPlayer: 2,
+  });
+  assert.equal(suite.seedCount, 2);
+  assert.equal(suite.runs.length, 2);
+  assert.equal(suite.confidence.count, 2);
+  assert.equal(scoreTournamentReport(suite), suite.adjustedScore);
 });
 
 test('official final scoring remains category-share based', () => {

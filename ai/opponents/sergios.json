@@ -1,0 +1,2357 @@
+{
+  "schema": "basileus-ai-policy-file.v1",
+  "version": 1,
+  "savedAt": "2026-05-15T18:23:49.426Z",
+  "metadata": {
+    "episodes": 1000,
+    "outcomeEpisodes": 1000,
+    "falls": 901,
+    "survivals": 99,
+    "truncated": 0,
+    "transitions": 99519,
+    "rounds": 3616,
+    "playerCounts": {
+      "3": 335,
+      "4": 347,
+      "5": 318
+    },
+    "roundLengths": {
+      "6": 153,
+      "7": 138,
+      "8": 144,
+      "9": 152,
+      "10": 142,
+      "11": 144,
+      "12": 127
+    },
+    "trainingModes": {
+      "episode": 1000
+    },
+    "actionStats": {
+      "total": 187484,
+      "byKind": {
+        "court": 154560,
+        "court-confirm": 15097,
+        "orders": 15097,
+        "title-assignment": 1203,
+        "reward": 1527
+      },
+      "byPhase": {
+        "court": 169657,
+        "orders": 15097,
+        "resolution": 2730
+      },
+      "courtActions": {
+        "buy": 39874,
+        "appoint-strategos": 32776,
+        "dismiss": 5065,
+        "recruit": 9658,
+        "appoint-bishop": 10104,
+        "basileus-appoint": 21975,
+        "revoke": 27325,
+        "gift": 6389,
+        "hire-mercenaries": 1394
+      },
+      "dealClauses": {},
+      "dealClauseAmounts": {},
+      "actionValueBuckets": {
+        "standard": 130436,
+        "minor": 25584,
+        "confirm": 15097,
+        "major": 16367
+      },
+      "rewardChoices": {
+        "empire": 261,
+        "gold": 1266
+      },
+      "orderDeployments": {
+        "frontier": 47147,
+        "capital": 36495
+      },
+      "orderTroops": {
+        "frontier": 37208,
+        "capital": 18393
+      },
+      "orderFrontierShare": {
+        "sum": 7112.085989829038,
+        "count": 10437
+      },
+      "titleAssignments": 1203,
+      "confirmations": 15097,
+      "outcomes": {
+        "byKind": {
+          "court": {
+            "count": 80876,
+            "returnSum": -922.7587940814892,
+            "positive": 32393,
+            "negative": 35996,
+            "neutral": 12487,
+            "min": -1.2070912375790424,
+            "max": 1.824074074074074
+          },
+          "court-confirm": {
+            "count": 8555,
+            "returnSum": -235.67340693055894,
+            "positive": 3201,
+            "negative": 3584,
+            "neutral": 1770,
+            "min": -1.2070912375790424,
+            "max": 1.824074074074074
+          },
+          "orders": {
+            "count": 8555,
+            "returnSum": -235.67340693055894,
+            "positive": 3201,
+            "negative": 3584,
+            "neutral": 1770,
+            "min": -1.2070912375790424,
+            "max": 1.824074074074074
+          },
+          "title-assignment": {
+            "count": 587,
+            "returnSum": 39.956423426815604,
+            "positive": 274,
+            "negative": 218,
+            "neutral": 95,
+            "min": -1.0681818181818181,
+            "max": 1.6944444444444446
+          },
+          "reward": {
+            "count": 946,
+            "returnSum": 70.89060455408364,
+            "positive": 399,
+            "negative": 368,
+            "neutral": 179,
+            "min": -1.160794941282746,
+            "max": 1.824074074074074
+          }
+        },
+        "courtActions": {
+          "buy": {
+            "count": 23175,
+            "returnSum": 938.6169000409761,
+            "positive": 10207,
+            "negative": 9982,
+            "neutral": 2986,
+            "min": -1.2070912375790424,
+            "max": 1.824074074074074
+          },
+          "appoint-strategos": {
+            "count": 19920,
+            "returnSum": -1461.2500725602001,
+            "positive": 7371,
+            "negative": 8196,
+            "neutral": 4353,
+            "min": -1.2070912375790424,
+            "max": 1.7962962962962963
+          },
+          "dismiss": {
+            "count": 192,
+            "returnSum": -44.12258554301261,
+            "positive": 52,
+            "negative": 113,
+            "neutral": 27,
+            "min": -1.1422764227642275,
+            "max": 1.3333333333333333
+          },
+          "recruit": {
+            "count": 315,
+            "returnSum": -69.0301900109827,
+            "positive": 91,
+            "negative": 189,
+            "neutral": 35,
+            "min": -1.0138888888888888,
+            "max": 0.1994949494949495
+          },
+          "appoint-bishop": {
+            "count": 6145,
+            "returnSum": -650.1450347919089,
+            "positive": 1860,
+            "negative": 3574,
+            "neutral": 711,
+            "min": -1.2070912375790424,
+            "max": 1.6944444444444444
+          },
+          "basileus-appoint": {
+            "count": 12042,
+            "returnSum": 287.2179226787343,
+            "positive": 5636,
+            "negative": 5308,
+            "neutral": 1098,
+            "min": -1.1212121212121213,
+            "max": 1.6416666666666666
+          },
+          "revoke": {
+            "count": 16194,
+            "returnSum": 64.53488721665713,
+            "positive": 6057,
+            "negative": 7255,
+            "neutral": 2882,
+            "min": -1.2070912375790424,
+            "max": 1.7962962962962963
+          },
+          "gift": {
+            "count": 2842,
+            "returnSum": 21.582469839460114,
+            "positive": 1106,
+            "negative": 1354,
+            "neutral": 382,
+            "min": -1.2070912375790424,
+            "max": 1.7962962962962963
+          },
+          "hire-mercenaries": {
+            "count": 51,
+            "returnSum": -10.16309095120873,
+            "positive": 13,
+            "negative": 25,
+            "neutral": 13,
+            "min": -1.0138888888888888,
+            "max": 1.1979166666666667
+          }
+        },
+        "dealClauses": {},
+        "rewardChoices": {
+          "empire": {
+            "count": 122,
+            "returnSum": 8.47420451612525,
+            "positive": 51,
+            "negative": 49,
+            "neutral": 22,
+            "min": -1.1422764227642275,
+            "max": 1.5185185185185184
+          },
+          "gold": {
+            "count": 824,
+            "returnSum": 62.416400037958375,
+            "positive": 348,
+            "negative": 319,
+            "neutral": 157,
+            "min": -1.160794941282746,
+            "max": 1.824074074074074
+          }
+        },
+        "actionValueBuckets": {
+          "standard": {
+            "count": 69676,
+            "returnSum": -1836.6155373102495,
+            "positive": 27245,
+            "negative": 31038,
+            "neutral": 11393,
+            "min": -1.2070912375790424,
+            "max": 1.8194444444444449
+          },
+          "minor": {
+            "count": 10989,
+            "returnSum": -221.7904702098192,
+            "positive": 4426,
+            "negative": 4445,
+            "neutral": 2118,
+            "min": -1.2070912375790424,
+            "max": 1.824074074074074
+          },
+          "confirm": {
+            "count": 8555,
+            "returnSum": -235.67340693055894,
+            "positive": 3201,
+            "negative": 3584,
+            "neutral": 1770,
+            "min": -1.2070912375790424,
+            "max": 1.824074074074074
+          },
+          "major": {
+            "count": 10299,
+            "returnSum": 1010.8208344889196,
+            "positive": 4596,
+            "negative": 4683,
+            "neutral": 1020,
+            "min": -1.2070912375790424,
+            "max": 1.824074074074074
+          }
+        },
+        "orderFrontierShare": {
+          "capital-heavy": {
+            "count": 3711,
+            "returnSum": -89.16382193485867,
+            "positive": 1431,
+            "negative": 1526,
+            "neutral": 754,
+            "min": -1.1212121212121213,
+            "max": 1.75
+          },
+          "frontier-heavy": {
+            "count": 3885,
+            "returnSum": -25.186854219945356,
+            "positive": 1523,
+            "negative": 1541,
+            "neutral": 821,
+            "min": -1.197831978319783,
+            "max": 1.824074074074074
+          },
+          "frontier-lean": {
+            "count": 759,
+            "returnSum": -88.02513987834311,
+            "positive": 200,
+            "negative": 407,
+            "neutral": 152,
+            "min": -1.2070912375790424,
+            "max": 1.4444444444444446
+          },
+          "balanced": {
+            "count": 200,
+            "returnSum": -33.29759089741223,
+            "positive": 47,
+            "negative": 110,
+            "neutral": 43,
+            "min": -1.0952380952380953,
+            "max": 1.1166666666666665
+          }
+        }
+      },
+      "economics": {
+        "incomeShare": {
+          "church": {
+            "sum": 532.2695393961714,
+            "count": 2233
+          },
+          "estate": {
+            "sum": 342.66605164271596,
+            "count": 2233
+          },
+          "tax": {
+            "sum": 497.47804754069506,
+            "count": 2233
+          },
+          "gold": {
+            "sum": 285.0667630033069,
+            "count": 2233
+          }
+        }
+      }
+    },
+    "policyMix": {
+      "learner": 2233,
+      "random": 1009,
+      "heuristic": 0,
+      "human": 0,
+      "checkpoint": 741,
+      "custom": 0
+    },
+    "playerOutcomes": {
+      "byPlayer": {
+        "0": {
+          "appearances": 1000,
+          "wins": 12,
+          "survivals": 99,
+          "falls": 901,
+          "truncated": 0,
+          "roleCounts": {
+            "learner": 549,
+            "random": 270,
+            "checkpoint": 181
+          },
+          "playerCounts": {
+            "0": 1000
+          }
+        },
+        "1": {
+          "appearances": 1000,
+          "wins": 22,
+          "survivals": 99,
+          "falls": 901,
+          "truncated": 0,
+          "roleCounts": {
+            "learner": 566,
+            "random": 241,
+            "checkpoint": 193
+          },
+          "playerCounts": {
+            "1": 1000
+          }
+        },
+        "2": {
+          "appearances": 1000,
+          "wins": 19,
+          "survivals": 99,
+          "falls": 901,
+          "truncated": 0,
+          "roleCounts": {
+            "learner": 562,
+            "random": 242,
+            "checkpoint": 196
+          },
+          "playerCounts": {
+            "2": 1000
+          }
+        },
+        "3": {
+          "appearances": 665,
+          "wins": 28,
+          "survivals": 97,
+          "falls": 568,
+          "truncated": 0,
+          "roleCounts": {
+            "learner": 392,
+            "random": 163,
+            "checkpoint": 110
+          },
+          "playerCounts": {
+            "3": 665
+          }
+        },
+        "4": {
+          "appearances": 318,
+          "wins": 32,
+          "survivals": 71,
+          "falls": 247,
+          "truncated": 0,
+          "roleCounts": {
+            "learner": 164,
+            "random": 93,
+            "checkpoint": 61
+          },
+          "playerCounts": {
+            "4": 318
+          }
+        }
+      },
+      "byRole": {
+        "learner": {
+          "appearances": 2233,
+          "wins": 57,
+          "survivals": 280,
+          "falls": 1953,
+          "truncated": 0,
+          "roleCounts": {
+            "learner": 2233
+          },
+          "playerCounts": {
+            "0": 549,
+            "1": 566,
+            "2": 562,
+            "3": 392,
+            "4": 164
+          }
+        },
+        "random": {
+          "appearances": 1009,
+          "wins": 43,
+          "survivals": 80,
+          "falls": 929,
+          "truncated": 0,
+          "roleCounts": {
+            "random": 1009
+          },
+          "playerCounts": {
+            "0": 270,
+            "1": 241,
+            "2": 242,
+            "3": 163,
+            "4": 93
+          }
+        },
+        "checkpoint": {
+          "appearances": 741,
+          "wins": 13,
+          "survivals": 105,
+          "falls": 636,
+          "truncated": 0,
+          "roleCounts": {
+            "checkpoint": 741
+          },
+          "playerCounts": {
+            "0": 181,
+            "1": 193,
+            "2": 196,
+            "3": 110,
+            "4": 61
+          }
+        }
+      }
+    },
+    "loss": 0.2435874688402045,
+    "policyLoss": 0.2435874688402045,
+    "valueLoss": 0,
+    "returnSum": -1283.258579961929,
+    "returnCount": 99519,
+    "positiveReturns": 39468,
+    "negativeReturns": 43750,
+    "neutralReturns": 16301,
+    "averageRounds": 3.616,
+    "workers": 15,
+    "workersAuto": true,
+    "runEpisodes": 1000,
+    "trainingEpisodeOffset": 0,
+    "totalTrainingEpisodes": 1000,
+    "resumedFrom": null,
+    "seedWasSpecified": false,
+    "seedMode": "random-each-episode",
+    "policySeed": 2322759298,
+    "playerRange": [
+      3,
+      5
+    ],
+    "roundRange": [
+      6,
+      12
+    ],
+    "includeDeals": false,
+    "trainingMode": "episode",
+    "roundModeRate": 0.25,
+    "rolloutRounds": 1,
+    "terminalRewardMode": "sparse",
+    "returnDiscount": 1,
+    "opponentMix": true,
+    "randomOpponentRate": 0.25,
+    "heuristicOpponentRate": 0,
+    "humanOpponentRate": 0.25,
+    "humanOpponentEpochs": 4,
+    "checkpointOpponentRate": 0.25,
+    "trainingEpochs": 1,
+    "humanFeedbackPath": null,
+    "humanFeedbackFiles": [],
+    "humanFeedbackSamples": 0,
+    "humanFeedbackTransitions": 0,
+    "humanFeedbackWeight": 0,
+    "humanFeedbackReturn": 1,
+    "checkpointInterval": 200,
+    "checkpointEvalEpisodes": 4,
+    "checkpointDir": "C:\\Users\\antoi\\Desktop\\Basileus\\ai\\policy-checkpoints",
+    "promotedCheckpoint": "C:\\Users\\antoi\\Desktop\\Basileus\\ai\\policy-checkpoints\\sergios-ep001000.json",
+    "promotedCheckpointEpisode": 1000,
+    "promotedCheckpointRunEpisode": 1000,
+    "promotedCheckpointScore": -0.13353174603174606,
+    "promotedBaseline": false,
+    "promotedTournament": {
+      "episodes": 4,
+      "seed": 1484933679,
+      "includeDeals": false,
+      "matchups": {
+        "policyVsRandom": {
+          "weight": 1,
+          "episodes": 4,
+          "falls": 4,
+          "survivals": 0,
+          "truncated": 0,
+          "averageRounds": 2.5,
+          "playerCounts": {
+            "4": 2,
+            "5": 2
+          },
+          "roundLengths": {
+            "6": 1,
+            "9": 2,
+            "12": 1
+          },
+          "rewardByPlayer": {
+            "0": -0.05,
+            "1": -0.21973684210526317,
+            "2": -0.6842105263157895,
+            "3": 0,
+            "4": -0.09210526315789473
+          },
+          "appearancesByPlayer": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 2
+          },
+          "winsByPlayer": {},
+          "winRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "averagePointsByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "topScoreRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "survivalRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "playerOutcomes": {
+            "byPlayer": {
+              "0": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "1": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 4
+                },
+                "playerCounts": {
+                  "1": 4
+                }
+              },
+              "2": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 4
+                },
+                "playerCounts": {
+                  "2": 4
+                }
+              },
+              "3": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 4
+                },
+                "playerCounts": {
+                  "3": 4
+                }
+              },
+              "4": {
+                "appearances": 2,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 2
+                },
+                "playerCounts": {
+                  "4": 2
+                }
+              }
+            },
+            "byRole": {
+              "learner": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "random": {
+                "appearances": 14,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 14,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 14
+                },
+                "playerCounts": {
+                  "1": 4,
+                  "2": 4,
+                  "3": 4,
+                  "4": 2
+                }
+              }
+            }
+          },
+          "actionStats": {
+            "total": 678,
+            "byKind": {
+              "court": 582,
+              "court-confirm": 45,
+              "orders": 45,
+              "title-assignment": 6
+            },
+            "byPhase": {
+              "court": 627,
+              "orders": 45,
+              "resolution": 6
+            },
+            "courtActions": {
+              "appoint-strategos": 106,
+              "buy": 100,
+              "basileus-appoint": 82,
+              "hire-mercenaries": 8,
+              "recruit": 107,
+              "appoint-bishop": 28,
+              "dismiss": 60,
+              "revoke": 64,
+              "gift": 27
+            },
+            "dealClauses": {},
+            "dealClauseAmounts": {},
+            "actionValueBuckets": {
+              "standard": 484,
+              "minor": 125,
+              "confirm": 45,
+              "major": 24
+            },
+            "rewardChoices": {},
+            "orderDeployments": {
+              "frontier": 124,
+              "capital": 125
+            },
+            "orderTroops": {
+              "frontier": 79,
+              "capital": 87
+            },
+            "orderFrontierShare": {
+              "sum": 16.52777777777778,
+              "count": 34
+            },
+            "titleAssignments": 6,
+            "confirmations": 45,
+            "outcomes": {
+              "byKind": {},
+              "courtActions": {},
+              "dealClauses": {},
+              "rewardChoices": {},
+              "actionValueBuckets": {},
+              "orderFrontierShare": {}
+            },
+            "economics": {
+              "incomeShare": {
+                "church": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "estate": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "tax": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "gold": {
+                  "sum": 0,
+                  "count": 0
+                }
+              }
+            }
+          },
+          "policyMix": {
+            "learner": 0,
+            "random": 0,
+            "heuristic": 0,
+            "human": 0,
+            "checkpoint": 0,
+            "custom": 18
+          },
+          "fallRate": 1,
+          "survivalRate": 0,
+          "truncatedRate": 0,
+          "score": -1.05
+        },
+        "policyVsHeuristic": {
+          "weight": 1,
+          "episodes": 4,
+          "falls": 1,
+          "survivals": 3,
+          "truncated": 0,
+          "averageRounds": 8.5,
+          "playerCounts": {
+            "4": 2,
+            "5": 2
+          },
+          "roundLengths": {
+            "6": 1,
+            "9": 2,
+            "12": 1
+          },
+          "rewardByPlayer": {
+            "0": -0.055555555555555594,
+            "1": 0,
+            "2": 0.0833333333333334,
+            "3": 0.7222222222222222,
+            "4": 0
+          },
+          "appearancesByPlayer": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 2
+          },
+          "winsByPlayer": {
+            "2": 1,
+            "3": 3
+          },
+          "winRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0.25,
+            "3": 0.75,
+            "4": 0
+          },
+          "averagePointsByPlayer": {
+            "0": 0.25,
+            "1": 0.25,
+            "2": 3,
+            "3": 3.75,
+            "4": 2.5
+          },
+          "topScoreRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0.25,
+            "3": 0.75,
+            "4": 0
+          },
+          "survivalRateByPlayer": {
+            "0": 0.75,
+            "1": 0.75,
+            "2": 0.75,
+            "3": 0.75,
+            "4": 1
+          },
+          "playerOutcomes": {
+            "byPlayer": {
+              "0": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "1": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "heuristic": 4
+                },
+                "playerCounts": {
+                  "1": 4
+                }
+              },
+              "2": {
+                "appearances": 4,
+                "wins": 1,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "heuristic": 4
+                },
+                "playerCounts": {
+                  "2": 4
+                }
+              },
+              "3": {
+                "appearances": 4,
+                "wins": 3,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "heuristic": 4
+                },
+                "playerCounts": {
+                  "3": 4
+                }
+              },
+              "4": {
+                "appearances": 2,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 0,
+                "truncated": 0,
+                "roleCounts": {
+                  "heuristic": 2
+                },
+                "playerCounts": {
+                  "4": 2
+                }
+              }
+            },
+            "byRole": {
+              "learner": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "heuristic": {
+                "appearances": 14,
+                "wins": 4,
+                "survivals": 11,
+                "falls": 3,
+                "truncated": 0,
+                "roleCounts": {
+                  "heuristic": 14
+                },
+                "playerCounts": {
+                  "1": 4,
+                  "2": 4,
+                  "3": 4,
+                  "4": 2
+                }
+              }
+            }
+          },
+          "actionStats": {
+            "total": 2790,
+            "byKind": {
+              "court": 2421,
+              "court-confirm": 154,
+              "orders": 154,
+              "title-assignment": 20,
+              "reward": 41
+            },
+            "byPhase": {
+              "court": 2575,
+              "orders": 154,
+              "resolution": 61
+            },
+            "courtActions": {
+              "appoint-strategos": 253,
+              "buy": 264,
+              "hire-mercenaries": 348,
+              "recruit": 622,
+              "basileus-appoint": 249,
+              "appoint-bishop": 69,
+              "revoke": 346,
+              "gift": 100,
+              "dismiss": 170
+            },
+            "dealClauses": {},
+            "dealClauseAmounts": {},
+            "actionValueBuckets": {
+              "standard": 1888,
+              "minor": 637,
+              "confirm": 154,
+              "major": 111
+            },
+            "rewardChoices": {
+              "empire": 38,
+              "gold": 3
+            },
+            "orderDeployments": {
+              "frontier": 679,
+              "capital": 216
+            },
+            "orderTroops": {
+              "frontier": 936,
+              "capital": 114
+            },
+            "orderFrontierShare": {
+              "sum": 124.76532829915183,
+              "count": 144
+            },
+            "titleAssignments": 20,
+            "confirmations": 154,
+            "outcomes": {
+              "byKind": {},
+              "courtActions": {},
+              "dealClauses": {},
+              "rewardChoices": {},
+              "actionValueBuckets": {},
+              "orderFrontierShare": {}
+            },
+            "economics": {
+              "incomeShare": {
+                "church": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "estate": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "tax": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "gold": {
+                  "sum": 0,
+                  "count": 0
+                }
+              }
+            }
+          },
+          "policyMix": {
+            "learner": 0,
+            "random": 0,
+            "heuristic": 0,
+            "human": 0,
+            "checkpoint": 0,
+            "custom": 18
+          },
+          "fallRate": 0.25,
+          "survivalRate": 0.75,
+          "truncatedRate": 0,
+          "score": 0.4444444444444444
+        },
+        "selfPlay": {
+          "weight": 0.5,
+          "episodes": 4,
+          "falls": 2,
+          "survivals": 2,
+          "truncated": 0,
+          "averageRounds": 7.25,
+          "playerCounts": {
+            "4": 2,
+            "5": 2
+          },
+          "roundLengths": {
+            "6": 1,
+            "9": 2,
+            "12": 1
+          },
+          "rewardByPlayer": {
+            "0": 0,
+            "1": -0.25,
+            "2": 0.25,
+            "3": 0.5,
+            "4": 0
+          },
+          "appearancesByPlayer": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 2
+          },
+          "winsByPlayer": {
+            "2": 1,
+            "3": 2
+          },
+          "winRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0.25,
+            "3": 0.5,
+            "4": 0
+          },
+          "averagePointsByPlayer": {
+            "0": 0.25,
+            "1": 0.25,
+            "2": 0.75,
+            "3": 1.5,
+            "4": 1.5
+          },
+          "topScoreRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0.25,
+            "3": 0.5,
+            "4": 0
+          },
+          "survivalRateByPlayer": {
+            "0": 0.5,
+            "1": 0.5,
+            "2": 0.5,
+            "3": 0.5,
+            "4": 1
+          },
+          "playerOutcomes": {
+            "byPlayer": {
+              "0": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "1": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "1": 4
+                }
+              },
+              "2": {
+                "appearances": 4,
+                "wins": 1,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "2": 4
+                }
+              },
+              "3": {
+                "appearances": 4,
+                "wins": 2,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "3": 4
+                }
+              },
+              "4": {
+                "appearances": 2,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 0,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 2
+                },
+                "playerCounts": {
+                  "4": 2
+                }
+              }
+            },
+            "byRole": {
+              "learner": {
+                "appearances": 18,
+                "wins": 3,
+                "survivals": 10,
+                "falls": 8,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 18
+                },
+                "playerCounts": {
+                  "0": 4,
+                  "1": 4,
+                  "2": 4,
+                  "3": 4,
+                  "4": 2
+                }
+              }
+            }
+          },
+          "actionStats": {
+            "total": 1207,
+            "byKind": {
+              "court": 898,
+              "court-confirm": 134,
+              "orders": 134,
+              "reward": 36,
+              "title-assignment": 5
+            },
+            "byPhase": {
+              "court": 1032,
+              "orders": 134,
+              "resolution": 41
+            },
+            "courtActions": {
+              "appoint-strategos": 170,
+              "buy": 229,
+              "basileus-appoint": 162,
+              "appoint-bishop": 62,
+              "revoke": 244,
+              "gift": 31
+            },
+            "dealClauses": {},
+            "dealClauseAmounts": {},
+            "actionValueBuckets": {
+              "standard": 786,
+              "minor": 142,
+              "confirm": 134,
+              "major": 145
+            },
+            "rewardChoices": {
+              "gold": 36
+            },
+            "orderDeployments": {
+              "frontier": 371,
+              "capital": 234
+            },
+            "orderTroops": {
+              "frontier": 503,
+              "capital": 52
+            },
+            "orderFrontierShare": {
+              "sum": 74.83614718614719,
+              "count": 85
+            },
+            "titleAssignments": 5,
+            "confirmations": 134,
+            "outcomes": {
+              "byKind": {
+                "court": {
+                  "count": 898,
+                  "returnSum": 141.95601851851814,
+                  "positive": 504,
+                  "negative": 314,
+                  "neutral": 80,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "court-confirm": {
+                  "count": 134,
+                  "returnSum": 22.013888888888893,
+                  "positive": 74,
+                  "negative": 38,
+                  "neutral": 22,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "orders": {
+                  "count": 134,
+                  "returnSum": 22.013888888888893,
+                  "positive": 74,
+                  "negative": 38,
+                  "neutral": 22,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "reward": {
+                  "count": 36,
+                  "returnSum": 7.092592592592592,
+                  "positive": 19,
+                  "negative": 7,
+                  "neutral": 10,
+                  "min": -1,
+                  "max": 1.25
+                },
+                "title-assignment": {
+                  "count": 5,
+                  "returnSum": 2.375,
+                  "positive": 4,
+                  "negative": 1,
+                  "neutral": 0,
+                  "min": -0.027777777777777776,
+                  "max": 1.2222222222222223
+                }
+              },
+              "courtActions": {
+                "appoint-strategos": {
+                  "count": 170,
+                  "returnSum": 31.233796296296287,
+                  "positive": 108,
+                  "negative": 38,
+                  "neutral": 24,
+                  "min": -0.16666666666666666,
+                  "max": 1.25
+                },
+                "buy": {
+                  "count": 229,
+                  "returnSum": 45.13425925925935,
+                  "positive": 135,
+                  "negative": 84,
+                  "neutral": 10,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "basileus-appoint": {
+                  "count": 162,
+                  "returnSum": 18.1736111111111,
+                  "positive": 77,
+                  "negative": 85,
+                  "neutral": 0,
+                  "min": -1.0833333333333333,
+                  "max": 1.231481481481481
+                },
+                "appoint-bishop": {
+                  "count": 62,
+                  "returnSum": 8.032407407407408,
+                  "positive": 33,
+                  "negative": 10,
+                  "neutral": 19,
+                  "min": -0.027777777777777776,
+                  "max": 1.2222222222222223
+                },
+                "revoke": {
+                  "count": 244,
+                  "returnSum": 33.71527777777779,
+                  "positive": 134,
+                  "negative": 87,
+                  "neutral": 23,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "gift": {
+                  "count": 31,
+                  "returnSum": 5.666666666666666,
+                  "positive": 17,
+                  "negative": 10,
+                  "neutral": 4,
+                  "min": -1.0833333333333333,
+                  "max": 1.231481481481481
+                }
+              },
+              "dealClauses": {},
+              "rewardChoices": {
+                "gold": {
+                  "count": 36,
+                  "returnSum": 7.092592592592592,
+                  "positive": 19,
+                  "negative": 7,
+                  "neutral": 10,
+                  "min": -1,
+                  "max": 1.25
+                }
+              },
+              "actionValueBuckets": {
+                "standard": {
+                  "count": 786,
+                  "returnSum": 118.79861111111106,
+                  "positive": 442,
+                  "negative": 264,
+                  "neutral": 80,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "minor": {
+                  "count": 142,
+                  "returnSum": 17.22916666666667,
+                  "positive": 76,
+                  "negative": 47,
+                  "neutral": 19,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "confirm": {
+                  "count": 134,
+                  "returnSum": 22.013888888888893,
+                  "positive": 74,
+                  "negative": 38,
+                  "neutral": 22,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                },
+                "major": {
+                  "count": 145,
+                  "returnSum": 37.40972222222227,
+                  "positive": 83,
+                  "negative": 49,
+                  "neutral": 13,
+                  "min": -1.0833333333333333,
+                  "max": 1.25
+                }
+              },
+              "orderFrontierShare": {
+                "capital-heavy": {
+                  "count": 52,
+                  "returnSum": 6.532407407407407,
+                  "positive": 26,
+                  "negative": 21,
+                  "neutral": 5,
+                  "min": -1.0833333333333333,
+                  "max": 1.231481481481481
+                },
+                "frontier-heavy": {
+                  "count": 68,
+                  "returnSum": 17.351851851851855,
+                  "positive": 42,
+                  "negative": 12,
+                  "neutral": 14,
+                  "min": -1.0416666666666665,
+                  "max": 1.25
+                },
+                "frontier-lean": {
+                  "count": 14,
+                  "returnSum": -1.8703703703703705,
+                  "positive": 6,
+                  "negative": 5,
+                  "neutral": 3,
+                  "min": -1,
+                  "max": 0.06944444444444445
+                }
+              }
+            },
+            "economics": {
+              "incomeShare": {
+                "church": {
+                  "sum": 4,
+                  "count": 18
+                },
+                "estate": {
+                  "sum": 2,
+                  "count": 18
+                },
+                "tax": {
+                  "sum": 4,
+                  "count": 18
+                },
+                "gold": {
+                  "sum": 3,
+                  "count": 18
+                }
+              }
+            }
+          },
+          "policyMix": {
+            "learner": 18,
+            "random": 0,
+            "heuristic": 0,
+            "human": 0,
+            "checkpoint": 0,
+            "custom": 0
+          },
+          "fallRate": 0.5,
+          "survivalRate": 0.5,
+          "truncatedRate": 0,
+          "score": 0
+        },
+        "policyVsPrevious": {
+          "weight": 1,
+          "episodes": 4,
+          "falls": 2,
+          "survivals": 2,
+          "truncated": 0,
+          "averageRounds": 6.25,
+          "playerCounts": {
+            "4": 2,
+            "5": 2
+          },
+          "roundLengths": {
+            "6": 1,
+            "9": 2,
+            "12": 1
+          },
+          "rewardByPlayer": {
+            "0": -0.17857142857142858,
+            "1": 0,
+            "2": 0,
+            "3": 0.4285714285714286,
+            "4": 0
+          },
+          "appearancesByPlayer": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 2
+          },
+          "winsByPlayer": {
+            "3": 2
+          },
+          "winRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0.5,
+            "4": 0
+          },
+          "averagePointsByPlayer": {
+            "0": 0.5,
+            "1": 0,
+            "2": 0.25,
+            "3": 1.75,
+            "4": 1
+          },
+          "topScoreRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0.5,
+            "4": 0
+          },
+          "survivalRateByPlayer": {
+            "0": 0.5,
+            "1": 0.5,
+            "2": 0.5,
+            "3": 0.5,
+            "4": 1
+          },
+          "playerOutcomes": {
+            "byPlayer": {
+              "0": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "1": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "checkpoint": 4
+                },
+                "playerCounts": {
+                  "1": 4
+                }
+              },
+              "2": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "checkpoint": 4
+                },
+                "playerCounts": {
+                  "2": 4
+                }
+              },
+              "3": {
+                "appearances": 4,
+                "wins": 2,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "checkpoint": 4
+                },
+                "playerCounts": {
+                  "3": 4
+                }
+              },
+              "4": {
+                "appearances": 2,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 0,
+                "truncated": 0,
+                "roleCounts": {
+                  "checkpoint": 2
+                },
+                "playerCounts": {
+                  "4": 2
+                }
+              }
+            },
+            "byRole": {
+              "learner": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "checkpoint": {
+                "appearances": 14,
+                "wins": 2,
+                "survivals": 8,
+                "falls": 6,
+                "truncated": 0,
+                "roleCounts": {
+                  "checkpoint": 14
+                },
+                "playerCounts": {
+                  "1": 4,
+                  "2": 4,
+                  "3": 4,
+                  "4": 2
+                }
+              }
+            }
+          },
+          "actionStats": {
+            "total": 1080,
+            "byKind": {
+              "court": 804,
+              "court-confirm": 118,
+              "orders": 118,
+              "title-assignment": 7,
+              "reward": 33
+            },
+            "byPhase": {
+              "court": 922,
+              "orders": 118,
+              "resolution": 40
+            },
+            "courtActions": {
+              "appoint-strategos": 145,
+              "buy": 249,
+              "basileus-appoint": 132,
+              "appoint-bishop": 64,
+              "revoke": 187,
+              "gift": 27
+            },
+            "dealClauses": {},
+            "dealClauseAmounts": {},
+            "actionValueBuckets": {
+              "standard": 684,
+              "minor": 128,
+              "confirm": 118,
+              "major": 150
+            },
+            "rewardChoices": {
+              "gold": 33
+            },
+            "orderDeployments": {
+              "frontier": 366,
+              "capital": 171
+            },
+            "orderTroops": {
+              "frontier": 532,
+              "capital": 72
+            },
+            "orderFrontierShare": {
+              "sum": 68.14158337019019,
+              "count": 80
+            },
+            "titleAssignments": 7,
+            "confirmations": 118,
+            "outcomes": {
+              "byKind": {},
+              "courtActions": {},
+              "dealClauses": {},
+              "rewardChoices": {},
+              "actionValueBuckets": {},
+              "orderFrontierShare": {}
+            },
+            "economics": {
+              "incomeShare": {
+                "church": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "estate": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "tax": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "gold": {
+                  "sum": 0,
+                  "count": 0
+                }
+              }
+            }
+          },
+          "policyMix": {
+            "learner": 0,
+            "random": 0,
+            "heuristic": 0,
+            "human": 0,
+            "checkpoint": 0,
+            "custom": 18
+          },
+          "fallRate": 0.5,
+          "survivalRate": 0.5,
+          "truncatedRate": 0,
+          "score": -0.1785714285714286
+        },
+        "previousVsPolicy": {
+          "weight": 0.5,
+          "episodes": 4,
+          "falls": 1,
+          "survivals": 3,
+          "truncated": 0,
+          "averageRounds": 7.75,
+          "playerCounts": {
+            "4": 2,
+            "5": 2
+          },
+          "roundLengths": {
+            "6": 1,
+            "9": 2,
+            "12": 1
+          },
+          "rewardByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0.5,
+            "3": 0.25,
+            "4": 0
+          },
+          "appearancesByPlayer": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 2
+          },
+          "winsByPlayer": {
+            "2": 2,
+            "3": 1
+          },
+          "winRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0.5,
+            "3": 0.25,
+            "4": 0
+          },
+          "averagePointsByPlayer": {
+            "0": 0.5,
+            "1": 0.5,
+            "2": 3.5,
+            "3": 1,
+            "4": 1
+          },
+          "topScoreRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0.5,
+            "3": 0.25,
+            "4": 0
+          },
+          "survivalRateByPlayer": {
+            "0": 0.75,
+            "1": 0.75,
+            "2": 0.75,
+            "3": 0.75,
+            "4": 1
+          },
+          "playerOutcomes": {
+            "byPlayer": {
+              "0": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "checkpoint": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "1": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "1": 4
+                }
+              },
+              "2": {
+                "appearances": 4,
+                "wins": 2,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "2": 4
+                }
+              },
+              "3": {
+                "appearances": 4,
+                "wins": 1,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 4
+                },
+                "playerCounts": {
+                  "3": 4
+                }
+              },
+              "4": {
+                "appearances": 2,
+                "wins": 0,
+                "survivals": 2,
+                "falls": 0,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 2
+                },
+                "playerCounts": {
+                  "4": 2
+                }
+              }
+            },
+            "byRole": {
+              "checkpoint": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 3,
+                "falls": 1,
+                "truncated": 0,
+                "roleCounts": {
+                  "checkpoint": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "learner": {
+                "appearances": 14,
+                "wins": 3,
+                "survivals": 11,
+                "falls": 3,
+                "truncated": 0,
+                "roleCounts": {
+                  "learner": 14
+                },
+                "playerCounts": {
+                  "1": 4,
+                  "2": 4,
+                  "3": 4,
+                  "4": 2
+                }
+              }
+            }
+          },
+          "actionStats": {
+            "total": 1298,
+            "byKind": {
+              "court": 963,
+              "court-confirm": 142,
+              "orders": 142,
+              "reward": 46,
+              "title-assignment": 5
+            },
+            "byPhase": {
+              "court": 1105,
+              "orders": 142,
+              "resolution": 51
+            },
+            "courtActions": {
+              "appoint-strategos": 168,
+              "buy": 285,
+              "basileus-appoint": 167,
+              "appoint-bishop": 63,
+              "revoke": 247,
+              "gift": 33
+            },
+            "dealClauses": {},
+            "dealClauseAmounts": {},
+            "actionValueBuckets": {
+              "standard": 806,
+              "minor": 157,
+              "confirm": 142,
+              "major": 193
+            },
+            "rewardChoices": {
+              "gold": 46
+            },
+            "orderDeployments": {
+              "frontier": 432,
+              "capital": 205
+            },
+            "orderTroops": {
+              "frontier": 617,
+              "capital": 48
+            },
+            "orderFrontierShare": {
+              "sum": 79.0583694083694,
+              "count": 88
+            },
+            "titleAssignments": 5,
+            "confirmations": 142,
+            "outcomes": {
+              "byKind": {},
+              "courtActions": {},
+              "dealClauses": {},
+              "rewardChoices": {},
+              "actionValueBuckets": {},
+              "orderFrontierShare": {}
+            },
+            "economics": {
+              "incomeShare": {
+                "church": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "estate": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "tax": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "gold": {
+                  "sum": 0,
+                  "count": 0
+                }
+              }
+            }
+          },
+          "policyMix": {
+            "learner": 0,
+            "random": 0,
+            "heuristic": 0,
+            "human": 0,
+            "checkpoint": 0,
+            "custom": 18
+          },
+          "fallRate": 0.25,
+          "survivalRate": 0.75,
+          "truncatedRate": 0,
+          "score": 0.5
+        },
+        "randomBaseline": {
+          "weight": 0,
+          "episodes": 4,
+          "falls": 4,
+          "survivals": 0,
+          "truncated": 0,
+          "averageRounds": 3.75,
+          "playerCounts": {
+            "4": 2,
+            "5": 2
+          },
+          "roundLengths": {
+            "6": 1,
+            "9": 2,
+            "12": 1
+          },
+          "rewardByPlayer": {
+            "0": -0.19310897435897434,
+            "1": -0.3485576923076923,
+            "2": -0.20833333333333334,
+            "3": -0.03947368421052635,
+            "4": -0.4210526315789473
+          },
+          "appearancesByPlayer": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 2
+          },
+          "winsByPlayer": {},
+          "winRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "averagePointsByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "topScoreRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "survivalRateByPlayer": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0
+          },
+          "playerOutcomes": {
+            "byPlayer": {
+              "0": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 4
+                },
+                "playerCounts": {
+                  "0": 4
+                }
+              },
+              "1": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 4
+                },
+                "playerCounts": {
+                  "1": 4
+                }
+              },
+              "2": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 4
+                },
+                "playerCounts": {
+                  "2": 4
+                }
+              },
+              "3": {
+                "appearances": 4,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 4,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 4
+                },
+                "playerCounts": {
+                  "3": 4
+                }
+              },
+              "4": {
+                "appearances": 2,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 2,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 2
+                },
+                "playerCounts": {
+                  "4": 2
+                }
+              }
+            },
+            "byRole": {
+              "random": {
+                "appearances": 18,
+                "wins": 0,
+                "survivals": 0,
+                "falls": 18,
+                "truncated": 0,
+                "roleCounts": {
+                  "random": 18
+                },
+                "playerCounts": {
+                  "0": 4,
+                  "1": 4,
+                  "2": 4,
+                  "3": 4,
+                  "4": 2
+                }
+              }
+            }
+          },
+          "actionStats": {
+            "total": 912,
+            "byKind": {
+              "court": 764,
+              "court-confirm": 67,
+              "orders": 67,
+              "title-assignment": 11,
+              "reward": 3
+            },
+            "byPhase": {
+              "court": 831,
+              "orders": 67,
+              "resolution": 14
+            },
+            "courtActions": {
+              "appoint-strategos": 126,
+              "recruit": 144,
+              "buy": 125,
+              "dismiss": 71,
+              "basileus-appoint": 96,
+              "appoint-bishop": 31,
+              "revoke": 106,
+              "gift": 41,
+              "hire-mercenaries": 24
+            },
+            "dealClauses": {},
+            "dealClauseAmounts": {},
+            "actionValueBuckets": {
+              "standard": 645,
+              "minor": 170,
+              "confirm": 67,
+              "major": 30
+            },
+            "rewardChoices": {
+              "empire": 1,
+              "gold": 2
+            },
+            "orderDeployments": {
+              "frontier": 176,
+              "capital": 178
+            },
+            "orderTroops": {
+              "frontier": 165,
+              "capital": 167
+            },
+            "orderFrontierShare": {
+              "sum": 24.01117216117216,
+              "count": 54
+            },
+            "titleAssignments": 11,
+            "confirmations": 67,
+            "outcomes": {
+              "byKind": {},
+              "courtActions": {},
+              "dealClauses": {},
+              "rewardChoices": {},
+              "actionValueBuckets": {},
+              "orderFrontierShare": {}
+            },
+            "economics": {
+              "incomeShare": {
+                "church": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "estate": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "tax": {
+                  "sum": 0,
+                  "count": 0
+                },
+                "gold": {
+                  "sum": 0,
+                  "count": 0
+                }
+              }
+            }
+          },
+          "policyMix": {
+            "learner": 0,
+            "random": 18,
+            "heuristic": 0,
+            "human": 0,
+            "checkpoint": 0,
+            "custom": 0
+          },
+          "fallRate": 1,
+          "survivalRate": 0,
+          "truncatedRate": 0,
+          "score": -1.1931089743589745
+        }
+      },
+      "score": -0.13353174603174606
+    },
+    "logInterval": 10
+  },
+  "identity": {
+    "firstName": "Sergios",
+    "name": "Sergios",
+    "source": "greek-given-name"
+  },
+  "policy": {
+    "schema": "basileus.evolving-policy.v1",
+    "version": 1,
+    "featureSchema": "basileus.semantic-action-features.v1",
+    "identity": {
+      "firstName": "Sergios",
+      "name": "Sergios",
+      "source": "greek-given-name"
+    },
+    "defaultPersonalityId": "core",
+    "step": 99519,
+    "createdAt": "2026-05-15T17:37:31.806Z",
+    "updatedAt": "2026-05-15T18:18:14.170Z",
+    "sharedWeights": {
+      "action.kind.court": -0.5139925842457802,
+      "court.appoint-strategos": 2.7380772103066517,
+      "theme.region.east": -6.527866537065593,
+      "theme.owner.free": 9.81097455700478,
+      "theme.threatened": 3.3721190293667647,
+      "theme.profitShare": 0.2539222588143024,
+      "theme.taxShare": 0.38854765643198313,
+      "theme.levyShare": 0.22927915549861097,
+      "theme.churchShare": 0.30566129269869186,
+      "target.self": 3.651541687764119,
+      "score.delta.rank": 1.3554421783058388,
+      "score.delta.tax.share": 0.1166078896112605,
+      "income.delta.tax.share": 0.1166078896112605,
+      "power.delta.strategosShare": -0.08588108520177705,
+      "target.leadingScore": 15.892830235079467,
+      "target.scoreGapVsSelf": 2.503182791397622,
+      "target.basileus": 9.320870650648923,
+      "theme.region.west": 1.5698490552838889,
+      "court.buy": -4.51038926387925,
+      "score.delta.totalPoints": -0.15406962085644652,
+      "score.delta.gold.share": -0.822717517829737,
+      "score.delta.gold.points": -0.7264986133034258,
+      "income.delta.gold.share": -0.822717517829737,
+      "treasury.delta.goldShare": 1.2320312101130861,
+      "treasury.spendShare": -0.8643926907307126,
+      "theme.region.sea": 14.227387775100437,
+      "court.recruit": -5.279592616404064,
+      "court.dismiss": -3.206839299134111,
+      "military.delta.troopShare": -0.4731130569339274,
+      "military.delta.professionalShare": 0.12945194414753913,
+      "court.hire-mercenaries": -1.0519889597039063,
+      "action.kind.court-confirm": 0.5139925842457762,
+      "court.confirm": 0.5139925842457762,
+      "score.delta.tax.points": 0.15137397284216092,
+      "court.appoint-bishop": 0.3385769075656976,
+      "score.delta.church.share": 0.26542649159548337,
+      "score.delta.church.points": 0.22856375735937137,
+      "income.delta.church.share": 0.26542649159548337,
+      "power.delta.bishopShare": 0.06673607857839035,
+      "court.basileus-appoint": 0.8888436181060057,
+      "orders.frontierTroopShare": 1.841064168541742,
+      "orders.frontierCoverage": 0.5930088441606558,
+      "orders.candidate.self": 0.025629822474608422,
+      "orders.candidate.currentBasileus": 0.49249744712920673,
+      "orders.capitalTroopShare": -1.8410641685417417,
+      "court.gift": -0.7014163484430711,
+      "theme.owner.self": -1.052456120261973,
+      "score.delta.estate.share": -0.19858036224517972,
+      "score.delta.estate.points": -0.26971760032388453,
+      "income.delta.estate.share": -0.19858036224517972,
+      "estate.delta.count.share": 0.024957633826081342,
+      "estate.delta.profit.share": 0.02931768064036836,
+      "estate.delta.tax.share": 0.0453730257248645,
+      "estate.delta.church.share": 0.06495920288931728,
+      "court.revoke": 10.270736167340228,
+      "theme.owner.rival": -0.195499781046441,
+      "estate.delta.levies.share": 0.00791028299882842,
+      "theme.occupied": 0.07499883709521975,
+      "theme.owner.church": 0.7063516376224297,
+      "titleAssignment.giftsToHigherScorers": 0.023065014823056628,
+      "reward.restoreEmpire": -0.4075103111038854,
+      "reward.takeGold": 0.4075103111038854,
+      "bias": 3.5348228015022475e-15,
+      "context.empireThreatened": 3.5348228015022475e-15,
+      "context.playerCountShare": 3.5348228015022475e-15,
+      "self.basileus": 2.761736649647009e-15
+    },
+    "personalities": {
+      "core": {
+        "id": "core",
+        "label": "Core",
+        "focusCategory": null,
+        "description": "Learns one named AI personality from legal play and official outcomes.",
+        "observations": 99519,
+        "weights": {
+          "action.kind.court": -0.5139925842457802,
+          "court.appoint-strategos": 2.7380772103066517,
+          "theme.region.east": -6.527866537065593,
+          "theme.owner.free": 9.81097455700478,
+          "theme.threatened": 3.3721190293667647,
+          "theme.profitShare": 0.2539222588143024,
+          "theme.taxShare": 0.38854765643198313,
+          "theme.levyShare": 0.22927915549861097,
+          "theme.churchShare": 0.30566129269869186,
+          "target.self": 3.651541687764119,
+          "score.delta.rank": 1.3554421783058388,
+          "score.delta.tax.share": 0.1166078896112605,
+          "income.delta.tax.share": 0.1166078896112605,
+          "power.delta.strategosShare": -0.08588108520177705,
+          "target.leadingScore": 15.892830235079467,
+          "target.scoreGapVsSelf": 2.503182791397622,
+          "target.basileus": 9.320870650648923,
+          "theme.region.west": 1.5698490552838889,
+          "court.buy": -4.51038926387925,
+          "score.delta.totalPoints": -0.15406962085644652,
+          "score.delta.gold.share": -0.822717517829737,
+          "score.delta.gold.points": -0.7264986133034258,
+          "income.delta.gold.share": -0.822717517829737,
+          "treasury.delta.goldShare": 1.2320312101130861,
+          "treasury.spendShare": -0.8643926907307126,
+          "theme.region.sea": 14.227387775100437,
+          "court.recruit": -5.279592616404064,
+          "court.dismiss": -3.206839299134111,
+          "military.delta.troopShare": -0.4731130569339274,
+          "military.delta.professionalShare": 0.12945194414753913,
+          "court.hire-mercenaries": -1.0519889597039063,
+          "action.kind.court-confirm": 0.5139925842457762,
+          "court.confirm": 0.5139925842457762,
+          "score.delta.tax.points": 0.15137397284216092,
+          "court.appoint-bishop": 0.3385769075656976,
+          "score.delta.church.share": 0.26542649159548337,
+          "score.delta.church.points": 0.22856375735937137,
+          "income.delta.church.share": 0.26542649159548337,
+          "power.delta.bishopShare": 0.06673607857839035,
+          "court.basileus-appoint": 0.8888436181060057,
+          "orders.frontierTroopShare": 1.841064168541742,
+          "orders.frontierCoverage": 0.5930088441606558,
+          "orders.candidate.self": 0.025629822474608422,
+          "orders.candidate.currentBasileus": 0.49249744712920673,
+          "orders.capitalTroopShare": -1.8410641685417417,
+          "court.gift": -0.7014163484430711,
+          "theme.owner.self": -1.052456120261973,
+          "score.delta.estate.share": -0.19858036224517972,
+          "score.delta.estate.points": -0.26971760032388453,
+          "income.delta.estate.share": -0.19858036224517972,
+          "estate.delta.count.share": 0.024957633826081342,
+          "estate.delta.profit.share": 0.02931768064036836,
+          "estate.delta.tax.share": 0.0453730257248645,
+          "estate.delta.church.share": 0.06495920288931728,
+          "court.revoke": 10.270736167340228,
+          "theme.owner.rival": -0.195499781046441,
+          "estate.delta.levies.share": 0.00791028299882842,
+          "theme.occupied": 0.07499883709521975,
+          "theme.owner.church": 0.7063516376224297,
+          "titleAssignment.giftsToHigherScorers": 0.023065014823056628,
+          "reward.restoreEmpire": -0.4075103111038854,
+          "reward.takeGold": 0.4075103111038854,
+          "bias": 3.5348228015022475e-15,
+          "context.empireThreatened": 3.5348228015022475e-15,
+          "context.playerCountShare": 3.5348228015022475e-15,
+          "self.basileus": 2.761736649647009e-15
+        }
+      }
+    }
+  }
+}

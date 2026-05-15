@@ -34,10 +34,12 @@ import {
   createActionStats,
   mergeActionStats,
   mergePolicyMixStats,
+  TRAINING_MODES,
+  TERMINAL_REWARD_MODES,
   normalizeTerminalRewardMode,
 } from './selfPlay.js';
 import {
-  runTournament,
+  runTournamentSuite,
   scoreTournamentReport,
 } from './tournament.js';
 import {
@@ -47,8 +49,11 @@ import {
 } from './features.js';
 
 const DEFAULT_LEARNING_RATE = FEATURE_UNIT / Math.max(FEATURE_UNIT, OFFICIAL_MAX_SCORE);
-const DEFAULT_ROUND_MODE_RATE = FEATURE_UNIT / Math.max(FEATURE_UNIT, SCORE_CATEGORY_KEYS.length);
+const DEFAULT_ROUND_MODE_RATE = FEATURE_UNIT / 2;
 const DEFAULT_OPPONENT_RATE = FEATURE_UNIT / Math.max(FEATURE_UNIT, SCORE_CATEGORY_KEYS.length);
+const DEFAULT_HEURISTIC_OPPONENT_RATE = DEFAULT_OPPONENT_RATE;
+const DEFAULT_CHECKPOINT_EVAL_EPISODES = SCORE_CATEGORY_KEYS.length * 2;
+const DEFAULT_CHECKPOINT_EVAL_SEED_COUNT = 3;
 
 if (!isMainThread && workerData?.kind === 'self-play-episode') {
   const aiPolicy = hydrateLearningPolicy(workerData.aiPolicy);
@@ -193,24 +198,29 @@ export function resolveTrainingOptions(args = {}) {
     learningRate: numberArg(args, 'learningRate', DEFAULT_LEARNING_RATE),
     temperature: numberArg(args, 'temperature', FEATURE_UNIT),
     trainingEpochs: Math.max(1, Math.floor(numberArg(args, 'trainingEpochs', FEATURE_UNIT))),
-    trainingMode: normalizeTrainingMode(args.trainingMode ?? args.mode),
+    trainingMode: normalizeTrainingMode(args.trainingMode ?? args.mode ?? TRAINING_MODES.HYBRID),
     roundModeRate,
     rolloutRounds: Math.max(1, Math.floor(numberArg(args, 'rolloutRounds', 1))),
     snapshotRound,
     snapshotRoundMin,
     snapshotRoundMax,
-    terminalRewardMode: normalizeTerminalRewardMode(args.terminalRewardMode ?? args.rewardMode),
+    terminalRewardMode: normalizeTerminalRewardMode(args.terminalRewardMode ?? args.rewardMode ?? TERMINAL_REWARD_MODES.SCORE),
     returnDiscount: unitIntervalArg(args, 'returnDiscount', 1),
     includeDeals: false,
     opponentMix: booleanArg(args, 'opponentMix', true),
     randomOpponentRate: Math.max(0, numberArg(args, 'randomOpponentRate', DEFAULT_OPPONENT_RATE)),
-    heuristicOpponentRate: Math.max(0, numberArg(args, 'heuristicOpponentRate', 0)),
+    heuristicOpponentRate: Math.max(0, numberArg(args, 'heuristicOpponentRate', DEFAULT_HEURISTIC_OPPONENT_RATE)),
     humanOpponentRate: Math.max(0, numberArg(args, 'humanOpponentRate', DEFAULT_OPPONENT_RATE)),
     humanOpponentEpochs: Math.max(1, Math.floor(numberArg(args, 'humanOpponentEpochs', SCORE_CATEGORY_KEYS.length))),
     humanOpponentLearningRate: numberArg(args, 'humanOpponentLearningRate', DEFAULT_LEARNING_RATE),
     checkpointOpponentRate: Math.max(0, numberArg(args, 'checkpointOpponentRate', DEFAULT_OPPONENT_RATE)),
     checkpointInterval: Math.max(0, checkpointInterval),
-    checkpointEvalEpisodes: Math.max(1, Math.floor(numberArg(args, 'checkpointEvalEpisodes', SCORE_CATEGORY_KEYS.length))),
+    checkpointEvalEpisodes: Math.max(1, Math.floor(numberArg(args, 'checkpointEvalEpisodes', DEFAULT_CHECKPOINT_EVAL_EPISODES))),
+    checkpointEvalSeedCount: Math.max(1, Math.floor(numberArg(
+      args,
+      'checkpointEvalSeedCount',
+      numberArg(args, 'checkpointEvalSeeds', DEFAULT_CHECKPOINT_EVAL_SEED_COUNT),
+    ))),
     checkpointOpponentLimit: Math.max(0, Math.floor(numberArg(args, 'checkpointOpponentLimit', SCORE_CATEGORY_KEYS.length - FEATURE_UNIT))),
     humanFeedbackWeight: Math.max(0, numberArg(args, 'humanFeedbackWeight', 0)),
     humanFeedbackReturn: numberArg(args, 'humanFeedbackReturn', FEATURE_UNIT),
@@ -920,11 +930,12 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
   let previousCheckpointPolicy = null;
 
   function evaluateCheckpoint(aiPolicy, previousPolicy) {
-    return runTournament({
+    return runTournamentSuite({
       aiPolicy,
       previousPolicy: baselinePolicy || previousPolicy,
       humanOpponentPolicy: trainingOptions.humanOpponentPolicy,
       episodes: trainingOptions.checkpointEvalEpisodes,
+      seedCount: trainingOptions.checkpointEvalSeedCount,
       seed: evaluationSeed,
       includeDeals: trainingOptions.includeDeals,
       playerCount: trainingOptions.playerCount,
@@ -933,6 +944,8 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
       deckSize: trainingOptions.deckSize,
       roundMin: trainingOptions.roundMin,
       roundMax: trainingOptions.roundMax,
+      maxSteps: trainingOptions.maxSteps,
+      maxCourtActionsPerPlayer: trainingOptions.maxCourtActionsPerPlayer,
       terminalRewardMode: trainingOptions.terminalRewardMode,
       returnDiscount: trainingOptions.returnDiscount,
       includeRandomBaseline: true,
@@ -1053,6 +1066,8 @@ export async function runTrainingCli(argv = process.argv) {
       humanDataset.transitions,
       trainingOptions,
     );
+  } else {
+    trainingOptions.humanOpponentRate = 0;
   }
   const resumePayload = resumePath ? loadPolicyPayloadSync(resumePath) : null;
   const resumedPolicy = resumePath ? loadPolicyFileSync(resumePath) : null;
@@ -1105,10 +1120,11 @@ export async function runTrainingCli(argv = process.argv) {
     episode: trainingOptions.trainingEpisodeOffset + trainingOptions.episodes,
     runEpisode: trainingOptions.episodes,
     aiPolicy: clonePolicy(aiPolicy),
-    tournament: runTournament({
+    tournament: runTournamentSuite({
       aiPolicy,
       humanOpponentPolicy: trainingOptions.humanOpponentPolicy,
       episodes: trainingOptions.checkpointEvalEpisodes,
+      seedCount: trainingOptions.checkpointEvalSeedCount,
       seed: deriveCheckpointSeed(trainingOptions),
       includeDeals: trainingOptions.includeDeals,
       playerCount: trainingOptions.playerCount,
@@ -1117,6 +1133,8 @@ export async function runTrainingCli(argv = process.argv) {
       deckSize: trainingOptions.deckSize,
       roundMin: trainingOptions.roundMin,
       roundMax: trainingOptions.roundMax,
+      maxSteps: trainingOptions.maxSteps,
+      maxCourtActionsPerPlayer: trainingOptions.maxCourtActionsPerPlayer,
       terminalRewardMode: trainingOptions.terminalRewardMode,
       returnDiscount: trainingOptions.returnDiscount,
       includeRandomBaseline: true,
@@ -1163,6 +1181,7 @@ export async function runTrainingCli(argv = process.argv) {
     humanFeedbackReturn: trainingOptions.humanFeedbackReturn,
     checkpointInterval: trainingOptions.checkpointInterval,
     checkpointEvalEpisodes: trainingOptions.checkpointEvalEpisodes,
+    checkpointEvalSeedCount: trainingOptions.checkpointEvalSeedCount,
     checkpointDir: checkpoints.checkpointDir,
     promotedCheckpoint: promoted.path,
     promotedCheckpointEpisode: promoted.episode,
