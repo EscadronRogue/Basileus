@@ -1,10 +1,10 @@
 import {
-  DEFAULT_MODEL_PATH,
-  loadModelFileSync,
-} from './modelStore.js';
+  DEFAULT_POLICY_PATH,
+  loadPolicyFileSync,
+} from './policyStore.js';
 import { evaluatePolicy } from './selfPlay.js';
-import { buildCandidateInputs } from './features.js';
-import { selectActionWithNetwork } from './network.js';
+import { buildCandidateFeatures } from './features.js';
+import { selectActionWithPolicy } from './policy.js';
 import { runTournament } from './tournament.js';
 
 function parseArgs(argv) {
@@ -81,15 +81,15 @@ function resolveRoundOptions(args) {
 
 export function runEvaluationCli(argv = process.argv) {
   const args = parseArgs(argv);
-  const modelPath = args.model || DEFAULT_MODEL_PATH;
-  const network = args.baseline === 'random' ? null : loadModelFileSync(modelPath);
-  if (!network && args.baseline !== 'random') {
-    throw new Error(`No neural model found at ${modelPath}. Run npm run ai:train first.`);
+  const policyPath = args.policy || DEFAULT_POLICY_PATH;
+  const aiPolicy = args.baseline === 'random' ? null : loadPolicyFileSync(policyPath);
+  if (!aiPolicy && args.baseline !== 'random') {
+    throw new Error(`No evolving AI policy found at ${policyPath}. Run npm run ai:train first.`);
   }
   const opponentPath = args.opponent || null;
-  const opponentNetwork = opponentPath ? loadModelFileSync(opponentPath) : null;
-  if (opponentPath && !opponentNetwork) {
-    throw new Error(`No opponent model found at ${opponentPath}.`);
+  const opponentPolicy = opponentPath ? loadPolicyFileSync(opponentPath) : null;
+  if (opponentPath && !opponentPolicy) {
+    throw new Error(`No opponent policy found at ${opponentPath}.`);
   }
   const common = {
     episodes: numberArg(args, 'episodes', 20),
@@ -100,32 +100,32 @@ export function runEvaluationCli(argv = process.argv) {
   };
   if (booleanArg(args, 'tournament', false)) {
     const report = runTournament({
-      network,
-      previousNetwork: opponentNetwork,
+      aiPolicy,
+      previousPolicy: opponentPolicy,
       includeRandomBaseline: true,
       ...common,
     });
     console.log(JSON.stringify({
       ok: true,
-      model: network ? modelPath : 'random',
-      opponent: opponentNetwork ? opponentPath : null,
+      policy: aiPolicy ? policyPath : 'random',
+      opponent: opponentPolicy ? opponentPath : null,
       tournament: report,
     }, null, 2));
     return report;
   }
-  const policy = network && !args.selfPlay
+  const policy = aiPolicy && !args.selfPlay
     ? ({ state, playerId, actions, rng }) => {
-      const model = playerId === 0 ? network : opponentNetwork;
-      if (!model) return Math.floor(rng() * actions.length);
-      const inputs = buildCandidateInputs(state, playerId, actions);
-      return selectActionWithNetwork(model, inputs, rng, { greedy: true, temperature: 0 }).index;
+      const activePolicy = playerId === 0 ? aiPolicy : opponentPolicy;
+      if (!activePolicy) return Math.floor(rng() * actions.length);
+      const features = buildCandidateFeatures(state, playerId, actions);
+      return selectActionWithPolicy(activePolicy, features, rng, { greedy: true, temperature: 0 }).index;
     }
     : null;
   const policyRoleForPlayer = policy
-    ? (playerId) => (playerId === 0 ? 'learner' : (opponentNetwork ? 'checkpoint' : 'random'))
+    ? (playerId) => (playerId === 0 ? 'learner' : (opponentPolicy ? 'checkpoint' : 'random'))
     : null;
   const stats = evaluatePolicy({
-    network,
+    aiPolicy,
     policy,
     policyRoleForPlayer,
     ...common,
@@ -133,8 +133,8 @@ export function runEvaluationCli(argv = process.argv) {
   });
   console.log(JSON.stringify({
     ok: true,
-    model: network ? modelPath : 'random',
-    opponent: opponentNetwork ? opponentPath : (network && !args.selfPlay ? 'random' : null),
+    policy: aiPolicy ? policyPath : 'random',
+    opponent: opponentPolicy ? opponentPath : (aiPolicy && !args.selfPlay ? 'random' : null),
     stats,
   }, null, 2));
   return stats;

@@ -2,18 +2,20 @@ import { Worker, isMainThread, parentPort, workerData } from 'node:worker_thread
 import { availableParallelism } from 'node:os';
 import { readdirSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
-import { createNetwork, trainBatch } from './network.js';
 import {
-  deserializeNetwork,
-  serializeNetwork,
-} from './network.js';
+  cloneLearningPolicy,
+  createLearningPolicy,
+  hydrateLearningPolicy,
+  serializeLearningPolicy,
+  trainFeatureBatch,
+} from './policy.js';
 import {
   DEFAULT_CHECKPOINT_DIR,
-  DEFAULT_MODEL_PATH,
-  loadModelPayloadSync,
-  loadModelFileSync,
-  saveModelFileSync,
-} from './modelStore.js';
+  DEFAULT_POLICY_PATH,
+  loadPolicyPayloadSync,
+  loadPolicyFileSync,
+  savePolicyFileSync,
+} from './policyStore.js';
 import {
   DEFAULT_HUMAN_GAMES_DIR,
   loadHumanFeedbackDatasetSync,
@@ -37,12 +39,21 @@ import {
   runTournament,
   scoreTournamentReport,
 } from './tournament.js';
+import {
+  FEATURE_UNIT,
+  OFFICIAL_MAX_SCORE,
+  SCORE_CATEGORY_KEYS,
+} from './features.js';
+
+const DEFAULT_LEARNING_RATE = FEATURE_UNIT / Math.max(FEATURE_UNIT, OFFICIAL_MAX_SCORE);
+const DEFAULT_ROUND_MODE_RATE = FEATURE_UNIT / Math.max(FEATURE_UNIT, SCORE_CATEGORY_KEYS.length);
+const DEFAULT_OPPONENT_RATE = FEATURE_UNIT / Math.max(FEATURE_UNIT, SCORE_CATEGORY_KEYS.length);
 
 if (!isMainThread && workerData?.kind === 'self-play-episode') {
-  const network = deserializeNetwork(workerData.network);
+  const aiPolicy = hydrateLearningPolicy(workerData.aiPolicy);
   const result = runTrainingEpisode({
     ...(workerData.options || {}),
-    network,
+    aiPolicy,
     episodeSeed: workerData.seed,
     episodeIndex: workerData.episodeIndex,
   });
@@ -150,11 +161,11 @@ export function resolveTrainingOptions(args = {}) {
   const workerOptions = resolveWorkers(args);
   const episodes = numberArg(args, 'episodes', 10);
   const roundModeRate = hasArg(args, 'roundModeRate')
-    ? unitIntervalArg(args, 'roundModeRate', 0.5)
+    ? unitIntervalArg(args, 'roundModeRate', DEFAULT_ROUND_MODE_RATE)
     : (
       hasArg(args, 'roundSnapshotRate')
-        ? unitIntervalArg(args, 'roundSnapshotRate', 0.5)
-        : unitIntervalArg(args, 'snapshotModeRate', 0.5)
+        ? unitIntervalArg(args, 'roundSnapshotRate', DEFAULT_ROUND_MODE_RATE)
+        : unitIntervalArg(args, 'snapshotModeRate', DEFAULT_ROUND_MODE_RATE)
     );
   const snapshotRound = hasArg(args, 'snapshotRound') ? clampInteger(args.snapshotRound, 1, 99, 1) : undefined;
   const hasSnapshotRange = hasArg(args, 'snapshotRoundMin') || hasArg(args, 'snapshotRoundMax');
@@ -175,13 +186,12 @@ export function resolveTrainingOptions(args = {}) {
     seed,
     seedWasSpecified,
     seedMode: seedWasSpecified ? 'deterministic-derived' : 'random-each-episode',
-    modelSeed: seedWasSpecified ? seed : createEntropySeed(),
+    policySeed: seedWasSpecified ? seed : createEntropySeed(),
     ...resolvePlayerOptions(args),
     ...resolveRoundOptions(args),
-    learningRate: numberArg(args, 'learningRate', 0.001),
-    entropyBeta: numberArg(args, 'entropyBeta', 0.01),
-    temperature: numberArg(args, 'temperature', 1),
-    trainingEpochs: Math.max(1, Math.floor(numberArg(args, 'trainingEpochs', 3))),
+    learningRate: numberArg(args, 'learningRate', DEFAULT_LEARNING_RATE),
+    temperature: numberArg(args, 'temperature', FEATURE_UNIT),
+    trainingEpochs: Math.max(1, Math.floor(numberArg(args, 'trainingEpochs', FEATURE_UNIT))),
     trainingMode: normalizeTrainingMode(args.trainingMode ?? args.mode),
     roundModeRate,
     rolloutRounds: Math.max(1, Math.floor(numberArg(args, 'rolloutRounds', 1))),
@@ -192,17 +202,17 @@ export function resolveTrainingOptions(args = {}) {
     returnDiscount: unitIntervalArg(args, 'returnDiscount', 1),
     includeDeals: false,
     opponentMix: booleanArg(args, 'opponentMix', true),
-    randomOpponentRate: Math.max(0, numberArg(args, 'randomOpponentRate', 0.3)),
+    randomOpponentRate: Math.max(0, numberArg(args, 'randomOpponentRate', DEFAULT_OPPONENT_RATE)),
     heuristicOpponentRate: Math.max(0, numberArg(args, 'heuristicOpponentRate', 0)),
-    humanOpponentRate: Math.max(0, numberArg(args, 'humanOpponentRate', 0.25)),
-    humanOpponentEpochs: Math.max(1, Math.floor(numberArg(args, 'humanOpponentEpochs', 8))),
-    humanOpponentLearningRate: numberArg(args, 'humanOpponentLearningRate', 0.001),
-    checkpointOpponentRate: Math.max(0, numberArg(args, 'checkpointOpponentRate', 0.2)),
+    humanOpponentRate: Math.max(0, numberArg(args, 'humanOpponentRate', DEFAULT_OPPONENT_RATE)),
+    humanOpponentEpochs: Math.max(1, Math.floor(numberArg(args, 'humanOpponentEpochs', SCORE_CATEGORY_KEYS.length))),
+    humanOpponentLearningRate: numberArg(args, 'humanOpponentLearningRate', DEFAULT_LEARNING_RATE),
+    checkpointOpponentRate: Math.max(0, numberArg(args, 'checkpointOpponentRate', DEFAULT_OPPONENT_RATE)),
     checkpointInterval: Math.max(0, checkpointInterval),
-    checkpointEvalEpisodes: Math.max(1, Math.floor(numberArg(args, 'checkpointEvalEpisodes', 4))),
-    checkpointOpponentLimit: Math.max(0, Math.floor(numberArg(args, 'checkpointOpponentLimit', 3))),
+    checkpointEvalEpisodes: Math.max(1, Math.floor(numberArg(args, 'checkpointEvalEpisodes', SCORE_CATEGORY_KEYS.length))),
+    checkpointOpponentLimit: Math.max(0, Math.floor(numberArg(args, 'checkpointOpponentLimit', SCORE_CATEGORY_KEYS.length - FEATURE_UNIT))),
     humanFeedbackWeight: Math.max(0, numberArg(args, 'humanFeedbackWeight', 0)),
-    humanFeedbackReturn: numberArg(args, 'humanFeedbackReturn', 0.75),
+    humanFeedbackReturn: numberArg(args, 'humanFeedbackReturn', FEATURE_UNIT),
     quiet: booleanArg(args, 'quiet', false),
   };
 }
@@ -538,7 +548,7 @@ export function createProgressReporter(options, outputPath, resumed) {
 
   return {
     start() {
-      const source = resumed ? 'resuming model' : 'new model';
+      const source = resumed ? 'resuming policy' : 'new policy';
       const workers = options.workersAuto ? `${options.workers} auto` : `${options.workers} fixed`;
       const seed = options.seedWasSpecified ? `${options.seed} explicit` : 'random per-episode';
       console.log(
@@ -555,7 +565,6 @@ export function createProgressReporter(options, outputPath, resumed) {
       );
       console.log(
         `[ai:train] learningRate=${options.learningRate}`
-        + ` entropyBeta=${options.entropyBeta}`
         + ` temperature=${options.temperature}`
         + ` reward=${options.terminalRewardMode}`
         + ` returnDiscount=${options.returnDiscount}`
@@ -587,7 +596,7 @@ export function createProgressReporter(options, outputPath, resumed) {
       const windowEpisodes = Math.max(1, windowStats.episodes);
       const elapsed = now - startedAt;
       const windowElapsed = now - lastPrintedAt;
-      const episodesPerSecond = windowEpisodes / Math.max(0.001, windowElapsed / 1000);
+      const episodesPerSecond = windowEpisodes / Math.max(Number.EPSILON, windowElapsed / 1000);
       const windowOutcomeEpisodes = Math.max(1, Number(windowStats.outcomeEpisodes ?? windowEpisodes) || 0);
       const survivalRate = windowStats.survivals / windowOutcomeEpisodes;
       const fallRate = windowStats.falls / windowOutcomeEpisodes;
@@ -672,12 +681,12 @@ function mergeEpisodeStats(target, result) {
   mergePolicyMixStats(target.policyMix, result.stats.policyMix);
 }
 
-function runWorkerEpisode(network, options, seed, episodeIndex) {
+function runWorkerEpisode(aiPolicy, options, seed, episodeIndex) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL(import.meta.url), {
       workerData: {
         kind: 'self-play-episode',
-        network: serializeNetwork(network),
+        aiPolicy: serializeLearningPolicy(aiPolicy),
         options,
         seed,
         episodeIndex,
@@ -691,7 +700,7 @@ function runWorkerEpisode(network, options, seed, episodeIndex) {
   });
 }
 
-async function trainSelfPlayWithWorkers(network, options = {}) {
+async function trainSelfPlayWithWorkers(aiPolicy, options = {}) {
   const episodes = Math.max(1, Number(options.episodes) || 1);
   const workers = Math.max(1, Math.floor(Number(options.workers) || 1));
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
@@ -735,7 +744,7 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
     };
     const jobs = Array.from({ length: batchSize }, (_, index) => (
       runWorkerEpisode(
-        network,
+        aiPolicy,
         workerOptions,
         resolveEpisodeSeed(options, completed + index),
         completed + index,
@@ -749,7 +758,7 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
       recordPlayerOutcomes(stats.playerOutcomes, result.stats.playerOutcomes);
       recordTrainingReturns(stats, result.transitions);
     }
-    const report = trainTransitions(network, transitions, options);
+    const report = trainTransitions(aiPolicy, transitions, options);
     stats.loss += report.loss * batchSize;
     stats.policyLoss += report.policyLoss * batchSize;
     stats.valueLoss += report.valueLoss * batchSize;
@@ -782,7 +791,7 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
         completed,
         batchSize,
         episodes,
-        network,
+        aiPolicy,
         stats: {
           ...stats,
           loss: stats.loss / completed,
@@ -806,24 +815,21 @@ async function trainSelfPlayWithWorkers(network, options = {}) {
   return stats;
 }
 
-function cloneNetwork(network) {
-  return deserializeNetwork(serializeNetwork(network));
+function clonePolicy(aiPolicy) {
+  return cloneLearningPolicy(aiPolicy);
 }
 
-function createHumanOpponentNetwork(transitions = [], options = {}) {
+function createHumanOpponentPolicy(transitions = [], options = {}) {
   if (!transitions.length) return null;
-  const network = createNetwork({
-    seed: deriveStableSeed(options.modelSeed || options.seed || 1, 211),
-  });
+  const aiPolicy = createLearningPolicy({ seed: deriveStableSeed(options.policySeed || options.seed || 1, 211) });
   const epochs = Math.max(1, Math.floor(Number(options.humanOpponentEpochs) || 1));
   for (let epoch = 0; epoch < epochs; epoch += 1) {
-    trainBatch(network, transitions, {
-      learningRate: options.humanOpponentLearningRate || options.learningRate || 0.001,
-      entropyBeta: 0,
-      temperature: 1,
+    trainFeatureBatch(aiPolicy, transitions, {
+      learningRate: options.humanOpponentLearningRate || options.learningRate || DEFAULT_LEARNING_RATE,
+      temperature: FEATURE_UNIT,
     });
   }
-  return network;
+  return aiPolicy;
 }
 
 function resolveHumanGamesPath(args = {}) {
@@ -836,13 +842,13 @@ function escapeRegExp(value) {
 
 export function checkpointPathFor(outputPath, checkpointDir, completed) {
   const extension = extname(outputPath) || '.json';
-  const stem = basename(outputPath, extension) || 'model';
+  const stem = basename(outputPath, extension) || 'policy';
   return resolve(checkpointDir, `${stem}-ep${String(completed).padStart(6, '0')}${extension}`);
 }
 
 function checkpointEpisodeFromName(name, outputPath) {
   const extension = extname(outputPath) || '.json';
-  const stem = basename(outputPath, extension) || 'model';
+  const stem = basename(outputPath, extension) || 'policy';
   const pattern = new RegExp(`^${escapeRegExp(stem)}-ep(\\d+)${escapeRegExp(extension)}$`);
   const match = pattern.exec(name);
   return match ? Number(match[1]) : 0;
@@ -894,9 +900,9 @@ export function resolveResumeEpisodeOffset(
 ) {
   if (!resumePath) return 0;
   const metadata = resumePayload?.metadata || {};
-  const modelOffset = metadataEpisodeOffset(metadata, resumePath);
+  const policyOffset = metadataEpisodeOffset(metadata, resumePath);
   const checkpointOffset = includeMatchingCheckpoints ? latestCheckpointEpisode(outputPath, checkpointDir) : 0;
-  return Math.max(modelOffset, checkpointOffset);
+  return Math.max(policyOffset, checkpointOffset);
 }
 
 export function createCheckpointManager(trainingOptions, outputPath, args = {}) {
@@ -906,17 +912,17 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
     : deriveCheckpointSeed(trainingOptions);
   const checkpointOpponents = [];
   const episodeOffset = Math.max(0, Math.floor(Number(trainingOptions.trainingEpisodeOffset) || 0));
-  const baselineNetwork = trainingOptions.promotionBaselineNetwork
-    ? cloneNetwork(trainingOptions.promotionBaselineNetwork)
+  const baselinePolicy = trainingOptions.promotionBaselinePolicy
+    ? clonePolicy(trainingOptions.promotionBaselinePolicy)
     : null;
   let best = null;
-  let previousCheckpointNetwork = null;
+  let previousCheckpointPolicy = null;
 
-  function evaluateCheckpoint(network, previousNetwork) {
+  function evaluateCheckpoint(aiPolicy, previousPolicy) {
     return runTournament({
-      network,
-      previousNetwork: baselineNetwork || previousNetwork,
-      humanOpponentNetwork: trainingOptions.humanOpponentNetwork,
+      aiPolicy,
+      previousPolicy: baselinePolicy || previousPolicy,
+      humanOpponentPolicy: trainingOptions.humanOpponentPolicy,
       episodes: trainingOptions.checkpointEvalEpisodes,
       seed: evaluationSeed,
       includeDeals: trainingOptions.includeDeals,
@@ -932,36 +938,36 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
     });
   }
 
-  if (baselineNetwork) {
-    const baselineTournament = evaluateCheckpoint(baselineNetwork, baselineNetwork);
+  if (baselinePolicy) {
+    const baselineTournament = evaluateCheckpoint(baselinePolicy, baselinePolicy);
     best = {
       baseline: true,
       score: scoreTournamentReport(baselineTournament),
       path: trainingOptions.promotionBaselinePath || null,
       episode: episodeOffset,
       runEpisode: 0,
-      network: cloneNetwork(baselineNetwork),
+      aiPolicy: clonePolicy(baselinePolicy),
       tournament: baselineTournament,
     };
     if (!trainingOptions.quiet) {
       console.log(
-        `[ai:train] resume baseline ${best.path || 'loaded model'}`
+        `[ai:train] resume baseline ${best.path || 'loaded policy'}`
         + ` | episodeOffset=${episodeOffset}`
         + ` | score=${best.score.toFixed(4)}`,
       );
     }
     if (trainingOptions.checkpointOpponentLimit > 0) {
-      checkpointOpponents.unshift(cloneNetwork(baselineNetwork));
+      checkpointOpponents.unshift(clonePolicy(baselinePolicy));
       checkpointOpponents.splice(trainingOptions.checkpointOpponentLimit);
-      trainingOptions.opponentNetworks = checkpointOpponents.slice();
-      previousCheckpointNetwork = cloneNetwork(baselineNetwork);
+      trainingOptions.opponentPolicies = checkpointOpponents.slice();
+      previousCheckpointPolicy = clonePolicy(baselinePolicy);
     }
   }
 
   function saveCheckpoint(snapshot) {
-    const candidate = cloneNetwork(snapshot.network);
-    const previousNetwork = previousCheckpointNetwork ? cloneNetwork(previousCheckpointNetwork) : null;
-    const tournament = evaluateCheckpoint(candidate, previousNetwork);
+    const candidate = clonePolicy(snapshot.aiPolicy);
+    const previousPolicy = previousCheckpointPolicy ? clonePolicy(previousCheckpointPolicy) : null;
+    const tournament = evaluateCheckpoint(candidate, previousPolicy);
     const score = scoreTournamentReport(tournament);
     const checkpointEpisode = episodeOffset + snapshot.completed;
     const path = checkpointPathFor(outputPath, checkpointDir, checkpointEpisode);
@@ -984,7 +990,7 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
       terminalRewardMode: trainingOptions.terminalRewardMode,
       returnDiscount: trainingOptions.returnDiscount,
     };
-    saveModelFileSync(candidate, path, metadata);
+    savePolicyFileSync(candidate, path, metadata);
 
     if (!best || score > best.score) {
       best = {
@@ -992,16 +998,16 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
         path,
         episode: checkpointEpisode,
         runEpisode: snapshot.completed,
-        network: cloneNetwork(candidate),
+        aiPolicy: clonePolicy(candidate),
         tournament,
         baseline: false,
       };
     }
 
-    checkpointOpponents.unshift(cloneNetwork(candidate));
+    checkpointOpponents.unshift(clonePolicy(candidate));
     checkpointOpponents.splice(trainingOptions.checkpointOpponentLimit);
-    trainingOptions.opponentNetworks = checkpointOpponents.slice();
-    previousCheckpointNetwork = cloneNetwork(candidate);
+    trainingOptions.opponentPolicies = checkpointOpponents.slice();
+    previousCheckpointPolicy = clonePolicy(candidate);
     return { path, score, tournament };
   }
 
@@ -1015,7 +1021,7 @@ export function createCheckpointManager(trainingOptions, outputPath, args = {}) 
 }
 
 function deriveCheckpointSeed(options) {
-  return deriveStableSeed(options.modelSeed || options.seed || 90_000, 113);
+  return deriveStableSeed(options.policySeed || options.seed || 90_000, 113);
 }
 
 function deriveStableSeed(baseSeed, salt) {
@@ -1027,9 +1033,9 @@ function deriveStableSeed(baseSeed, salt) {
 
 export async function runTrainingCli(argv = process.argv) {
   const args = parseArgs(argv);
-  const resumePath = args.resume === true ? DEFAULT_MODEL_PATH : args.resume;
+  const resumePath = args.resume === true ? DEFAULT_POLICY_PATH : args.resume;
   const trainingOptions = resolveTrainingOptions(args);
-  const out = args.out || DEFAULT_MODEL_PATH;
+  const out = args.out || DEFAULT_POLICY_PATH;
   const checkpointDir = args.checkpointDir || DEFAULT_CHECKPOINT_DIR;
   const humanGamesPath = resolveHumanGamesPath(args);
   const explicitHumanGamesPath = Boolean(args.humanGames || args.humanData || args.humanFeedback);
@@ -1042,20 +1048,20 @@ export async function runTrainingCli(argv = process.argv) {
     trainingOptions.humanFeedbackPath = resolve(humanGamesPath);
     trainingOptions.humanFeedbackFiles = humanDataset.files;
     trainingOptions.humanFeedbackSampleCount = humanDataset.samples.length;
-    trainingOptions.humanOpponentNetwork = createHumanOpponentNetwork(
+    trainingOptions.humanOpponentPolicy = createHumanOpponentPolicy(
       humanDataset.transitions,
       trainingOptions,
     );
   }
-  const resumePayload = resumePath ? loadModelPayloadSync(resumePath) : null;
-  const resumedNetwork = resumePath ? loadModelFileSync(resumePath) : null;
-  const network = resumedNetwork || createNetwork({ seed: trainingOptions.modelSeed });
+  const resumePayload = resumePath ? loadPolicyPayloadSync(resumePath) : null;
+  const resumedPolicy = resumePath ? loadPolicyFileSync(resumePath) : null;
+  const aiPolicy = resumedPolicy || createLearningPolicy({ seed: trainingOptions.policySeed });
   const shouldContinueMatchingCheckpoints = Boolean(
-    resumedNetwork
+    resumedPolicy
     && resumePath
     && resolve(resumePath) === resolve(out),
   );
-  trainingOptions.trainingEpisodeOffset = resumedNetwork
+  trainingOptions.trainingEpisodeOffset = resumedPolicy
     ? resolveResumeEpisodeOffset(
       resumePayload,
       resumePath,
@@ -1064,8 +1070,8 @@ export async function runTrainingCli(argv = process.argv) {
       shouldContinueMatchingCheckpoints,
     )
     : 0;
-  if (resumedNetwork) {
-    trainingOptions.promotionBaselineNetwork = cloneNetwork(resumedNetwork);
+  if (resumedPolicy) {
+    trainingOptions.promotionBaselinePolicy = clonePolicy(resumedPolicy);
     trainingOptions.promotionBaselinePath = resolve(resumePath);
   }
   trainingOptions.logInterval = Math.max(
@@ -1073,7 +1079,7 @@ export async function runTrainingCli(argv = process.argv) {
     Math.floor(numberArg(args, 'logInterval', Math.max(1, Math.floor(trainingOptions.episodes / 20)))),
   );
 
-  const progress = createProgressReporter(trainingOptions, out, Boolean(resumedNetwork));
+  const progress = createProgressReporter(trainingOptions, out, Boolean(resumedPolicy));
   trainingOptions.onProgress = progress.update;
   progress.start();
   const checkpoints = createCheckpointManager(trainingOptions, out, args);
@@ -1085,17 +1091,17 @@ export async function runTrainingCli(argv = process.argv) {
   };
 
   const stats = trainingOptions.workers > 1
-    ? await trainSelfPlayWithWorkers(network, trainingOptions)
-    : trainSelfPlay(network, trainingOptions);
+    ? await trainSelfPlayWithWorkers(aiPolicy, trainingOptions)
+    : trainSelfPlay(aiPolicy, trainingOptions);
   const promoted = checkpoints.best || {
     score: -Infinity,
     path: null,
     episode: trainingOptions.trainingEpisodeOffset + trainingOptions.episodes,
     runEpisode: trainingOptions.episodes,
-    network: cloneNetwork(network),
+    aiPolicy: clonePolicy(aiPolicy),
     tournament: runTournament({
-      network,
-      humanOpponentNetwork: trainingOptions.humanOpponentNetwork,
+      aiPolicy,
+      humanOpponentPolicy: trainingOptions.humanOpponentPolicy,
       episodes: trainingOptions.checkpointEvalEpisodes,
       seed: deriveCheckpointSeed(trainingOptions),
       includeDeals: trainingOptions.includeDeals,
@@ -1111,18 +1117,18 @@ export async function runTrainingCli(argv = process.argv) {
     }),
   };
   if (!Number.isFinite(promoted.score)) promoted.score = scoreTournamentReport(promoted.tournament);
-  saveModelFileSync(promoted.network, out, {
+  savePolicyFileSync(promoted.aiPolicy, out, {
     ...stats,
     workers: trainingOptions.workers,
     workersAuto: trainingOptions.workersAuto,
     runEpisodes: stats.episodes,
     trainingEpisodeOffset: trainingOptions.trainingEpisodeOffset,
     totalTrainingEpisodes: trainingOptions.trainingEpisodeOffset + stats.episodes,
-    resumedFrom: resumedNetwork ? resolve(resumePath) : null,
+    resumedFrom: resumedPolicy ? resolve(resumePath) : null,
     seed: trainingOptions.seed,
     seedWasSpecified: trainingOptions.seedWasSpecified,
     seedMode: trainingOptions.seedMode,
-    modelSeed: trainingOptions.modelSeed,
+    policySeed: trainingOptions.policySeed,
     playerCount: trainingOptions.playerCount,
     playerRange: [trainingOptions.playerMin, trainingOptions.playerMax],
     deckSize: trainingOptions.deckSize,
@@ -1162,7 +1168,7 @@ export async function runTrainingCli(argv = process.argv) {
   });
   progress.finish(stats);
   if (!trainingOptions.quiet) {
-    console.log(`[ai:train] promoted ${promoted.path || 'final network'} -> ${out} | score=${promoted.score.toFixed(4)}`);
+    console.log(`[ai:train] promoted ${promoted.path || 'final policy'} -> ${out} | score=${promoted.score.toFixed(4)}`);
   }
   console.log(JSON.stringify({
     ok: true,
@@ -1176,7 +1182,7 @@ export async function runTrainingCli(argv = process.argv) {
       baseline: Boolean(promoted.baseline),
     },
   }, null, 2));
-  return { network: promoted.network, out, stats, promoted };
+  return { aiPolicy: promoted.aiPolicy, out, stats, promoted };
 }
 
 if (isMainThread && process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'))) {

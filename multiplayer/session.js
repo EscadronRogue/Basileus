@@ -19,8 +19,8 @@ import {
   serializePublicGameState,
 } from '../engine/publicState.js';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, resolveConfiguredSeed, toInt } from '../engine/setup.js';
-import { AI_MODEL_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
-import { loadModelFileSync } from '../ai/modelStore.js';
+import { AI_POLICY_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
+import { loadPolicyFileSync } from '../ai/policyStore.js';
 import { getAiDisplayName } from '../ai/names.js';
 
 export const ROOM_STATUS = {
@@ -70,12 +70,12 @@ function serializeAiMeta(aiMeta) {
     decisionLog,
     fastCache,
     roundContext,
-    model,
+    policy,
     ...rest
   } = aiMeta;
   void fastCache;
   void roundContext;
-  void model;
+  void policy;
   return {
     ...clonePlain(rest),
     humanPlayerIds: [...(humanPlayerIds || new Set())],
@@ -85,10 +85,10 @@ function serializeAiMeta(aiMeta) {
   };
 }
 
-function hydrateAiMeta(rawMeta, state, loadAiModel = loadModelFileSync) {
+function hydrateAiMeta(rawMeta, state, loadAiPolicy = loadPolicyFileSync) {
   if (!rawMeta) return null;
   const { humanPlayerIds = [], humanFeedback = null } = clonePlain(rawMeta);
-  return createAIMeta(state, { humanPlayerIds, humanFeedback, model: loadAiModel() });
+  return createAIMeta(state, { humanPlayerIds, humanFeedback, policy: loadAiPolicy() });
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
@@ -135,11 +135,11 @@ function getAiSeatIds(room) {
 }
 
 export class MultiplayerRoom {
-  constructor({ roomCode, hostSessionId, hostPlayerName, config = {}, loadAiModel = loadModelFileSync }) {
+  constructor({ roomCode, hostSessionId, hostPlayerName, config = {}, loadAiPolicy = loadPolicyFileSync }) {
     this.roomCode = roomCode;
     this.hostSessionId = hostSessionId;
     this.config = normalizeRoomConfig(config);
-    this.loadAiModel = typeof loadAiModel === 'function' ? loadAiModel : loadModelFileSync;
+    this.loadAiPolicy = typeof loadAiPolicy === 'function' ? loadAiPolicy : loadPolicyFileSync;
     this.seats = Array.from({ length: this.config.playerCount }, (_, seatId) => createOpenSeat(seatId));
     this.connections = new Map();
     this.sessions = new Map();
@@ -326,11 +326,11 @@ export class MultiplayerRoom {
 
     const humanPlayerIds = getHumanSeatIds(this);
     const aiSeatIds = getAiSeatIds(this);
-    const model = this.loadAiModel();
-    assert(!aiSeatIds.length || model, AI_MODEL_MISSING_MESSAGE);
+    const policy = this.loadAiPolicy();
+    assert(!aiSeatIds.length || policy, AI_POLICY_MISSING_MESSAGE);
     this.aiMeta = createAIMeta(this.gameState, {
       humanPlayerIds,
-      model,
+      policy,
     });
     setDealParticipantIds(this.gameState, this.gameState.players.map((player) => player.id));
     this.assignPlayerFirstNames();
@@ -735,17 +735,17 @@ export function createRoomCode(existingRoomCodes = new Set()) {
   }
 }
 
-export function createRoom({ existingRoomCodes, hostSessionId, hostPlayerName, config, loadAiModel = loadModelFileSync }) {
+export function createRoom({ existingRoomCodes, hostSessionId, hostPlayerName, config, loadAiPolicy = loadPolicyFileSync }) {
   return new MultiplayerRoom({
     roomCode: createRoomCode(existingRoomCodes),
     hostSessionId,
     hostPlayerName,
     config,
-    loadAiModel,
+    loadAiPolicy,
   });
 }
 
-export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlayerName, saveGame, loadAiModel = loadModelFileSync }) {
+export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlayerName, saveGame, loadAiPolicy = loadPolicyFileSync }) {
   assert(saveGame?.schema === SAVE_SCHEMA, 'Save file is not a Basileus multiplayer save.');
   assert(saveGame.version === SAVE_VERSION, 'Save file version is not supported.');
   const savedRoom = saveGame.room;
@@ -762,12 +762,12 @@ export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlaye
     hostSessionId,
     hostPlayerName,
     config,
-    loadAiModel,
+    loadAiPolicy,
   });
 
   room.config = config;
   room.gameState = gameState;
-  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, loadAiModel);
+  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, loadAiPolicy);
   room.pendingAiTitleAssignment = clonePlain(savedRoom.pendingAiTitleAssignment);
   room.finishedAt = savedRoom.finishedAt || null;
   room.gameOverSent = false;

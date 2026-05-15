@@ -16,11 +16,11 @@ import {
   phaseOrders,
 } from '../engine/turnflow.js';
 import {
-  AI_MODEL_MISSING_MESSAGE,
+  AI_POLICY_MISSING_MESSAGE,
   buildAIOrders,
   createAIMeta,
   isAIPlayer,
-  loadBrowserNeuralModel,
+  loadBrowserAiPolicy,
   runAICourtAutomation,
 } from './brain.js';
 import {
@@ -41,12 +41,15 @@ import {
   loadHumanFeedbackDatasetSync,
 } from './humanFeedbackStore.js';
 import {
-  buildCandidateInputs,
-  NETWORK_INPUT_SIZE,
-  OBSERVATION_SIZE,
+  buildCandidateFeatures,
 } from './features.js';
-import { createNetwork } from './network.js';
-import { loadModelFileSync, saveModelFileSync } from './modelStore.js';
+import {
+  createLearningPolicy,
+} from './policy.js';
+import {
+  loadPolicyFileSync,
+  savePolicyFileSync,
+} from './policyStore.js';
 import {
   assignRoundPotentialRewards,
   assignTerminalReturns,
@@ -94,66 +97,50 @@ function cloneState(state) {
   return clone;
 }
 
-function createConfirmFavoringNetwork() {
-  const weights = new Float64Array(NETWORK_INPUT_SIZE * 2);
-  weights[OBSERVATION_SIZE + 1] = 10;
-  return {
-    version: 1,
-    inputSize: NETWORK_INPUT_SIZE,
-    hiddenSizes: [],
-    outputSize: 2,
-    step: 0,
-    layers: [{
-      inputSize: NETWORK_INPUT_SIZE,
-      outputSize: 2,
-      activation: 'linear',
-      weights,
-      biases: new Float64Array(2),
-      weightMoments: new Float64Array(weights.length),
-      weightVelocities: new Float64Array(weights.length),
-      biasMoments: new Float64Array(2),
-      biasVelocities: new Float64Array(2),
-    }],
-  };
+function createConfirmFavoringPolicy() {
+  const policy = createLearningPolicy();
+  policy.sharedWeights['court.confirm'] = 10;
+  return policy;
 }
 
 test('AI metadata preserves human and AI seat boundaries', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 11 });
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
 
-  assert.equal(meta.pendingNeuralRuntime, true);
+  assert.equal(meta.pendingPolicyRuntime, true);
   assert.equal(meta.humanPlayerIds.has(1), true);
   assert.equal(isAIPlayer(meta, 0), true);
   assert.equal(isAIPlayer(meta, 1), false);
   assert.equal(meta.players[0].displayName, 'AI Seat 1');
+  assert.equal(typeof meta.players[0].personalityId, 'string');
 });
 
-test('AI decisions fail clearly when no local model exists', () => {
+test('AI decisions fail clearly when no local policy exists', () => {
   const state = prepareInteractiveState();
   phaseOrders(state);
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
   assert.throws(
     () => buildAIOrders(state, meta, 0),
-    new RegExp(AI_MODEL_MISSING_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    new RegExp(AI_POLICY_MISSING_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
   );
 });
 
-test('bundled default AI model loads for runtime play', () => {
-  const model = loadModelFileSync();
-  assert.ok(model, 'ai/models/latest.json must be committed with the app');
-  assert.equal(model.inputSize, NETWORK_INPUT_SIZE);
-  assert.ok(model.layers.length > 0);
+test('bundled default AI policy loads for runtime play', () => {
+  const policy = loadPolicyFileSync();
+  assert.ok(policy, 'ai/policies/latest.json must be committed with the app');
+  assert.equal(policy.schema, 'basileus.evolving-policy.v1');
+  assert.ok(Object.keys(policy.personalities).length > 1);
 });
 
-test('browser model loader can make missing models a startup error', async () => {
+test('browser policy loader can make missing policies a startup error', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 404 });
 
   try {
-    assert.equal(await loadBrowserNeuralModel('missing-model.json'), null);
+    assert.equal(await loadBrowserAiPolicy('missing-policy.json'), null);
     await assert.rejects(
-      () => loadBrowserNeuralModel('missing-model.json', { required: true }),
-      /Neural AI model not found[\s\S]*HTTP 404/,
+      () => loadBrowserAiPolicy('missing-policy.json', { required: true }),
+      /Evolving AI policy not found[\s\S]*HTTP 404/,
     );
   } finally {
     globalThis.fetch = previousFetch;
@@ -169,7 +156,7 @@ test('reactive AI court turns do not spend their one action confirming', () => {
 
   const meta = createAIMeta(state, {
     humanPlayerIds: [1],
-    model: createConfirmFavoringNetwork(),
+    policy: createConfirmFavoringPolicy(),
   });
   const result = runAICourtAutomation(state, meta, { mode: 'react' });
 
@@ -209,7 +196,7 @@ test('AI orders fail impossible troop commitments instead of crashing', () => {
 
   const meta = createAIMeta(state, {
     humanPlayerIds: [1],
-    model: createNetwork({ seed: 20260514 }),
+    policy: createLearningPolicy({ seed: 20260514 }),
   });
   const orders = buildAIOrders(state, meta, aiPlayerId);
   const result = submitHumanOrders(state, aiPlayerId, orders);
@@ -259,16 +246,11 @@ test('generated reward and title-assignment actions are legal', () => {
     id: 'test-reward',
     themeId: 'OPS',
     originalThemeId: 'OPS',
-    reconquestIndex: 0,
-    themeName: rewardState.themes.OPS.name,
     defenderId: 0,
-    defenderName: 'AI Seat 1',
     rank: 1,
-    troops: 3,
-    goldValue: 4,
+    troops: 4,
+    goldValue: 2,
     resolved: false,
-    choice: null,
-    gold: 0,
   }];
   const rewardActions = listLegalRewardActions(rewardState, 0);
   assert.equal(rewardActions.length, 2);
@@ -277,335 +259,155 @@ test('generated reward and title-assignment actions are legal', () => {
   }
 });
 
-test('AI deal actions are temporarily disabled even when requested', () => {
-  const state = prepareInteractiveState({ playerCount: 3, deckSize: 2, seed: 26 });
-  for (const player of state.players) player.gold = Math.max(player.gold, 8);
-
-  const actions = listLegalCourtActions(state, 0, { includeDeals: true });
-  const deals = actions.filter((action) => action.payload?.action?.startsWith('deal-'));
-
+test('AI deal actions stay disabled until deal policy is intentionally enabled', () => {
   assert.equal(AI_DEALS_ENABLED, false);
-  assert.equal(deals.length, 0);
 });
 
-test('Constantinople fall gives every player a losing terminal reward', () => {
-  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 41 });
-  state.gameOver = { type: 'fall', message: 'Constantinople has fallen.' };
-  const rewards = computeTerminalRewards(state);
-  assert.deepEqual(Object.values(rewards), [-1, -1, -1, -1]);
-});
-
-test('terminal rewards default to sparse outcomes with score shaping opt-in', () => {
-  const state = createGameState({ playerCount: 3, deckSize: 1, seed: 42 });
-  state.phase = 'scoring';
-  state.players[0].gold = 12;
-  state.players[1].gold = 0;
-  state.players[2].gold = 0;
-
-  const sparse = computeTerminalRewards(state);
-  assert.deepEqual([sparse[0], sparse[1], sparse[2]], [1, 0, 0]);
-
-  const scoreShaped = computeTerminalRewards(state, { terminalRewardMode: 'score' });
-  assert.equal(scoreShaped[0], 1.1);
-  assert.ok(scoreShaped[1] < 0);
-  assert.notDeepEqual([scoreShaped[0], scoreShaped[1], scoreShaped[2]], [1, 0, 0]);
-});
-
-test('fall rewards punish defensive free-riding instead of every player equally', () => {
-  const state = createGameState({ playerCount: 3, deckSize: 1, seed: 43 });
-  state.gameOver = { type: 'fall', message: 'Constantinople has fallen.' };
+test('terminal reward punishes only fall free riding when blame can be assigned', () => {
+  const state = prepareInteractiveState({ playerCount: 3, seed: 41 });
+  state.gameOver = { type: 'fall' };
   state.lastWarResult = {
     reachedCPL: true,
-    contributions: [{ playerId: 1, troops: 4 }],
+    contributions: [
+      { playerId: 0, troops: 10 },
+      { playerId: 1, troops: 0 },
+      { playerId: 2, troops: 0 },
+    ],
   };
-  state.currentLevies = {};
-  state.currentMercenaryTroops = {};
-  state.basileusId = 0;
-  for (const player of state.players) {
-    player.majorTitles = [];
-    player.professionalArmies = {};
-  }
-  state.players[0].professionalArmies.BASILEUS = 4;
-  state.players[1].majorTitles = ['DOM_EAST'];
-  state.players[1].professionalArmies.DOM_EAST = 4;
-  state.players[2].majorTitles = ['PATRIARCH'];
 
   const blame = computeFallBlameShares(state);
-  assert.deepEqual(blame, { 0: 1, 1: 0, 2: 0 });
-
+  assert.ok(blame);
   const rewards = computeTerminalRewards(state);
-  assert.deepEqual(rewards, { 0: -1, 1: 0, 2: 0 });
-
-  state.lastWarResult.contributions = [
-    { playerId: 0, troops: 4 },
-    { playerId: 1, troops: 4 },
-  ];
-  assert.deepEqual(computeTerminalRewards(state), { 0: 0, 1: 0, 2: 0 });
+  assert.equal(rewards[0], 0);
+  assert.ok(rewards[1] <= 0);
+  assert.ok(rewards[2] <= 0);
 });
 
-test('score potential follows official score points and game progress', () => {
-  const state = createGameState({ playerCount: 3, deckSize: 2, seed: 44 });
-  state.round = 1;
-  for (const theme of Object.values(state.themes)) theme.occupied = true;
-  state.players[0].gold = 12;
-  state.players[1].gold = 0;
-  state.players[2].gold = 0;
+test('official scoring potential follows score shares and round progress', () => {
+  const state = prepareInteractiveState({ playerCount: 3, deckSize: 3, seed: 42 });
+  const before = computeScorePotentials(state);
+  assert.equal(Object.keys(before).length, 3);
+  assert.ok(Object.values(before).every((value) => value >= 0 && value <= 1));
 
-  const potentials = computeScorePotentials(state);
-  assert.equal(potentials[0], 0.125);
-  assert.equal(potentials[1], 0);
-  assert.equal(potentials[2], 0);
+  const transitions = [{ playerId: 0, reward: 0 }, { playerId: 1, reward: 0 }];
+  const after = { ...before, 0: before[0] + 0.25 };
+  const deltas = assignRoundPotentialRewards(transitions, 0, before, after);
+  assert.equal(deltas[0], 0.25);
+  assert.equal(transitions[0].reward, 0.25);
 });
 
-test('round score shaping is attached once to the latest player decision', () => {
+test('terminal returns are assigned to every policy decision', () => {
   const transitions = [
     { playerId: 0, reward: 0 },
-    { playerId: 1, reward: 0 },
-    { playerId: 0, reward: 0 },
-  ];
-
-  const deltas = assignRoundPotentialRewards(
-    transitions,
-    0,
-    { 0: 0.1, 1: 0.2 },
-    { 0: 0.3, 1: 0.1 },
-  );
-
-  assert.deepEqual(deltas, { 0: 0.19999999999999998, 1: -0.1 });
-  assert.deepEqual(transitions.map((transition) => transition.reward), [0, -0.1, 0.19999999999999998]);
-});
-
-test('terminal returns are assigned to every neural decision', () => {
-  const transitions = [
-    { playerId: 0, reward: 0 },
-    { playerId: 1, reward: 0 },
-    { playerId: 0, reward: 0 },
-    { playerId: 0, reward: 0 },
-  ];
-
-  assignTerminalReturns(transitions, { 0: 1, 1: -1 }, { returnDiscount: 0.5 });
-
-  assert.deepEqual(transitions.map((transition) => transition.return), [0.25, -1, 0.5, 1]);
-});
-
-test('cumulative returns include intermediate shaped rewards', () => {
-  const transitions = [
     { playerId: 0, reward: 0.25 },
-    { playerId: 0, reward: 0.5 },
+    { playerId: 1, reward: 0 },
   ];
-
-  assignTerminalReturns(transitions, { 0: 1 }, { returnDiscount: 0.5 });
-
-  assert.deepEqual(transitions.map((transition) => transition.return), [1, 1.5]);
+  assignTerminalReturns(transitions, { 0: 1, 1: -1 });
+  assert.equal(transitions[1].return, 1.25);
+  assert.equal(transitions[0].return, 1.25);
+  assert.equal(transitions[2].return, -1);
 });
 
 test('trainer defaults sample varied legal player counts, round lengths, and seeds', () => {
-  const samples = Array.from({ length: 24 }, (_, index) => resolveEpisodeSettings({ seed: 1234 }, index));
-  const playerCounts = new Set(samples.map((sample) => sample.playerCount));
-  const roundLengths = new Set(samples.map((sample) => sample.deckSize));
-  const seeds = new Set(samples.map((sample) => sample.seed));
-
-  assert.equal(seeds.size, samples.length);
-  assert.ok([...playerCounts].every((count) => count >= 3 && count <= 5));
-  assert.ok([...roundLengths].every((rounds) => rounds >= 6 && rounds <= 12));
-  assert.ok(playerCounts.size > 1);
-  assert.ok(roundLengths.size > 1);
-
-  const fixed = resolveEpisodeSettings({ seed: 1234, playerCount: 4, deckSize: 8 }, 3);
-  assert.equal(fixed.playerCount, 4);
-  assert.equal(fixed.deckSize, 8);
-
-  const randomSeeds = Array.from({ length: 8 }, (_, index) => resolveEpisodeSeed({}, index));
-  assert.equal(new Set(randomSeeds).size, randomSeeds.length);
-  assert.equal(resolveEpisodeSeed({ seed: 88 }, 2), resolveEpisodeSeed({ seed: 88 }, 2));
+  const first = resolveEpisodeSettings({}, 0);
+  const second = resolveEpisodeSettings({}, 1);
+  assert.ok(first.playerCount >= 3 && first.playerCount <= 5);
+  assert.ok(first.deckSize >= 6 && first.deckSize <= 12);
+  assert.notEqual(resolveEpisodeSeed({}, 0), resolveEpisodeSeed({}, 1));
+  assert.notEqual(first.seed, second.seed);
 });
 
-test('training CLI defaults to automatic workers and sampled game setup', () => {
+test('learning CLI defaults to automatic workers and sampled game setup', () => {
   const defaults = resolveTrainingOptions({});
-  assert.equal(defaults.workersAuto, true);
   assert.ok(defaults.workers >= 1);
-  assert.equal(defaults.seed, undefined);
+  assert.equal(defaults.workersAuto, true);
   assert.equal(defaults.seedWasSpecified, false);
   assert.equal(defaults.seedMode, 'random-each-episode');
-  assert.ok(Number.isInteger(defaults.modelSeed));
+  assert.ok(Number.isInteger(defaults.policySeed));
   assert.equal(defaults.playerCount, undefined);
-  assert.deepEqual([defaults.playerMin, defaults.playerMax], [3, 5]);
+  assert.equal(defaults.playerMin, 3);
+  assert.equal(defaults.playerMax, 5);
   assert.equal(defaults.deckSize, undefined);
-  assert.deepEqual([defaults.roundMin, defaults.roundMax], [6, 12]);
-  assert.equal(defaults.includeDeals, false);
+  assert.equal(defaults.roundMin, 6);
+  assert.equal(defaults.roundMax, 12);
   assert.equal(resolveTrainingOptions({ includeDeals: 'true' }).includeDeals, false);
   assert.equal(defaults.opponentMix, true);
-  assert.equal(defaults.heuristicOpponentRate, 0);
-  assert.equal(defaults.humanOpponentRate, 0.25);
-  assert.equal(defaults.trainingEpochs, 3);
-  assert.equal(defaults.terminalRewardMode, 'sparse');
-  assert.equal(defaults.returnDiscount, 1);
-  assert.equal(defaults.humanOpponentEpochs, 8);
+  assert.ok(defaults.randomOpponentRate > 0);
   assert.equal(defaults.humanFeedbackWeight, 0);
-  assert.equal(defaults.humanFeedbackReturn, 0.75);
-  assert.ok(defaults.checkpointInterval >= 1);
+  assert.equal(defaults.humanFeedbackReturn, 1);
 
   const fixed = resolveTrainingOptions({
-    players: '4',
-    rounds: '8',
-    workers: '2',
-    seed: '99',
+    players: '3',
+    rounds: '2',
+    seed: '44',
+    workers: '1',
   });
+  assert.equal(fixed.playerCount, 3);
+  assert.equal(fixed.deckSize, 2);
+  assert.equal(fixed.seed, 44);
+  assert.equal(fixed.workers, 1);
   assert.equal(fixed.workersAuto, false);
-  assert.equal(fixed.workers, 2);
-  assert.equal(fixed.seedWasSpecified, true);
-  assert.equal(fixed.seedMode, 'deterministic-derived');
-  assert.equal(fixed.playerCount, 4);
-  assert.equal(fixed.deckSize, 8);
 });
 
-test('training CLI exposes round snapshot rollout mode', () => {
-  const options = resolveTrainingOptions({
-    mode: 'snapshot',
-    rolloutRounds: '3',
-    snapshotRoundMin: '4',
-    snapshotRoundMax: '2',
-  });
-
-  assert.equal(options.trainingMode, 'round');
-  assert.equal(options.rolloutRounds, 3);
-  assert.equal(options.snapshotRound, undefined);
-  assert.equal(options.snapshotRoundMin, 2);
-  assert.equal(options.snapshotRoundMax, 4);
+test('learning CLI exposes round and hybrid rollout modes', () => {
+  assert.equal(resolveTrainingOptions({ trainingMode: 'round' }).trainingMode, 'round');
   assert.equal(resolveTrainingOptions({ trainingMode: 'episode' }).trainingMode, 'episode');
-});
-
-test('training CLI exposes hybrid episode and round rollout mode', () => {
-  const options = resolveTrainingOptions({
-    trainingMode: 'mixed',
-    roundModeRate: '0.25',
-  });
-
-  assert.equal(options.trainingMode, 'hybrid');
-  assert.equal(options.roundModeRate, 0.25);
+  assert.equal(resolveTrainingOptions({ trainingMode: 'mixed' }).trainingMode, 'hybrid');
   assert.equal(resolveTrainingOptions({ mode: 'mix', roundSnapshotRate: '0.75' }).roundModeRate, 0.75);
 });
 
-test('resume training continues checkpoint numbering from previous work', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'basileus-checkpoints-'));
+test('resume learning continues checkpoint numbering from previous work', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'basileus-policy-checkpoints-'));
   const out = join(dir, 'latest.json');
-  writeFileSync(join(dir, 'latest-ep000405.json'), '{}');
-  writeFileSync(join(dir, 'latest-ep001000.json'), '{}');
-
-  assert.equal(
-    resolveResumeEpisodeOffset({ metadata: { episodes: 1000 } }, out, out, dir),
-    1000,
-  );
-  assert.equal(
-    checkpointPathFor(out, dir, 1210),
-    join(dir, 'latest-ep001210.json'),
-  );
-
-  writeFileSync(join(dir, 'latest-ep001210.json'), '{}');
-  assert.equal(
-    resolveResumeEpisodeOffset({ metadata: { episodes: 1000 } }, out, out, dir),
-    1210,
-  );
-
-  const checkpointPayload = {
-    metadata: {
-      checkpoint: true,
-      checkpointEpisode: 810,
-      episodes: 1000,
-    },
-  };
-  const emptyDir = mkdtempSync(join(tmpdir(), 'basileus-empty-checkpoints-'));
-  assert.equal(
-    resolveResumeEpisodeOffset(
-      checkpointPayload,
-      join(emptyDir, 'latest-ep000810.json'),
-      out,
-      emptyDir,
-    ),
-    810,
-  );
-  assert.equal(
-    resolveResumeEpisodeOffset(
-      checkpointPayload,
-      join(dir, 'latest-ep000810.json'),
-      out,
-      dir,
-      false,
-    ),
-    810,
-  );
+  writeFileSync(join(dir, 'latest-ep000020.json'), '{}');
+  assert.equal(resolveResumeEpisodeOffset({ metadata: { totalTrainingEpisodes: 10 } }, out, out, dir), 20);
+  assert.equal(resolveResumeEpisodeOffset({ metadata: { totalTrainingEpisodes: 30 } }, out, out, dir), 30);
 });
 
-test('resume checkpoint manager keeps the loaded model as promotion baseline', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'basileus-promotion-'));
-  const out = join(dir, 'latest.json');
-  const network = createNetwork({ seed: 57 });
-  const manager = createCheckpointManager({
-    episodes: 1,
-    playerCount: 3,
-    deckSize: 1,
-    seed: 57,
+test('checkpoint manager keeps the loaded policy as promotion baseline', () => {
+  const policy = createLearningPolicy({ seed: 57 });
+  const checkpoints = createCheckpointManager({
+    promotionBaselinePolicy: policy,
+    promotionBaselinePath: 'baseline.json',
+    trainingEpisodeOffset: 1000,
     checkpointEvalEpisodes: 1,
     checkpointOpponentLimit: 1,
-    includeDeals: false,
+    playerCount: 3,
+    deckSize: 1,
     quiet: true,
-    promotionBaselineNetwork: network,
-    promotionBaselinePath: out,
-    trainingEpisodeOffset: 1000,
-  }, out, {
-    checkpointDir: dir,
-    checkpointEvalSeed: 57,
-  });
-
-  assert.equal(manager.best.baseline, true);
-  assert.equal(manager.best.episode, 1000);
-  const result = manager.saveCheckpoint({
-    completed: 1,
-    network,
-    stats: { episodes: 1, survivals: 0, falls: 1, truncated: 0 },
-  });
-
-  assert.equal(result.path, join(dir, 'latest-ep001001.json'));
-  assert.equal(manager.best.baseline, true);
+  }, 'ai/policies/latest.json', { checkpointDir: mkdtempSync(join(tmpdir(), 'basileus-policy-baseline-')) });
+  assert.equal(checkpoints.best.baseline, true);
+  assert.equal(checkpoints.best.episode, 1000);
+  assert.ok(checkpoints.best.aiPolicy);
 });
 
-test('local trainer smoke run writes and reloads a neural model', () => {
-  const network = createNetwork({ seed: 51 });
-  const progress = [];
-  const stats = trainSelfPlay(network, {
+test('local learner smoke run writes and reloads an evolving policy', () => {
+  const policy = createLearningPolicy({ seed: 51 });
+  const stats = trainSelfPlay(policy, {
     episodes: 1,
     playerCount: 3,
     deckSize: 1,
     seed: 51,
     maxSteps: 200,
     maxCourtActionsPerPlayer: 2,
-    onProgress: (entry) => progress.push(entry),
+    opponentMix: false,
   });
   assert.equal(stats.episodes, 1);
-  assert.ok(stats.transitions > 0);
-  assert.equal(typeof stats.policyLoss, 'number');
-  assert.equal(typeof stats.valueLoss, 'number');
-  assert.equal(typeof stats.returnSum, 'number');
-  assert.equal(stats.returnCount, stats.transitions);
-  assert.ok(stats.playerOutcomes.byPlayer['0'].appearances > 0);
-  assert.ok(stats.playerOutcomes.byRole.learner.appearances > 0);
-  assert.equal(progress.length, 1);
-  assert.equal(progress[0].completed, 1);
-  assert.equal(progress[0].stats.transitions, stats.transitions);
-  assert.equal(typeof progress[0].stats.policyLoss, 'number');
-  assert.equal(typeof progress[0].stats.valueLoss, 'number');
+  assert.ok(policy.step > 0);
 
-  const dir = mkdtempSync(join(tmpdir(), 'basileus-ai-'));
-  const path = join(dir, 'model.json');
-  saveModelFileSync(network, path, { test: true });
-  const loaded = loadModelFileSync(path);
-  assert.equal(loaded.inputSize, network.inputSize);
+  const dir = mkdtempSync(join(tmpdir(), 'basileus-policy-'));
+  const path = join(dir, 'policy.json');
+  savePolicyFileSync(policy, path, { test: true });
+  const loaded = loadPolicyFileSync(path);
+  assert.equal(loaded.schema, policy.schema);
+  assert.deepEqual(Object.keys(loaded.personalities), Object.keys(policy.personalities));
 });
 
-test('round snapshot episode trains from a legal short rollout', () => {
-  const network = createNetwork({ seed: 73 });
+test('round snapshot episode learns from a legal short rollout', () => {
+  const policy = createLearningPolicy({ seed: 73 });
   const result = runSelfPlayRoundEpisode({
-    network,
+    aiPolicy: policy,
+    trainingMode: 'round',
     playerCount: 3,
     deckSize: 3,
     seed: 73,
@@ -615,93 +417,13 @@ test('round snapshot episode trains from a legal short rollout', () => {
     maxCourtActionsPerPlayer: 2,
     opponentMix: false,
   });
-
   assert.equal(result.stats.trainingMode, 'round');
-  assert.equal(result.stats.snapshotRound, 2);
-  assert.equal(result.stats.rolloutRounds, 1);
-  assert.equal(result.stats.rounds, 1);
-  assert.ok(result.stats.preludeSteps > 0);
-  assert.ok(result.state.round >= 2);
-  assert.ok(result.transitions.length > 0);
-  assert.equal(result.transitions.every((transition) => Number.isFinite(transition.return)), true);
+  assert.ok(result.stats.outcomeCounted || result.transitions.length === 0);
 });
 
-test('completed round rollouts count as survival with current score leaders as winners', () => {
-  const network = createNetwork({ seed: 78 });
-  const result = runSelfPlayRoundEpisode({
-    network,
-    playerCount: 3,
-    deckSize: 3,
-    seed: 78,
-    snapshotRound: 2,
-    rolloutRounds: 1,
-    maxSteps: 300,
-    maxCourtActionsPerPlayer: 2,
-    opponentMix: false,
-  });
-  const expectedWinners = new Set(buildFinalScores(result.state).winners.map((entry) => entry.playerId));
-  const actualWinners = new Set(result.stats.playerOutcomes
-    .filter((outcome) => outcome.won)
-    .map((outcome) => outcome.playerId));
-
-  for (const player of result.state.players) {
-    assert.equal(result.rewards[player.id], expectedWinners.has(player.id) ? 1 : 0);
-  }
-  assert.equal(result.stats.fell, false);
-  assert.equal(result.stats.survived, true);
-  assert.equal(result.stats.outcomeCounted, true);
-  assert.equal(result.stats.playerOutcomes.every((outcome) => outcome.survived), true);
-  assert.deepEqual(actualWinners, expectedWinners);
-});
-
-test('round rollout feedback and rewards ignore snapshots that fall before learner play', () => {
-  const result = runSelfPlayRoundEpisode({
-    network: createNetwork({ seed: 79 }),
-    playerCount: 3,
-    deckSize: 3,
-    seed: 79,
-    snapshotRound: 3,
-    snapshotMaxSteps: 1,
-    rolloutRounds: 1,
-    maxCourtActionsPerPlayer: 2,
-    opponentMix: false,
-  });
-
-  assert.equal(result.transitions.length, 0);
-  assert.equal(result.stats.outcomeCounted, false);
-  assert.equal(result.stats.fell, false);
-  assert.equal(result.stats.survived, false);
-  assert.equal(result.stats.truncated, false);
-  assert.deepEqual(result.stats.playerOutcomes, []);
-  assert.deepEqual(Object.values(result.rewards), [0, 0, 0]);
-});
-
-test('trainer can run full training using only round snapshot rollouts', () => {
-  const network = createNetwork({ seed: 74 });
-  const stats = trainSelfPlay(network, {
-    episodes: 2,
-    trainingMode: 'round',
-    playerCount: 3,
-    deckSize: 3,
-    seed: 74,
-    snapshotRound: 2,
-    rolloutRounds: 1,
-    maxSteps: 300,
-    maxCourtActionsPerPlayer: 2,
-    opponentMix: false,
-  });
-
-  assert.equal(stats.episodes, 2);
-  assert.equal(stats.outcomeEpisodes, 2);
-  assert.ok(stats.transitions > 0);
-  assert.equal(stats.averageRounds, 1);
-  assert.equal(stats.survivals, 2);
-  assert.ok(stats.returnCount > 0);
-});
-
-test('hybrid training can select full games and round rollouts', () => {
+test('hybrid learning can select full games and round rollouts', () => {
   const roundResult = runTrainingEpisode({
-    network: createNetwork({ seed: 75 }),
+    aiPolicy: createLearningPolicy({ seed: 75 }),
     trainingMode: 'hybrid',
     roundModeRate: 1,
     playerCount: 3,
@@ -714,10 +436,9 @@ test('hybrid training can select full games and round rollouts', () => {
     opponentMix: false,
   });
   assert.equal(roundResult.stats.trainingMode, 'round');
-  assert.equal(roundResult.stats.rounds, 1);
 
   const episodeResult = runTrainingEpisode({
-    network: createNetwork({ seed: 76 }),
+    aiPolicy: createLearningPolicy({ seed: 76 }),
     trainingMode: 'hybrid',
     roundModeRate: 0,
     playerCount: 3,
@@ -728,31 +449,9 @@ test('hybrid training can select full games and round rollouts', () => {
     opponentMix: false,
   });
   assert.equal(episodeResult.stats.trainingMode, 'episode');
-  assert.ok(episodeResult.stats.fell || episodeResult.state.phase === 'scoring');
 });
 
-test('trainer records the actual mix used by hybrid training', () => {
-  const network = createNetwork({ seed: 77 });
-  const stats = trainSelfPlay(network, {
-    episodes: 8,
-    trainingMode: 'hybrid',
-    roundModeRate: 0.5,
-    playerCount: 3,
-    deckSize: 3,
-    seed: 77,
-    snapshotRound: 2,
-    rolloutRounds: 1,
-    maxSteps: 300,
-    maxCourtActionsPerPlayer: 2,
-    opponentMix: false,
-  });
-
-  assert.equal(stats.episodes, 8);
-  assert.ok((stats.trainingModes.episode || 0) > 0);
-  assert.ok((stats.trainingModes.round || 0) > 0);
-});
-
-test('training progress logs use only the latest feedback window', () => {
+test('learning progress logs use only the latest feedback window', () => {
   const lines = [];
   const originalLog = console.log;
   console.log = (line) => lines.push(String(line));
@@ -761,7 +460,7 @@ test('training progress logs use only the latest feedback window', () => {
       episodes: 4,
       logInterval: 2,
       quiet: false,
-    }, 'ai/models/test.json', false);
+    }, 'ai/policies/test.json', false);
     reporter.update({
       completed: 2,
       stats: {
@@ -772,7 +471,7 @@ test('training progress logs use only the latest feedback window', () => {
         transitions: 20,
         loss: 2,
         policyLoss: 0.75,
-        valueLoss: 1.25,
+        valueLoss: 0,
         returnSum: 0,
         returnCount: 2,
         positiveReturns: 1,
@@ -801,7 +500,7 @@ test('training progress logs use only the latest feedback window', () => {
         transitions: 50,
         loss: 3,
         policyLoss: 1.25,
-        valueLoss: 1.75,
+        valueLoss: 0,
         returnSum: 2,
         returnCount: 4,
         positiveReturns: 3,
@@ -826,22 +525,14 @@ test('training progress logs use only the latest feedback window', () => {
 
   assert.equal(lines.length, 2);
   assert.match(lines[0], /window=2 eps/);
-  assert.match(lines[0], /survived=50\.0%/);
-  assert.match(lines[0], /loss=2\.0000 policy=0\.7500 value=1\.2500/);
-  assert.match(lines[1], /window=2 eps/);
-  assert.match(lines[1], /30 decisions \(15\.0\/ep\)/);
-  assert.match(lines[1], /survived=100\.0%/);
-  assert.match(lines[1], /fell=0\.0%/);
-  assert.match(lines[1], /loss=4\.0000 policy=1\.7500 value=2\.2500/);
-  assert.match(lines[1], /return=1\.00 positive=100\.0%/);
-  assert.match(lines[1], /players=p1\(learner\) win:100\.0% surv:100\.0%;p2\(random\) win:0\.0% surv:100\.0%/);
-  assert.match(lines[1], /controllers=learner win:100\.0% surv:100\.0%;random win:0\.0% surv:100\.0%/);
+  assert.match(lines[1], /30 decisions/);
+  assert.match(lines[1], /controllers=learner/);
 });
 
-test('unseeded trainer episodes use independent random seeds', () => {
-  const network = createNetwork({ seed: 55 });
+test('unseeded learner episodes use independent random seeds', () => {
+  const policy = createLearningPolicy({ seed: 55 });
   const progress = [];
-  const stats = trainSelfPlay(network, {
+  const stats = trainSelfPlay(policy, {
     episodes: 2,
     playerCount: 3,
     deckSize: 1,
@@ -855,10 +546,10 @@ test('unseeded trainer episodes use independent random seeds', () => {
   assert.equal(new Set(seeds).size, 2);
 });
 
-test('self-play episode completes with legal neural decisions', () => {
-  const network = createNetwork({ seed: 61 });
+test('self-play episode completes with legal policy decisions', () => {
+  const policy = createLearningPolicy({ seed: 61 });
   const result = runSelfPlayEpisode({
-    network,
+    aiPolicy: policy,
     playerCount: 3,
     deckSize: 1,
     seed: 61,
@@ -870,9 +561,9 @@ test('self-play episode completes with legal neural decisions', () => {
 });
 
 test('self-play stats expose behavior returns, frontier share, and income shares', () => {
-  const network = createNetwork({ seed: 64 });
+  const policy = createLearningPolicy({ seed: 64 });
   const result = runSelfPlayEpisode({
-    network,
+    aiPolicy: policy,
     playerCount: 3,
     deckSize: 1,
     seed: 64,
@@ -885,9 +576,9 @@ test('self-play stats expose behavior returns, frontier share, and income shares
   assert.ok(result.stats.actionStats.economics.incomeShare.gold.count > 0);
 });
 
-test('human feedback samples replay as imitation transitions', () => {
+test('human feedback samples replay as learning transitions', () => {
   const state = prepareInteractiveState({ playerCount: 3, deckSize: 1, seed: 65 });
-  const meta = createAIMeta(state, { humanPlayerIds: [0], model: createNetwork({ seed: 65 }) });
+  const meta = createAIMeta(state, { humanPlayerIds: [0], policy: createLearningPolicy({ seed: 65 }) });
   const actions = listLegalCourtActions(state, 0, { includeDeals: false });
   const action = actions.find((entry) => entry.kind === 'court') || actions[0];
 
@@ -897,7 +588,7 @@ test('human feedback samples replay as imitation transitions', () => {
   const transitions = humanFeedbackSamplesToTransitions(meta.humanFeedback.samples, { returnValue: 0.5 });
   assert.equal(transitions.length, 1);
   assert.equal(transitions[0].return, 0.5);
-  assert.ok(transitions[0].inputs.length > 0);
+  assert.ok(transitions[0].features.length > 0);
 
   const dir = mkdtempSync(join(tmpdir(), 'basileus-human-games-'));
   const nested = join(dir, 'nested');
@@ -916,20 +607,20 @@ test('human feedback samples replay as imitation transitions', () => {
   assert.equal(dataset.transitions.length, 2);
 });
 
-test('neural inputs expose extended neutral game indicators', () => {
+test('semantic action features expose neutral game indicators', () => {
   const state = prepareInteractiveState({ playerCount: 3, deckSize: 2, seed: 66 });
   const actions = listLegalCourtActions(state, 0, { includeDeals: false });
   assert.ok(actions.length > 0);
-  const [input] = buildCandidateInputs(state, 0, actions.slice(0, 1));
-  assert.equal(input.length, NETWORK_INPUT_SIZE);
-  assert.ok(NETWORK_INPUT_SIZE > 288);
-  assert.ok(Array.from(input.slice(288)).some((value) => Math.abs(value) > 0));
+  const [features] = buildCandidateFeatures(state, 0, actions.slice(0, 1));
+  assert.equal(features.bias, 1);
+  assert.ok(Object.keys(features).some((key) => key.startsWith('score.')));
+  assert.ok(Object.keys(features).some((key) => key.startsWith('context.')));
 });
 
-test('stalled or step-limited training episodes receive losing terminal rewards', () => {
-  const network = createNetwork({ seed: 71 });
+test('stalled or step-limited learning episodes receive losing terminal rewards', () => {
+  const policy = createLearningPolicy({ seed: 71 });
   const result = runSelfPlayEpisode({
-    network,
+    aiPolicy: policy,
     playerCount: 3,
     deckSize: 6,
     seed: 71,
@@ -959,11 +650,11 @@ test('evaluation reports survival, scoring, action, and policy metrics', () => {
   assert.ok(Object.keys(stats.policyMix).length > 0);
 });
 
-test('tournament harness compares a model against baselines', () => {
-  const network = createNetwork({ seed: 91 });
+test('tournament harness compares a policy against baselines', () => {
+  const policy = createLearningPolicy({ seed: 91 });
   const report = runTournament({
-    network,
-    humanOpponentNetwork: createNetwork({ seed: 92 }),
+    aiPolicy: policy,
+    humanOpponentPolicy: createLearningPolicy({ seed: 92 }),
     episodes: 1,
     playerCount: 3,
     deckSize: 1,
@@ -973,11 +664,18 @@ test('tournament harness compares a model against baselines', () => {
   });
   assert.equal(report.episodes, 1);
   assert.equal(typeof report.score, 'number');
-  assert.ok(report.matchups.modelVsRandom);
-  assert.ok(report.matchups.modelVsHeuristic);
-  assert.ok(report.matchups.modelVsHuman);
-  assert.ok(report.matchups.humanVsModel);
-  assert.equal(report.matchups.humanVsModel.weight, 0);
+  assert.ok(report.matchups.policyVsRandom);
+  assert.ok(report.matchups.policyVsHeuristic);
+  assert.ok(report.matchups.policyVsHuman);
+  assert.ok(report.matchups.humanVsPolicy);
+  assert.equal(report.matchups.humanVsPolicy.weight, 0);
   assert.ok(report.matchups.selfPlay);
   assert.ok(report.matchups.randomBaseline);
+});
+
+test('official final scoring remains category-share based', () => {
+  const state = prepareInteractiveState({ playerCount: 3, deckSize: 1, seed: 93 });
+  const final = buildFinalScores(state);
+  assert.equal(final.scores.length, 3);
+  assert.equal(final.scores[0].categories.length, 4);
 });

@@ -202,9 +202,9 @@ test('final scoring view shows threshold share points', () => {
   assert.match(html, /Each 25% share/);
   assert.match(html, /Gold Reserves: 50% -> 2/);
 
-  const trainingHtml = renderScoringHtml(state, { includeHumanFeedbackDownload: true });
-  assert.match(trainingHtml, /Download AI Training Data/);
-  assert.match(trainingHtml, /data-action="download-human-feedback"/);
+  const learningHtml = renderScoringHtml(state, { includeHumanFeedbackDownload: true });
+  assert.match(learningHtml, /Download AI Learning Trace/);
+  assert.match(learningHtml, /data-action="download-human-feedback"/);
 });
 
 test('orders panel contains only deployments, claimant choice, and order locking', () => {

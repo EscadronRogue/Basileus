@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { startMultiplayerServer } from './server.js';
-import { createNetwork } from '../ai/network.js';
+import { createLearningPolicy } from '../ai/policy.js';
 
 class SocketHarness {
   constructor(url) {
@@ -76,7 +76,7 @@ class SocketHarness {
 async function createServerHarness(t) {
   const instance = await startMultiplayerServer({
     port: 0,
-    loadAiModel: () => createNetwork({ seed: 20260514 }),
+    loadAiPolicy: () => createLearningPolicy({ seed: 20260514 }),
   });
   t.after(async () => {
     await instance.close();

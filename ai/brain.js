@@ -5,14 +5,17 @@ import {
   listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
-import { buildCandidateInputs } from './features.js';
 import {
-  deserializeNetwork,
-  selectActionWithNetwork,
-} from './network.js';
+  buildCandidateFeatures,
+} from './features.js';
+import {
+  hydrateLearningPolicy,
+  personalityForSeat,
+  selectActionWithPolicy,
+} from './policy.js';
 
-export const AI_MODEL_MISSING_MESSAGE = 'Neural AI model not found. Run npm run ai:train to create ai/models/latest.json.';
-export const DEFAULT_BROWSER_MODEL_URL = 'ai/models/latest.json';
+export const AI_POLICY_MISSING_MESSAGE = 'Evolving AI policy not found. Run npm run ai:train to create ai/policies/latest.json.';
+export const DEFAULT_BROWSER_POLICY_URL = 'ai/policies/latest.json';
 
 function normalizeHumanPlayerIds(playerCount, humanPlayerIds = []) {
   return new Set(
@@ -36,36 +39,37 @@ function createPlayerMeta(player, humanPlayerIds) {
     playerId: player.id,
     isAI,
     displayName: isAI ? `AI Seat ${player.id + 1}` : null,
+    personalityId: isAI ? personalityForSeat(player.id) : null,
     stats: {},
   };
 }
 
-export function hydrateNeuralModel(rawModel) {
-  if (!rawModel) return null;
-  return deserializeNetwork(rawModel.network || rawModel);
+export function hydrateAiPolicy(rawPolicy) {
+  if (!rawPolicy) return null;
+  return hydrateLearningPolicy(rawPolicy.policy || rawPolicy);
 }
 
-function modelLoadError(url, detail = '') {
-  return new Error(`${AI_MODEL_MISSING_MESSAGE} Could not load ${url}${detail ? `: ${detail}` : ''}.`);
+function policyLoadError(url, detail = '') {
+  return new Error(`${AI_POLICY_MISSING_MESSAGE} Could not load ${url}${detail ? `: ${detail}` : ''}.`);
 }
 
-export async function loadBrowserNeuralModel(url = DEFAULT_BROWSER_MODEL_URL, options = {}) {
+export async function loadBrowserAiPolicy(url = DEFAULT_BROWSER_POLICY_URL, options = {}) {
   const required = Boolean(options.required);
   if (typeof fetch !== 'function') {
-    if (required) throw modelLoadError(url, 'browser fetch is unavailable');
+    if (required) throw policyLoadError(url, 'browser fetch is unavailable');
     return null;
   }
   try {
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
-      if (required) throw modelLoadError(url, `HTTP ${response.status}`);
+      if (required) throw policyLoadError(url, `HTTP ${response.status}`);
       return null;
     }
-    return hydrateNeuralModel(await response.json());
+    return hydrateAiPolicy(await response.json());
   } catch (error) {
     if (required) {
-      if (error?.message?.startsWith(AI_MODEL_MISSING_MESSAGE)) throw error;
-      throw modelLoadError(url, error?.message || 'request failed');
+      if (error?.message?.startsWith(AI_POLICY_MISSING_MESSAGE)) throw error;
+      throw policyLoadError(url, error?.message || 'request failed');
     }
     return null;
   }
@@ -81,21 +85,21 @@ export function createAIMeta(state, options = {}) {
   return {
     humanPlayerIds,
     players,
-    model: options.model || null,
-    neuralModelAvailable: Boolean(options.model),
-    runtimeTemperature: Number.isFinite(Number(options.runtimeTemperature)) ? Number(options.runtimeTemperature) : 0,
+    policy: options.policy || null,
+    policyAvailable: Boolean(options.policy),
+    runtimeExploration: Number.isFinite(Number(options.runtimeExploration)) ? Number(options.runtimeExploration) : 0,
     publicLog: [],
     decisionLog: createDecisionLog(),
     humanFeedback: options.humanFeedback || null,
-    pendingNeuralRuntime: !options.model,
+    pendingPolicyRuntime: !options.policy,
   };
 }
 
-export function setAIMetaModel(meta, model) {
+export function setAIMetaPolicy(meta, policy) {
   if (!meta) return meta;
-  meta.model = model || null;
-  meta.neuralModelAvailable = Boolean(model);
-  meta.pendingNeuralRuntime = !model;
+  meta.policy = policy || null;
+  meta.policyAvailable = Boolean(policy);
+  meta.pendingPolicyRuntime = !policy;
   return meta;
 }
 
@@ -120,22 +124,27 @@ export function observeCourtAction(state, meta, observation = null) {
   if (meta.publicLog.length > 80) meta.publicLog.splice(0, meta.publicLog.length - 80);
 }
 
-function requireModel(meta) {
-  if (!meta?.model) throw new Error(AI_MODEL_MISSING_MESSAGE);
-  return meta.model;
+function requirePolicy(meta) {
+  if (!meta?.policy) throw new Error(AI_POLICY_MISSING_MESSAGE);
+  return meta.policy;
 }
 
 function getRng(state) {
   return typeof state?.rng === 'function' ? state.rng : Math.random;
 }
 
-function chooseNeuralAction(state, meta, playerId, actions, options = {}) {
+function getPersonalityId(meta, playerId) {
+  return meta?.players?.[playerId]?.personalityId || personalityForSeat(playerId);
+}
+
+function choosePolicyAction(state, meta, playerId, actions, options = {}) {
   if (!actions.length) return null;
-  const model = requireModel(meta);
-  const inputs = buildCandidateInputs(state, playerId, actions);
-  const selection = selectActionWithNetwork(model, inputs, getRng(state), {
+  const policy = requirePolicy(meta);
+  const features = buildCandidateFeatures(state, playerId, actions);
+  const selection = selectActionWithPolicy(policy, features, getRng(state), {
     greedy: options.greedy ?? true,
-    temperature: options.temperature ?? meta.runtimeTemperature ?? 0,
+    temperature: options.temperature ?? meta.runtimeExploration ?? 0,
+    personalityId: getPersonalityId(meta, playerId),
   });
   const action = actions[selection.index] || actions[0];
   meta.decisionLog?.push?.(`${action.phase}:${playerId}:${action.label}`);
@@ -153,7 +162,7 @@ function playableCourtActions(actions) {
 export function runAICourtAutomation(state, meta, options = {}) {
   if (!state || state.phase !== 'court' || !meta) return { ok: true, actions: 0 };
   const mode = options.mode || 'finish';
-  if (!meta.model && mode === 'react') return { ok: true, actions: 0, skipped: true };
+  if (!meta.policy && mode === 'react') return { ok: true, actions: 0, skipped: true };
   const maxActions = mode === 'react' ? 1 : Math.max(1, Number(options.maxActionsPerPlayer) || 10);
   let applied = 0;
 
@@ -167,7 +176,7 @@ export function runAICourtAutomation(state, meta, options = {}) {
       const actionCandidates = mode === 'react' ? playableCourtActions(actions) : actions;
       const action = step === maxActions - 1 && mode !== 'react'
         ? confirmAction(actions)
-        : chooseNeuralAction(state, meta, player.id, actionCandidates.length ? actionCandidates : actions);
+        : choosePolicyAction(state, meta, player.id, actionCandidates.length ? actionCandidates : actions);
       if (!action) break;
       const result = applyLegalAction(state, action, meta);
       if (!result.ok) {
@@ -191,13 +200,13 @@ export function runAICourtAutomation(state, meta, options = {}) {
 
 export function buildAIOrders(state, meta, playerId) {
   const actions = listLegalOrderActions(state, playerId);
-  const action = chooseNeuralAction(state, meta, playerId, actions);
+  const action = choosePolicyAction(state, meta, playerId, actions);
   if (!action) throw new Error(`No legal order action available for AI player ${playerId}.`);
   return {
     ...action.orders,
     debug: {
       decision: {
-        title: 'Neural order selection',
+        title: 'Evolving policy order selection',
         factors: [
           { label: 'candidate actions', value: actions.length, impact: 'neutral', note: 'Chosen from engine-legal orders.' },
         ],
@@ -209,13 +218,13 @@ export function buildAIOrders(state, meta, playerId) {
 export function chooseAIDefenderRewardChoice(state, meta, reward) {
   const actions = listLegalRewardActions(state, reward.defenderId)
     .filter((action) => action.rewardId === reward.id);
-  const action = chooseNeuralAction(state, meta, reward.defenderId, actions);
+  const action = choosePolicyAction(state, meta, reward.defenderId, actions);
   return action?.choice || 'empire';
 }
 
 export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nextBasileusId) {
   const actions = listLegalTitleAssignments(state, newBasileusId);
-  return chooseNeuralAction(state, meta, newBasileusId, actions);
+  return choosePolicyAction(state, meta, newBasileusId, actions);
 }
 
 export function applyPlannedAiTitleAssignment(state, meta, pendingAssignment = null, newBasileusId = state?.nextBasileusId) {

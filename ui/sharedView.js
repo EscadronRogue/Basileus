@@ -422,7 +422,7 @@ export function renderScoringHtml(state, options = {}) {
     ? '<button class="btn-new-game" type="button" onclick="location.reload()">New Game</button>'
     : '';
   const humanFeedbackButton = options.includeHumanFeedbackDownload
-    ? '<button class="btn-download-training" type="button" data-action="download-human-feedback">Download AI Training Data</button>'
+    ? '<button class="btn-download-learning" type="button" data-action="download-human-feedback">Download AI Learning Trace</button>'
     : '';
   const actionButtons = [humanFeedbackButton, newGameButton].filter(Boolean).join('');
 

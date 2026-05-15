@@ -30,17 +30,32 @@ import {
   listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
-import { buildCandidateInputs } from './features.js';
-import { selectActionWithNetwork, trainBatch } from './network.js';
+import {
+  buildActionFeatureMap,
+  buildCandidateFeatures,
+  FEATURE_UNIT,
+} from './features.js';
+import {
+  createLearningPolicy,
+  personalityForSeat,
+  selectActionWithPolicy,
+  trainFeatureBatch,
+} from './policy.js';
 
-const DEFAULT_MAX_STEPS = 2000;
-const DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER = 10;
+const MAX_OFFICIAL_SCORE = SCORE_CATEGORIES.length * SCORE_SHARE_THRESHOLDS.length;
+// Game-rule bounds: Basileus is explicitly a 3-5 player game.
 const DEFAULT_PLAYER_MIN = 3;
 const DEFAULT_PLAYER_MAX = 5;
-const DEFAULT_ROUND_MIN = 6;
-const DEFAULT_ROUND_MAX = 12;
-const SCORE_CATEGORY_KEYS = ['church', 'estate', 'tax', 'gold'];
-const MAX_OFFICIAL_SCORE = SCORE_CATEGORIES.length * SCORE_SHARE_THRESHOLDS.length;
+const DEFAULT_ROUND_MIN = SCORE_SHARE_THRESHOLDS.length * (SCORE_SHARE_THRESHOLDS.length - FEATURE_UNIT);
+const DEFAULT_ROUND_MAX = MAX_OFFICIAL_SCORE;
+const SCORE_CATEGORY_KEYS = SCORE_CATEGORIES.map((category) => category.key);
+const REWARD_GOLD_MAGNITUDE = SCORE_SHARE_THRESHOLDS.length - FEATURE_UNIT;
+const RESTORE_EMPIRE_MAGNITUDE = SCORE_CATEGORIES.length;
+const PROFESSIONAL_TROOP_ACTION_MAGNITUDE = SCORE_SHARE_THRESHOLDS.length;
+const ESTATE_CONTROL_ACTION_MAGNITUDE = SCORE_CATEGORIES.length;
+const MAJOR_CLAUSE_COUNT = SCORE_SHARE_THRESHOLDS.length - FEATURE_UNIT;
+const STANDARD_ACTION_MAGNITUDE = SCORE_SHARE_THRESHOLDS.length;
+const MAJOR_ACTION_MAGNITUDE = SCORE_CATEGORIES.length + SCORE_SHARE_THRESHOLDS.length - FEATURE_UNIT;
 export const TRAINING_MODES = Object.freeze({
   EPISODE: 'episode',
   ROUND: 'round',
@@ -51,14 +66,9 @@ export const TERMINAL_REWARD_MODES = Object.freeze({
   SCORE: 'score',
 });
 export const DEFAULT_TERMINAL_REWARD_VALUES = Object.freeze({
-  fall: -1,
-  win: 1,
+  fall: -FEATURE_UNIT,
+  win: FEATURE_UNIT,
   survival: 0,
-  scoreWinnerBase: 1,
-  scoreWinnerPlacementWeight: 0.1,
-  scoreLoserBase: -0.55,
-  scoreLoserShareWeight: 0.35,
-  scoreLoserPlacementWeight: 0.1,
 });
 
 export function createEntropySeed() {
@@ -111,7 +121,7 @@ function normalizedReturnDiscount(options = {}) {
 
 function normalizedRoundModeRate(options = {}) {
   const rate = finiteNumber(options.roundModeRate);
-  if (rate == null) return 0.5;
+  if (rate == null) return FEATURE_UNIT / SCORE_CATEGORIES.length;
   return Math.max(0, Math.min(1, rate));
 }
 
@@ -121,14 +131,27 @@ function gameProgress(state) {
   return round / maxRounds;
 }
 
-export function computeScorePotentials(state) {
+function personalityFocusCategory(personalityByPlayer = {}, playerId) {
+  const entry = personalityByPlayer[playerId] || personalityByPlayer[String(playerId)];
+  return typeof entry === 'object' ? entry.focusCategory : null;
+}
+
+export function computeScorePotentials(state, options = {}) {
   const progress = gameProgress(state);
   try {
     const final = buildFinalScores(state);
-    const scoreByPlayer = new Map(final.scores.map((entry) => [entry.playerId, Number(entry.points) || 0]));
+    const scoreByPlayer = new Map(final.scores.map((entry) => [entry.playerId, entry]));
     return Object.fromEntries((state.players || []).map((player) => [
       player.id,
-      progress * (scoreByPlayer.get(player.id) || 0) / Math.max(1, MAX_OFFICIAL_SCORE),
+      (() => {
+        const score = scoreByPlayer.get(player.id);
+        const focusCategory = personalityFocusCategory(options.personalityByPlayer, player.id);
+        if (focusCategory) {
+          const category = score?.categories?.find((entry) => entry.key === focusCategory);
+          return progress * (Number(category?.points) || 0) / Math.max(1, SCORE_SHARE_THRESHOLDS.length);
+        }
+        return progress * (Number(score?.points) || 0) / Math.max(1, MAX_OFFICIAL_SCORE);
+      })(),
     ]));
   } catch {
     return Object.fromEntries((state?.players || []).map((player) => [player.id, 0]));
@@ -157,11 +180,12 @@ export function assignRoundPotentialRewards(transitions = [], startIndex = 0, be
   return deltas;
 }
 
-function createRoundRewardTracker(state, transitions) {
+function createRoundRewardTracker(state, transitions, personalityByPlayer = {}) {
   return {
     round: state.round,
     startIndex: transitions.length,
-    potentials: computeScorePotentials(state),
+    personalityByPlayer,
+    potentials: computeScorePotentials(state, { personalityByPlayer }),
   };
 }
 
@@ -171,7 +195,7 @@ function settleRoundPotentialRewards(tracker, state, transitions) {
     transitions,
     tracker.startIndex,
     tracker.potentials,
-    computeScorePotentials(state),
+    computeScorePotentials(state, { personalityByPlayer: tracker.personalityByPlayer }),
   );
 }
 
@@ -203,14 +227,26 @@ function addDistributionValue(stats, key, value) {
   stats[key][normalized] = (stats[key][normalized] || 0) + 1;
 }
 
+function defaultMaxCourtActionsPerPlayer(state) {
+  const themeCount = Object.keys(state?.themes || {}).length;
+  const playerCount = Math.max(1, state?.players?.length || DEFAULT_PLAYER_MIN);
+  return Math.max(playerCount, themeCount + playerCount + SCORE_CATEGORIES.length);
+}
+
+function defaultMaxSteps(state) {
+  const rounds = Math.max(1, Number(state?.maxRounds) || DEFAULT_ROUND_MAX);
+  const players = Math.max(1, state?.players?.length || DEFAULT_PLAYER_MIN);
+  return rounds * players * defaultMaxCourtActionsPerPlayer(state);
+}
+
 export function recordTrainingReturns(stats, transitions = []) {
   for (const transition of transitions) {
     const reward = Number(transition.return);
     if (!Number.isFinite(reward)) continue;
     stats.returnSum += reward;
     stats.returnCount += 1;
-    if (reward > 0.05) stats.positiveReturns += 1;
-    else if (reward < -0.05) stats.negativeReturns += 1;
+    if (reward > Number.EPSILON) stats.positiveReturns += 1;
+    else if (reward < -Number.EPSILON) stats.negativeReturns += 1;
     else stats.neutralReturns += 1;
   }
 }
@@ -327,8 +363,8 @@ function recordReturn(map, key, value) {
   const reward = Number.isFinite(Number(value)) ? Number(value) : 0;
   bucket.count += 1;
   bucket.returnSum += reward;
-  if (reward > 0.05) bucket.positive += 1;
-  else if (reward < -0.05) bucket.negative += 1;
+  if (reward > Number.EPSILON) bucket.positive += 1;
+  else if (reward < -Number.EPSILON) bucket.negative += 1;
   else bucket.neutral += 1;
   bucket.min = bucket.count === 1 ? reward : Math.min(bucket.min, reward);
   bucket.max = bucket.count === 1 ? reward : Math.max(bucket.max, reward);
@@ -500,17 +536,23 @@ function orderTroopSplit(state, playerId, orders = {}) {
 
 function orderFrontierShareBucket(share) {
   if (!Number.isFinite(share)) return 'none';
-  if (share >= 0.8) return 'frontier-heavy';
-  if (share >= 0.55) return 'frontier-lean';
-  if (share >= 0.45) return 'balanced';
-  if (share >= 0.2) return 'capital-lean';
+  const highThreshold = SCORE_SHARE_THRESHOLDS.at(-1);
+  const leanThreshold = SCORE_SHARE_THRESHOLDS[1];
+  const balanceThreshold = FEATURE_UNIT / SCORE_CATEGORIES.length;
+  const lowThreshold = SCORE_SHARE_THRESHOLDS[0];
+  if (share >= highThreshold) return 'frontier-heavy';
+  if (share >= leanThreshold) return 'frontier-lean';
+  if (share >= balanceThreshold) return 'balanced';
+  if (share >= lowThreshold) return 'capital-lean';
   return 'capital-heavy';
 }
 
 function estimateActionMagnitude(action, state, playerId) {
   if (!action) return 0;
   if (action.kind === 'court-confirm') return 0;
-  if (action.kind === 'reward') return action.choice === 'gold' ? 2 : 4;
+  if (action.kind === 'reward') {
+    return action.choice === 'gold' ? REWARD_GOLD_MAGNITUDE : RESTORE_EMPIRE_MAGNITUDE;
+  }
   if (action.kind === 'title-assignment') return Math.max(1, Object.keys(action.assignments || {}).length);
   if (action.kind === 'orders') {
     const split = orderTroopSplit(state, playerId, action.orders);
@@ -521,9 +563,11 @@ function estimateActionMagnitude(action, state, playerId) {
   const courtAction = action.payload?.action;
   if (courtAction === 'buy') return Number(action.payload?.amount) || 1;
   if (courtAction === 'hire-mercenaries' || courtAction === 'dismiss') return Number(action.payload?.count) || 1;
-  if (courtAction === 'recruit') return 3;
-  if (courtAction === 'gift' || courtAction === 'revoke') return 4;
-  if (courtAction?.startsWith('appoint') || courtAction === 'basileus-appoint') return 3;
+  if (courtAction === 'recruit') return PROFESSIONAL_TROOP_ACTION_MAGNITUDE;
+  if (courtAction === 'gift' || courtAction === 'revoke') return ESTATE_CONTROL_ACTION_MAGNITUDE;
+  if (courtAction?.startsWith('appoint') || courtAction === 'basileus-appoint') {
+    return PROFESSIONAL_TROOP_ACTION_MAGNITUDE;
+  }
   if (courtAction?.startsWith('deal-')) {
     const clauses = dealClausesForAction(action);
     return clauses.reduce((total, clause) => total + Math.max(1, rawClauseAmount(clause)), 0);
@@ -535,8 +579,8 @@ function actionValueBucket(action, state, playerId) {
   const magnitude = estimateActionMagnitude(action, state, playerId);
   const clauseCount = dealClausesForAction(action).length;
   if (action?.kind === 'court-confirm') return 'confirm';
-  if (clauseCount >= 2 || magnitude >= 6) return 'major';
-  if (magnitude >= 3) return 'standard';
+  if (clauseCount >= MAJOR_CLAUSE_COUNT || magnitude >= MAJOR_ACTION_MAGNITUDE) return 'major';
+  if (magnitude >= STANDARD_ACTION_MAGNITUDE) return 'standard';
   return 'minor';
 }
 
@@ -663,50 +707,41 @@ export function mergePolicyMixStats(target = createPolicyMixStats(), source = {}
   return target;
 }
 
-function actionScore(action, state, playerId) {
-  if (!action) return -Infinity;
-  if (action.kind === 'court-confirm') return 0;
-  if (action.kind === 'reward') return action.choice === 'empire' ? 6 : -1;
-  if (action.kind === 'title-assignment') return 1;
-  if (action.kind === 'orders') {
-    const deployments = Object.values(action.orders?.deployments || {});
-    const frontier = deployments.filter((destination) => destination === 'frontier').length;
-    const capital = deployments.filter((destination) => destination === 'capital').length;
-    const selfVote = action.orders?.candidate === playerId ? 0.25 : 0;
-    return frontier * 2 + capital * 0.25 + selfVote;
-  }
-  if (action.kind !== 'court') return 0;
+function baselineScoreVector(action, state, playerId) {
+  if (!action) return [-Infinity];
+  const features = buildActionFeatureMap(state, playerId, action);
+  return [
+    features['reward.restoreEmpire'] || 0,
+    features['orders.frontierCoverage'] || 0,
+    features['orders.frontierTroopShare'] || 0,
+    features['score.delta.totalPoints'] || 0,
+    features['income.delta.tax.share'] || 0,
+    features['military.delta.troopShare'] || 0,
+    -(features['treasury.spendShare'] || 0),
+    action.kind === 'court-confirm' ? -FEATURE_UNIT : 0,
+  ];
+}
 
-  const courtAction = action.payload?.action;
-  const scores = {
-    recruit: 5,
-    'hire-mercenaries': 4,
-    'basileus-appoint': 2,
-    'appoint-strategos': 2,
-    'appoint-bishop': 1.5,
-    buy: 1.25,
-    gift: 0.25,
-    revoke: -0.25,
-    dismiss: -2,
-    'deal-send': -0.5,
-    'deal-counter': -0.5,
-    'deal-accept': 0,
-    'deal-refuse': 0,
-  };
-  const affordability = Number(state?.players?.[playerId]?.gold) || 0;
-  return (scores[courtAction] ?? 0) + Math.min(1, affordability / 30);
+function compareScoreVectors(left, right) {
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const delta = finiteNumber(left[index]) - finiteNumber(right[index]);
+    if (delta !== 0) return delta;
+  }
+  return 0;
 }
 
 function chooseBestScored(actions, rng, scorer) {
-  let bestScore = -Infinity;
+  let bestScore = [-Infinity];
   const best = [];
   for (let index = 0; index < actions.length; index += 1) {
     const score = scorer(actions[index]);
-    if (score > bestScore) {
+    const comparison = compareScoreVectors(score, bestScore);
+    if (comparison > 0) {
       bestScore = score;
       best.length = 0;
       best.push(index);
-    } else if (score === bestScore) {
+    } else if (comparison === 0) {
       best.push(index);
     }
   }
@@ -715,7 +750,7 @@ function chooseBestScored(actions, rng, scorer) {
 
 export function createDefensivePolicy() {
   return ({ state, playerId, actions, rng }) => (
-    chooseBestScored(actions, rng, (action) => actionScore(action, state, playerId))
+    chooseBestScored(actions, rng, (action) => baselineScoreVector(action, state, playerId))
   );
 }
 
@@ -743,16 +778,15 @@ export function computeTerminalRewards(state, options = {}) {
     ]));
   }
 
-  const maxPoints = Math.max(1, final.topScore || 1);
-  const scores = new Map(final.scores.map((entry, index) => [entry.playerId, { ...entry, rank: index + 1 }]));
+  const scores = new Map(final.scores.map((entry) => [entry.playerId, entry]));
   return Object.fromEntries(state.players.map((player) => {
     const score = scores.get(player.id);
-    const share = (score?.points || 0) / maxPoints;
-    const placement = 1 - ((score?.rank || state.players.length) - 1) / Math.max(1, state.players.length - 1);
-    const value = winners.has(player.id)
-      ? values.scoreWinnerBase + values.scoreWinnerPlacementWeight * placement
-      : values.scoreLoserBase + values.scoreLoserShareWeight * share + values.scoreLoserPlacementWeight * placement;
-    return [player.id, value];
+    return [
+      player.id,
+      winners.has(player.id)
+        ? values.win
+        : (Number(score?.points) || 0) / Math.max(1, MAX_OFFICIAL_SCORE),
+    ];
   }));
 }
 
@@ -852,19 +886,23 @@ export function createRandomPolicy() {
   return ({ actions, rng }) => chooseRandom(actions, rng);
 }
 
-export function createNetworkPolicy(network, options = {}) {
+export function createLearningPolicyRuntime(aiPolicy, options = {}) {
   const transitions = options.transitions || null;
+  const personalityByPlayer = options.personalityByPlayer || {};
   return ({ state, playerId, actions, rng }) => {
-    const inputs = buildCandidateInputs(state, playerId, actions);
-    const selection = selectActionWithNetwork(network, inputs, rng, {
+    const features = buildCandidateFeatures(state, playerId, actions);
+    const personality = personalityByPlayer[playerId] || personalityByPlayer[String(playerId)] || {};
+    const selection = selectActionWithPolicy(aiPolicy, features, rng, {
       temperature: options.temperature ?? 1,
       greedy: options.greedy || false,
+      personalityId: personality.id,
     });
     if (transitions) {
       transitions.push({
         playerId,
-        inputs,
+        features,
         chosenIndex: selection.index,
+        personalityId: selection.personalityId,
         reward: 0,
         return: 0,
         behavior: describeActionForStats(actions[selection.index], state, playerId),
@@ -874,31 +912,46 @@ export function createNetworkPolicy(network, options = {}) {
   };
 }
 
-function roleFromRates(roleRng, options, opponentNetworks) {
+function roleFromRates(roleRng, options, opponentPolicies) {
   const randomRate = Math.max(0, Number(options.randomOpponentRate) || 0);
   const heuristicRate = Math.max(0, Number(options.heuristicOpponentRate) || 0);
-  const humanRate = options.humanOpponentNetwork
+  const humanRate = options.humanOpponentPolicy
     ? Math.max(0, Number(options.humanOpponentRate) || 0)
     : 0;
-  const checkpointRate = opponentNetworks.length
+  const checkpointRate = opponentPolicies.length
     ? Math.max(0, Number(options.checkpointOpponentRate) || 0)
     : 0;
   const roll = roleRng();
   if (roll < randomRate) return { kind: 'random' };
   if (roll < randomRate + heuristicRate) return { kind: 'heuristic' };
   if (roll < randomRate + heuristicRate + humanRate) {
-    return { kind: 'human', network: options.humanOpponentNetwork };
+    return { kind: 'human', policy: options.humanOpponentPolicy };
   }
   if (roll < randomRate + heuristicRate + humanRate + checkpointRate) {
     return {
       kind: 'checkpoint',
-      network: opponentNetworks[Math.floor(roleRng() * opponentNetworks.length)],
+      policy: opponentPolicies[Math.floor(roleRng() * opponentPolicies.length)],
     };
   }
   return { kind: 'learner' };
 }
 
+function personalityMapForPlayers(state, aiPolicy) {
+  return Object.fromEntries((state.players || []).map((player) => {
+    const id = personalityForSeat(player.id);
+    const profile = aiPolicy?.personalities?.[id] || {};
+    return [player.id, {
+      id,
+      focusCategory: Object.prototype.hasOwnProperty.call(profile, 'focusCategory')
+        ? profile.focusCategory
+        : null,
+    }];
+  }));
+}
+
 function createEpisodePolicy(options, state, transitions, seed) {
+  const learningPolicy = options.aiPolicy || options.learningPolicy || null;
+  const personalityByPlayer = options.personalityByPlayer || personalityMapForPlayers(state, learningPolicy);
   if (options.policy) {
     const roleByPlayer = options.policyRoles
       ? Object.fromEntries((state.players || []).map((player) => [
@@ -915,36 +968,40 @@ function createEpisodePolicy(options, state, transitions, seed) {
       policy: options.policy,
       policyMix: { ...createPolicyMixStats(), custom: state.players.length },
       roleByPlayer,
+      personalityByPlayer,
     };
   }
 
-  if (!options.network) {
+  if (!learningPolicy) {
     return {
       policy: createRandomPolicy(),
       policyMix: { ...createPolicyMixStats(), random: state.players.length },
       roleByPlayer: roleMapForPlayers(state, 'random'),
+      personalityByPlayer,
     };
   }
 
   if (!options.opponentMix) {
     return {
-      policy: createNetworkPolicy(options.network, {
+      policy: createLearningPolicyRuntime(learningPolicy, {
         transitions,
+        personalityByPlayer,
         temperature: options.temperature ?? 1,
         greedy: options.greedy || false,
       }),
       policyMix: { ...createPolicyMixStats(), learner: state.players.length },
       roleByPlayer: roleMapForPlayers(state, 'learner'),
+      personalityByPlayer,
     };
   }
 
-  const opponentNetworks = (Array.isArray(options.opponentNetworks) ? options.opponentNetworks : [])
+  const opponentPolicies = (Array.isArray(options.opponentPolicies) ? options.opponentPolicies : [])
     .filter(Boolean);
   const roleRng = makeRng(deriveEpisodeSeed(seed, 29));
   const roles = new Map();
   const policyMix = createPolicyMixStats();
   for (const player of state.players) {
-    const role = roleFromRates(roleRng, options, opponentNetworks);
+    const role = roleFromRates(roleRng, options, opponentPolicies);
     roles.set(player.id, role);
     policyMix[role.kind] = (policyMix[role.kind] || 0) + 1;
   }
@@ -963,29 +1020,34 @@ function createEpisodePolicy(options, state, transitions, seed) {
       const role = roles.get(playerId) || { kind: 'learner' };
       if (role.kind === 'random') return chooseRandom(actions, rng);
       if (role.kind === 'heuristic') return defensivePolicy({ state: currentState, playerId, actions, rng });
-      if (role.kind === 'human' && role.network) {
-        const inputs = buildCandidateInputs(currentState, playerId, actions);
-        return selectActionWithNetwork(role.network, inputs, rng, {
+      const personality = personalityByPlayer[playerId] || personalityByPlayer[String(playerId)] || {};
+      if (role.kind === 'human' && role.policy) {
+        const features = buildCandidateFeatures(currentState, playerId, actions);
+        return selectActionWithPolicy(role.policy, features, rng, {
           greedy: options.humanOpponentGreedy ?? true,
           temperature: options.humanOpponentTemperature ?? 0,
+          personalityId: personality.id,
         }).index;
       }
-      if (role.kind === 'checkpoint' && role.network) {
-        const inputs = buildCandidateInputs(currentState, playerId, actions);
-        return selectActionWithNetwork(role.network, inputs, rng, {
+      if (role.kind === 'checkpoint' && role.policy) {
+        const features = buildCandidateFeatures(currentState, playerId, actions);
+        return selectActionWithPolicy(role.policy, features, rng, {
           greedy: options.opponentGreedy ?? true,
           temperature: options.opponentTemperature ?? 0,
+          personalityId: personality.id,
         }).index;
       }
-      const inputs = buildCandidateInputs(currentState, playerId, actions);
-      const selection = selectActionWithNetwork(options.network, inputs, rng, {
+      const features = buildCandidateFeatures(currentState, playerId, actions);
+      const selection = selectActionWithPolicy(learningPolicy, features, rng, {
         temperature: options.temperature ?? 1,
         greedy: options.greedy || false,
+        personalityId: personality.id,
       });
       transitions.push({
         playerId,
-        inputs,
+        features,
         chosenIndex: selection.index,
+        personalityId: selection.personalityId,
         reward: 0,
         return: 0,
         behavior: describeActionForStats(actions[selection.index], currentState, playerId),
@@ -994,6 +1056,7 @@ function createEpisodePolicy(options, state, transitions, seed) {
     },
     policyMix,
     roleByPlayer: Object.fromEntries([...roles.entries()].map(([playerId, role]) => [playerId, role.kind])),
+    personalityByPlayer,
   };
 }
 
@@ -1062,6 +1125,13 @@ function runOrdersPhase(state, policy, rng, actionStats = null) {
   return madeProgress;
 }
 
+function defenderRewardSafetyLimit(state) {
+  return Math.max(
+    FEATURE_UNIT,
+    (state.players?.length || DEFAULT_PLAYER_MAX) * SCORE_CATEGORIES.length * SCORE_SHARE_THRESHOLDS.length,
+  );
+}
+
 function runResolutionPhase(state, policy, rng, actionStats = null) {
   let madeProgress = false;
   if (state.nextBasileusId !== state.basileusId) {
@@ -1082,7 +1152,8 @@ function runResolutionPhase(state, policy, rng, actionStats = null) {
   }
 
   let safety = 0;
-  while (hasPendingDefenderRewards(state) && safety < 50) {
+  const safetyLimit = defenderRewardSafetyLimit(state);
+  while (hasPendingDefenderRewards(state) && safety < safetyLimit) {
     safety += 1;
     const reward = state.pendingDefenderRewards.find((entry) => !entry.resolved);
     if (!reward) break;
@@ -1111,7 +1182,7 @@ function runResolutionPhase(state, policy, rng, actionStats = null) {
 function runTrainingStep(state, policy, rng, options = {}) {
   if (state.phase === 'court') {
     return runCourtPhase(state, policy, rng, {
-      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || defaultMaxCourtActionsPerPlayer(state),
       includeDeals: false,
       actionStats: options.actionStats || null,
     });
@@ -1152,7 +1223,7 @@ function generateLegalSnapshot(options, settings, seed) {
 
   let steps = 0;
   let terminalReason = null;
-  const maxSteps = options.snapshotMaxSteps || options.maxSteps || DEFAULT_MAX_STEPS;
+  const maxSteps = options.snapshotMaxSteps || options.maxSteps || defaultMaxSteps(state);
   while (
     !state.gameOver
     && state.phase !== 'scoring'
@@ -1161,7 +1232,7 @@ function generateLegalSnapshot(options, settings, seed) {
   ) {
     steps += 1;
     const progressed = runTrainingStep(state, preludePolicy, rng, {
-      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || defaultMaxCourtActionsPerPlayer(state),
       actionStats: null,
     });
     if (!progressed) {
@@ -1201,16 +1272,17 @@ export function runSelfPlayEpisode(options = {}) {
   setDealParticipantIds(state, state.players.map((player) => player.id));
   const transitions = [];
   const actionStats = createActionStats();
-  const { policy, policyMix, roleByPlayer } = createEpisodePolicy(options, state, transitions, seed);
+  const { policy, policyMix, roleByPlayer, personalityByPlayer } = createEpisodePolicy(options, state, transitions, seed);
 
   advanceToNextInteractivePhase(state);
-  let roundRewardTracker = createRoundRewardTracker(state, transitions);
+  let roundRewardTracker = createRoundRewardTracker(state, transitions, personalityByPlayer);
   let steps = 0;
   let terminalReason = null;
-  while (!state.gameOver && state.phase !== 'scoring' && steps < (options.maxSteps || DEFAULT_MAX_STEPS)) {
+  const maxSteps = options.maxSteps || defaultMaxSteps(state);
+  while (!state.gameOver && state.phase !== 'scoring' && steps < maxSteps) {
     steps += 1;
     const progressed = runTrainingStep(state, policy, rng, {
-      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || defaultMaxCourtActionsPerPlayer(state),
       actionStats,
     });
     if (
@@ -1221,7 +1293,7 @@ export function runSelfPlayEpisode(options = {}) {
       settleRoundPotentialRewards(roundRewardTracker, state, transitions);
       roundRewardTracker = state.gameOver || state.phase === 'scoring'
         ? null
-        : createRoundRewardTracker(state, transitions);
+        : createRoundRewardTracker(state, transitions, personalityByPlayer);
     }
     if (!progressed) {
       terminalReason = 'stalled';
@@ -1229,7 +1301,7 @@ export function runSelfPlayEpisode(options = {}) {
     }
   }
 
-  if (!state.gameOver && state.phase !== 'scoring' && steps >= (options.maxSteps || DEFAULT_MAX_STEPS)) {
+  if (!state.gameOver && state.phase !== 'scoring' && steps >= maxSteps) {
     state.gameOver = { type: 'fall', message: 'Training episode reached its safety step limit.' };
     terminalReason = 'max-steps';
   }
@@ -1280,13 +1352,13 @@ export function runSelfPlayRoundEpisode(options = {}) {
   const { state, rng, targetRound, preludeSteps } = snapshot;
   const transitions = [];
   const actionStats = createActionStats();
-  const { policy, policyMix, roleByPlayer } = createEpisodePolicy(options, state, transitions, seed);
+  const { policy, policyMix, roleByPlayer, personalityByPlayer } = createEpisodePolicy(options, state, transitions, seed);
   const rolloutRoundsTarget = Math.max(1, Math.floor(Number(options.rolloutRounds) || 1));
-  const maxSteps = options.rolloutMaxSteps || options.maxSteps || DEFAULT_MAX_STEPS;
+  const maxSteps = options.rolloutMaxSteps || options.maxSteps || defaultMaxSteps(state);
 
   let roundRewardTracker = state.gameOver || state.phase === 'scoring'
     ? null
-    : createRoundRewardTracker(state, transitions);
+    : createRoundRewardTracker(state, transitions, personalityByPlayer);
   let steps = 0;
   let completedRolloutRounds = 0;
   let terminalReason = snapshot.terminalReason;
@@ -1298,7 +1370,7 @@ export function runSelfPlayRoundEpisode(options = {}) {
   ) {
     steps += 1;
     const progressed = runTrainingStep(state, policy, rng, {
-      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || DEFAULT_MAX_COURT_ACTIONS_PER_PLAYER,
+      maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer || defaultMaxCourtActionsPerPlayer(state),
       actionStats,
     });
     if (
@@ -1312,7 +1384,7 @@ export function runSelfPlayRoundEpisode(options = {}) {
         || state.phase === 'scoring'
         || completedRolloutRounds >= rolloutRoundsTarget
         ? null
-        : createRoundRewardTracker(state, transitions);
+        : createRoundRewardTracker(state, transitions, personalityByPlayer);
     }
     if (!progressed) {
       terminalReason = 'stalled';
@@ -1408,13 +1480,13 @@ function trainingEpochCount(options = {}) {
   return Math.max(1, Math.floor(Number(options.trainingEpochs) || 1));
 }
 
-function blendHumanFeedbackTransitions(network, transitions, options = {}) {
+function blendHumanFeedbackTransitions(aiPolicy, transitions, options = {}) {
   const human = Array.isArray(options.humanFeedbackTransitions) ? options.humanFeedbackTransitions : [];
   const weight = Math.max(0, Number(options.humanFeedbackWeight) || 0);
   if (!human.length || weight <= 0) return transitions;
   const baseCount = Math.max(1, transitions.length || human.length);
   const targetCount = Math.max(1, Math.ceil(baseCount * weight));
-  const start = Math.max(0, Number(network?.step) || 0) % human.length;
+  const start = Math.max(0, Number(aiPolicy?.step) || 0) % human.length;
   const mixed = transitions.slice();
   for (let index = 0; index < targetCount; index += 1) {
     mixed.push(human[(start + index) % human.length]);
@@ -1422,16 +1494,15 @@ function blendHumanFeedbackTransitions(network, transitions, options = {}) {
   return mixed;
 }
 
-export function trainTransitions(network, transitions, options = {}) {
+export function trainTransitions(aiPolicy, transitions, options = {}) {
   const epochs = trainingEpochCount(options);
   let loss = 0;
   let policyLoss = 0;
   let valueLoss = 0;
   let count = 0;
   for (let epoch = 0; epoch < epochs; epoch += 1) {
-    const report = trainBatch(network, blendHumanFeedbackTransitions(network, transitions, options), {
-      learningRate: options.learningRate || 0.001,
-      entropyBeta: options.entropyBeta ?? 0.01,
+    const report = trainFeatureBatch(aiPolicy, blendHumanFeedbackTransitions(aiPolicy, transitions, options), {
+      learningRate: options.learningRate,
       temperature: options.temperature ?? 1,
     });
     loss += report.loss;
@@ -1448,7 +1519,7 @@ export function trainTransitions(network, transitions, options = {}) {
   };
 }
 
-export function trainSelfPlay(network, options = {}) {
+export function trainSelfPlay(aiPolicy = createLearningPolicy(), options = {}) {
   const episodes = Math.max(1, Number(options.episodes) || 1);
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const onCheckpoint = typeof options.onCheckpoint === 'function' ? options.onCheckpoint : null;
@@ -1480,11 +1551,11 @@ export function trainSelfPlay(network, options = {}) {
   for (let episode = 0; episode < episodes; episode += 1) {
     const result = runTrainingEpisode({
       ...options,
-      network,
+      aiPolicy,
       episodeSeed: resolveEpisodeSeed(options, episode),
       episodeIndex: episode,
     });
-    const report = trainTransitions(network, result.transitions, options);
+    const report = trainTransitions(aiPolicy, result.transitions, options);
     const outcomeCounted = result.stats.outcomeCounted !== false;
     stats.outcomeEpisodes += outcomeCounted ? 1 : 0;
     stats.falls += outcomeCounted && result.stats.fell ? 1 : 0;
@@ -1536,7 +1607,7 @@ export function trainSelfPlay(network, options = {}) {
         completed,
         batchSize: 1,
         episodes,
-        network,
+        aiPolicy,
         stats: {
           ...stats,
           loss: stats.loss / completed,

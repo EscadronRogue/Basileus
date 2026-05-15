@@ -1,13 +1,13 @@
-import { buildCandidateInputs } from './features.js';
-import { selectActionWithNetwork } from './network.js';
+import { buildCandidateFeatures } from './features.js';
+import { selectActionWithPolicy } from './policy.js';
 import {
   createDefensivePolicy,
   evaluatePolicy,
 } from './selfPlay.js';
 
-function selectGreedy(network, state, playerId, actions, rng) {
-  const inputs = buildCandidateInputs(state, playerId, actions);
-  return selectActionWithNetwork(network, inputs, rng, {
+function selectGreedy(aiPolicy, state, playerId, actions, rng) {
+  const features = buildCandidateFeatures(state, playerId, actions);
+  return selectActionWithPolicy(aiPolicy, features, rng, {
     greedy: true,
     temperature: 0,
   }).index;
@@ -16,15 +16,15 @@ function selectGreedy(network, state, playerId, actions, rng) {
 function opponentRole(opponent = {}) {
   if (opponent.role) return opponent.role;
   if (opponent.kind === 'heuristic') return 'heuristic';
-  if (opponent.network) return 'checkpoint';
+  if (opponent.policy) return 'checkpoint';
   return 'random';
 }
 
-function createHeadToHeadPolicy(network, opponent = {}, selfRole = 'learner') {
+function createHeadToHeadPolicy(aiPolicy, opponent = {}, selfRole = 'learner') {
   const defensivePolicy = createDefensivePolicy();
   const policy = ({ state, playerId, actions, rng }) => {
-    if (playerId === 0 && network) return selectGreedy(network, state, playerId, actions, rng);
-    if (opponent.network) return selectGreedy(opponent.network, state, playerId, actions, rng);
+    if (playerId === 0 && aiPolicy) return selectGreedy(aiPolicy, state, playerId, actions, rng);
+    if (opponent.policy) return selectGreedy(opponent.policy, state, playerId, actions, rng);
     if (opponent.kind === 'heuristic') return defensivePolicy({ state, playerId, actions, rng });
     return Math.floor(rng() * actions.length);
   };
@@ -82,67 +82,67 @@ export function runTournament(options = {}) {
   };
 
   const matchups = {};
-  if (options.network) {
-    const modelVsRandom = createHeadToHeadPolicy(options.network);
-    matchups.modelVsRandom = {
+  if (options.aiPolicy) {
+    const policyVsRandom = createHeadToHeadPolicy(options.aiPolicy);
+    matchups.policyVsRandom = {
       weight: 1,
-      ...attachScore(evaluateHeadToHead(common, modelVsRandom)),
+      ...attachScore(evaluateHeadToHead(common, policyVsRandom)),
     };
-    const modelVsHeuristic = createHeadToHeadPolicy(options.network, { kind: 'heuristic' });
-    matchups.modelVsHeuristic = {
+    const policyVsHeuristic = createHeadToHeadPolicy(options.aiPolicy, { kind: 'heuristic' });
+    matchups.policyVsHeuristic = {
       weight: 1,
-      ...attachScore(evaluateHeadToHead(common, modelVsHeuristic)),
+      ...attachScore(evaluateHeadToHead(common, policyVsHeuristic)),
     };
-    if (options.humanOpponentNetwork) {
-      const modelVsHuman = createHeadToHeadPolicy(options.network, {
-        network: options.humanOpponentNetwork,
+    if (options.humanOpponentPolicy) {
+      const policyVsHuman = createHeadToHeadPolicy(options.aiPolicy, {
+        policy: options.humanOpponentPolicy,
         role: 'human',
       });
-      matchups.modelVsHuman = {
+      matchups.policyVsHuman = {
         weight: 1,
-        ...attachScore(evaluateHeadToHead(common, modelVsHuman)),
+        ...attachScore(evaluateHeadToHead(common, policyVsHuman)),
       };
-      const humanVsModel = createHeadToHeadPolicy(
-        options.humanOpponentNetwork,
-        { network: options.network, role: 'learner' },
+      const humanVsPolicy = createHeadToHeadPolicy(
+        options.humanOpponentPolicy,
+        { policy: options.aiPolicy, role: 'learner' },
         'human',
       );
-      matchups.humanVsModel = {
+      matchups.humanVsPolicy = {
         weight: 0,
-        ...attachScore(evaluateHeadToHead(common, humanVsModel)),
+        ...attachScore(evaluateHeadToHead(common, humanVsPolicy)),
       };
     }
     matchups.selfPlay = {
       weight: 0.5,
       ...attachScore(evaluatePolicy({
         ...common,
-        network: options.network,
+        aiPolicy: options.aiPolicy,
       })),
     };
-    if (options.previousNetwork) {
-      const modelVsPrevious = createHeadToHeadPolicy(options.network, {
-        network: options.previousNetwork,
+    if (options.previousPolicy) {
+      const policyVsPrevious = createHeadToHeadPolicy(options.aiPolicy, {
+        policy: options.previousPolicy,
         role: 'checkpoint',
       });
-      matchups.modelVsPrevious = {
+      matchups.policyVsPrevious = {
         weight: 1,
-        ...attachScore(evaluateHeadToHead(common, modelVsPrevious)),
+        ...attachScore(evaluateHeadToHead(common, policyVsPrevious)),
       };
-      const previousVsModel = createHeadToHeadPolicy(
-        options.previousNetwork,
-        { network: options.network, role: 'learner' },
+      const previousVsPolicy = createHeadToHeadPolicy(
+        options.previousPolicy,
+        { policy: options.aiPolicy, role: 'learner' },
         'checkpoint',
       );
-      matchups.previousVsModel = {
+      matchups.previousVsPolicy = {
         weight: 0.5,
-        ...attachScore(evaluateHeadToHead(common, previousVsModel)),
+        ...attachScore(evaluateHeadToHead(common, previousVsPolicy)),
       };
     }
   }
 
   if (options.includeRandomBaseline) {
     matchups.randomBaseline = {
-      weight: options.network ? 0 : 1,
+      weight: options.aiPolicy ? 0 : 1,
       ...attachScore(evaluatePolicy({
         ...common,
       })),

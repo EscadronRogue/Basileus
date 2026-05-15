@@ -7,7 +7,7 @@ import {
   listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
-import { buildCandidateInputs } from './features.js';
+import { buildCandidateFeatures } from './features.js';
 
 export const HUMAN_FEEDBACK_SCHEMA = 'basileus.human-feedback.v1';
 const DEFAULT_MAX_SAMPLES = 1000;
@@ -182,7 +182,7 @@ export function humanFeedbackSamplesToTransitions(samples = [], options = {}) {
     if (chosenIndex < 0 || !actions.length) continue;
     transitions.push({
       playerId: sample.playerId,
-      inputs: buildCandidateInputs(state, sample.playerId, actions),
+      features: buildCandidateFeatures(state, sample.playerId, actions),
       chosenIndex,
       return: targetReturn,
       source: sample.source || 'human',

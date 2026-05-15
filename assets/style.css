@@ -2051,7 +2051,7 @@ body::before {
 .btn-lock-orders,
 .btn-continue,
 .btn-new-game,
-.btn-download-training {
+.btn-download-learning {
   width: 100%;
   min-height: var(--touch-target);
   padding: 11px;
@@ -2072,7 +2072,7 @@ body::before {
 .btn-lock-orders:hover,
 .btn-continue:hover,
 .btn-new-game:hover,
-.btn-download-training:hover {
+.btn-download-learning:hover {
   background: linear-gradient(180deg, rgba(200,146,30,0.30) 0%, rgba(168,116,32,0.16) 100%);
   border-color: var(--gold-1);
   box-shadow: var(--shadow-inset), 0 4px 18px rgba(168,116,32,0.18);
@@ -3488,7 +3488,7 @@ textarea {
 .btn-lock-orders,
 .btn-continue,
 .btn-new-game,
-.btn-download-training,
+.btn-download-learning,
 button.deploy-toggle,
 button.market-buy,
 button.gift-button,

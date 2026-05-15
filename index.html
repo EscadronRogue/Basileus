@@ -150,13 +150,13 @@
         <div class="setup-field">
           <label>AI Opponents</label>
           <div id="setupAiRoster" class="setup-ai-roster"></div>
-          <p id="setupAiRosterHint" class="setup-hint">AI seats are preserved for the upcoming neural runtime.</p>
+          <p id="setupAiRosterHint" class="setup-hint">AI seats use the evolving policy runtime.</p>
         </div>
 
         <div class="setup-field">
-          <label>AI Model Override</label>
-          <input type="file" id="setupAiModelFile" accept="application/json,.json">
-          <p class="setup-hint">Optional. Leave empty to use the bundled latest AI, or choose another trained JSON for this match.</p>
+          <label>AI Policy Override</label>
+          <input type="file" id="setupAiPolicyFile" accept="application/json,.json">
+          <p class="setup-hint">Optional. Leave empty to use the bundled learned policy, or choose another policy JSON for this match.</p>
         </div>
 
         <p class="setup-hint">AI dynasties act automatically during Court, Secret Orders, defender rewards, and title reassignment.</p>

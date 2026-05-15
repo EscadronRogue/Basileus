@@ -36,10 +36,10 @@ coverage/
 .parcel-cache/
 .eslintcache
 
-# --- Local neural AI artifacts ---
-ai/models/*.json
-!ai/models/latest.json
-ai/checkpoints/
+# --- Local evolving AI artifacts ---
+ai/policies/*.json
+!ai/policies/latest.json
+ai/policy-checkpoints/
 ai/runs/
 ai/human-games/
 

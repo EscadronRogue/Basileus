@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes local neural self-play AI seats, and includes a pure Node WebSocket multiplayer server.
+Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes local evolving-policy AI seats, and includes a pure Node WebSocket multiplayer server.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **Local neural AI.** AI seats use a pure Node self-play trainer and the same engine validators as human actions.
+- **Local evolving AI.** AI seats use transparent learned heuristics and the same engine validators as human actions.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -60,11 +60,12 @@ npm run serve:multiplayer
 | --- | --- |
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
-| `npm run ai:train` | Runs local neural self-play and writes `ai/models/latest.json`. |
-| `npm run ai:evaluate` | Evaluates the current local neural model. |
-| `npm run ai:tournament` | Runs the richer model-vs-baseline evaluation harness. |
+| `npm run ai:train` | Runs local policy evolution and writes `ai/policies/latest.json`. |
+| `npm run ai:evolve` | Alias for `npm run ai:train`. |
+| `npm run ai:evaluate` | Evaluates the current local policy. |
+| `npm run ai:tournament` | Runs the richer policy-vs-baseline evaluation harness. |
 | `npm run test:economy` | Engine/economy rules tests. |
-| `npm run test:ai` | Neural AI runtime, action, and trainer smoke tests. |
+| `npm run test:ai` | Evolving AI runtime, action, and learning smoke tests. |
 | `npm run test:ui` | Browser controller and panel tests. |
 | `npm run test:multiplayer` | End-to-end multiplayer protocol verifier. |
 | `npm test` | Runs the full local test suite. |
@@ -93,7 +94,7 @@ Render notes:
 .
 ├── index.html              # Live game entry point
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
-├── ai/                     # Local neural self-play trainer and runtime
+├── ai/                     # Local evolving-policy learner and runtime
 ├── assets/                 # SVG map, hitzones, stylesheets
 ├── data/                   # Static game data (provinces, titles, invasion decks)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
@@ -116,48 +117,45 @@ Useful entry points:
 
 - `engine/state.js` - game state shape and reducers
 - `engine/turnflow.js` - round/phase orchestration
-- `ai/brain.js` - neural runtime integration
+- `ai/brain.js` - evolving policy runtime integration
 - `multiplayer/wsServer.js` - handcoded WebSocket framing
 
-## Local Neural AI
+## Local Evolving AI
 
-Train a model locally:
+Evolve a policy locally:
 
 ```bash
 npm run ai:train -- --episodes 1000
 ```
 
-Train only from legal random midgame snapshots and short round rollouts:
+Evolve only from legal random midgame snapshots and short round rollouts:
 
 ```bash
 npm run ai:train -- --training-mode round --episodes 1000 --rollout-rounds 1
 ```
 
-Train from a hybrid of full games and short round rollouts:
+Evolve from a hybrid of full games and short round rollouts:
 
 ```bash
 npm run ai:train -- --training-mode hybrid --round-mode-rate 0.5 --episodes 1000 --rollout-rounds 1
 ```
 
-By default, training samples a fresh mix of 3-5 player games and 6-12 round invasion decks, gives every episode its own random seed, and chooses a worker count from the machine's available CPU parallelism. It also trains for multiple epochs per collected batch, mixes learner seats against random/checkpoint/self-play opponents, and temporarily disables deal actions for AI training and runtime AI play while the core survival policy learns. The model reward is outcome-driven: winning a survived game is `+1`, surviving without winning is `0`, and a fall of Constantinople assigns blame only to players who under-contributed to the defense relative to their legal frontier troop capacity. At each completed round, the learner also receives potential-based shaping from the official scoring rules: `(round / maxRounds) * (projected score points / maximum possible score)`, where the maximum possible score is derived from the four scoring categories and their three point thresholds. That round reward is attached once to the player's latest neural decision in the round, then cumulative returns propagate it backward through earlier decisions. Pass `--terminal-reward-mode score` only when you explicitly want the old score-shaped terminal reward. Pass `--heuristic-opponent-rate 0.25` only when you explicitly want scripted defensive opponents in the training mix. Pass `--players 4`, `--rounds 9`, `--seed 1`, or `--workers 4` when you want to pin any of those for a controlled run. You can also tune ranges with `--player-min`, `--player-max`, `--round-min`, and `--round-max`.
+The AI no longer uses layered black-box approximators or anonymous tensors. Every candidate action is described by named, rule-derived features: official score-share deltas, category-point deltas, title shifts, treasury changes, frontier troop coverage, reward choices, and target relations. Self-play learns transparent weights for those features.
 
-Pass `--training-mode round` when you want the trainer to use only the short-rollout method. Each training episode starts by simulating a random legal game up to a sampled snapshot round, then trains the learner only on the next `--rollout-rounds` completed rounds. This keeps the sampled positions legal without hand-authoring impossible province/title states. In this mode, completing the planned rollout without Constantinople falling counts as survival for both training reward and feedback metrics, and the current official score leader at that round boundary counts as the winner. Snapshot failures before the learner actually plays the rollout do not count as rollout outcomes. Use `--snapshot-round 4` to pin the starting round, or `--snapshot-round-min 2 --snapshot-round-max 8` to sample a midgame range.
+The reward is outcome-driven: winning a survived game is `+1`, surviving without winning is `0`, and a fall of Constantinople assigns blame only to players who under-contributed to the defense relative to their legal frontier troop capacity. At each completed round, the learner also receives potential-based shaping from the official scoring rules: `(round / maxRounds) * (projected score points / maximum possible score)`, where the maximum possible score is derived from the four scoring categories and their three point thresholds.
 
-Pass `--training-mode hybrid` to mix classic full games with legal round snapshots in the same run. `--round-mode-rate 0.5` means roughly half the episodes are short round rollouts and half are full games; lower it when you want more end-to-end victory pressure, raise it when you want more dense tactical feedback.
+AI personalities share one universal policy and add learned deltas from different category lenses: balanced stewardship, estate income, gold reserves, tax income, and church income. They all still try to win and all still lose if the empire falls.
 
+The learner writes checkpoints to `ai/policy-checkpoints/`, evaluates them with a small tournament, and promotes the best checkpoint to `ai/policies/latest.json`. The default runtime policy is committed so the browser, GitHub Pages build, and multiplayer server all have an AI opponent out of the box.
 
-The trainer prints live progress with rolling feedback-window metrics: recent episode count, speed, generated training decisions, total/policy/value loss, average learner return, positive-return rate, survival/fall/stall rates, average rounds, frontier troop share, learner/opponent role mix, and win/survival rates by both seat and controller role. Each progress line describes only the episodes generated since the previous feedback line, while the final summary and stdout JSON describe the whole run concisely. It writes checkpoints to `ai/checkpoints/`, evaluates them with a small tournament, and promotes the best checkpoint to `ai/models/latest.json` instead of blindly saving the last update. When you pass `--resume`, checkpoint numbering continues from the loaded model or latest matching checkpoint, and the resumed model is kept as the promotion baseline so a worse continuation cannot replace it. Use `--checkpoint-interval 100`, `--checkpoint-eval-episodes 8`, `--training-epochs 4`, `--log-interval 25`, or `--quiet true` to tune the run.
-
-Human play can be folded back into training as a human-opponent source. Single-player and multiplayer runtime actions are recorded as legal-action snapshots when an `aiMeta` runtime is active. In a local single-player browser session, run `window.__basileus.downloadHumanFeedback()` to export the current trace, then drop the exported JSON file into `ai/human-games/`. The folder is ignored by git so you can keep private local games there:
+Human play can be folded back into learning as a human-opponent source. Single-player and multiplayer runtime actions are recorded as legal-action snapshots when an `aiMeta` runtime is active. In a local single-player browser session, run `window.__basileus.downloadHumanFeedback()` to export the current trace, then drop the exported JSON file into `ai/human-games/`:
 
 ```bash
 mkdir ai/human-games
 npm run ai:train -- --episodes 1000
 ```
 
-Training automatically scans `ai/human-games/` recursively for JSON exports. You can use `--human-games path/to/folder` or the older `--human-feedback path/to/file.json` when you want a specific dataset. The trainer distills those games into a human-style opponent, mixes that opponent into self-play with `--human-opponent-rate 0.25`, and reports model-vs-human tournament results when checkpoints are evaluated. AI deal actions are temporarily disabled, so deal demonstrations are ignored until that switch is restored. Direct imitation is off by default; set `--human-feedback-weight 0.05` or higher only when you want the learner to borrow demonstrated human actions in addition to learning how to beat them. `--human-feedback-return 0.75` controls the target value used for that optional imitation stream.
-
-The default runtime model, `ai/models/latest.json`, is committed so the browser, GitHub Pages build, and multiplayer server all have an AI opponent out of the box. Other local model experiments and checkpoints stay ignored. Training promotes the best checkpoint to `ai/models/latest.json`; commit that file when you want the shipped default AI to change. Evaluation defaults to player 1 using the neural model against random legal opponents and reports survival, fall, truncation, reward, scoring, win-rate, policy-mix, and action metrics. Pass `--opponent path/to/model.json` to compare against another checkpoint, `--self-play` to put the same model in every seat, or run `npm run ai:tournament -- --episodes 20` for model-vs-random, model-vs-defensive, self-play, and random-baseline matchups.
+Learning automatically scans `ai/human-games/` recursively for JSON exports. You can use `--human-games path/to/folder` or `--human-feedback path/to/file.json` when you want a specific dataset. The learner distills those games into a human-style policy opponent, mixes that opponent into self-play, and reports policy-vs-human tournament results when checkpoints are evaluated.
 
 ## License
 

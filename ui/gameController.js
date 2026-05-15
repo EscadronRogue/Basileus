@@ -11,7 +11,7 @@ import {
   resolvePendingTitleReassignment,
   startInteractiveRuntime,
 } from '../engine/runtime.js';
-import { createAIMeta, hydrateNeuralModel, loadBrowserNeuralModel } from '../ai/brain.js';
+import { createAIMeta, hydrateAiPolicy, loadBrowserAiPolicy } from '../ai/brain.js';
 import { exportHumanFeedbackPayload } from '../ai/humanFeedback.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG } from '../render/mapRenderer.js';
@@ -31,8 +31,8 @@ export class GameController {
       seed: config.seed || Date.now(),
       historyEnabled: config.historyEnabled !== false,
       mode: config.mode || 'hotseat',
-      aiModel: config.aiModel || null,
-      aiModelPayload: config.aiModelPayload || null,
+      aiPolicy: config.aiPolicy || null,
+      aiPolicyPayload: config.aiPolicyPayload || null,
       humanPlayerIds: Array.isArray(config.humanPlayerIds)
         ? config.humanPlayerIds.slice()
         : Array.from({ length: config.playerCount || 4 }, (_, index) => index),
@@ -52,12 +52,12 @@ export class GameController {
     // already validate per-actor; gating belonged to UI copy, not state.
     setDealParticipantIds(this.state, this.state.players.map((player) => player.id));
     if (this.config.mode === 'single') {
-      const model = this.config.aiModel
-        || (this.config.aiModelPayload ? hydrateNeuralModel(this.config.aiModelPayload) : null)
-        || await loadBrowserNeuralModel(undefined, { required: true });
+      const policy = this.config.aiPolicy
+        || (this.config.aiPolicyPayload ? hydrateAiPolicy(this.config.aiPolicyPayload) : null)
+        || await loadBrowserAiPolicy(undefined, { required: true });
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
-        model,
+        policy,
       });
       this.ensureHumanFocus();
     }

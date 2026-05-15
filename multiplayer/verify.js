@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { startMultiplayerServer } from './server.js';
-import { createNetwork } from '../ai/network.js';
+import { createLearningPolicy } from '../ai/policy.js';
 
 class SocketHarness {
   constructor(url) {
@@ -363,7 +363,7 @@ async function createStartedFourPlayerRoom(baseUrl, manager) {
 async function withServer(run) {
   const instance = await startMultiplayerServer({
     port: 0,
-    loadAiModel: () => createNetwork({ seed: 20260514 }),
+    loadAiPolicy: () => createLearningPolicy({ seed: 20260514 }),
   });
   try {
     await run(instance);
@@ -459,7 +459,7 @@ async function verifyLobbyAndStart() {
     assert.equal(gameSnapshot.status, 'in_progress');
     assert.equal(gameSnapshot.state.phase, 'court');
     const room = instance.manager.getRoom(created.roomCode);
-    assert.equal(room.aiMeta.pendingNeuralRuntime, !room.aiMeta.neuralModelAvailable);
+    assert.equal(room.aiMeta.pendingPolicyRuntime, !room.aiMeta.policyAvailable);
     assert.equal(room.aiMeta.players[2].isAI, true);
     assert.equal(room.aiMeta.players[2].displayName, 'AI Seat 3');
 

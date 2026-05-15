@@ -1,0 +1,105 @@
+Basileus AI Learning Command Options
+====================================
+
+Run with:
+
+  npm run ai:train -- [options]
+  npm run ai:evolve -- [options]
+
+Common examples:
+
+  npm run ai:train -- --episodes 1000
+  npm run ai:train -- --training-mode round --episodes 1000 --rollout-rounds 1
+  npm run ai:train -- --training-mode hybrid --round-mode-rate 0.5 --episodes 1000
+  npm run ai:train -- --human-games ai/human-games --episodes 1000
+
+Outputs:
+
+  --out PATH
+      Where to write the promoted policy.
+      Default: ai/policies/latest.json
+
+  --resume
+      Resume from ai/policies/latest.json and keep the loaded policy as the
+      promotion baseline.
+
+  --resume PATH
+      Resume from a specific policy or checkpoint file.
+
+Sampling:
+
+  --episodes NUMBER
+      Number of self-play episodes.
+
+  --players NUMBER
+      Fixed player count. Legal values are 3, 4, and 5.
+
+  --player-min NUMBER / --player-max NUMBER
+      Sample player counts within a legal range.
+
+  --rounds NUMBER
+      Fixed invasion deck size.
+
+  --round-min NUMBER / --round-max NUMBER
+      Sample deck sizes within a legal range.
+
+  --seed NUMBER
+      Makes episode seeds and the initial policy seed deterministic.
+
+Modes:
+
+  --training-mode episode|round|hybrid
+      Full games, legal short-rollout snapshots, or a mix of both.
+
+  --round-mode-rate NUMBER
+      In hybrid mode, chance that an episode uses the legal short-rollout path.
+
+  --rollout-rounds NUMBER
+      Number of completed rounds used by each short-rollout episode.
+
+Learning:
+
+  --learning-rate NUMBER
+      Linear policy update size. The default is derived from the maximum
+      official score: 1 / (score categories * point thresholds).
+
+  --temperature NUMBER
+      Action sampling temperature during learner exploration.
+
+  --training-epochs NUMBER
+      Optimization passes over each collected transition batch.
+
+Opponents:
+
+  --opponent-mix true|false
+      Mix learner seats with random, checkpoint, human-derived, and basic
+      rule-baseline opponents.
+
+  --random-opponent-rate NUMBER
+  --heuristic-opponent-rate NUMBER
+  --human-opponent-rate NUMBER
+  --checkpoint-opponent-rate NUMBER
+      Per-seat opponent mix rates.
+
+Human traces:
+
+  --human-games PATH
+  --human-feedback PATH
+      Load exported human learning traces. The default folder is
+      ai/human-games, which is ignored by git.
+
+  --human-feedback-weight NUMBER
+      Optional direct imitation mix added to the learner's transition batch.
+
+Checkpoints:
+
+  --checkpoint-interval NUMBER
+      Save and evaluate a policy checkpoint every N episodes.
+
+  --checkpoint-dir PATH
+      Folder where policy checkpoints are written.
+      Default: ai/policy-checkpoints
+
+The learner promotes the best evaluated checkpoint, not simply the last policy.
+On resumed runs, the loaded policy is scored as a baseline; if no new checkpoint
+beats it, the loaded policy remains the promoted policy.

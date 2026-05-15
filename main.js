@@ -19,7 +19,7 @@ const setupPlayerName = document.getElementById('setupPlayerName');
 const setupRoomCode = document.getElementById('setupRoomCode');
 const setupSaveFile = document.getElementById('setupSaveFile');
 const setupMultiplayerError = document.getElementById('setupMultiplayerError');
-const setupAiModelFile = document.getElementById('setupAiModelFile');
+const setupAiPolicyFile = document.getElementById('setupAiPolicyFile');
 const setupStartError = document.getElementById('setupStartError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
@@ -106,11 +106,11 @@ function renderAiRoster() {
   setupAiRoster.innerHTML = aiSeats.map((seat) => `
     <div class="setup-ai-seat">
       <span>Seat ${seat}</span>
-      <span>Neural AI seat</span>
+      <span>Evolving AI seat</span>
     </div>
   `).join('');
 
-  setupAiRosterHint.textContent = 'AI seats use the bundled ai/models/latest.json by default. Choose an override below only when you want to test another trained model.';
+  setupAiRosterHint.textContent = 'AI seats use the bundled evolving policy by default. Choose an override below only when you want to test another learned policy.';
   updateStartAvailability();
 }
 
@@ -124,13 +124,13 @@ function refreshModeVisibility() {
   renderAiRoster();
 }
 
-async function readSelectedAiModelPayload() {
-  const file = setupAiModelFile?.files?.[0];
+async function readSelectedAiPolicyPayload() {
+  const file = setupAiPolicyFile?.files?.[0];
   if (!file) return null;
   try {
     return JSON.parse(await file.text());
   } catch {
-    throw new Error('AI model file must be valid JSON.');
+    throw new Error('AI policy file must be valid JSON.');
   }
 }
 
@@ -228,7 +228,7 @@ btnStart.addEventListener('click', async () => {
     : 0;
 
   try {
-    const aiModelPayload = mode === 'single' ? await readSelectedAiModelPayload() : null;
+    const aiPolicyPayload = mode === 'single' ? await readSelectedAiPolicyPayload() : null;
     setupDialog.style.display = 'none';
 
     const game = new GameController({
@@ -236,7 +236,7 @@ btnStart.addEventListener('click', async () => {
       deckSize,
       seed,
       mode,
-      aiModelPayload,
+      aiPolicyPayload,
       humanPlayerIds: mode === 'single'
         ? [seat]
         : Array.from({ length: playerCount }, (_, index) => index),
@@ -282,7 +282,7 @@ setupPlayerName.addEventListener('input', () => {
 setupSaveFile?.addEventListener('change', () => {
   setMultiplayerError('');
 });
-setupAiModelFile?.addEventListener('change', () => {
+setupAiPolicyFile?.addEventListener('change', () => {
   setSetupError('');
 });
 btnCreateRoom?.addEventListener('click', () => {
