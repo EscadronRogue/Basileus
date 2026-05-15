@@ -60,7 +60,7 @@ npm run serve:multiplayer
 | --- | --- |
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
-| `npm run ai:train` | Runs local policy evolution and writes `ai/policies/latest.json`. |
+| `npm run ai:train` | Runs local policy evolution and writes a named opponent under `ai/opponents/`. |
 | `npm run ai:evolve` | Alias for `npm run ai:train`. |
 | `npm run ai:evaluate` | Evaluates the current local policy. |
 | `npm run ai:tournament` | Runs the richer policy-vs-baseline evaluation harness. |
@@ -144,9 +144,9 @@ The AI no longer uses layered black-box approximators or anonymous tensors. Ever
 
 The reward is outcome-driven: winning a survived game is `+1`, surviving without winning is `0`, and a fall of Constantinople assigns blame only to players who under-contributed to the defense relative to their legal frontier troop capacity. At each completed round, the learner also receives potential-based shaping from the official scoring rules: `(round / maxRounds) * (projected score points / maximum possible score)`, where the maximum possible score is derived from the four scoring categories and their three point thresholds.
 
-AI personalities share one universal policy and add learned deltas from different category lenses: balanced stewardship, estate income, gold reserves, tax income, and church income. They all still try to win and all still lose if the empire falls.
+Each trained AI is one named opponent file. New policies receive a random romanized Greek first name, and the setup menu lists exactly the JSON files present in `ai/opponents/`; no manifest is used. Drop a policy into that folder to make it playable, or remove it from the folder to remove it from the menu.
 
-The learner writes checkpoints to `ai/policy-checkpoints/`, evaluates them with a small tournament, and promotes the best checkpoint to `ai/policies/latest.json`. The default runtime policy is committed so the browser, GitHub Pages build, and multiplayer server all have an AI opponent out of the box.
+The learner writes checkpoints to `ai/policy-checkpoints/`, evaluates them with a small tournament, and promotes the best checkpoint to the named opponent output file. A starter opponent is committed under `ai/opponents/` so the local server has an AI opponent out of the box.
 
 Human play can be folded back into learning as a human-opponent source. Single-player and multiplayer runtime actions are recorded as legal-action snapshots when an `aiMeta` runtime is active. In a local single-player browser session, run `window.__basileus.downloadHumanFeedback()` to export the current trace, then drop the exported JSON file into `ai/human-games/`:
 

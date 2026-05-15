@@ -1,5 +1,6 @@
 import {
   DEFAULT_POLICY_PATH,
+  loadOpponentRosterSync,
   loadPolicyFileSync,
 } from './policyStore.js';
 import { evaluatePolicy } from './selfPlay.js';
@@ -81,10 +82,11 @@ function resolveRoundOptions(args) {
 
 export function runEvaluationCli(argv = process.argv) {
   const args = parseArgs(argv);
-  const policyPath = args.policy || DEFAULT_POLICY_PATH;
+  const defaultOpponent = args.policy ? null : loadOpponentRosterSync()[0];
+  const policyPath = args.policy || defaultOpponent?.path || DEFAULT_POLICY_PATH;
   const aiPolicy = args.baseline === 'random' ? null : loadPolicyFileSync(policyPath);
   if (!aiPolicy && args.baseline !== 'random') {
-    throw new Error(`No evolving AI policy found at ${policyPath}. Run npm run ai:train first.`);
+    throw new Error(`No evolving AI opponent found at ${policyPath}. Add a JSON policy to ai/opponents or run npm run ai:evolve first.`);
   }
   const opponentPath = args.opponent || null;
   const opponentPolicy = opponentPath ? loadPolicyFileSync(opponentPath) : null;

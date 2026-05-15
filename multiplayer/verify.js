@@ -461,7 +461,9 @@ async function verifyLobbyAndStart() {
     const room = instance.manager.getRoom(created.roomCode);
     assert.equal(room.aiMeta.pendingPolicyRuntime, !room.aiMeta.policyAvailable);
     assert.equal(room.aiMeta.players[2].isAI, true);
-    assert.equal(room.aiMeta.players[2].displayName, 'AI Seat 3');
+    assert.equal(room.aiMeta.players[2].displayName, 'Andreas');
+    assert.equal(gameSnapshot.state.players[2].firstName, 'Andreas');
+    assert.equal(gameSnapshot.state.players[2].isAIControlled, true);
 
     await guestSocket.close();
     await hostSocket.close();

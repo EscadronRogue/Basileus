@@ -11,7 +11,7 @@ import {
   resolvePendingTitleReassignment,
   startInteractiveRuntime,
 } from '../engine/runtime.js';
-import { createAIMeta, hydrateAiPolicy, loadBrowserAiPolicy } from '../ai/brain.js';
+import { AI_POLICY_MISSING_MESSAGE, createAIMeta, hydrateAiPolicy, loadBrowserAiPolicy } from '../ai/brain.js';
 import { exportHumanFeedbackPayload } from '../ai/humanFeedback.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG } from '../render/mapRenderer.js';
@@ -33,6 +33,9 @@ export class GameController {
       mode: config.mode || 'hotseat',
       aiPolicy: config.aiPolicy || null,
       aiPolicyPayload: config.aiPolicyPayload || null,
+      aiOpponentSelections: Array.isArray(config.aiOpponentSelections)
+        ? config.aiOpponentSelections.slice()
+        : [],
       humanPlayerIds: Array.isArray(config.humanPlayerIds)
         ? config.humanPlayerIds.slice()
         : Array.from({ length: config.playerCount || 4 }, (_, index) => index),
@@ -52,12 +55,15 @@ export class GameController {
     // already validate per-actor; gating belonged to UI copy, not state.
     setDealParticipantIds(this.state, this.state.players.map((player) => player.id));
     if (this.config.mode === 'single') {
+      const aiPlayers = await this.loadAiPlayers();
       const policy = this.config.aiPolicy
         || (this.config.aiPolicyPayload ? hydrateAiPolicy(this.config.aiPolicyPayload) : null)
-        || await loadBrowserAiPolicy(undefined, { required: true });
+        || (!Object.keys(aiPlayers).length ? await loadBrowserAiPolicy(undefined, { required: false }) : null);
+      if (!policy && !Object.keys(aiPlayers).length) throw new Error(AI_POLICY_MISSING_MESSAGE);
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
         policy,
+        aiPlayers,
       });
       this.ensureHumanFocus();
     }
@@ -75,6 +81,32 @@ export class GameController {
     this.render();
   }
 
+  async loadAiPlayers() {
+    const selections = this.config.aiOpponentSelections || [];
+    const aiPlayers = {};
+    for (const selection of selections) {
+      const playerId = Number(selection.playerId);
+      if (!Number.isInteger(playerId)) continue;
+      if (selection.policy) {
+        aiPlayers[playerId] = {
+          policy: selection.policy,
+          displayName: selection.firstName || selection.name || selection.policy.identity?.firstName || null,
+          opponentId: selection.id || null,
+        };
+        continue;
+      }
+      const url = selection.url || selection.policyUrl;
+      if (!url) continue;
+      const policy = await loadBrowserAiPolicy(url, { required: true });
+      aiPlayers[playerId] = {
+        policy,
+        displayName: selection.firstName || selection.name || policy?.identity?.firstName || null,
+        opponentId: selection.id || null,
+      };
+    }
+    return aiPlayers;
+  }
+
   isSinglePlayer() {
     return this.config.mode === 'single' && this.aiMeta !== null;
   }
@@ -84,10 +116,14 @@ export class GameController {
     for (const player of this.state.players) {
       if (this.isSinglePlayer() && this.isHumanPlayer(player.id)) {
         player.firstName = '(You)';
+        player.isAIControlled = false;
         continue;
       }
       const aiName = getAiDisplayName(this.aiMeta, player.id);
-      if (aiName) player.firstName = aiName;
+      if (aiName) {
+        player.firstName = aiName;
+        player.isAIControlled = true;
+      }
     }
   }
 

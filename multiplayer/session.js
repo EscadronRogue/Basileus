@@ -20,7 +20,11 @@ import {
 } from '../engine/publicState.js';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, resolveConfiguredSeed, toInt } from '../engine/setup.js';
 import { AI_POLICY_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
-import { loadPolicyFileSync } from '../ai/policyStore.js';
+import {
+  loadOpponentPolicyByIdSync,
+  loadOpponentRosterSync,
+  loadPolicyFileSync,
+} from '../ai/policyStore.js';
 import { getAiDisplayName } from '../ai/names.js';
 
 export const ROOM_STATUS = {
@@ -40,6 +44,7 @@ function createOpenSeat(seatId) {
     sessionId: null,
     seatToken: null,
     connected: false,
+    aiOpponentId: null,
   };
 }
 
@@ -76,8 +81,14 @@ function serializeAiMeta(aiMeta) {
   void fastCache;
   void roundContext;
   void policy;
+  const plain = clonePlain(rest);
+  if (plain.players) {
+    for (const player of Object.values(plain.players)) {
+      if (player && typeof player === 'object') delete player.policy;
+    }
+  }
   return {
-    ...clonePlain(rest),
+    ...plain,
     humanPlayerIds: [...(humanPlayerIds || new Set())],
     decisionLog: {
       lines: Array.isArray(decisionLog?.lines) ? decisionLog.lines.slice() : [],
@@ -85,10 +96,21 @@ function serializeAiMeta(aiMeta) {
   };
 }
 
-function hydrateAiMeta(rawMeta, state, loadAiPolicy = loadPolicyFileSync) {
+function hydrateAiMeta(rawMeta, state, seats = [], loadAiPolicy = loadPolicyFileSync, loadAiPolicyById = loadOpponentPolicyByIdSync) {
   if (!rawMeta) return null;
   const { humanPlayerIds = [], humanFeedback = null } = clonePlain(rawMeta);
-  return createAIMeta(state, { humanPlayerIds, humanFeedback, policy: loadAiPolicy() });
+  const aiPlayers = {};
+  for (const seat of seats || []) {
+    if (seat?.kind !== 'ai') continue;
+    const policy = seat.aiOpponentId ? loadAiPolicyById(seat.aiOpponentId) : loadAiPolicy();
+    if (!policy) continue;
+    aiPlayers[seat.seatId] = {
+      policy,
+      displayName: seat.playerName || policy.identity?.firstName || null,
+      opponentId: seat.aiOpponentId || null,
+    };
+  }
+  return createAIMeta(state, { humanPlayerIds, humanFeedback, aiPlayers });
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
@@ -96,7 +118,8 @@ function normalizeSavedSeat(rawSeat, seatId) {
   return {
     seatId,
     kind,
-    playerName: kind === 'ai' ? (rawSeat?.playerName || `AI Seat ${seatId + 1}`) : null,
+    playerName: kind === 'ai' ? (rawSeat?.playerName || 'Unnamed AI') : null,
+    aiOpponentId: kind === 'ai' ? (rawSeat?.aiOpponentId || null) : null,
     sessionId: null,
     seatToken: null,
     connected: false,
@@ -118,8 +141,9 @@ function createSeatSummary(room, seat, viewerSessionId) {
     claimed: seat.sessionId != null,
     connected: seat.connected,
     playerName: seat.kind === 'ai'
-      ? seat.playerName || `AI Seat ${seat.seatId + 1}`
+      ? seat.playerName || 'Unnamed AI'
       : seat.playerName,
+    aiOpponentId: seat.kind === 'ai' ? seat.aiOpponentId : null,
     isHostSeat: seat.sessionId != null && seat.sessionId === room.hostSessionId,
     isViewerSeat,
     dynasty: room.gameState ? (formatPlayerLabel(getPlayer(room.gameState, seat.seatId)) || null) : null,
@@ -135,11 +159,21 @@ function getAiSeatIds(room) {
 }
 
 export class MultiplayerRoom {
-  constructor({ roomCode, hostSessionId, hostPlayerName, config = {}, loadAiPolicy = loadPolicyFileSync }) {
+  constructor({
+    roomCode,
+    hostSessionId,
+    hostPlayerName,
+    config = {},
+    loadAiPolicy = loadPolicyFileSync,
+    loadAiPolicyById = loadOpponentPolicyByIdSync,
+    loadAiOpponentRoster = loadOpponentRosterSync,
+  }) {
     this.roomCode = roomCode;
     this.hostSessionId = hostSessionId;
     this.config = normalizeRoomConfig(config);
     this.loadAiPolicy = typeof loadAiPolicy === 'function' ? loadAiPolicy : loadPolicyFileSync;
+    this.loadAiPolicyById = typeof loadAiPolicyById === 'function' ? loadAiPolicyById : loadOpponentPolicyByIdSync;
+    this.loadAiOpponentRoster = typeof loadAiOpponentRoster === 'function' ? loadAiOpponentRoster : loadOpponentRosterSync;
     this.seats = Array.from({ length: this.config.playerCount }, (_, seatId) => createOpenSeat(seatId));
     this.connections = new Map();
     this.sessions = new Map();
@@ -273,7 +307,17 @@ export class MultiplayerRoom {
     return seat;
   }
 
-  setSeatKind(sessionId, seatId, kind) {
+  getAiOpponentRoster() {
+    return this.loadAiOpponentRoster().map(({ path, ...entry }) => entry);
+  }
+
+  resolveAiOpponent(rawOpponentId = null) {
+    const roster = this.getAiOpponentRoster();
+    assert(roster.length > 0, 'No AI opponents found in ai/opponents.');
+    return roster.find((entry) => entry.id === rawOpponentId) || roster[0];
+  }
+
+  setSeatKind(sessionId, seatId, kind, aiOpponentId = null) {
     assert(this.status === ROOM_STATUS.LOBBY, 'Seat types can only be changed in the lobby.');
     assert(this.isHostSession(sessionId), 'Only the host can change seat types.');
     assert(kind === 'human' || kind === 'ai', 'Seat type must be human or ai.');
@@ -283,7 +327,14 @@ export class MultiplayerRoom {
     assert(seat.sessionId == null, 'Claimed seats cannot change type.');
 
     seat.kind = kind;
-    seat.playerName = kind === 'ai' ? `AI Seat ${seatId + 1}` : null;
+    if (kind === 'ai') {
+      const opponent = this.resolveAiOpponent(aiOpponentId || seat.aiOpponentId);
+      seat.aiOpponentId = opponent.id;
+      seat.playerName = opponent.firstName || opponent.id;
+    } else {
+      seat.aiOpponentId = null;
+      seat.playerName = null;
+    }
     seat.connected = false;
     seat.seatToken = null;
     this.touch();
@@ -326,11 +377,23 @@ export class MultiplayerRoom {
 
     const humanPlayerIds = getHumanSeatIds(this);
     const aiSeatIds = getAiSeatIds(this);
-    const policy = this.loadAiPolicy();
-    assert(!aiSeatIds.length || policy, AI_POLICY_MISSING_MESSAGE);
+    const aiPlayers = {};
+    for (const seatId of aiSeatIds) {
+      const seat = this.seats[seatId];
+      const opponent = this.resolveAiOpponent(seat.aiOpponentId);
+      seat.aiOpponentId = opponent.id;
+      seat.playerName = opponent.firstName || opponent.id;
+      const policy = this.loadAiPolicyById(opponent.id);
+      assert(policy, AI_POLICY_MISSING_MESSAGE);
+      aiPlayers[seatId] = {
+        policy,
+        displayName: opponent.firstName || policy.identity?.firstName || opponent.id,
+        opponentId: opponent.id,
+      };
+    }
     this.aiMeta = createAIMeta(this.gameState, {
       humanPlayerIds,
-      policy,
+      aiPlayers,
     });
     setDealParticipantIds(this.gameState, this.gameState.players.map((player) => player.id));
     this.assignPlayerFirstNames();
@@ -360,6 +423,7 @@ export class MultiplayerRoom {
     for (const player of this.gameState.players) {
       const seat = this.seats[player.id];
       if (seat?.kind === 'human') {
+        player.isAIControlled = false;
         const trimmed = String(seat.playerName || '').trim();
         if (trimmed) {
           player.firstName = trimmed;
@@ -367,7 +431,10 @@ export class MultiplayerRoom {
         }
       }
       const aiName = getAiDisplayName(this.aiMeta, player.id);
-      if (aiName) player.firstName = aiName;
+      if (aiName) {
+        player.firstName = aiName;
+        player.isAIControlled = true;
+      }
     }
   }
 
@@ -402,6 +469,7 @@ export class MultiplayerRoom {
       config: clonePlain(this.config),
       hostSessionId: this.hostSessionId === sessionId ? this.hostSessionId : null,
       seats: this.seats.map((seat) => createSeatSummary(this, seat, sessionId)),
+      aiOpponents: this.getAiOpponentRoster(),
       yourSession: {
         sessionId,
         playerName: this.sessions.get(sessionId)?.playerName || null,
@@ -472,6 +540,7 @@ export class MultiplayerRoom {
           seatId: seat.seatId,
           kind: seat.kind,
           playerName: seat.kind === 'ai' ? seat.playerName : null,
+          aiOpponentId: seat.kind === 'ai' ? seat.aiOpponentId : null,
         })),
         gameState: serializeFullGameState(this.gameState),
         aiMeta: serializeAiMeta(this.aiMeta),
@@ -672,7 +741,7 @@ export class MultiplayerRoom {
       }
 
       if (message.type === 'set_seat_kind') {
-        const seat = this.setSeatKind(sessionId, toInt(message.seatId, -1), message.kind);
+        const seat = this.setSeatKind(sessionId, toInt(message.seatId, -1), message.kind, message.aiOpponentId || message.opponentId || null);
         this.finalizeMutation(sessionId, requestId, null, { action: message.type, seatId: seat.seatId, kind: seat.kind });
         return;
       }
@@ -735,17 +804,35 @@ export function createRoomCode(existingRoomCodes = new Set()) {
   }
 }
 
-export function createRoom({ existingRoomCodes, hostSessionId, hostPlayerName, config, loadAiPolicy = loadPolicyFileSync }) {
+export function createRoom({
+  existingRoomCodes,
+  hostSessionId,
+  hostPlayerName,
+  config,
+  loadAiPolicy = loadPolicyFileSync,
+  loadAiPolicyById = loadOpponentPolicyByIdSync,
+  loadAiOpponentRoster = loadOpponentRosterSync,
+}) {
   return new MultiplayerRoom({
     roomCode: createRoomCode(existingRoomCodes),
     hostSessionId,
     hostPlayerName,
     config,
     loadAiPolicy,
+    loadAiPolicyById,
+    loadAiOpponentRoster,
   });
 }
 
-export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlayerName, saveGame, loadAiPolicy = loadPolicyFileSync }) {
+export function createRoomFromSave({
+  existingRoomCodes,
+  hostSessionId,
+  hostPlayerName,
+  saveGame,
+  loadAiPolicy = loadPolicyFileSync,
+  loadAiPolicyById = loadOpponentPolicyByIdSync,
+  loadAiOpponentRoster = loadOpponentRosterSync,
+}) {
   assert(saveGame?.schema === SAVE_SCHEMA, 'Save file is not a Basileus multiplayer save.');
   assert(saveGame.version === SAVE_VERSION, 'Save file version is not supported.');
   const savedRoom = saveGame.room;
@@ -763,17 +850,19 @@ export function createRoomFromSave({ existingRoomCodes, hostSessionId, hostPlaye
     hostPlayerName,
     config,
     loadAiPolicy,
+    loadAiPolicyById,
+    loadAiOpponentRoster,
   });
 
   room.config = config;
   room.gameState = gameState;
-  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, loadAiPolicy);
   room.pendingAiTitleAssignment = clonePlain(savedRoom.pendingAiTitleAssignment);
   room.finishedAt = savedRoom.finishedAt || null;
   room.gameOverSent = false;
   room.seats = Array.from({ length: room.config.playerCount }, (_, seatId) =>
     normalizeSavedSeat(savedRoom.seats?.[seatId], seatId)
   );
+  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, room.seats, loadAiPolicy, loadAiPolicyById);
   room.refreshStatusFromGame();
   if (room.status !== ROOM_STATUS.FINISHED) {
     room.status = ROOM_STATUS.IN_PROGRESS;

@@ -44,6 +44,8 @@ export class MultiplayerRoomManager {
   constructor(options = {}) {
     this.rooms = new Map();
     this.loadAiPolicy = typeof options.loadAiPolicy === 'function' ? options.loadAiPolicy : undefined;
+    this.loadAiPolicyById = typeof options.loadAiPolicyById === 'function' ? options.loadAiPolicyById : undefined;
+    this.loadAiOpponentRoster = typeof options.loadAiOpponentRoster === 'function' ? options.loadAiOpponentRoster : undefined;
   }
 
   createSessionToken() {
@@ -59,6 +61,8 @@ export class MultiplayerRoomManager {
         hostPlayerName: normalizePlayerName(playerName),
         saveGame,
         loadAiPolicy: this.loadAiPolicy,
+        loadAiPolicyById: this.loadAiPolicyById,
+        loadAiOpponentRoster: this.loadAiOpponentRoster,
       })
       : createRoom({
         existingRoomCodes: new Set(this.rooms.keys()),
@@ -66,6 +70,8 @@ export class MultiplayerRoomManager {
         hostPlayerName: normalizePlayerName(playerName),
         config,
         loadAiPolicy: this.loadAiPolicy,
+        loadAiPolicyById: this.loadAiPolicyById,
+        loadAiOpponentRoster: this.loadAiOpponentRoster,
       });
     this.rooms.set(room.roomCode, room);
 
@@ -96,6 +102,11 @@ export class MultiplayerRoomManager {
 
   getRoom(roomCode) {
     return this.rooms.get(String(roomCode || '').trim().toUpperCase()) || null;
+  }
+
+  getAiOpponentRoster() {
+    const roster = this.loadAiOpponentRoster ? this.loadAiOpponentRoster() : [];
+    return roster.map(({ path, ...entry }) => entry);
   }
 }
 

@@ -15,6 +15,7 @@ import {
   loadPolicyPayloadSync,
   loadPolicyFileSync,
   savePolicyFileSync,
+  uniqueOpponentPolicyPathSync,
 } from './policyStore.js';
 import {
   DEFAULT_HUMAN_GAMES_DIR,
@@ -1035,7 +1036,7 @@ export async function runTrainingCli(argv = process.argv) {
   const args = parseArgs(argv);
   const resumePath = args.resume === true ? DEFAULT_POLICY_PATH : args.resume;
   const trainingOptions = resolveTrainingOptions(args);
-  const out = args.out || DEFAULT_POLICY_PATH;
+  let out = args.out || null;
   const checkpointDir = args.checkpointDir || DEFAULT_CHECKPOINT_DIR;
   const humanGamesPath = resolveHumanGamesPath(args);
   const explicitHumanGamesPath = Boolean(args.humanGames || args.humanData || args.humanFeedback);
@@ -1056,6 +1057,11 @@ export async function runTrainingCli(argv = process.argv) {
   const resumePayload = resumePath ? loadPolicyPayloadSync(resumePath) : null;
   const resumedPolicy = resumePath ? loadPolicyFileSync(resumePath) : null;
   const aiPolicy = resumedPolicy || createLearningPolicy({ seed: trainingOptions.policySeed });
+  if (!out) {
+    out = resumedPolicy && resumePath
+      ? resolve(resumePath)
+      : uniqueOpponentPolicyPathSync(aiPolicy);
+  }
   const shouldContinueMatchingCheckpoints = Boolean(
     resumedPolicy
     && resumePath

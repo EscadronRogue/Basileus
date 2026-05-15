@@ -37,8 +37,6 @@ coverage/
 .eslintcache
 
 # --- Local evolving AI artifacts ---
-ai/policies/*.json
-!ai/policies/latest.json
 ai/policy-checkpoints/
 ai/runs/
 ai/human-games/

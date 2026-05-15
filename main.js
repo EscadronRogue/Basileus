@@ -1,6 +1,7 @@
 import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup.js';
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
+import { loadBrowserAiOpponentRoster } from './ai/brain.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 
@@ -19,13 +20,24 @@ const setupPlayerName = document.getElementById('setupPlayerName');
 const setupRoomCode = document.getElementById('setupRoomCode');
 const setupSaveFile = document.getElementById('setupSaveFile');
 const setupMultiplayerError = document.getElementById('setupMultiplayerError');
-const setupAiPolicyFile = document.getElementById('setupAiPolicyFile');
 const setupStartError = document.getElementById('setupStartError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
 
 let multiplayerLaunchInFlight = false;
 let gameLaunchInFlight = false;
+let aiOpponentRoster = [];
+let aiOpponentRosterLoaded = false;
+let aiOpponentRosterError = '';
+const selectedAiOpponentBySeat = new Map();
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 function getNonRandomOptionValues(select) {
   return [...select.options]
@@ -74,7 +86,8 @@ function refreshSeatOptions() {
 }
 
 function updateStartAvailability() {
-  btnStart.disabled = gameLaunchInFlight;
+  const needsAiRoster = setupMode.value === 'single';
+  btnStart.disabled = gameLaunchInFlight || (needsAiRoster && (!aiOpponentRosterLoaded || aiOpponentRoster.length === 0));
   if (btnJoinRoom) {
     btnJoinRoom.disabled = setupRoomCode.value.trim().length !== 6;
   }
@@ -103,14 +116,53 @@ function renderAiRoster() {
   const aiSeats = Array.from({ length: playerCount }, (_, index) => index + 1)
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
-  setupAiRoster.innerHTML = aiSeats.map((seat) => `
+  if (!aiOpponentRosterLoaded) {
+    setupAiRoster.innerHTML = '<div class="setup-ai-seat"><span>Loading AI opponents...</span><span>Reading ai/opponents</span></div>';
+    setupAiRosterHint.textContent = 'AI opponents are loaded from ai/opponents/*.json. No manifest is used.';
+    updateStartAvailability();
+    return;
+  }
+
+  if (!aiOpponentRoster.length) {
+    setupAiRoster.innerHTML = `
+      <div class="setup-ai-seat">
+        <span>No AI opponents found</span>
+        <span>${escapeHtml(aiOpponentRosterError || 'Drop policy JSON files into ai/opponents.')}</span>
+      </div>
+    `;
+    setupAiRosterHint.textContent = 'Single-player AI is unavailable until ai/opponents contains at least one policy JSON.';
+    updateStartAvailability();
+    return;
+  }
+
+  setupAiRoster.innerHTML = aiSeats.map((seat, index) => {
+    const existing = selectedAiOpponentBySeat.get(seat);
+    const selectedId = aiOpponentRoster.some((opponent) => opponent.id === existing)
+      ? existing
+      : aiOpponentRoster[index % aiOpponentRoster.length]?.id;
+    selectedAiOpponentBySeat.set(seat, selectedId);
+    return `
     <div class="setup-ai-seat">
       <span>Seat ${seat}</span>
-      <span>Evolving AI seat</span>
+      <select class="setup-ai-opponent-select" data-seat="${seat}">
+        ${aiOpponentRoster.map((opponent) => `
+          <option value="${escapeHtml(opponent.id)}" ${opponent.id === selectedId ? 'selected' : ''}>
+            ${escapeHtml(opponent.firstName || opponent.id)}
+          </option>
+        `).join('')}
+      </select>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
-  setupAiRosterHint.textContent = 'AI seats use the bundled evolving policy by default. Choose an override below only when you want to test another learned policy.';
+  setupAiRoster.querySelectorAll('.setup-ai-opponent-select').forEach((select) => {
+    select.addEventListener('change', () => {
+      selectedAiOpponentBySeat.set(Number(select.dataset.seat), select.value);
+      setSetupError('');
+    });
+  });
+
+  setupAiRosterHint.textContent = 'AI opponents are exactly the policy JSON files present in ai/opponents. Remove a file from that folder to remove it here.';
   updateStartAvailability();
 }
 
@@ -124,16 +176,6 @@ function refreshModeVisibility() {
   renderAiRoster();
 }
 
-async function readSelectedAiPolicyPayload() {
-  const file = setupAiPolicyFile?.files?.[0];
-  if (!file) return null;
-  try {
-    return JSON.parse(await file.text());
-  } catch {
-    throw new Error('AI policy file must be valid JSON.');
-  }
-}
-
 async function readSelectedMultiplayerSave() {
   const file = setupSaveFile?.files?.[0];
   if (!file) return null;
@@ -142,6 +184,25 @@ async function readSelectedMultiplayerSave() {
   } catch {
     throw new Error('Saved match file must be valid JSON.');
   }
+}
+
+function buildAiOpponentSelections(playerCount, humanSeat) {
+  const selections = [];
+  if (!aiOpponentRoster.length) return selections;
+  for (let playerId = 0; playerId < playerCount; playerId += 1) {
+    if (playerId === humanSeat) continue;
+    const seat = playerId + 1;
+    const selectedId = selectedAiOpponentBySeat.get(seat) || aiOpponentRoster[selections.length % aiOpponentRoster.length]?.id;
+    const opponent = aiOpponentRoster.find((entry) => entry.id === selectedId) || aiOpponentRoster[0];
+    if (!opponent) continue;
+    selections.push({
+      playerId,
+      id: opponent.id,
+      firstName: opponent.firstName,
+      url: opponent.url,
+    });
+  }
+  return selections;
 }
 
 async function launchMultiplayerFlow(intent) {
@@ -228,7 +289,12 @@ btnStart.addEventListener('click', async () => {
     : 0;
 
   try {
-    const aiPolicyPayload = mode === 'single' ? await readSelectedAiPolicyPayload() : null;
+    const aiOpponentSelections = mode === 'single'
+      ? buildAiOpponentSelections(playerCount, seat)
+      : [];
+    if (mode === 'single' && aiOpponentSelections.length !== playerCount - 1) {
+      throw new Error('Choose an AI opponent for every AI seat.');
+    }
     setupDialog.style.display = 'none';
 
     const game = new GameController({
@@ -236,7 +302,7 @@ btnStart.addEventListener('click', async () => {
       deckSize,
       seed,
       mode,
-      aiPolicyPayload,
+      aiOpponentSelections,
       humanPlayerIds: mode === 'single'
         ? [seat]
         : Array.from({ length: playerCount }, (_, index) => index),
@@ -282,9 +348,6 @@ setupPlayerName.addEventListener('input', () => {
 setupSaveFile?.addEventListener('change', () => {
   setMultiplayerError('');
 });
-setupAiPolicyFile?.addEventListener('change', () => {
-  setSetupError('');
-});
 btnCreateRoom?.addEventListener('click', () => {
   void launchMultiplayerFlow('create');
 });
@@ -299,3 +362,17 @@ setupRoomCode.addEventListener('keydown', (event) => {
 
 refreshSeatOptions();
 refreshModeVisibility();
+
+loadBrowserAiOpponentRoster(undefined, { required: false })
+  .then((opponents) => {
+    aiOpponentRoster = opponents;
+    aiOpponentRosterLoaded = true;
+    aiOpponentRosterError = '';
+    renderAiRoster();
+  })
+  .catch((error) => {
+    aiOpponentRoster = [];
+    aiOpponentRosterLoaded = true;
+    aiOpponentRosterError = error?.message || 'Could not list AI opponents.';
+    renderAiRoster();
+  });

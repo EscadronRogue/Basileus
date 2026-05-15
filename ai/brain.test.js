@@ -47,6 +47,7 @@ import {
   createLearningPolicy,
 } from './policy.js';
 import {
+  loadOpponentRosterSync,
   loadPolicyFileSync,
   savePolicyFileSync,
 } from './policyStore.js';
@@ -111,7 +112,7 @@ test('AI metadata preserves human and AI seat boundaries', () => {
   assert.equal(meta.humanPlayerIds.has(1), true);
   assert.equal(isAIPlayer(meta, 0), true);
   assert.equal(isAIPlayer(meta, 1), false);
-  assert.equal(meta.players[0].displayName, 'AI Seat 1');
+  assert.equal(meta.players[0].displayName, 'Unnamed AI');
   assert.equal(typeof meta.players[0].personalityId, 'string');
 });
 
@@ -126,10 +127,13 @@ test('AI decisions fail clearly when no local policy exists', () => {
 });
 
 test('bundled default AI policy loads for runtime play', () => {
-  const policy = loadPolicyFileSync();
-  assert.ok(policy, 'ai/policies/latest.json must be committed with the app');
+  const [opponent] = loadOpponentRosterSync();
+  assert.ok(opponent, 'ai/opponents must contain at least one committed AI opponent');
+  const policy = loadPolicyFileSync(opponent.path);
+  assert.ok(policy, 'opponent policy must load from ai/opponents');
   assert.equal(policy.schema, 'basileus.evolving-policy.v1');
-  assert.ok(Object.keys(policy.personalities).length > 1);
+  assert.ok(policy.identity?.firstName);
+  assert.equal(Object.keys(policy.personalities).length, 1);
 });
 
 test('browser policy loader can make missing policies a startup error', async () => {
@@ -140,7 +144,7 @@ test('browser policy loader can make missing policies a startup error', async ()
     assert.equal(await loadBrowserAiPolicy('missing-policy.json'), null);
     await assert.rejects(
       () => loadBrowserAiPolicy('missing-policy.json', { required: true }),
-      /Evolving AI policy not found[\s\S]*HTTP 404/,
+      /Evolving AI opponent not found[\s\S]*HTTP 404/,
     );
   } finally {
     globalThis.fetch = previousFetch;
@@ -375,7 +379,7 @@ test('checkpoint manager keeps the loaded policy as promotion baseline', () => {
     playerCount: 3,
     deckSize: 1,
     quiet: true,
-  }, 'ai/policies/latest.json', { checkpointDir: mkdtempSync(join(tmpdir(), 'basileus-policy-baseline-')) });
+  }, 'ai/opponents/latest.json', { checkpointDir: mkdtempSync(join(tmpdir(), 'basileus-policy-baseline-')) });
   assert.equal(checkpoints.best.baseline, true);
   assert.equal(checkpoints.best.episode, 1000);
   assert.ok(checkpoints.best.aiPolicy);
@@ -460,7 +464,7 @@ test('learning progress logs use only the latest feedback window', () => {
       episodes: 4,
       logInterval: 2,
       quiet: false,
-    }, 'ai/policies/test.json', false);
+    }, 'ai/opponents/test.json', false);
     reporter.update({
       completed: 2,
       stats: {

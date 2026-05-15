@@ -742,6 +742,7 @@ export class MultiplayerController {
     if (!this.setupDialog || !this.roomSnapshot) return;
     const isHost = this.isHost();
     const seats = this.roomSnapshot.seats || [];
+    const aiOpponents = this.roomSnapshot.aiOpponents || [];
     const config = this.roomSnapshot.config || {};
     const controlledSeatId = this.getControlledSeatId();
     const previousCard = this.setupDialog.querySelector('.setup-card');
@@ -787,7 +788,7 @@ export class MultiplayerController {
               <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}">
                 <div class="multiplayer-seat-copy">
                   <strong>Seat ${seat.seatId + 1}</strong>
-                  <span>${seat.dynasty || (seat.kind === 'ai' ? 'AI seat' : (seat.claimed ? 'Human dynasty claimed' : 'Awaiting dynasty'))}</span>
+                  <span>${seat.dynasty || (seat.kind === 'ai' ? 'AI opponent' : (seat.claimed ? 'Human dynasty claimed' : 'Awaiting dynasty'))}</span>
                   <span class="setup-hint">${seat.isViewerSeat ? 'You' : (seat.playerName || (seat.kind === 'ai' ? 'AI-controlled' : 'Open human seat'))} - ${seat.status}</span>
                 </div>
                 <div class="multiplayer-seat-actions">
@@ -798,6 +799,15 @@ export class MultiplayerController {
                     <button class="btn-secondary-link btn-seat-kind" type="button" data-seat-id="${seat.seatId}" data-kind="${seat.kind === 'ai' ? 'human' : 'ai'}">
                       ${seat.kind === 'ai' ? 'Set Human' : 'Set AI'}
                     </button>
+                  ` : ''}
+                  ${isHost && !seat.claimed && seat.kind === 'ai' && aiOpponents.length ? `
+                    <select class="setup-ai-opponent-select multiplayer-ai-opponent" data-seat-id="${seat.seatId}">
+                      ${aiOpponents.map((opponent) => `
+                        <option value="${escapeHtml(opponent.id)}" ${opponent.id === seat.aiOpponentId ? 'selected' : ''}>
+                          ${escapeHtml(opponent.firstName || opponent.id)}
+                        </option>
+                      `).join('')}
+                    </select>
                   ` : ''}
                   ${seat.isViewerSeat ? '<span class="setup-hint">You</span>' : ''}
                 </div>
@@ -829,9 +839,22 @@ export class MultiplayerController {
 
     this.setupDialog.querySelectorAll('.btn-seat-kind').forEach((button) => {
       button.addEventListener('click', () => {
+        const seatId = Number(button.dataset.seatId);
+        const selectedOpponent = this.setupDialog.querySelector(`.multiplayer-ai-opponent[data-seat-id="${seatId}"]`)?.value;
         this.send('set_seat_kind', {
-          seatId: Number(button.dataset.seatId),
+          seatId,
           kind: button.dataset.kind,
+          aiOpponentId: selectedOpponent || undefined,
+        });
+      });
+    });
+
+    this.setupDialog.querySelectorAll('.multiplayer-ai-opponent').forEach((select) => {
+      select.addEventListener('change', () => {
+        this.send('set_seat_kind', {
+          seatId: Number(select.dataset.seatId),
+          kind: 'ai',
+          aiOpponentId: select.value,
         });
       });
     });

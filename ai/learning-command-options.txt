@@ -17,10 +17,10 @@ Outputs:
 
   --out PATH
       Where to write the promoted policy.
-      Default: ai/policies/latest.json
+      Default: a unique Greek first-name JSON file under ai/opponents
 
   --resume
-      Resume from ai/policies/latest.json and keep the loaded policy as the
+      Resume from ai/opponents/latest.json and keep the loaded policy as the
       promotion baseline.
 
   --resume PATH
@@ -100,6 +100,7 @@ Checkpoints:
       Folder where policy checkpoints are written.
       Default: ai/policy-checkpoints
 
-The learner promotes the best evaluated checkpoint, not simply the last policy.
-On resumed runs, the loaded policy is scored as a baseline; if no new checkpoint
-beats it, the loaded policy remains the promoted policy.
+The learner gives every new policy a random Greek first name and promotes the
+best evaluated checkpoint, not simply the last policy. On resumed runs, the
+loaded policy is scored as a baseline; if no new checkpoint beats it, the loaded
+policy remains the promoted policy.

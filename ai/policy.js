@@ -4,39 +4,18 @@ import {
   FEATURE_UNIT,
   OFFICIAL_MAX_SCORE,
 } from './features.js';
+import {
+  pickGreekFirstName,
+} from './greekNames.js';
 
 export const EVOLVING_POLICY_SCHEMA = 'basileus.evolving-policy.v1';
 
 export const PERSONALITY_PROFILES = Object.freeze([
   {
-    id: 'steward',
-    label: 'Steward',
+    id: 'core',
+    label: 'Core',
     focusCategory: null,
-    description: 'Balances the official scoring categories while keeping the empire alive.',
-  },
-  {
-    id: 'magnate',
-    label: 'Magnate',
-    focusCategory: 'estate',
-    description: 'Learns from estate-income pressure while still sharing the universal win objective.',
-  },
-  {
-    id: 'treasurer',
-    label: 'Treasurer',
-    focusCategory: 'gold',
-    description: 'Learns from gold-reserve pressure while still sharing the universal win objective.',
-  },
-  {
-    id: 'tax_farmer',
-    label: 'Tax Farmer',
-    focusCategory: 'tax',
-    description: 'Learns from tax-income pressure while still sharing the universal win objective.',
-  },
-  {
-    id: 'patriarchal',
-    label: 'Patriarchal',
-    focusCategory: 'church',
-    description: 'Learns from church-income pressure while still sharing the universal win objective.',
+    description: 'Learns one named AI personality from legal play and official outcomes.',
   },
 ]);
 
@@ -53,14 +32,24 @@ function defaultLearningRate() {
   return FEATURE_UNIT / Math.max(FEATURE_UNIT, OFFICIAL_MAX_SCORE);
 }
 
+function normalizePolicyIdentity(identity = {}, seed = undefined) {
+  const firstName = String(identity.firstName || identity.name || '').trim()
+    || pickGreekFirstName(seed);
+  return {
+    firstName,
+    name: firstName,
+    source: identity.source || 'greek-given-name',
+  };
+}
+
 function normalizePersonalityId(policy, personalityId) {
   if (personalityId && policy?.personalities?.[personalityId]) return personalityId;
   return DEFAULT_PERSONALITY_ID;
 }
 
 export function personalityForSeat(playerId) {
-  const index = Math.abs(Math.floor(finiteNumber(playerId))) % PERSONALITY_PROFILES.length;
-  return PERSONALITY_PROFILES[index].id;
+  void playerId;
+  return DEFAULT_PERSONALITY_ID;
 }
 
 function createPersonalityEntry(profile) {
@@ -82,6 +71,8 @@ export function createLearningPolicy(options = {}) {
     schema: EVOLVING_POLICY_SCHEMA,
     version: 1,
     featureSchema: FEATURE_SCHEMA,
+    identity: normalizePolicyIdentity(options.identity || { name: options.name }, options.seed),
+    defaultPersonalityId: options.defaultPersonalityId || DEFAULT_PERSONALITY_ID,
     step: 0,
     createdAt: new Date().toISOString(),
     updatedAt: null,
@@ -110,6 +101,8 @@ export function hydrateLearningPolicy(rawPolicy) {
   }
   const policy = createLearningPolicy();
   policy.step = Math.max(0, Math.floor(finiteNumber(raw.step)));
+  policy.identity = normalizePolicyIdentity(raw.identity || { name: raw.name }, raw.createdAt || raw.step);
+  policy.defaultPersonalityId = DEFAULT_PERSONALITY_ID;
   policy.createdAt = raw.createdAt || policy.createdAt;
   policy.updatedAt = raw.updatedAt || null;
   policy.sharedWeights = normalizeWeightMap(raw.sharedWeights || raw.weights);
@@ -128,6 +121,9 @@ export function hydrateLearningPolicy(rawPolicy) {
       weights: normalizeWeightMap(incoming.weights),
     };
   }
+  if (raw.defaultPersonalityId && policy.personalities[raw.defaultPersonalityId]) {
+    policy.defaultPersonalityId = raw.defaultPersonalityId;
+  }
   return policy;
 }
 
@@ -137,6 +133,8 @@ export function serializeLearningPolicy(policy) {
     schema: EVOLVING_POLICY_SCHEMA,
     version: hydrated.version || 1,
     featureSchema: hydrated.featureSchema || FEATURE_SCHEMA,
+    identity: normalizePolicyIdentity(hydrated.identity || { name: hydrated.name }, hydrated.createdAt || hydrated.step),
+    defaultPersonalityId: hydrated.defaultPersonalityId || DEFAULT_PERSONALITY_ID,
     step: hydrated.step || 0,
     createdAt: hydrated.createdAt || null,
     updatedAt: hydrated.updatedAt || null,

@@ -9,13 +9,14 @@ import {
   buildCandidateFeatures,
 } from './features.js';
 import {
+  DEFAULT_PERSONALITY_ID,
   hydrateLearningPolicy,
-  personalityForSeat,
   selectActionWithPolicy,
 } from './policy.js';
 
-export const AI_POLICY_MISSING_MESSAGE = 'Evolving AI policy not found. Run npm run ai:train to create ai/policies/latest.json.';
-export const DEFAULT_BROWSER_POLICY_URL = 'ai/policies/latest.json';
+export const AI_POLICY_MISSING_MESSAGE = 'Evolving AI opponent not found. Add policy JSON files to ai/opponents or run npm run ai:evolve.';
+export const DEFAULT_BROWSER_POLICY_URL = 'ai/opponents/latest.json';
+export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
 
 function normalizeHumanPlayerIds(playerCount, humanPlayerIds = []) {
   return new Set(
@@ -33,13 +34,21 @@ function createDecisionLog() {
   };
 }
 
-function createPlayerMeta(player, humanPlayerIds) {
+function policyDisplayName(policy, fallback) {
+  return String(policy?.identity?.firstName || policy?.identity?.name || fallback || '').trim() || null;
+}
+
+function createPlayerMeta(player, humanPlayerIds, aiPlayer = null) {
   const isAI = !humanPlayerIds.has(player.id);
+  const policy = aiPlayer?.policy || null;
+  const displayName = aiPlayer?.displayName || policyDisplayName(policy, 'Unnamed AI');
   return {
     playerId: player.id,
     isAI,
-    displayName: isAI ? `AI Seat ${player.id + 1}` : null,
-    personalityId: isAI ? personalityForSeat(player.id) : null,
+    displayName: isAI ? displayName : null,
+    policy: isAI ? policy : null,
+    opponentId: isAI ? (aiPlayer?.opponentId || null) : null,
+    personalityId: isAI ? (policy?.defaultPersonalityId || DEFAULT_PERSONALITY_ID) : null,
     stats: {},
   };
 }
@@ -75,23 +84,46 @@ export async function loadBrowserAiPolicy(url = DEFAULT_BROWSER_POLICY_URL, opti
   }
 }
 
+export async function loadBrowserAiOpponentRoster(url = DEFAULT_BROWSER_OPPONENT_ROSTER_URL, options = {}) {
+  const required = Boolean(options.required);
+  if (typeof fetch !== 'function') {
+    if (required) throw new Error('Could not list AI opponents: browser fetch is unavailable.');
+    return [];
+  }
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) {
+      if (required) throw new Error(`Could not list AI opponents: HTTP ${response.status}.`);
+      return [];
+    }
+    const payload = await response.json();
+    return Array.isArray(payload?.opponents) ? payload.opponents : [];
+  } catch (error) {
+    if (required) throw error;
+    return [];
+  }
+}
+
 export function createAIMeta(state, options = {}) {
   const humanPlayerIds = normalizeHumanPlayerIds(state?.players?.length || 0, options.humanPlayerIds || []);
+  const aiPlayers = options.aiPlayers || {};
+  const hasAnyPolicy = Boolean(options.policy)
+    || Object.values(aiPlayers).some((entry) => Boolean(entry?.policy));
   const players = {};
   for (const player of state?.players || []) {
-    players[player.id] = createPlayerMeta(player, humanPlayerIds);
+    players[player.id] = createPlayerMeta(player, humanPlayerIds, aiPlayers[player.id] || aiPlayers[String(player.id)]);
   }
 
   return {
     humanPlayerIds,
     players,
     policy: options.policy || null,
-    policyAvailable: Boolean(options.policy),
+    policyAvailable: hasAnyPolicy,
     runtimeExploration: Number.isFinite(Number(options.runtimeExploration)) ? Number(options.runtimeExploration) : 0,
     publicLog: [],
     decisionLog: createDecisionLog(),
     humanFeedback: options.humanFeedback || null,
-    pendingPolicyRuntime: !options.policy,
+    pendingPolicyRuntime: !hasAnyPolicy,
   };
 }
 
@@ -124,9 +156,11 @@ export function observeCourtAction(state, meta, observation = null) {
   if (meta.publicLog.length > 80) meta.publicLog.splice(0, meta.publicLog.length - 80);
 }
 
-function requirePolicy(meta) {
-  if (!meta?.policy) throw new Error(AI_POLICY_MISSING_MESSAGE);
-  return meta.policy;
+function requirePolicy(meta, playerId) {
+  const playerPolicy = meta?.players?.[playerId]?.policy;
+  const policy = playerPolicy || meta?.policy;
+  if (!policy) throw new Error(AI_POLICY_MISSING_MESSAGE);
+  return policy;
 }
 
 function getRng(state) {
@@ -134,12 +168,12 @@ function getRng(state) {
 }
 
 function getPersonalityId(meta, playerId) {
-  return meta?.players?.[playerId]?.personalityId || personalityForSeat(playerId);
+  return meta?.players?.[playerId]?.personalityId || DEFAULT_PERSONALITY_ID;
 }
 
 function choosePolicyAction(state, meta, playerId, actions, options = {}) {
   if (!actions.length) return null;
-  const policy = requirePolicy(meta);
+  const policy = requirePolicy(meta, playerId);
   const features = buildCandidateFeatures(state, playerId, actions);
   const selection = selectActionWithPolicy(policy, features, getRng(state), {
     greedy: options.greedy ?? true,

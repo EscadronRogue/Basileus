@@ -275,10 +275,8 @@ export function recordRevocationChoice(state, revokerId, targetPlayerId) {
 export function formatPlayerLabel(player) {
   if (!player) return '';
   const dynasty = player.dynasty || '';
-  if (player.firstName) {
-    return `${player.firstName} ${dynasty}`.trim();
-  }
-  return dynasty;
+  const label = player.firstName ? `${player.firstName} ${dynasty}`.trim() : dynasty;
+  return player.isAIControlled ? `${label} (AI)`.trim() : label;
 }
 
 export function getPlayerLabel(state, playerId, fallback = null) {
