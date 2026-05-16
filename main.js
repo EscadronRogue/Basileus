@@ -117,8 +117,8 @@ function renderAiRoster() {
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
   if (!aiOpponentRosterLoaded) {
-    setupAiRoster.innerHTML = '<div class="setup-ai-seat"><span>Loading AI opponents...</span><span>Preparing heuristic strategies</span></div>';
-    setupAiRosterHint.textContent = 'AI opponents are built-in heuristic personalities.';
+    setupAiRoster.innerHTML = '<div class="setup-ai-seat"><span>Loading AI placeholders...</span><span>Preparing named seats</span></div>';
+    setupAiRosterHint.textContent = 'AI seats are placeholders until a new AI system is installed.';
     updateStartAvailability();
     return;
   }
@@ -127,10 +127,10 @@ function renderAiRoster() {
     setupAiRoster.innerHTML = `
       <div class="setup-ai-seat">
         <span>No AI opponents found</span>
-        <span>${escapeHtml(aiOpponentRosterError || 'No heuristic opponents are available.')}</span>
+        <span>${escapeHtml(aiOpponentRosterError || 'No AI placeholders are available.')}</span>
       </div>
     `;
-    setupAiRosterHint.textContent = 'Single-player AI is unavailable until heuristic opponents are available.';
+    setupAiRosterHint.textContent = 'Single-player AI is unavailable until seat placeholders are available.';
     updateStartAvailability();
     return;
   }
@@ -162,7 +162,7 @@ function renderAiRoster() {
     });
   });
 
-  setupAiRosterHint.textContent = 'Choose a built-in heuristic strategy for each AI seat.';
+  setupAiRosterHint.textContent = 'Choose a Greek name placeholder for each AI seat.';
   updateStartAvailability();
 }
 
@@ -293,7 +293,7 @@ btnStart.addEventListener('click', async () => {
       ? buildAiOpponentSelections(playerCount, seat)
       : [];
     if (mode === 'single' && aiOpponentSelections.length !== playerCount - 1) {
-      throw new Error('Choose an AI opponent for every AI seat.');
+      throw new Error('Choose an AI placeholder for every AI seat.');
     }
     setupDialog.style.display = 'none';
 

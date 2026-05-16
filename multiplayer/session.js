@@ -310,7 +310,7 @@ export class MultiplayerRoom {
 
   resolveAiOpponent(rawOpponentId = null) {
     const roster = this.getAiOpponentRoster();
-    assert(roster.length > 0, 'No heuristic AI opponents are available.');
+    assert(roster.length > 0, 'No AI placeholders are available.');
     return roster.find((entry) => entry.id === rawOpponentId) || roster[0];
   }
 
@@ -380,11 +380,11 @@ export class MultiplayerRoom {
       const opponent = this.resolveAiOpponent(seat.aiOpponentId);
       seat.aiOpponentId = opponent.id;
       seat.playerName = opponent.firstName || opponent.id;
-      const strategy = this.loadAiOpponentById(opponent.id);
-      assert(strategy, AI_OPPONENT_MISSING_MESSAGE);
+      const placeholder = this.loadAiOpponentById(opponent.id, seatId);
+      assert(placeholder, AI_OPPONENT_MISSING_MESSAGE);
       aiPlayers[seatId] = {
-        opponent: strategy,
-        displayName: opponent.firstName || strategy.firstName || opponent.id,
+        opponent: placeholder,
+        displayName: opponent.firstName || placeholder.firstName || opponent.id,
         opponentId: opponent.id,
       };
     }

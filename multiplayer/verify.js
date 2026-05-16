@@ -458,9 +458,9 @@ async function verifyLobbyAndStart() {
     assert.equal(gameSnapshot.state.phase, 'court');
     const room = instance.manager.getRoom(created.roomCode);
     assert.equal(room.aiMeta.players[2].isAI, true);
-    assert.equal(room.aiMeta.players[2].opponentId, 'alexios');
-    assert.equal(room.aiMeta.players[2].displayName, 'Alexios');
-    assert.equal(gameSnapshot.state.players[2].firstName, 'Alexios');
+    assert.equal(room.aiMeta.players[2].opponentId, 'placeholder-1');
+    assert.equal(room.aiMeta.players[2].displayName, 'Achilleus');
+    assert.equal(gameSnapshot.state.players[2].firstName, 'Achilleus');
     assert.equal(gameSnapshot.state.players[2].isAIControlled, true);
 
     await guestSocket.close();

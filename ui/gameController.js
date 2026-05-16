@@ -80,7 +80,7 @@ export class GameController {
     for (const selection of selections) {
       const playerId = Number(selection.playerId);
       if (!Number.isInteger(playerId)) continue;
-      const opponent = hydrateAiOpponent(selection.id || selection.strategyId || selection.opponentId);
+      const opponent = hydrateAiOpponent(selection.id || selection.opponentId, playerId);
       aiPlayers[playerId] = {
         opponent,
         displayName: selection.firstName || selection.name || opponent?.firstName || null,

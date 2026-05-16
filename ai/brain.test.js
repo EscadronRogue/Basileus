@@ -3,12 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createGameState } from '../engine/state.js';
 import { buildFinalScores } from '../engine/scoring.js';
-import {
-  DEAL_CLAUSE_KINDS,
-  DEAL_THREAD_STATUS,
-  sendDealOffer,
-  setDealParticipantIds,
-} from '../engine/deals.js';
+import { setDealParticipantIds } from '../engine/deals.js';
 import { submitHumanOrders } from '../engine/commands.js';
 import {
   advanceToNextInteractivePhase,
@@ -18,10 +13,12 @@ import {
   buildAIOrders,
   buildSimultaneousAIOrders,
   createAIMeta,
+  getRecentPublicLog,
   hydrateAiOpponent,
   isAIPlayer,
   loadBrowserAiOpponentRoster,
   observeCourtAction,
+  planMajorTitleAssignment,
   runAICourtAutomation,
 } from './brain.js';
 import {
@@ -33,25 +30,10 @@ import {
   listLegalTitleAssignments,
 } from './legalActions.js';
 import {
-  DEFAULT_HEURISTIC_ID,
-  HEURISTIC_PERSONALITIES,
-  RANDOM_OPPONENT_ID,
-  evaluateHeuristicActions,
-  selectHeuristicActionIndex,
-} from './heuristics.js';
-import {
-  createMatchEpisodeOptions,
-  evaluateStrategy,
-  resolveEpisodeSettings,
-  runSelfPlayEpisode,
-} from './selfPlay.js';
-import {
-  runHeuristicLeague,
-  runTournament,
-  runTournamentSuite,
-  scoreTournamentReport,
-} from './tournament.js';
-import { loadOpponentByIdSync, loadOpponentRosterSync } from './opponentRoster.js';
+  PLACEHOLDER_AI_OPPONENTS,
+  loadOpponentByIdSync,
+  loadOpponentRosterSync,
+} from './opponentRoster.js';
 
 function prepareInteractiveState(options = {}) {
   const state = createGameState({
@@ -77,83 +59,68 @@ function cloneState(state) {
   return clone;
 }
 
-test('AI metadata preserves human and heuristic seat boundaries', () => {
+test('AI metadata preserves human and placeholder seat boundaries', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 11 });
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
 
+  assert.equal(meta.placeholderOnly, true);
   assert.equal(meta.humanPlayerIds.has(1), true);
   assert.equal(isAIPlayer(meta, 0), true);
   assert.equal(isAIPlayer(meta, 1), false);
-  assert.equal(meta.players[0].opponent.id, DEFAULT_HEURISTIC_ID);
+  assert.equal(meta.players[0].opponent.id, 'placeholder-1');
+  assert.equal(meta.players[0].opponent.placeholder, true);
   assert.equal(typeof meta.players[0].displayName, 'string');
 });
 
-test('built-in heuristic opponent roster is available without external files', () => {
+test('built-in AI placeholder roster keeps Greek names available', () => {
   const roster = loadOpponentRosterSync();
-  assert.equal(roster.length, HEURISTIC_PERSONALITIES.length);
-  assert.ok(roster.some((entry) => entry.id === 'alexios'));
-  assert.equal(loadOpponentByIdSync('basil').firstName, 'Basil');
-  assert.equal(hydrateAiOpponent('niketas').id, 'niketas');
+  assert.equal(roster.length, PLACEHOLDER_AI_OPPONENTS.length);
+  assert.equal(roster[0].id, 'placeholder-1');
+  assert.equal(roster[0].firstName, 'Achilleus');
+  assert.equal(loadOpponentByIdSync('placeholder-2').firstName, 'Alexandros');
+  assert.equal(loadOpponentByIdSync('missing', 2).id, 'placeholder-3');
+  assert.equal(hydrateAiOpponent('placeholder-4').placeholder, true);
 });
 
-test('browser opponent roster falls back to built-in heuristics', async () => {
+test('browser opponent roster falls back to local placeholders', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 404 });
 
   try {
     const roster = await loadBrowserAiOpponentRoster('/missing');
-    assert.equal(roster.length, HEURISTIC_PERSONALITIES.length);
+    assert.equal(roster.length, PLACEHOLDER_AI_OPPONENTS.length);
     await assert.rejects(
       () => loadBrowserAiOpponentRoster('/missing', { required: true }),
-      /Could not list AI opponents/,
+      /Could not list AI placeholders/,
     );
   } finally {
     globalThis.fetch = previousFetch;
   }
 });
 
-test('reactive AI court turns do not spend their one action confirming', () => {
+test('placeholder court automation only passes during finish mode', () => {
   const state = prepareInteractiveState({ seed: 21 });
-  const aiPlayerId = state.players.find((player) => player.id !== 1).id;
-  const legalActions = listLegalCourtActions(state, aiPlayerId);
-  assert.ok(legalActions.some((action) => action.kind !== 'court-confirm'));
-  assert.ok(legalActions.some((action) => action.kind === 'court-confirm'));
-
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
-  const result = runAICourtAutomation(state, meta, { mode: 'react' });
 
-  assert.ok(result.actions > 0);
+  const reactive = runAICourtAutomation(state, meta, { mode: 'react' });
+  assert.equal(reactive.actions, 0);
   for (const player of state.players.filter((entry) => entry.id !== 1)) {
     assert.equal(state.courtActions.playerConfirmed.has(player.id), false);
   }
+
+  const finishing = runAICourtAutomation(state, meta, { mode: 'finish' });
+  assert.equal(finishing.actions, 3);
+  for (const player of state.players.filter((entry) => entry.id !== 1)) {
+    assert.equal(state.courtActions.playerConfirmed.has(player.id), true);
+  }
+  assert.equal(state.courtActions.playerConfirmed.has(1), false);
 });
 
-test('AI orders fail impossible troop commitments instead of crashing', () => {
+test('placeholder AI orders submit legal fallback orders', () => {
   const state = prepareInteractiveState({ seed: 23 });
-  state.historyEnabled = true;
-  state.history = [];
-  state.historySeq = 0;
-  state.round = 3;
   phaseOrders(state);
 
   const aiPlayerId = 2;
-  state.activeDealObligations.push({
-    id: 'test-impossible-frontier',
-    threadId: 'test-thread',
-    pairKey: '0:2',
-    giverId: aiPlayerId,
-    receiverId: 0,
-    kind: DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT,
-    startTrigger: { type: 'immediate' },
-    durationTurns: 1,
-    payload: { troopCount: 99 },
-    status: 'active',
-    createdRound: 2,
-    activatedRound: 3,
-    nextDueRound: 3,
-    remainingTurns: 1,
-  });
-
   assert.ok(listLegalOrderActions(state, aiPlayerId).length > 0);
 
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
@@ -162,11 +129,10 @@ test('AI orders fail impossible troop commitments instead of crashing', () => {
 
   assert.equal(result.ok, true);
   assert.ok(state.allOrders[aiPlayerId]);
-  assert.equal(state.activeDealObligations.some((entry) => entry.id === 'test-impossible-frontier'), false);
-  assert.equal(state.history.some((entry) => entry.type === 'deal_obligation_failed'), true);
+  assert.equal(orders.debug.decision.factors[0].label, 'placeholder');
 });
 
-test('simultaneous AI order planning ignores already submitted human orders', () => {
+test('simultaneous placeholder order planning ignores already submitted human orders', () => {
   const state = prepareInteractiveState({ seed: 24 });
   const cleanState = prepareInteractiveState({ seed: 24 });
   phaseOrders(state);
@@ -184,100 +150,6 @@ test('simultaneous AI order planning ignores already submitted human orders', ()
 
   assert.deepEqual(planned.orders.deployments, independentlyPlanned.orders.deployments);
   assert.equal(planned.orders.candidate, independentlyPlanned.orders.candidate);
-});
-
-test('appointment scoring prefers keeping valuable posts over feeding rivals', () => {
-  const state = prepareInteractiveState({ playerCount: 4, deckSize: 6, seed: 12345 });
-  const playerId = 0;
-  const actions = listLegalCourtActions(state, playerId, { includeDeals: false });
-  const selfActionIndex = actions.findIndex((action) => (
-    action.payload?.action === 'appoint-strategos'
-    && action.payload?.themeId === 'KYP'
-    && action.payload?.appointeeId === playerId
-  ));
-  const rivalActionIndex = actions.findIndex((action) => (
-    action.payload?.action === 'appoint-strategos'
-    && action.payload?.themeId === 'KYP'
-    && action.payload?.appointeeId !== playerId
-  ));
-  assert.ok(selfActionIndex >= 0);
-  assert.ok(rivalActionIndex >= 0);
-
-  const evaluation = evaluateHeuristicActions('alexios', state, playerId, actions);
-  assert.ok(evaluation.scores[selfActionIndex].total > evaluation.scores[rivalActionIndex].total);
-});
-
-test('AI accepts clearly favorable incoming deals', () => {
-  const state = prepareInteractiveState({ seed: 25 });
-  const humanId = 1;
-  const aiPlayerId = state.players.find((player) => player.id !== humanId).id;
-  state.players[humanId].gold = 5;
-  const offer = sendDealOffer(state, humanId, {
-    counterpartyId: aiPlayerId,
-    clauses: [{
-      kind: DEAL_CLAUSE_KINDS.GOLD,
-      direction: 'give',
-      amount: 2,
-      durationTurns: 1,
-    }],
-  });
-  assert.equal(offer.ok, true);
-
-  const meta = createAIMeta(state, { humanPlayerIds: [humanId] });
-  const result = runAICourtAutomation(state, meta, { mode: 'react' });
-  assert.ok(result.actions > 0);
-  assert.equal(state.dealThreads[0].status, DEAL_THREAD_STATUS.ACCEPTED);
-});
-
-test('AI opinion memory tracks appointments and revocations', () => {
-  const state = prepareInteractiveState({ seed: 251 });
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-
-  observeCourtAction(state, meta, {
-    type: 'appointment',
-    actorId: 1,
-    appointeeId: 0,
-    previousHolderId: 2,
-    value: 1,
-  });
-  observeCourtAction(state, meta, {
-    type: 'revocation',
-    actorId: 1,
-    targetPlayerId: 0,
-  });
-
-  assert.equal(meta.players[0].trust[1], 1);
-  assert.equal(meta.players[2].grievance[1], 1.15);
-  assert.equal(meta.players[0].grievance[1], 1.6);
-});
-
-test('order generation includes balanced mixed deployment plans', () => {
-  const state = prepareInteractiveState({ playerCount: 4, seed: 26 });
-  state.basileusId = 0;
-  state.nextBasileusId = 0;
-  state.players[0].majorTitles = ['DOM_EAST', 'DOM_WEST', 'ADMIRAL'];
-  state.players[0].professionalArmies = {
-    BASILEUS: 2,
-    DOM_EAST: 2,
-    DOM_WEST: 2,
-    ADMIRAL: 2,
-  };
-  phaseOrders(state);
-  state.currentLevies = {
-    BASILEUS: 2,
-    DOM_EAST: 2,
-    DOM_WEST: 2,
-    ADMIRAL: 2,
-  };
-
-  const actions = listLegalOrderActions(state, 0);
-  assert.ok(actions.some((action) => {
-    const movable = Object.entries(action.orders.deployments)
-      .filter(([officeKey]) => officeKey !== 'PATRIARCH' && officeKey !== 'EMPRESS' && officeKey !== 'CHIEF_EUNUCHS');
-    const frontier = movable.filter(([, destination]) => destination === 'frontier').length;
-    const capital = movable.filter(([, destination]) => destination === 'capital').length;
-    return frontier >= 2 && capital >= 2;
-  }));
 });
 
 test('generated court and order actions are accepted by engine validators', () => {
@@ -332,117 +204,36 @@ test('generated reward and title-assignment actions are legal', () => {
   }
 });
 
-test('generic AI deal action expansion stays disabled while targeted deal handling runs in brain', () => {
+test('placeholder title assignment picks a legal fallback when needed', () => {
+  const state = prepareInteractiveState({ playerCount: 4, seed: 41 });
+  state.phase = 'resolution';
+  state.nextBasileusId = state.players.find((player) => player.id !== state.basileusId).id;
+  const meta = createAIMeta(state, { humanPlayerIds: [state.basileusId] });
+
+  const action = planMajorTitleAssignment(state, meta, state.nextBasileusId);
+  assert.equal(action?.kind, 'title-assignment');
+  assert.equal(applyLegalAction(cloneState(state), action, meta).ok, true);
+});
+
+test('generic AI deal action expansion remains disabled', () => {
   assert.equal(AI_DEALS_ENABLED, false);
 });
 
-test('heuristic action scoring chooses legal action indexes', () => {
-  const state = prepareInteractiveState({ playerCount: 3, deckSize: 2, seed: 66 });
-  const actions = listLegalCourtActions(state, 0, { includeDeals: false });
-  const evaluation = evaluateHeuristicActions('alexios', state, 0, actions);
-  const index = selectHeuristicActionIndex('alexios', state, 0, actions, state.rng);
+test('placeholder metadata records observations without an opinion model', () => {
+  const state = prepareInteractiveState({ seed: 51 });
+  const meta = createAIMeta(state, { humanPlayerIds: [1] });
 
-  assert.equal(evaluation.scores.length, actions.length);
-  assert.ok(index >= 0 && index < actions.length);
-  assert.equal(typeof evaluation.scores[index].total, 'number');
-});
-
-test('simulation settings sample varied legal player counts and round lengths', () => {
-  const first = resolveEpisodeSettings({}, 0);
-  const second = resolveEpisodeSettings({}, 1);
-  assert.ok(first.playerCount >= 3 && first.playerCount <= 5);
-  assert.ok(first.deckSize >= 6 && first.deckSize <= 12);
-  assert.notEqual(first.seed, second.seed);
-});
-
-test('self-play episode completes with legal heuristic decisions', () => {
-  const result = runSelfPlayEpisode({
-    strategyId: 'alexios',
-    playerCount: 3,
-    deckSize: 1,
-    seed: 61,
-    maxSteps: 400,
-    maxCourtActionsPerPlayer: 4,
+  observeCourtAction(state, meta, {
+    type: 'appointment',
+    actorId: 1,
+    appointeeId: 0,
+    previousHolderId: 2,
+    value: 1,
   });
-  assert.ok(result.stats.fell || result.state.phase === 'scoring');
-  assert.ok(result.stats.actionStats.total > 0);
-});
 
-test('evaluation reports survival, scoring, action, and role metrics', () => {
-  const stats = evaluateStrategy({
-    episodes: 1,
-    playerCount: 3,
-    deckSize: 1,
-    seed: 81,
-    strategyId: 'irene',
-    maxSteps: 400,
-    maxCourtActionsPerPlayer: 4,
-  });
-  assert.equal(stats.episodes, 1);
-  assert.equal(typeof stats.fallRate, 'number');
-  assert.equal(typeof stats.survivalRate, 'number');
-  assert.ok(stats.actionStats.total > 0);
-  assert.ok(Object.keys(stats.strategyMix).length > 0);
-});
-
-test('tournament harness compares heuristic strategies against baselines', () => {
-  const report = runTournament({
-    primaryId: 'basil',
-    opponentId: RANDOM_OPPONENT_ID,
-    episodes: 1,
-    playerCount: 3,
-    deckSize: 1,
-    seed: 91,
-    maxSteps: 400,
-    maxCourtActionsPerPlayer: 4,
-  });
-  assert.equal(report.episodes, 1);
-  assert.equal(typeof report.primary.score, 'number');
-  assert.equal(typeof report.opponent.score, 'number');
-
-  const suite = runTournamentSuite({
-    primaryId: 'basil',
-    opponentId: RANDOM_OPPONENT_ID,
-    episodes: 1,
-    seedCount: 2,
-    playerCount: 3,
-    deckSize: 1,
-    seed: 91,
-    maxSteps: 400,
-    maxCourtActionsPerPlayer: 4,
-  });
-  assert.equal(suite.seedCount, 2);
-  assert.equal(suite.runs.length, 2);
-  assert.equal(typeof scoreTournamentReport(suite), 'number');
-});
-
-test('heuristic league includes random control groups', () => {
-  const report = runHeuristicLeague({
-    strategies: ['alexios', 'irene'],
-    episodes: 1,
-    seedCount: 1,
-    playerCount: 3,
-    deckSize: 1,
-    seed: 95,
-    maxSteps: 400,
-    maxCourtActionsPerPlayer: 4,
-  });
-  assert.ok(report.randomSelf.summary);
-  assert.ok(report.selfPlay.alexios.summary);
-  assert.ok(report.vsRandom.alexios.primary);
-  assert.ok(report.pairwise.alexios_vs_irene.primary);
-  assert.equal(typeof report.validation.alexios.scoreDelta, 'number');
-});
-
-test('custom match episode options rotate the evaluated seat', () => {
-  const episodeOptions = createMatchEpisodeOptions('alexios', RANDOM_OPPONENT_ID);
-  const first = episodeOptions({ episode: 0, settings: { playerCount: 3 } });
-  const second = episodeOptions({ episode: 1, settings: { playerCount: 3 } });
-
-  assert.equal(first.controllerRoleForPlayer(0), 'alexios');
-  assert.equal(first.controllerRoleForPlayer(1), RANDOM_OPPONENT_ID);
-  assert.equal(second.controllerRoleForPlayer(0), RANDOM_OPPONENT_ID);
-  assert.equal(second.controllerRoleForPlayer(1), 'alexios');
+  assert.equal(getRecentPublicLog(meta).length, 1);
+  assert.equal(meta.players[0].trust, undefined);
+  assert.equal(meta.players[0].grievance, undefined);
 });
 
 test('official final scoring remains category-share based', () => {

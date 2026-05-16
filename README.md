@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes built-in heuristic AI seats, and includes a pure Node WebSocket multiplayer server.
+Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes named AI seat placeholders, and includes a pure Node WebSocket multiplayer server.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **Heuristic AI.** AI seats use named strategic personalities and the same engine validators as human actions.
+- **AI seat placeholders.** AI slots can be reserved and named, but the old decision system has been removed.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -60,10 +60,8 @@ npm run serve:multiplayer
 | --- | --- |
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
-| `npm run ai:evaluate` | Evaluates a heuristic strategy or a single matchup. |
-| `npm run ai:tournament` | Runs the heuristic league against self-play, pairwise, and random baselines. |
 | `npm run test:economy` | Engine/economy rules tests. |
-| `npm run test:ai` | Heuristic AI runtime, action, and simulation smoke tests. |
+| `npm run test:ai` | AI placeholder and legal-action smoke tests. |
 | `npm run test:ui` | Browser controller and panel tests. |
 | `npm run test:multiplayer` | End-to-end multiplayer protocol verifier. |
 | `npm test` | Runs the full local test suite. |
@@ -92,7 +90,7 @@ Render notes:
 .
 ├── index.html              # Live game entry point
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
-├── ai/                     # Heuristic opponents, legal action generation, simulations
+├── ai/                     # AI placeholders, Greek names, and legal action generation
 ├── assets/                 # SVG map, hitzones, stylesheets
 ├── data/                   # Static game data (provinces, titles, invasion decks)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
@@ -115,32 +113,14 @@ Useful entry points:
 
 - `engine/state.js` - game state shape and reducers
 - `engine/turnflow.js` - round/phase orchestration
-- `ai/brain.js` - heuristic AI runtime integration
+- `ai/brain.js` - placeholder AI runtime integration
 - `multiplayer/wsServer.js` - handcoded WebSocket framing
 
-## Heuristic AI
+## AI Placeholder Layer
 
-AI seats are built-in named strategies. Each candidate action is generated through the same legal action layer as human play, then scored with rule-aware heuristics: official score deltas, category shares, title control, frontier coverage, coup pressure, treasury efficiency, reward choices, and target pressure against leaders. The live runtime also uses fair simultaneous order planning, targeted deal responses/offers, short court lookahead, and AI opinion memory for appointments and revocations.
+The previous AI decision code has been removed. The remaining layer only keeps evergreen plumbing: named AI seats, the Greek name list, metadata needed by local and multiplayer setup, legal action generation for future AI work, and deterministic fallback actions so placeholder seats do not crash the runtime.
 
-Current personalities:
-
-- `alexios` - balanced score growth, throne pressure, and empire survival.
-- `irene` - defensive tax command and low-risk imperial continuity.
-- `zoe` - court appointments, church income, revocations, and intrigue.
-- `niketas` - estate purchases, gold reserves, and selective mercenary spending.
-- `basil` - troops, frontier command, and aggressive capital claims.
-
-Run the full league:
-
-```bash
-npm run ai:tournament -- --episodes 20 --seed-count 3
-```
-
-Run one matchup:
-
-```bash
-npm run ai:evaluate -- --tournament --matchup --strategy basil --opponent random
-```
+Current placeholders are named `placeholder-1`, `placeholder-2`, etc. They do not model opinions, diplomacy, goals, or play styles.
 
 ## License
 

@@ -219,11 +219,11 @@ function appendAppointmentActions(actions, state, playerId) {
 function appendEstateActions(actions, state, playerId) {
   for (const theme of getFreeThemes(state)) {
     const minimum = getMinimumLandBid(state, theme.id);
-    if (canBuyTheme(state, playerId, theme.id, minimum).ok) {
+    for (const amount of rankedEstateBidAmounts(state, playerId, theme, minimum)) {
       pushLegalCourtAction(actions, state, playerId, {
         action: 'buy',
         themeId: theme.id,
-        amount: minimum,
+        amount,
       }, 'bid on estate');
     }
   }
@@ -234,6 +234,30 @@ function appendEstateActions(actions, state, playerId) {
       themeId: theme.id,
     }, 'gift estate');
   }
+}
+
+function rankedEstateBidAmounts(state, playerId, theme, minimum) {
+  const spendable = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
+  const economicValue = Math.ceil(
+    (Math.max(0, Number(theme?.P) || 0) * 3.1)
+    + (Math.max(0, Number(theme?.T) || 0) * 1.35)
+    + (Math.max(0, Number(theme?.L) || 0) * 0.8)
+    + (Math.max(0, Number(theme?.C) || 0) * 0.55),
+  );
+  const pressureBid = Math.ceil(minimum * 1.25);
+  const candidates = [
+    minimum,
+    minimum + 1,
+    minimum + 2,
+    pressureBid,
+    economicValue,
+    Math.ceil((economicValue + minimum) / 2),
+    spendable,
+  ];
+
+  return uniquePositiveInts(candidates)
+    .filter((amount) => canBuyTheme(state, playerId, theme.id, amount).ok)
+    .slice(0, 7);
 }
 
 function appendArmyActions(actions, state, playerId) {
@@ -264,14 +288,26 @@ function appendArmyActions(actions, state, playerId) {
     }
   }
 
-  const nextMercenaryCost = getMercenaryHireCost(getPlayerMercenaryTotal(state, playerId), 1);
-  if (getSpendableGold(state, playerId) >= nextMercenaryCost && nextMercenaryCost > 0) {
+  const alreadyHired = getPlayerMercenaryTotal(state, playerId);
+  const spendableGold = getSpendableGold(state, playerId);
+  for (const count of rankedMercenaryHireCounts(alreadyHired, spendableGold)) {
     pushLegalCourtAction(actions, state, playerId, {
       action: 'hire-mercenaries',
       office: MERCENARY_COMPANY_KEY,
-      count: 1,
+      count,
     }, 'hire mercenary');
   }
+}
+
+function rankedMercenaryHireCounts(alreadyHired, spendableGold) {
+  const affordable = [];
+  const maxProbe = Math.max(1, Math.min(8, Math.floor(Number(spendableGold) || 0)));
+  for (let count = 1; count <= maxProbe; count += 1) {
+    const cost = getMercenaryHireCost(alreadyHired, count);
+    if (cost > 0 && cost <= spendableGold) affordable.push(count);
+  }
+  const preferred = [1, 2, 3, 5, affordable[affordable.length - 1]];
+  return uniquePositiveInts(preferred).filter((count) => affordable.includes(count));
 }
 
 function uniquePositiveInts(values) {
@@ -652,6 +688,58 @@ function deploymentPlanForFrontierTarget(state, playerId, officeKeys, targetFron
   return deployments;
 }
 
+function deploymentPlanForFrontierSet(officeKeys, frontierOfficeKeys) {
+  const frontier = new Set(frontierOfficeKeys);
+  const deployments = {};
+  for (const officeKey of officeKeys) {
+    deployments[officeKey] = isCapitalLockedOfficeKey(officeKey)
+      ? 'capital'
+      : (frontier.has(officeKey) ? 'frontier' : 'capital');
+  }
+  return deployments;
+}
+
+function appendExactDeploymentPlans(plans, officeKeys, movable) {
+  const maxExactOffices = 6;
+  if (movable.length > maxExactOffices) return false;
+  const totalMasks = 1 << movable.length;
+  for (let mask = 0; mask < totalMasks; mask += 1) {
+    const frontierKeys = [];
+    for (let index = 0; index < movable.length; index += 1) {
+      if ((mask & (1 << index)) !== 0) frontierKeys.push(movable[index]);
+    }
+    plans.push(deploymentPlanForFrontierSet(officeKeys, frontierKeys));
+  }
+  return true;
+}
+
+function closestFrontierSubset(state, playerId, movable, targetFrontier) {
+  let subsets = [{ total: 0, keys: [] }];
+  for (const officeKey of movable) {
+    const troops = orderOfficeTroopCount(state, playerId, officeKey);
+    const additions = subsets.map((entry) => ({
+      total: entry.total + troops,
+      keys: [...entry.keys, officeKey],
+    }));
+    subsets = [...subsets, ...additions];
+    if (subsets.length > 2048) {
+      const seen = new Map();
+      for (const entry of subsets) {
+        const existing = seen.get(entry.total);
+        if (!existing || entry.keys.length < existing.keys.length) seen.set(entry.total, entry);
+      }
+      subsets = [...seen.values()];
+    }
+  }
+
+  return subsets.sort((left, right) => (
+    Math.abs(left.total - targetFrontier) - Math.abs(right.total - targetFrontier)
+    || (left.total - right.total)
+    || (left.keys.length - right.keys.length)
+    || left.keys.join(',').localeCompare(right.keys.join(','))
+  ))[0]?.keys || [];
+}
+
 function buildDeploymentPlans(state, playerId) {
   const officeKeys = getPlayerOrderOfficeKeys(state, playerId);
   const movable = officeKeys.filter((officeKey) => !isCapitalLockedOfficeKey(officeKey));
@@ -659,6 +747,8 @@ function buildDeploymentPlans(state, playerId) {
     buildBaseDeployments(state, officeKeys, 'frontier'),
     buildBaseDeployments(state, officeKeys, 'capital'),
   ];
+
+  const exactEnumerated = appendExactDeploymentPlans(plans, officeKeys, movable);
 
   for (const officeKey of movable) {
     const plan = buildBaseDeployments(state, officeKeys, 'frontier');
@@ -690,6 +780,12 @@ function buildDeploymentPlans(state, playerId) {
     for (const target of [...new Set(targets)]) {
       plans.push(deploymentPlanForFrontierTarget(state, playerId, officeKeys, target, 'large-first'));
       plans.push(deploymentPlanForFrontierTarget(state, playerId, officeKeys, target, 'small-first'));
+      if (!exactEnumerated) {
+        plans.push(deploymentPlanForFrontierSet(
+          officeKeys,
+          closestFrontierSubset(state, playerId, movable, target),
+        ));
+      }
     }
   }
 

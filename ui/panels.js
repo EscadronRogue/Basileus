@@ -261,7 +261,7 @@ function getOpinionDescriptor(value) {
 }
 
 function getPlayerOpinionRows(state, aiMeta, playerId) {
-  if (!aiMeta || aiMeta.humanPlayerIds.has(playerId)) return [];
+  if (!aiMeta || aiMeta.placeholderOnly || aiMeta.humanPlayerIds.has(playerId)) return [];
 
   const perspective = aiMeta.players[playerId];
   const humanId = [...aiMeta.humanPlayerIds][0] ?? null;
