@@ -5,6 +5,8 @@ import { createGameState } from '../engine/state.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import {
   DEAL_CLAUSE_KINDS,
+  DEAL_THREAD_STATUS,
+  sendDealOffer,
   setDealParticipantIds,
 } from '../engine/deals.js';
 import { submitHumanOrders } from '../engine/commands.js';
@@ -14,10 +16,12 @@ import {
 } from '../engine/turnflow.js';
 import {
   buildAIOrders,
+  buildSimultaneousAIOrders,
   createAIMeta,
   hydrateAiOpponent,
   isAIPlayer,
   loadBrowserAiOpponentRoster,
+  observeCourtAction,
   runAICourtAutomation,
 } from './brain.js';
 import {
@@ -162,6 +166,120 @@ test('AI orders fail impossible troop commitments instead of crashing', () => {
   assert.equal(state.history.some((entry) => entry.type === 'deal_obligation_failed'), true);
 });
 
+test('simultaneous AI order planning ignores already submitted human orders', () => {
+  const state = prepareInteractiveState({ seed: 24 });
+  const cleanState = prepareInteractiveState({ seed: 24 });
+  phaseOrders(state);
+  phaseOrders(cleanState);
+  const humanId = 1;
+  const aiPlayerId = state.players.find((player) => player.id !== humanId).id;
+  const humanAction = listLegalOrderActions(state, humanId).find((action) => action.orders.candidate === humanId);
+  assert.ok(humanAction);
+  assert.equal(applyLegalAction(state, humanAction).ok, true);
+
+  const meta = createAIMeta(state, { humanPlayerIds: [humanId] });
+  const cleanMeta = createAIMeta(cleanState, { humanPlayerIds: [humanId] });
+  const planned = buildSimultaneousAIOrders(state, meta).find((entry) => entry.playerId === aiPlayerId);
+  const independentlyPlanned = buildSimultaneousAIOrders(cleanState, cleanMeta).find((entry) => entry.playerId === aiPlayerId);
+
+  assert.deepEqual(planned.orders.deployments, independentlyPlanned.orders.deployments);
+  assert.equal(planned.orders.candidate, independentlyPlanned.orders.candidate);
+});
+
+test('appointment scoring prefers keeping valuable posts over feeding rivals', () => {
+  const state = prepareInteractiveState({ playerCount: 4, deckSize: 6, seed: 12345 });
+  const playerId = 0;
+  const actions = listLegalCourtActions(state, playerId, { includeDeals: false });
+  const selfActionIndex = actions.findIndex((action) => (
+    action.payload?.action === 'appoint-strategos'
+    && action.payload?.themeId === 'KYP'
+    && action.payload?.appointeeId === playerId
+  ));
+  const rivalActionIndex = actions.findIndex((action) => (
+    action.payload?.action === 'appoint-strategos'
+    && action.payload?.themeId === 'KYP'
+    && action.payload?.appointeeId !== playerId
+  ));
+  assert.ok(selfActionIndex >= 0);
+  assert.ok(rivalActionIndex >= 0);
+
+  const evaluation = evaluateHeuristicActions('alexios', state, playerId, actions);
+  assert.ok(evaluation.scores[selfActionIndex].total > evaluation.scores[rivalActionIndex].total);
+});
+
+test('AI accepts clearly favorable incoming deals', () => {
+  const state = prepareInteractiveState({ seed: 25 });
+  const humanId = 1;
+  const aiPlayerId = state.players.find((player) => player.id !== humanId).id;
+  state.players[humanId].gold = 5;
+  const offer = sendDealOffer(state, humanId, {
+    counterpartyId: aiPlayerId,
+    clauses: [{
+      kind: DEAL_CLAUSE_KINDS.GOLD,
+      direction: 'give',
+      amount: 2,
+      durationTurns: 1,
+    }],
+  });
+  assert.equal(offer.ok, true);
+
+  const meta = createAIMeta(state, { humanPlayerIds: [humanId] });
+  const result = runAICourtAutomation(state, meta, { mode: 'react' });
+  assert.ok(result.actions > 0);
+  assert.equal(state.dealThreads[0].status, DEAL_THREAD_STATUS.ACCEPTED);
+});
+
+test('AI opinion memory tracks appointments and revocations', () => {
+  const state = prepareInteractiveState({ seed: 251 });
+  const meta = createAIMeta(state, { humanPlayerIds: [1] });
+
+  observeCourtAction(state, meta, {
+    type: 'appointment',
+    actorId: 1,
+    appointeeId: 0,
+    previousHolderId: 2,
+    value: 1,
+  });
+  observeCourtAction(state, meta, {
+    type: 'revocation',
+    actorId: 1,
+    targetPlayerId: 0,
+  });
+
+  assert.equal(meta.players[0].trust[1], 1);
+  assert.equal(meta.players[2].grievance[1], 1.15);
+  assert.equal(meta.players[0].grievance[1], 1.6);
+});
+
+test('order generation includes balanced mixed deployment plans', () => {
+  const state = prepareInteractiveState({ playerCount: 4, seed: 26 });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  state.players[0].majorTitles = ['DOM_EAST', 'DOM_WEST', 'ADMIRAL'];
+  state.players[0].professionalArmies = {
+    BASILEUS: 2,
+    DOM_EAST: 2,
+    DOM_WEST: 2,
+    ADMIRAL: 2,
+  };
+  phaseOrders(state);
+  state.currentLevies = {
+    BASILEUS: 2,
+    DOM_EAST: 2,
+    DOM_WEST: 2,
+    ADMIRAL: 2,
+  };
+
+  const actions = listLegalOrderActions(state, 0);
+  assert.ok(actions.some((action) => {
+    const movable = Object.entries(action.orders.deployments)
+      .filter(([officeKey]) => officeKey !== 'PATRIARCH' && officeKey !== 'EMPRESS' && officeKey !== 'CHIEF_EUNUCHS');
+    const frontier = movable.filter(([, destination]) => destination === 'frontier').length;
+    const capital = movable.filter(([, destination]) => destination === 'capital').length;
+    return frontier >= 2 && capital >= 2;
+  }));
+});
+
 test('generated court and order actions are accepted by engine validators', () => {
   const state = prepareInteractiveState({ seed: 21 });
   const courtActions = listLegalCourtActions(state, state.basileusId);
@@ -214,7 +332,7 @@ test('generated reward and title-assignment actions are legal', () => {
   }
 });
 
-test('AI deal actions stay disabled until deal heuristics are intentionally enabled', () => {
+test('generic AI deal action expansion stays disabled while targeted deal handling runs in brain', () => {
   assert.equal(AI_DEALS_ENABLED, false);
 });
 

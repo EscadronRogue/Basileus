@@ -22,7 +22,7 @@ import {
   RANDOM_OPPONENT_ID,
   getHeuristicPersonality,
   personalityForSeat,
-  selectHeuristicActionIndex,
+  selectHeuristicAction,
   selectRandomActionIndex,
 } from './heuristics.js';
 
@@ -120,11 +120,13 @@ export function createRandomController() {
   return ({ actions, rng }) => selectRandomActionIndex(actions, rng);
 }
 
-function createHeuristicControllerForRoles(roleForPlayer) {
+function createHeuristicControllerForRoles(roleForPlayer, options = {}) {
   return ({ state, playerId, actions, rng }) => {
     const role = roleForPlayer(playerId, state);
     if (role === RANDOM_OPPONENT_ID) return selectRandomActionIndex(actions, rng);
-    return selectHeuristicActionIndex(role || DEFAULT_HEURISTIC_ID, state, playerId, actions, rng);
+    return selectHeuristicAction(role || DEFAULT_HEURISTIC_ID, state, playerId, actions, rng, {
+      searchDepth: Math.max(1, Math.floor(Number(options.searchDepth) || 1)),
+    });
   };
 }
 
@@ -146,9 +148,10 @@ function createEpisodeController(options, state) {
     ]));
     return {
       controller: ({ state: currentState, playerId, actions, rng }) => {
-        const index = options.controller({ state: currentState, playerId, actions, rng });
-        return Number.isInteger(index) && index >= 0 && index < actions.length
-          ? index
+        const decision = options.controller({ state: currentState, playerId, actions, rng });
+        if (decision && typeof decision === 'object') return decision;
+        return Number.isInteger(decision) && decision >= 0 && decision < actions.length
+          ? decision
           : selectRandomActionIndex(actions, rng);
       },
       roleByPlayer,
@@ -162,15 +165,35 @@ function createEpisodeController(options, state) {
     strategies?.[player.id] || strategies?.[String(player.id)] || strategyId || defaultRoleForPlayer(player.id),
   ]));
   return {
-    controller: createHeuristicControllerForRoles((playerId) => roleByPlayer[playerId] || RANDOM_OPPONENT_ID),
+    controller: createHeuristicControllerForRoles(
+      (playerId) => roleByPlayer[playerId] || RANDOM_OPPONENT_ID,
+      options,
+    ),
     roleByPlayer,
   };
 }
 
-function chooseAction(controller, context) {
+function chooseDecision(controller, context) {
   if (!context.actions.length) return null;
-  const index = controller(context);
-  return context.actions[index] || context.actions[0];
+  const decision = controller(context);
+  if (decision && typeof decision === 'object') {
+    const index = Number.isInteger(decision.index) ? decision.index : context.actions.indexOf(decision.action);
+    return {
+      ...decision,
+      index: index >= 0 ? index : 0,
+      action: decision.action || context.actions[index] || context.actions[0],
+    };
+  }
+  const index = Number.isInteger(decision) ? decision : 0;
+  return {
+    index,
+    action: context.actions[index] || context.actions[0],
+    score: null,
+  };
+}
+
+function chooseAction(controller, context) {
+  return chooseDecision(controller, context)?.action || null;
 }
 
 export function createActionStats() {
@@ -205,6 +228,21 @@ function confirmAction(actions) {
   return actions.find((action) => action.kind === 'court-confirm') || actions[actions.length - 1] || null;
 }
 
+function simulationCourtStopScoreFloor(step, state) {
+  if (step <= 0) return -Infinity;
+  const [low, high] = state?.currentInvasion?.strength || [0, 0];
+  const invasionNeed = ((Number(low) || 0) + (Number(high) || 0)) / 2;
+  const dangerBias = invasionNeed >= 22 ? -1.25 : invasionNeed >= 16 ? -0.5 : 0;
+  return 3.25 + step * 0.85 + dangerBias;
+}
+
+function shouldConfirmSimulationCourt(decision, step, state) {
+  if (!decision?.action || !Number.isFinite(Number(decision.score))) return false;
+  if (decision.action.kind === 'court-confirm') return true;
+  if (step >= 7 && decision.score < 12) return true;
+  return decision.score < simulationCourtStopScoreFloor(step, state);
+}
+
 function runCourtPhase(state, controller, rng, options) {
   let madeProgress = false;
   const maxActions = options.maxCourtActionsPerPlayer || defaultMaxCourtActionsPerPlayer(state);
@@ -213,9 +251,10 @@ function runCourtPhase(state, controller, rng, options) {
     for (let step = 0; step < maxActions; step += 1) {
       const actions = listLegalCourtActions(state, player.id, { includeDeals: false });
       if (!actions.length) break;
-      const action = step === maxActions - 1
+      const decision = chooseDecision(controller, { state, playerId: player.id, actions, rng });
+      const action = step === maxActions - 1 || shouldConfirmSimulationCourt(decision, step, state)
         ? confirmAction(actions)
-        : chooseAction(controller, { state, playerId: player.id, actions, rng });
+        : decision?.action;
       if (!action) break;
       const result = applyLegalAction(state, action);
       if (!result.ok) {
@@ -240,10 +279,19 @@ function runCourtPhase(state, controller, rng, options) {
 
 function runOrdersPhase(state, controller, rng, actionStats = null) {
   let madeProgress = false;
+  const planningState = JSON.parse(JSON.stringify(state));
+  planningState.rng = state.rng;
+  if (state.courtActions) {
+    planningState.courtActions = {
+      ...planningState.courtActions,
+      playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
+    };
+  }
+  planningState.allOrders = {};
   for (const player of state.players) {
     if (state.allOrders?.[player.id]) continue;
-    const actions = listLegalOrderActions(state, player.id);
-    const action = chooseAction(controller, { state, playerId: player.id, actions, rng });
+    const actions = listLegalOrderActions(planningState, player.id);
+    const action = chooseAction(controller, { state: planningState, playerId: player.id, actions, rng });
     if (!action) continue;
     const result = applyLegalAction(state, action);
     if (!result.ok) continue;
@@ -526,13 +574,15 @@ export function evaluateStrategy(options = {}) {
   return stats;
 }
 
-export function createStrategyMatchController(primaryId, opponentId = RANDOM_OPPONENT_ID, primaryPlayerId = 0) {
+export function createStrategyMatchController(primaryId, opponentId = RANDOM_OPPONENT_ID, primaryPlayerId = 0, options = {}) {
   const primary = primaryId === RANDOM_OPPONENT_ID ? RANDOM_OPPONENT_ID : getHeuristicPersonality(primaryId).id;
   const opponent = opponentId === RANDOM_OPPONENT_ID ? RANDOM_OPPONENT_ID : getHeuristicPersonality(opponentId).id;
   const controller = ({ state, playerId, actions, rng }) => {
     const role = playerId === primaryPlayerId ? primary : opponent;
     if (role === RANDOM_OPPONENT_ID) return selectRandomActionIndex(actions, rng);
-    return selectHeuristicActionIndex(role, state, playerId, actions, rng);
+    return selectHeuristicAction(role, state, playerId, actions, rng, {
+      searchDepth: Math.max(1, Math.floor(Number(options.searchDepth) || 1)),
+    });
   };
   controller.roleForPlayer = (playerId) => (playerId === primaryPlayerId ? primary : opponent);
   return controller;
@@ -543,10 +593,10 @@ export function rotatingPrimaryPlayerId(settings = {}, episode = 0) {
   return Math.max(0, Math.floor(Number(episode) || 0) % playerCount);
 }
 
-export function createMatchEpisodeOptions(primaryId, opponentId = RANDOM_OPPONENT_ID) {
+export function createMatchEpisodeOptions(primaryId, opponentId = RANDOM_OPPONENT_ID, options = {}) {
   return ({ episode, settings }) => {
     const primaryPlayerId = rotatingPrimaryPlayerId(settings, episode);
-    const controller = createStrategyMatchController(primaryId, opponentId, primaryPlayerId);
+    const controller = createStrategyMatchController(primaryId, opponentId, primaryPlayerId, options);
     return {
       controller,
       controllerRoleForPlayer: controller.roleForPlayer,

@@ -30,6 +30,7 @@ import {
   applyLegalAction,
   getActionTargetPlayerId,
   getActionThemeId,
+  listLegalCourtActions,
 } from './legalActions.js';
 
 export const RANDOM_OPPONENT_ID = 'random';
@@ -37,6 +38,8 @@ export const DEFAULT_HEURISTIC_ID = 'alexios';
 
 const MAX_OFFICIAL_SCORE = SCORE_CATEGORIES.length * SCORE_SHARE_THRESHOLDS.length;
 const MAJOR_TITLE_COUNT = Object.keys(MAJOR_TITLES).length;
+const DEFAULT_LOOKAHEAD_BREADTH = 6;
+const DEFAULT_CONTINUATION_BREADTH = 10;
 
 export const HEURISTIC_PERSONALITIES = Object.freeze([
   {
@@ -159,6 +162,27 @@ function divide(value, denominator) {
 
 function positive(value) {
   return Math.max(0, finiteNumber(value));
+}
+
+function remainingRoundShare(state) {
+  const maxRounds = Math.max(1, finiteNumber(state?.maxRounds, 1));
+  const remaining = Math.max(0, maxRounds - finiteNumber(state?.round, 0) + 1);
+  return clamp(remaining / maxRounds, 0, 1);
+}
+
+function searchDepthOption(options = {}) {
+  return Math.max(1, Math.floor(finiteNumber(options.searchDepth, 1)));
+}
+
+function lookaheadBreadthOption(options = {}) {
+  return Math.max(1, Math.min(32, Math.floor(finiteNumber(options.searchBreadth, DEFAULT_LOOKAHEAD_BREADTH))));
+}
+
+function continuationBreadthOption(options = {}) {
+  return Math.max(1, Math.min(40, Math.floor(finiteNumber(
+    options.continuationBreadth ?? options.searchBreadth,
+    DEFAULT_CONTINUATION_BREADTH,
+  ))));
 }
 
 function profileTemperament(profile, key, fallback = 1) {
@@ -377,8 +401,19 @@ function strategicStateScore(profile, state, playerId) {
   score -= snap.leaderGap * 1.8;
   for (const category of SCORE_CATEGORIES) {
     const weight = profileCategoryWeight(profile, category.key);
-    score += (snap.categoryPoints[category.key] || 0) * 8 * weight;
-    score += (snap.categoryShares[category.key] || 0) * 7 * weight;
+    const share = snap.categoryShares[category.key] || 0;
+    score += (snap.categoryPoints[category.key] || 0) * 9 * weight;
+    score += share * 4 * weight;
+    const nextThreshold = SCORE_SHARE_THRESHOLDS.find((threshold) => share < threshold);
+    if (nextThreshold != null) {
+      const gap = nextThreshold - share;
+      if (gap <= 0.08) score += (1 - gap / 0.08) * 5.5 * weight;
+    }
+    const cleared = SCORE_SHARE_THRESHOLDS.filter((threshold) => share >= threshold);
+    const lastCleared = cleared.length ? cleared[cleared.length - 1] : null;
+    if (lastCleared != null) {
+      score += clamp((share - lastCleared) / 0.06, 0, 1) * 1.3 * weight;
+    }
   }
   score += snap.troopShare * 7 * profileTemperament(profile, 'militarism');
   score += snap.majorTitleShare * 5 * profileTemperament(profile, 'titleHoarding');
@@ -394,18 +429,21 @@ function strategicStateScore(profile, state, playerId) {
 
 function featureScore(profile, features = {}) {
   let score = 0;
-  score += finiteNumber(features['score.delta.totalPoints']) * 70;
-  score += finiteNumber(features['score.delta.rank']) * 35;
+  score += finiteNumber(features['score.delta.totalPoints']) * 95;
+  score += finiteNumber(features['score.delta.rank']) * 24;
   for (const category of SCORE_CATEGORIES) {
     const weight = profileCategoryWeight(profile, category.key);
-    score += finiteNumber(features[`score.delta.${category.key}.points`]) * 35 * weight;
-    score += finiteNumber(features[`score.delta.${category.key}.share`]) * 22 * weight;
-    score += finiteNumber(features[`income.delta.${category.key}.share`]) * 18 * weight;
+    score += finiteNumber(features[`score.delta.${category.key}.points`]) * 52 * weight;
+    score += finiteNumber(features[`score.delta.${category.key}.share`]) * 7 * weight;
+    score += finiteNumber(features[`income.delta.${category.key}.share`]) * 6 * weight;
   }
   score += finiteNumber(features['estate.delta.profit.share']) * 20 * profileTemperament(profile, 'estateGreed');
-  score += finiteNumber(features['estate.delta.tax.share']) * 16 * profileCategoryWeight(profile, 'tax');
-  score += finiteNumber(features['estate.delta.levies.share']) * 14 * profileTemperament(profile, 'militarism');
-  score += finiteNumber(features['estate.delta.church.share']) * 12 * profileTemperament(profile, 'piety');
+  // Private estate ownership pays profit only. Tax, levies, and church value are
+  // controlled through titles/church structures, so they should not look like
+  // direct owner gains in the generic feature layer.
+  score += finiteNumber(features['estate.delta.tax.share']) * 2 * profileCategoryWeight(profile, 'tax');
+  score += finiteNumber(features['estate.delta.levies.share']) * 2 * profileTemperament(profile, 'militarism');
+  score += finiteNumber(features['estate.delta.church.share']) * 2 * profileTemperament(profile, 'piety');
   score += finiteNumber(features['power.delta.majorTitleShare']) * 18 * profileTemperament(profile, 'titleHoarding');
   score += finiteNumber(features['power.delta.strategosShare']) * 14 * profileCategoryWeight(profile, 'tax');
   score += finiteNumber(features['power.delta.bishopShare']) * 16 * profileTemperament(profile, 'piety');
@@ -430,6 +468,36 @@ function themeValueForProfile(profile, theme) {
     + positive(theme.C) * (1.3 * profileCategoryWeight(profile, 'church') + 0.4 * profileTemperament(profile, 'piety'));
 }
 
+function privateEstatePurchaseValue(profile, state, theme) {
+  if (!theme) return 0;
+  const rounds = 1 + remainingRoundShare(state) * 3;
+  const profitValue = positive(theme.P)
+    * (2.6 * profileCategoryWeight(profile, 'estate') + 0.85 * profileTemperament(profile, 'estateGreed'))
+    * rounds;
+  const frontierLevyLoss = Math.min(1, positive(theme.L))
+    * (0.65 * profileTemperament(profile, 'defense') + 0.35 * profileTemperament(profile, 'militarism'));
+  return profitValue - frontierLevyLoss;
+}
+
+function strategosOfficeValue(profile, theme) {
+  if (!theme) return 0;
+  return positive(theme.T) * (3.1 * profileCategoryWeight(profile, 'tax'))
+    + positive(theme.L) * (1.7 * profileTemperament(profile, 'militarism') + 0.8 * profileTemperament(profile, 'defense'));
+}
+
+function bishopOfficeValue(profile, theme) {
+  if (!theme) return 0;
+  return positive(theme.C) * (2.9 * profileCategoryWeight(profile, 'church') + 1.15 * profileTemperament(profile, 'piety'));
+}
+
+function courtTitleValue(profile, state, titleType) {
+  const capitalValue = 2 * (profileTemperament(profile, 'ambition') + profileTemperament(profile, 'intrigue'));
+  const taxValue = Math.sqrt(Math.max(0, administrationFor(state).income?.[state.basileusId] || 0))
+    * profileCategoryWeight(profile, 'tax');
+  if (titleType === 'EMPRESS' || titleType === 'CHIEF_EUNUCHS') return capitalValue + taxValue;
+  return capitalValue;
+}
+
 function targetPressure(state, playerId, targetId) {
   if (!Number.isInteger(targetId) || targetId === playerId) return 0;
   const { final, byPlayer } = scoreByPlayer(state);
@@ -447,24 +515,32 @@ function appointmentScore(profile, state, playerId, action) {
   const targetIsSelf = targetId === playerId;
   const theme = state.themes?.[payload.themeId];
   const targetPenalty = targetIsSelf ? 0 : targetPressure(state, playerId, targetId);
-  let score = targetIsSelf
-    ? 6 * profileTemperament(profile, 'titleHoarding')
-    : 1.25 - (6 * targetPenalty);
+  let appointmentValue = 0;
 
   if (payload.titleType === 'EMPRESS' || payload.titleType === 'CHIEF_EUNUCHS') {
-    score += 2.5 * profileTemperament(profile, 'intrigue');
-    score += targetIsSelf ? 3 * profileTemperament(profile, 'ambition') : 0;
+    appointmentValue += courtTitleValue(profile, state, payload.titleType);
   }
   if (payload.titleType === 'STRATEGOS' || payload.action === 'appoint-strategos') {
-    score += themeValueForProfile(profile, theme) * 0.9;
-    score += positive(theme?.T) * profileCategoryWeight(profile, 'tax');
-    score += positive(theme?.L) * profileTemperament(profile, 'militarism');
+    appointmentValue += strategosOfficeValue(profile, theme);
   }
   if (payload.titleType === 'BISHOP' || payload.action === 'appoint-bishop') {
-    score += (positive(theme?.C) + positive(theme?.P) + positive(theme?.T) * 0.5) * profileTemperament(profile, 'piety');
-    score += targetIsSelf ? 2.5 * profileCategoryWeight(profile, 'church') : 0;
+    appointmentValue += bishopOfficeValue(profile, theme);
   }
-  return score;
+
+  if (targetIsSelf) {
+    return appointmentValue
+      + 5.5 * profileTemperament(profile, 'titleHoarding')
+      + 1.75 * profileTemperament(profile, 'ambition');
+  }
+
+  const { byPlayer } = scoreByPlayer(state);
+  const selfPoints = finiteNumber(byPlayer.get(playerId)?.points);
+  const targetPoints = finiteNumber(byPlayer.get(targetId)?.points);
+  const weakRecipientBonus = clamp(divide(selfPoints - targetPoints, MAX_OFFICIAL_SCORE), -1, 1) * 4;
+  return weakRecipientBonus
+    - appointmentValue * 0.62
+    - targetPenalty * 8.5
+    - 1.5;
 }
 
 function courtActionScore(profile, state, playerId, action) {
@@ -478,14 +554,14 @@ function courtActionScore(profile, state, playerId, action) {
   if (action.kind === 'court-confirm') return defensivePressure > 0.75 ? 1.25 * profileTemperament(profile, 'defense') : -0.1;
   if (payload.action === 'buy') {
     const amount = positive(payload.amount);
-    const value = themeValueForProfile(profile, theme);
+    const value = privateEstatePurchaseValue(profile, state, theme);
     const threatenedPenalty = getThreatenedThemeIds(state, { includeOccupied: true }).includes(theme?.id)
-      ? 2.5 * Math.max(0.3, 1.4 - profileTemperament(profile, 'risk'))
+      ? 4.5 * Math.max(0.3, 1.45 - profileTemperament(profile, 'risk'))
       : 0;
     const cashAfterBid = positive(player?.gold) - amount;
     const reservePenalty = cashAfterBid < 1 ? (1 - cashAfterBid) * (2.5 * profileCategoryWeight(profile, 'gold')) : 0;
     return value * profileTemperament(profile, 'estateGreed')
-      - amount * 0.75
+      - amount * (0.85 + profileCategoryWeight(profile, 'gold') * 0.08)
       - threatenedPenalty
       - reservePenalty
       - defensivePressure * 3 * Math.max(0.3, 1.2 - profileTemperament(profile, 'greed'));
@@ -558,6 +634,17 @@ function projectedCoupVotes(state, playerId, orders) {
   return votes;
 }
 
+function rivalCapitalThreatEstimate(state, playerId) {
+  const danger = empireDanger(state);
+  const expectedCapitalShare = danger > 0.8 ? 0.35 : danger > 0.45 ? 0.5 : 0.72;
+  return Math.max(
+    0,
+    ...(state.players || [])
+      .filter((player) => player.id !== playerId)
+      .map((player) => troopSplit(state, player.id).total * expectedCapitalShare),
+  );
+}
+
 function orderActionScore(profile, state, playerId, action) {
   const orders = action.orders || {};
   const split = troopSplit(state, playerId, orders);
@@ -577,12 +664,13 @@ function orderActionScore(profile, state, playerId, action) {
   const selfCandidate = orders.candidate === playerId;
   const incumbentCandidate = orders.candidate === state.basileusId;
   const votes = projectedCoupVotes(state, playerId, orders);
-  const selfVoteLead = finiteNumber(votes[playerId]) - Math.max(
+  const knownSelfVoteLead = finiteNumber(votes[playerId]) - Math.max(
     0,
     ...Object.entries(votes)
       .filter(([candidate]) => Number(candidate) !== playerId)
       .map(([, troops]) => finiteNumber(troops)),
   );
+  const selfVoteLead = Math.min(knownSelfVoteLead, split.capital - rivalCapitalThreatEstimate(state, playerId));
   const coupPressure = leavesEmpireExposed ? 0.55 : 1.25;
 
   let score = 0;
@@ -655,15 +743,61 @@ function featureTieBreak(action) {
   return 0;
 }
 
-function scoreAction(profile, state, playerId, action, features = {}) {
+function shortlistContinuationActions(profile, state, playerId, actions, options = {}) {
+  const breadth = continuationBreadthOption(options);
+  if (actions.length <= breadth) return actions;
+  return actions
+    .map((action) => ({
+      action,
+      score: actionSpecificScore(profile, state, playerId, action) + featureTieBreak(action),
+    }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, breadth)
+    .map((entry) => entry.action);
+}
+
+function continuationScore(profile, afterState, playerId, options = {}) {
+  const depth = searchDepthOption(options);
+  if (depth <= 1 || afterState?.phase !== 'court') return 0;
+  if (afterState.courtActions?.playerConfirmed?.has(playerId)) return 0;
+
+  const nextActions = listLegalCourtActions(afterState, playerId, { includeDeals: false });
+  const playable = shortlistContinuationActions(
+    profile,
+    afterState,
+    playerId,
+    nextActions.filter((candidate) => candidate.kind !== 'court-confirm'),
+    options,
+  );
+  if (!playable.length) return 0;
+
+  const featureMaps = buildCandidateFeatures(afterState, playerId, playable);
+  const scored = playable.map((candidate, index) => scoreAction(
+    profile,
+    afterState,
+    playerId,
+    candidate,
+    featureMaps[index] || {},
+    { ...options, searchDepth: depth - 1 },
+  ));
+  const top = scored
+    .map((entry) => finiteNumber(entry.total, -Infinity))
+    .sort((left, right) => right - left)[0];
+  return Math.max(0, finiteNumber(top)) * finiteNumber(options.continuationDiscount, 0.42);
+}
+
+function scoreAction(profile, state, playerId, action, features = {}, options = {}) {
   const before = strategicStateScore(profile, state, playerId);
   const afterState = stateAfterAction(state, action);
   const after = afterState ? strategicStateScore(profile, afterState, playerId) : before - 30;
+  const base = (after - before)
+    + featureScore(profile, features)
+    + actionSpecificScore(profile, state, playerId, action)
+    + featureTieBreak(action);
   return {
-    total: (after - before)
-      + featureScore(profile, features)
-      + actionSpecificScore(profile, state, playerId, action)
-      + featureTieBreak(action),
+    total: base + (afterState && action?.kind === 'court'
+      ? continuationScore(profile, afterState, playerId, options)
+      : 0),
     before,
     after,
   };
@@ -689,16 +823,38 @@ export function selectRandomActionIndex(actions, rng = Math.random) {
   return actions.length ? Math.floor(rng() * actions.length) : -1;
 }
 
-export function evaluateHeuristicActions(strategyId, state, playerId, actions) {
+export function evaluateHeuristicActions(strategyId, state, playerId, actions, options = {}) {
   const profile = typeof strategyId === 'object' ? strategyId : getHeuristicPersonality(strategyId);
   const featureMaps = buildCandidateFeatures(state, playerId, actions);
+  const depth = searchDepthOption(options);
+  const baseOptions = depth > 1 ? { ...options, searchDepth: 1 } : options;
   const scores = actions.map((action, index) => scoreAction(
     profile,
     state,
     playerId,
     action,
     featureMaps[index] || {},
+    baseOptions,
   ));
+  if (depth > 1) {
+    const breadth = lookaheadBreadthOption(options);
+    const lookaheadIndexes = scores
+      .map((score, index) => ({ index, total: finiteNumber(score?.total, -Infinity) }))
+      .filter(({ index }) => actions[index]?.kind === 'court')
+      .sort((left, right) => right.total - left.total)
+      .slice(0, breadth)
+      .map(({ index }) => index);
+    for (const index of lookaheadIndexes) {
+      scores[index] = scoreAction(
+        profile,
+        state,
+        playerId,
+        actions[index],
+        featureMaps[index] || {},
+        options,
+      );
+    }
+  }
   return {
     profile,
     scores,
@@ -706,9 +862,9 @@ export function evaluateHeuristicActions(strategyId, state, playerId, actions) {
   };
 }
 
-export function selectHeuristicAction(strategyId, state, playerId, actions, rng = Math.random) {
+export function selectHeuristicAction(strategyId, state, playerId, actions, rng = Math.random, options = {}) {
   if (!actions.length) return { index: -1, action: null, scores: [] };
-  const evaluation = evaluateHeuristicActions(strategyId, state, playerId, actions);
+  const evaluation = evaluateHeuristicActions(strategyId, state, playerId, actions, options);
   const index = chooseBest(evaluation.scores, rng);
   return {
     ...evaluation,
@@ -718,8 +874,8 @@ export function selectHeuristicAction(strategyId, state, playerId, actions, rng 
   };
 }
 
-export function selectHeuristicActionIndex(strategyId, state, playerId, actions, rng = Math.random) {
-  return selectHeuristicAction(strategyId, state, playerId, actions, rng).index;
+export function selectHeuristicActionIndex(strategyId, state, playerId, actions, rng = Math.random, options = {}) {
+  return selectHeuristicAction(strategyId, state, playerId, actions, rng, options).index;
 }
 
 export function createHeuristicController(strategyId = DEFAULT_HEURISTIC_ID) {

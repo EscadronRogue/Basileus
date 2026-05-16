@@ -79,6 +79,7 @@ function commonOptions(options = {}) {
     roundMax: options.roundMax,
     maxSteps: options.maxSteps,
     maxCourtActionsPerPlayer: options.maxCourtActionsPerPlayer,
+    searchDepth: options.searchDepth,
   };
 }
 
@@ -87,7 +88,7 @@ function runOneMatchup(primaryId, opponentId, options = {}) {
   const stats = evaluateStrategy({
     ...common,
     seed: options.seed,
-    episodeOptions: createMatchEpisodeOptions(primaryId, opponentId),
+    episodeOptions: createMatchEpisodeOptions(primaryId, opponentId, common),
   });
   return {
     primaryStrategy: describeStrategy(primaryId),

@@ -612,6 +612,46 @@ function buildBaseDeployments(state, officeKeys, defaultDestination) {
   return deployments;
 }
 
+function orderOfficeTroopCount(state, playerId, officeKey) {
+  const player = getPlayer(state, playerId);
+  if (!player) return 0;
+  if (officeKey === MERCENARY_COMPANY_KEY) return getPlayerMercenaryTroops(state, playerId);
+  const professionals = Math.max(0, Number(player.professionalArmies?.[officeKey]) || 0);
+  const levies = getOfficeHolder(state, officeKey) === playerId
+    ? Math.max(0, Number(state.currentLevies?.[officeKey]) || 0)
+    : 0;
+  return professionals + levies;
+}
+
+function averageInvasionStrength(state) {
+  const [low, high] = state?.currentInvasion?.strength || [0, 0];
+  const values = [low, high].map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function deploymentPlanForFrontierTarget(state, playerId, officeKeys, targetFrontier, direction = 'large-first') {
+  const deployments = buildBaseDeployments(state, officeKeys, 'capital');
+  const movable = officeKeys
+    .filter((officeKey) => !isCapitalLockedOfficeKey(officeKey))
+    .map((officeKey) => ({
+      officeKey,
+      troops: orderOfficeTroopCount(state, playerId, officeKey),
+    }))
+    .sort((left, right) => (
+      direction === 'small-first'
+        ? (left.troops - right.troops) || left.officeKey.localeCompare(right.officeKey)
+        : (right.troops - left.troops) || left.officeKey.localeCompare(right.officeKey)
+    ));
+
+  let committed = 0;
+  for (const entry of movable) {
+    if (committed >= targetFrontier) break;
+    deployments[entry.officeKey] = 'frontier';
+    committed += entry.troops;
+  }
+  return deployments;
+}
+
 function buildDeploymentPlans(state, playerId) {
   const officeKeys = getPlayerOrderOfficeKeys(state, playerId);
   const movable = officeKeys.filter((officeKey) => !isCapitalLockedOfficeKey(officeKey));
@@ -630,6 +670,27 @@ function buildDeploymentPlans(state, playerId) {
     const plan = buildBaseDeployments(state, officeKeys, 'capital');
     plan[officeKey] = 'frontier';
     plans.push(plan);
+  }
+
+  const need = averageInvasionStrength(state);
+  if (need > 0) {
+    const ownMovableTroops = movable.reduce(
+      (total, officeKey) => total + orderOfficeTroopCount(state, playerId, officeKey),
+      0,
+    );
+    const targets = [
+      Math.ceil(need * 0.35),
+      Math.ceil(need * 0.55),
+      Math.ceil(need * 0.75),
+      Math.ceil(need),
+      Math.ceil(need * 1.25),
+      Math.ceil(ownMovableTroops / 2),
+    ].filter((value) => value > 0);
+
+    for (const target of [...new Set(targets)]) {
+      plans.push(deploymentPlanForFrontierTarget(state, playerId, officeKeys, target, 'large-first'));
+      plans.push(deploymentPlanForFrontierTarget(state, playerId, officeKeys, target, 'small-first'));
+    }
   }
 
   return plans;

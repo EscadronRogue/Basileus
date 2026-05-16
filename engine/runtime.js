@@ -22,7 +22,7 @@ import {
 } from './commands.js';
 import {
   applyPlannedAiTitleAssignment,
-  buildAIOrders,
+  buildSimultaneousAIOrders,
   chooseAIDefenderRewardChoice,
   handlePostResolutionAI,
   invalidateRoundContext,
@@ -139,13 +139,10 @@ export function processAiFlow(state, aiMeta, options = {}) {
 
     if (state.phase === 'orders') {
       if (hasAiSeats) {
-        for (const player of state.players) {
-          if (!isAIPlayer(aiMeta, player.id)) continue;
-          if (state.allOrders[player.id]) continue;
-          const orders = buildAIOrders(state, aiMeta, player.id);
-          const result = submitHumanOrders(state, player.id, orders);
+        for (const plan of buildSimultaneousAIOrders(state, aiMeta)) {
+          const result = submitHumanOrders(state, plan.playerId, plan.orders);
           if (!result.ok) {
-            throw new Error(result.reason || `AI player ${player.id} could not lock orders.`);
+            throw new Error(result.reason || `AI player ${plan.playerId} could not lock orders.`);
           }
         }
       }

@@ -120,7 +120,7 @@ Useful entry points:
 
 ## Heuristic AI
 
-AI seats are built-in named strategies. Each candidate action is generated through the same legal action layer as human play, then scored with rule-aware heuristics: official score deltas, category shares, title control, frontier coverage, coup pressure, treasury efficiency, reward choices, and target pressure against leaders.
+AI seats are built-in named strategies. Each candidate action is generated through the same legal action layer as human play, then scored with rule-aware heuristics: official score deltas, category shares, title control, frontier coverage, coup pressure, treasury efficiency, reward choices, and target pressure against leaders. The live runtime also uses fair simultaneous order planning, targeted deal responses/offers, short court lookahead, and AI opinion memory for appointments and revocations.
 
 Current personalities:
 

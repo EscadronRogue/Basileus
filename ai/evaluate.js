@@ -91,6 +91,7 @@ export function runEvaluationCli(argv = process.argv) {
     ...resolvePlayerOptions(args),
     ...resolveRoundOptions(args),
     maxSteps: hasArg(args, 'maxSteps') ? numberArg(args, 'maxSteps', 1000) : undefined,
+    searchDepth: hasArg(args, 'searchDepth') ? Math.max(1, Math.floor(numberArg(args, 'searchDepth', 1))) : undefined,
     maxCourtActionsPerPlayer: hasArg(args, 'maxCourtActionsPerPlayer')
       ? numberArg(args, 'maxCourtActionsPerPlayer', 16)
       : undefined,
