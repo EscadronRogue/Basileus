@@ -201,10 +201,6 @@ test('final scoring view shows threshold share points', () => {
 
   assert.match(html, /Each 25% share/);
   assert.match(html, /Gold Reserves: 50% -> 2/);
-
-  const learningHtml = renderScoringHtml(state, { includeHumanFeedbackDownload: true });
-  assert.match(learningHtml, /Download AI Learning Trace/);
-  assert.match(learningHtml, /data-action="download-human-feedback"/);
 });
 
 test('orders panel contains only deployments, claimant choice, and order locking', () => {
@@ -505,7 +501,7 @@ test('orders panel renders deal lock summaries from private order lock data', ()
   assert.match(container.innerHTML, /Your claimant is locked to/);
 });
 
-test('multiplayer heartbeat policy keeps active rooms awake for one idle hour', () => {
+test('multiplayer heartbeat timing keeps active rooms awake for one idle hour', () => {
   const createdAt = '2026-05-09T10:00:00.000Z';
   const updatedAt = '2026-05-09T10:12:00.000Z';
   const updatedAtMs = Date.parse(updatedAt);
@@ -527,7 +523,7 @@ test('multiplayer heartbeat policy keeps active rooms awake for one idle hour', 
   assert.equal(controller.shouldKeepHeartbeatAlive(updatedAtMs + 90 * 60 * 1000 + 1), false);
 });
 
-test('multiplayer heartbeat policy stops ten minutes after a finished game', () => {
+test('multiplayer heartbeat timing stops ten minutes after a finished game', () => {
   const finishedAt = '2026-05-09T11:00:00.000Z';
   const finishedAtMs = Date.parse(finishedAt);
   const controller = new MultiplayerController({

@@ -421,10 +421,7 @@ export function renderScoringHtml(state, options = {}) {
   const newGameButton = options.includeNewGame
     ? '<button class="btn-new-game" type="button" onclick="location.reload()">New Game</button>'
     : '';
-  const humanFeedbackButton = options.includeHumanFeedbackDownload
-    ? '<button class="btn-download-learning" type="button" data-action="download-human-feedback">Download AI Learning Trace</button>'
-    : '';
-  const actionButtons = [humanFeedbackButton, newGameButton].filter(Boolean).join('');
+  const actionButtons = [newGameButton].filter(Boolean).join('');
 
   return `
     <div class="scoring-panel">
@@ -494,10 +491,6 @@ export function renderGameActionPanel({
   if (state.gameOver || state.phase === 'scoring') {
     shell.innerHTML = renderScoringHtml(state, {
       includeNewGame: Boolean(handlers.includeNewGame),
-      includeHumanFeedbackDownload: Boolean(handlers.downloadHumanFeedback),
-    });
-    shell.querySelector('[data-action="download-human-feedback"]')?.addEventListener('click', () => {
-      handlers.downloadHumanFeedback?.();
     });
     return body;
   }

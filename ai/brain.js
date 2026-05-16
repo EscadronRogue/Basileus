@@ -6,22 +6,20 @@ import {
   listLegalTitleAssignments,
 } from './legalActions.js';
 import {
-  buildCandidateFeatures,
-} from './features.js';
-import {
-  DEFAULT_PERSONALITY_ID,
-  hydrateLearningPolicy,
-  selectActionWithPolicy,
-} from './policy.js';
+  DEFAULT_HEURISTIC_ID,
+  getHeuristicPersonality,
+  personalityForSeat,
+  selectHeuristicAction,
+} from './heuristics.js';
+import { loadOpponentRosterSync } from './opponentRoster.js';
 
-export const AI_POLICY_MISSING_MESSAGE = 'Evolving AI opponent not found. Add policy JSON files to ai/opponents or run npm run ai:evolve.';
-export const DEFAULT_BROWSER_POLICY_URL = 'ai/opponents/latest.json';
+export const AI_OPPONENT_MISSING_MESSAGE = 'Heuristic AI opponent not found.';
 export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
 
 function normalizeHumanPlayerIds(playerCount, humanPlayerIds = []) {
   return new Set(
-    [...new Set(humanPlayerIds.map(value => Number(value)))]
-      .filter(value => Number.isInteger(value) && value >= 0 && value < playerCount),
+    [...new Set(humanPlayerIds.map((value) => Number(value)))]
+      .filter((value) => Number.isInteger(value) && value >= 0 && value < playerCount),
   );
 }
 
@@ -34,81 +32,61 @@ function createDecisionLog() {
   };
 }
 
-function policyDisplayName(policy, fallback) {
-  return String(policy?.identity?.firstName || policy?.identity?.name || fallback || '').trim() || null;
+function normalizeOpponent(rawOpponent, fallbackId = DEFAULT_HEURISTIC_ID) {
+  if (!rawOpponent) return getHeuristicPersonality(fallbackId);
+  if (typeof rawOpponent === 'string') return getHeuristicPersonality(rawOpponent);
+  return getHeuristicPersonality(rawOpponent.id || rawOpponent.strategyId || rawOpponent.opponentId || fallbackId);
+}
+
+export function hydrateAiOpponent(rawOpponent) {
+  return normalizeOpponent(rawOpponent);
+}
+
+function opponentDisplayName(opponent, fallback = 'Unnamed AI') {
+  return String(opponent?.firstName || opponent?.name || fallback).trim() || fallback;
 }
 
 function createPlayerMeta(player, humanPlayerIds, aiPlayer = null) {
   const isAI = !humanPlayerIds.has(player.id);
-  const policy = aiPlayer?.policy || null;
-  const displayName = aiPlayer?.displayName || policyDisplayName(policy, 'Unnamed AI');
+  const opponent = isAI
+    ? normalizeOpponent(
+      aiPlayer?.opponent || aiPlayer?.strategy || aiPlayer?.strategyId || aiPlayer?.opponentId,
+      personalityForSeat(player.id),
+    )
+    : null;
+  const displayName = aiPlayer?.displayName || aiPlayer?.firstName || opponentDisplayName(opponent);
   return {
     playerId: player.id,
     isAI,
     displayName: isAI ? displayName : null,
-    policy: isAI ? policy : null,
-    opponentId: isAI ? (aiPlayer?.opponentId || null) : null,
-    personalityId: isAI ? (policy?.defaultPersonalityId || DEFAULT_PERSONALITY_ID) : null,
+    opponent: isAI ? opponent : null,
+    opponentId: isAI ? (opponent?.id || aiPlayer?.opponentId || null) : null,
+    strategyId: isAI ? (opponent?.id || DEFAULT_HEURISTIC_ID) : null,
     stats: {},
   };
 }
 
-export function hydrateAiPolicy(rawPolicy) {
-  if (!rawPolicy) return null;
-  return hydrateLearningPolicy(rawPolicy.policy || rawPolicy);
-}
-
-function policyLoadError(url, detail = '') {
-  return new Error(`${AI_POLICY_MISSING_MESSAGE} Could not load ${url}${detail ? `: ${detail}` : ''}.`);
-}
-
-export async function loadBrowserAiPolicy(url = DEFAULT_BROWSER_POLICY_URL, options = {}) {
-  const required = Boolean(options.required);
-  if (typeof fetch !== 'function') {
-    if (required) throw policyLoadError(url, 'browser fetch is unavailable');
-    return null;
-  }
-  try {
-    const response = await fetch(url, { cache: 'no-store' });
-    if (!response.ok) {
-      if (required) throw policyLoadError(url, `HTTP ${response.status}`);
-      return null;
-    }
-    return hydrateAiPolicy(await response.json());
-  } catch (error) {
-    if (required) {
-      if (error?.message?.startsWith(AI_POLICY_MISSING_MESSAGE)) throw error;
-      throw policyLoadError(url, error?.message || 'request failed');
-    }
-    return null;
-  }
-}
-
 export async function loadBrowserAiOpponentRoster(url = DEFAULT_BROWSER_OPPONENT_ROSTER_URL, options = {}) {
   const required = Boolean(options.required);
-  if (typeof fetch !== 'function') {
-    if (required) throw new Error('Could not list AI opponents: browser fetch is unavailable.');
-    return [];
-  }
-  try {
-    const response = await fetch(url, { cache: 'no-store' });
-    if (!response.ok) {
-      if (required) throw new Error(`Could not list AI opponents: HTTP ${response.status}.`);
-      return [];
+  if (typeof fetch === 'function') {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (response.ok) {
+        const payload = await response.json();
+        if (Array.isArray(payload?.opponents)) return payload.opponents;
+      } else if (required) {
+        throw new Error(`Could not list AI opponents: HTTP ${response.status}.`);
+      }
+    } catch (error) {
+      if (required) throw error;
     }
-    const payload = await response.json();
-    return Array.isArray(payload?.opponents) ? payload.opponents : [];
-  } catch (error) {
-    if (required) throw error;
-    return [];
   }
+  return loadOpponentRosterSync();
 }
 
 export function createAIMeta(state, options = {}) {
   const humanPlayerIds = normalizeHumanPlayerIds(state?.players?.length || 0, options.humanPlayerIds || []);
   const aiPlayers = options.aiPlayers || {};
-  const hasAnyPolicy = Boolean(options.policy)
-    || Object.values(aiPlayers).some((entry) => Boolean(entry?.policy));
   const players = {};
   for (const player of state?.players || []) {
     players[player.id] = createPlayerMeta(player, humanPlayerIds, aiPlayers[player.id] || aiPlayers[String(player.id)]);
@@ -117,21 +95,21 @@ export function createAIMeta(state, options = {}) {
   return {
     humanPlayerIds,
     players,
-    policy: options.policy || null,
-    policyAvailable: hasAnyPolicy,
-    runtimeExploration: Number.isFinite(Number(options.runtimeExploration)) ? Number(options.runtimeExploration) : 0,
+    opponentAvailable: true,
     publicLog: [],
     decisionLog: createDecisionLog(),
-    humanFeedback: options.humanFeedback || null,
-    pendingPolicyRuntime: !hasAnyPolicy,
   };
 }
 
-export function setAIMetaPolicy(meta, policy) {
+export function setAIMetaOpponent(meta, opponent) {
   if (!meta) return meta;
-  meta.policy = policy || null;
-  meta.policyAvailable = Boolean(policy);
-  meta.pendingPolicyRuntime = !policy;
+  for (const player of Object.values(meta.players || {})) {
+    if (!player?.isAI) continue;
+    player.opponent = normalizeOpponent(opponent, player.strategyId || DEFAULT_HEURISTIC_ID);
+    player.opponentId = player.opponent?.id || player.opponentId;
+    player.strategyId = player.opponent?.id || player.strategyId;
+    player.displayName = opponentDisplayName(player.opponent, player.displayName);
+  }
   return meta;
 }
 
@@ -156,32 +134,20 @@ export function observeCourtAction(state, meta, observation = null) {
   if (meta.publicLog.length > 80) meta.publicLog.splice(0, meta.publicLog.length - 80);
 }
 
-function requirePolicy(meta, playerId) {
-  const playerPolicy = meta?.players?.[playerId]?.policy;
-  const policy = playerPolicy || meta?.policy;
-  if (!policy) throw new Error(AI_POLICY_MISSING_MESSAGE);
-  return policy;
-}
-
 function getRng(state) {
   return typeof state?.rng === 'function' ? state.rng : Math.random;
 }
 
-function getPersonalityId(meta, playerId) {
-  return meta?.players?.[playerId]?.personalityId || DEFAULT_PERSONALITY_ID;
+function getPlayerOpponent(meta, playerId) {
+  return meta?.players?.[playerId]?.opponent || getHeuristicPersonality(personalityForSeat(playerId));
 }
 
-function choosePolicyAction(state, meta, playerId, actions, options = {}) {
+function chooseHeuristicAction(state, meta, playerId, actions) {
   if (!actions.length) return null;
-  const policy = requirePolicy(meta, playerId);
-  const features = buildCandidateFeatures(state, playerId, actions);
-  const selection = selectActionWithPolicy(policy, features, getRng(state), {
-    greedy: options.greedy ?? true,
-    temperature: options.temperature ?? meta.runtimeExploration ?? 0,
-    personalityId: getPersonalityId(meta, playerId),
-  });
+  const opponent = getPlayerOpponent(meta, playerId);
+  const selection = selectHeuristicAction(opponent, state, playerId, actions, getRng(state));
   const action = actions[selection.index] || actions[0];
-  meta.decisionLog?.push?.(`${action.phase}:${playerId}:${action.label}`);
+  meta?.decisionLog?.push?.(`${action.phase}:${playerId}:${opponent.id}:${action.label}:${selection.score.toFixed(2)}`);
   return action;
 }
 
@@ -196,7 +162,6 @@ function playableCourtActions(actions) {
 export function runAICourtAutomation(state, meta, options = {}) {
   if (!state || state.phase !== 'court' || !meta) return { ok: true, actions: 0 };
   const mode = options.mode || 'finish';
-  if (!meta.policy && mode === 'react') return { ok: true, actions: 0, skipped: true };
   const maxActions = mode === 'react' ? 1 : Math.max(1, Number(options.maxActionsPerPlayer) || 10);
   let applied = 0;
 
@@ -210,7 +175,7 @@ export function runAICourtAutomation(state, meta, options = {}) {
       const actionCandidates = mode === 'react' ? playableCourtActions(actions) : actions;
       const action = step === maxActions - 1 && mode !== 'react'
         ? confirmAction(actions)
-        : choosePolicyAction(state, meta, player.id, actionCandidates.length ? actionCandidates : actions);
+        : chooseHeuristicAction(state, meta, player.id, actionCandidates.length ? actionCandidates : actions);
       if (!action) break;
       const result = applyLegalAction(state, action, meta);
       if (!result.ok) {
@@ -234,14 +199,16 @@ export function runAICourtAutomation(state, meta, options = {}) {
 
 export function buildAIOrders(state, meta, playerId) {
   const actions = listLegalOrderActions(state, playerId);
-  const action = choosePolicyAction(state, meta, playerId, actions);
+  const action = chooseHeuristicAction(state, meta, playerId, actions);
   if (!action) throw new Error(`No legal order action available for AI player ${playerId}.`);
+  const opponent = getPlayerOpponent(meta, playerId);
   return {
     ...action.orders,
     debug: {
       decision: {
-        title: 'Evolving policy order selection',
+        title: `${opponent.firstName} heuristic order selection`,
         factors: [
+          { label: 'strategy', value: opponent.label || opponent.id, impact: 'neutral', note: opponent.description },
           { label: 'candidate actions', value: actions.length, impact: 'neutral', note: 'Chosen from engine-legal orders.' },
         ],
       },
@@ -252,13 +219,13 @@ export function buildAIOrders(state, meta, playerId) {
 export function chooseAIDefenderRewardChoice(state, meta, reward) {
   const actions = listLegalRewardActions(state, reward.defenderId)
     .filter((action) => action.rewardId === reward.id);
-  const action = choosePolicyAction(state, meta, reward.defenderId, actions);
+  const action = chooseHeuristicAction(state, meta, reward.defenderId, actions);
   return action?.choice || 'empire';
 }
 
 export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nextBasileusId) {
   const actions = listLegalTitleAssignments(state, newBasileusId);
-  return choosePolicyAction(state, meta, newBasileusId, actions);
+  return chooseHeuristicAction(state, meta, newBasileusId, actions);
 }
 
 export function applyPlannedAiTitleAssignment(state, meta, pendingAssignment = null, newBasileusId = state?.nextBasileusId) {

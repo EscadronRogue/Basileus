@@ -11,8 +11,7 @@ import {
   resolvePendingTitleReassignment,
   startInteractiveRuntime,
 } from '../engine/runtime.js';
-import { AI_POLICY_MISSING_MESSAGE, createAIMeta, hydrateAiPolicy, loadBrowserAiPolicy } from '../ai/brain.js';
-import { exportHumanFeedbackPayload } from '../ai/humanFeedback.js';
+import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta, hydrateAiOpponent } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG } from '../render/mapRenderer.js';
 import {
@@ -31,8 +30,6 @@ export class GameController {
       seed: config.seed || Date.now(),
       historyEnabled: config.historyEnabled !== false,
       mode: config.mode || 'hotseat',
-      aiPolicy: config.aiPolicy || null,
-      aiPolicyPayload: config.aiPolicyPayload || null,
       aiOpponentSelections: Array.isArray(config.aiOpponentSelections)
         ? config.aiOpponentSelections.slice()
         : [],
@@ -56,13 +53,9 @@ export class GameController {
     setDealParticipantIds(this.state, this.state.players.map((player) => player.id));
     if (this.config.mode === 'single') {
       const aiPlayers = await this.loadAiPlayers();
-      const policy = this.config.aiPolicy
-        || (this.config.aiPolicyPayload ? hydrateAiPolicy(this.config.aiPolicyPayload) : null)
-        || (!Object.keys(aiPlayers).length ? await loadBrowserAiPolicy(undefined, { required: false }) : null);
-      if (!policy && !Object.keys(aiPlayers).length) throw new Error(AI_POLICY_MISSING_MESSAGE);
+      if (!Object.keys(aiPlayers).length) throw new Error(AI_OPPONENT_MISSING_MESSAGE);
       this.aiMeta = createAIMeta(this.state, {
         humanPlayerIds: this.config.humanPlayerIds,
-        policy,
         aiPlayers,
       });
       this.ensureHumanFocus();
@@ -87,21 +80,11 @@ export class GameController {
     for (const selection of selections) {
       const playerId = Number(selection.playerId);
       if (!Number.isInteger(playerId)) continue;
-      if (selection.policy) {
-        aiPlayers[playerId] = {
-          policy: selection.policy,
-          displayName: selection.firstName || selection.name || selection.policy.identity?.firstName || null,
-          opponentId: selection.id || null,
-        };
-        continue;
-      }
-      const url = selection.url || selection.policyUrl;
-      if (!url) continue;
-      const policy = await loadBrowserAiPolicy(url, { required: true });
+      const opponent = hydrateAiOpponent(selection.id || selection.strategyId || selection.opponentId);
       aiPlayers[playerId] = {
-        policy,
-        displayName: selection.firstName || selection.name || policy?.identity?.firstName || null,
-        opponentId: selection.id || null,
+        opponent,
+        displayName: selection.firstName || selection.name || opponent?.firstName || null,
+        opponentId: opponent?.id || selection.id || null,
       };
     }
     return aiPlayers;
@@ -129,30 +112,6 @@ export class GameController {
 
   isHumanPlayer(playerId) {
     return this.config.humanPlayerIds.includes(playerId);
-  }
-
-  exportHumanFeedback() {
-    return exportHumanFeedbackPayload(this.aiMeta, {
-      mode: this.config.mode,
-      playerCount: this.config.playerCount,
-      deckSize: this.config.deckSize,
-      seed: this.config.seed,
-      humanPlayerIds: this.config.humanPlayerIds,
-    });
-  }
-
-  downloadHumanFeedback() {
-    const payload = this.exportHumanFeedback();
-    const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `basileus-human-feedback-${Date.now()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    return payload;
   }
 
   isControllablePlayer(playerId) {
@@ -232,7 +191,6 @@ export class GameController {
         court: this.createCourtHandlers(this.activePlayer),
         lockOrders: (orders) => this.lockOrders(orders),
         includeNewGame: true,
-        downloadHumanFeedback: this.isSinglePlayer() ? () => this.downloadHumanFeedback() : null,
       },
       resolution: {
         allowManualTitleReassignment: !this.pendingAiTitleAssignment,

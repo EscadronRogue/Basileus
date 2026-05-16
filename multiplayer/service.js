@@ -43,8 +43,7 @@ function normalizePlayerName(rawName) {
 export class MultiplayerRoomManager {
   constructor(options = {}) {
     this.rooms = new Map();
-    this.loadAiPolicy = typeof options.loadAiPolicy === 'function' ? options.loadAiPolicy : undefined;
-    this.loadAiPolicyById = typeof options.loadAiPolicyById === 'function' ? options.loadAiPolicyById : undefined;
+    this.loadAiOpponentById = typeof options.loadAiOpponentById === 'function' ? options.loadAiOpponentById : undefined;
     this.loadAiOpponentRoster = typeof options.loadAiOpponentRoster === 'function' ? options.loadAiOpponentRoster : undefined;
   }
 
@@ -60,8 +59,7 @@ export class MultiplayerRoomManager {
         hostSessionId: sessionToken,
         hostPlayerName: normalizePlayerName(playerName),
         saveGame,
-        loadAiPolicy: this.loadAiPolicy,
-        loadAiPolicyById: this.loadAiPolicyById,
+        loadAiOpponentById: this.loadAiOpponentById,
         loadAiOpponentRoster: this.loadAiOpponentRoster,
       })
       : createRoom({
@@ -69,8 +67,7 @@ export class MultiplayerRoomManager {
         hostSessionId: sessionToken,
         hostPlayerName: normalizePlayerName(playerName),
         config,
-        loadAiPolicy: this.loadAiPolicy,
-        loadAiPolicyById: this.loadAiPolicyById,
+        loadAiOpponentById: this.loadAiOpponentById,
         loadAiOpponentRoster: this.loadAiOpponentRoster,
       });
     this.rooms.set(room.roomCode, room);

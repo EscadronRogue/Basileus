@@ -9,7 +9,7 @@ const SCANNED_EXTENSIONS = new Set(['.bat', '.css', '.html', '.js', '.json', '.m
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'screenshots']);
 const SKIP_FILES = new Set(['ai/purge.test.js']);
 const LEGACY_TERMS = [
-  ['trained', '-person', 'alities'],
+  ['tra', 'ined', '-person', 'alities'],
   ['person', 'ality', ' pro', 'file'],
   ['person', 'ality', ' pro', 'files'],
   ['pro', 'file', ' store'],
@@ -17,7 +17,7 @@ const LEGACY_TERMS = [
   ['ai', 'pro', 'file'],
   ['ai', 'pro', 'files'],
   ['baseline', 'ai', 'pro', 'file'],
-  ['policy', 'gen', 'ome'],
+  ['pol', 'icy', 'gen', 'ome'],
   ['gen', 'ome'],
   ['evo', 'lution lab'],
   ['simu', 'lation lab'],

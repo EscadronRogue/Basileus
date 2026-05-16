@@ -1,12 +1,10 @@
+import { evaluateStrategy } from './selfPlay.js';
+import { RANDOM_OPPONENT_ID } from './heuristics.js';
 import {
-  DEFAULT_POLICY_PATH,
-  loadOpponentRosterSync,
-  loadPolicyFileSync,
-} from './policyStore.js';
-import { evaluatePolicy } from './selfPlay.js';
-import { buildCandidateFeatures } from './features.js';
-import { selectActionWithPolicy } from './policy.js';
-import { runTournament } from './tournament.js';
+  runHeuristicLeague,
+  runTournament,
+  runTournamentSuite,
+} from './tournament.js';
 
 function parseArgs(argv) {
   const args = {};
@@ -80,64 +78,59 @@ function resolveRoundOptions(args) {
   return { deckSize: undefined, roundMin, roundMax };
 }
 
+function strategiesForRandom(playerCount = 5) {
+  return Object.fromEntries(Array.from({ length: Math.max(1, playerCount) }, (_, index) => [index, RANDOM_OPPONENT_ID]));
+}
+
 export function runEvaluationCli(argv = process.argv) {
   const args = parseArgs(argv);
-  const defaultOpponent = args.policy ? null : loadOpponentRosterSync()[0];
-  const policyPath = args.policy || defaultOpponent?.path || DEFAULT_POLICY_PATH;
-  const aiPolicy = args.baseline === 'random' ? null : loadPolicyFileSync(policyPath);
-  if (!aiPolicy && args.baseline !== 'random') {
-    throw new Error(`No evolving AI opponent found at ${policyPath}. Add a JSON policy to ai/opponents or run npm run ai:evolve first.`);
-  }
-  const opponentPath = args.opponent || null;
-  const opponentPolicy = opponentPath ? loadPolicyFileSync(opponentPath) : null;
-  if (opponentPath && !opponentPolicy) {
-    throw new Error(`No opponent policy found at ${opponentPath}.`);
-  }
   const common = {
     episodes: numberArg(args, 'episodes', 20),
     seed: hasArg(args, 'seed') ? numberArg(args, 'seed', 10_000) : undefined,
-    includeDeals: false,
+    seedCount: Math.max(1, Math.floor(numberArg(args, 'seedCount', numberArg(args, 'seeds', 1)))),
     ...resolvePlayerOptions(args),
     ...resolveRoundOptions(args),
+    maxSteps: hasArg(args, 'maxSteps') ? numberArg(args, 'maxSteps', 1000) : undefined,
+    maxCourtActionsPerPlayer: hasArg(args, 'maxCourtActionsPerPlayer')
+      ? numberArg(args, 'maxCourtActionsPerPlayer', 16)
+      : undefined,
   };
-  if (booleanArg(args, 'tournament', false)) {
-    const report = runTournament({
-      aiPolicy,
-      previousPolicy: opponentPolicy,
-      includeRandomBaseline: true,
-      ...common,
-    });
-    console.log(JSON.stringify({
-      ok: true,
-      policy: aiPolicy ? policyPath : 'random',
-      opponent: opponentPolicy ? opponentPath : null,
-      tournament: report,
-    }, null, 2));
+
+  if (booleanArg(args, 'league', false) || booleanArg(args, 'tournament', false)) {
+    const report = booleanArg(args, 'matchup', false)
+      ? runTournamentSuite({
+        ...common,
+        primaryId: args.strategy || args.primary || 'alexios',
+        opponentId: args.opponent || RANDOM_OPPONENT_ID,
+      })
+      : runHeuristicLeague(common);
+    console.log(JSON.stringify({ ok: true, report }, null, 2));
     return report;
   }
-  const policy = aiPolicy && !args.selfPlay
-    ? ({ state, playerId, actions, rng }) => {
-      const activePolicy = playerId === 0 ? aiPolicy : opponentPolicy;
-      if (!activePolicy) return Math.floor(rng() * actions.length);
-      const features = buildCandidateFeatures(state, playerId, actions);
-      return selectActionWithPolicy(activePolicy, features, rng, { greedy: true, temperature: 0 }).index;
-    }
+
+  const strategy = args.strategy || args.ai || 'alexios';
+  const stats = strategy === RANDOM_OPPONENT_ID
+    ? evaluateStrategy({
+      ...common,
+      strategies: strategiesForRandom(common.playerCount || 5),
+    })
+    : evaluateStrategy({
+      ...common,
+      strategyId: strategy,
+    });
+  const oneMatch = args.opponent
+    ? runTournament({
+      ...common,
+      primaryId: strategy,
+      opponentId: args.opponent,
+    })
     : null;
-  const policyRoleForPlayer = policy
-    ? (playerId) => (playerId === 0 ? 'learner' : (opponentPolicy ? 'checkpoint' : 'random'))
-    : null;
-  const stats = evaluatePolicy({
-    aiPolicy,
-    policy,
-    policyRoleForPlayer,
-    ...common,
-    greedy: args.greedy !== 'false',
-  });
   console.log(JSON.stringify({
     ok: true,
-    policy: aiPolicy ? policyPath : 'random',
-    opponent: opponentPolicy ? opponentPath : (aiPolicy && !args.selfPlay ? 'random' : null),
+    strategy,
+    opponent: args.opponent || null,
     stats,
+    matchup: oneMatch,
   }, null, 2));
   return stats;
 }

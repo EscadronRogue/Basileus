@@ -117,8 +117,8 @@ function renderAiRoster() {
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
   if (!aiOpponentRosterLoaded) {
-    setupAiRoster.innerHTML = '<div class="setup-ai-seat"><span>Loading AI opponents...</span><span>Reading ai/opponents</span></div>';
-    setupAiRosterHint.textContent = 'AI opponents are loaded from ai/opponents/*.json. No manifest is used.';
+    setupAiRoster.innerHTML = '<div class="setup-ai-seat"><span>Loading AI opponents...</span><span>Preparing heuristic strategies</span></div>';
+    setupAiRosterHint.textContent = 'AI opponents are built-in heuristic personalities.';
     updateStartAvailability();
     return;
   }
@@ -127,10 +127,10 @@ function renderAiRoster() {
     setupAiRoster.innerHTML = `
       <div class="setup-ai-seat">
         <span>No AI opponents found</span>
-        <span>${escapeHtml(aiOpponentRosterError || 'Drop policy JSON files into ai/opponents.')}</span>
+        <span>${escapeHtml(aiOpponentRosterError || 'No heuristic opponents are available.')}</span>
       </div>
     `;
-    setupAiRosterHint.textContent = 'Single-player AI is unavailable until ai/opponents contains at least one policy JSON.';
+    setupAiRosterHint.textContent = 'Single-player AI is unavailable until heuristic opponents are available.';
     updateStartAvailability();
     return;
   }
@@ -162,7 +162,7 @@ function renderAiRoster() {
     });
   });
 
-  setupAiRosterHint.textContent = 'AI opponents are exactly the policy JSON files present in ai/opponents. Remove a file from that folder to remove it here.';
+  setupAiRosterHint.textContent = 'Choose a built-in heuristic strategy for each AI seat.';
   updateStartAvailability();
 }
 
@@ -199,7 +199,7 @@ function buildAiOpponentSelections(playerCount, humanSeat) {
       playerId,
       id: opponent.id,
       firstName: opponent.firstName,
-      url: opponent.url,
+      label: opponent.label,
     });
   }
   return selections;

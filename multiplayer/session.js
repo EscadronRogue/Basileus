@@ -19,12 +19,11 @@ import {
   serializePublicGameState,
 } from '../engine/publicState.js';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, resolveConfiguredSeed, toInt } from '../engine/setup.js';
-import { AI_POLICY_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
+import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
 import {
-  loadOpponentPolicyByIdSync,
+  loadOpponentByIdSync,
   loadOpponentRosterSync,
-  loadPolicyFileSync,
-} from '../ai/policyStore.js';
+} from '../ai/opponentRoster.js';
 import { getAiDisplayName } from '../ai/names.js';
 
 export const ROOM_STATUS = {
@@ -75,16 +74,16 @@ function serializeAiMeta(aiMeta) {
     decisionLog,
     fastCache,
     roundContext,
-    policy,
+    opponent,
     ...rest
   } = aiMeta;
   void fastCache;
   void roundContext;
-  void policy;
+  void opponent;
   const plain = clonePlain(rest);
   if (plain.players) {
     for (const player of Object.values(plain.players)) {
-      if (player && typeof player === 'object') delete player.policy;
+      if (player && typeof player === 'object') delete player.opponent;
     }
   }
   return {
@@ -96,21 +95,21 @@ function serializeAiMeta(aiMeta) {
   };
 }
 
-function hydrateAiMeta(rawMeta, state, seats = [], loadAiPolicy = loadPolicyFileSync, loadAiPolicyById = loadOpponentPolicyByIdSync) {
+function hydrateAiMeta(rawMeta, state, seats = [], loadAiOpponentById = loadOpponentByIdSync) {
   if (!rawMeta) return null;
-  const { humanPlayerIds = [], humanFeedback = null } = clonePlain(rawMeta);
+  const { humanPlayerIds = [] } = clonePlain(rawMeta);
   const aiPlayers = {};
   for (const seat of seats || []) {
     if (seat?.kind !== 'ai') continue;
-    const policy = seat.aiOpponentId ? loadAiPolicyById(seat.aiOpponentId) : loadAiPolicy();
-    if (!policy) continue;
+    const opponent = loadAiOpponentById(seat.aiOpponentId);
+    if (!opponent) continue;
     aiPlayers[seat.seatId] = {
-      policy,
-      displayName: seat.playerName || policy.identity?.firstName || null,
+      opponent,
+      displayName: seat.playerName || opponent.firstName || null,
       opponentId: seat.aiOpponentId || null,
     };
   }
-  return createAIMeta(state, { humanPlayerIds, humanFeedback, aiPlayers });
+  return createAIMeta(state, { humanPlayerIds, aiPlayers });
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
@@ -164,15 +163,13 @@ export class MultiplayerRoom {
     hostSessionId,
     hostPlayerName,
     config = {},
-    loadAiPolicy = loadPolicyFileSync,
-    loadAiPolicyById = loadOpponentPolicyByIdSync,
+    loadAiOpponentById = loadOpponentByIdSync,
     loadAiOpponentRoster = loadOpponentRosterSync,
   }) {
     this.roomCode = roomCode;
     this.hostSessionId = hostSessionId;
     this.config = normalizeRoomConfig(config);
-    this.loadAiPolicy = typeof loadAiPolicy === 'function' ? loadAiPolicy : loadPolicyFileSync;
-    this.loadAiPolicyById = typeof loadAiPolicyById === 'function' ? loadAiPolicyById : loadOpponentPolicyByIdSync;
+    this.loadAiOpponentById = typeof loadAiOpponentById === 'function' ? loadAiOpponentById : loadOpponentByIdSync;
     this.loadAiOpponentRoster = typeof loadAiOpponentRoster === 'function' ? loadAiOpponentRoster : loadOpponentRosterSync;
     this.seats = Array.from({ length: this.config.playerCount }, (_, seatId) => createOpenSeat(seatId));
     this.connections = new Map();
@@ -313,7 +310,7 @@ export class MultiplayerRoom {
 
   resolveAiOpponent(rawOpponentId = null) {
     const roster = this.getAiOpponentRoster();
-    assert(roster.length > 0, 'No AI opponents found in ai/opponents.');
+    assert(roster.length > 0, 'No heuristic AI opponents are available.');
     return roster.find((entry) => entry.id === rawOpponentId) || roster[0];
   }
 
@@ -383,11 +380,11 @@ export class MultiplayerRoom {
       const opponent = this.resolveAiOpponent(seat.aiOpponentId);
       seat.aiOpponentId = opponent.id;
       seat.playerName = opponent.firstName || opponent.id;
-      const policy = this.loadAiPolicyById(opponent.id);
-      assert(policy, AI_POLICY_MISSING_MESSAGE);
+      const strategy = this.loadAiOpponentById(opponent.id);
+      assert(strategy, AI_OPPONENT_MISSING_MESSAGE);
       aiPlayers[seatId] = {
-        policy,
-        displayName: opponent.firstName || policy.identity?.firstName || opponent.id,
+        opponent: strategy,
+        displayName: opponent.firstName || strategy.firstName || opponent.id,
         opponentId: opponent.id,
       };
     }
@@ -809,8 +806,7 @@ export function createRoom({
   hostSessionId,
   hostPlayerName,
   config,
-  loadAiPolicy = loadPolicyFileSync,
-  loadAiPolicyById = loadOpponentPolicyByIdSync,
+  loadAiOpponentById = loadOpponentByIdSync,
   loadAiOpponentRoster = loadOpponentRosterSync,
 }) {
   return new MultiplayerRoom({
@@ -818,8 +814,7 @@ export function createRoom({
     hostSessionId,
     hostPlayerName,
     config,
-    loadAiPolicy,
-    loadAiPolicyById,
+    loadAiOpponentById,
     loadAiOpponentRoster,
   });
 }
@@ -829,8 +824,7 @@ export function createRoomFromSave({
   hostSessionId,
   hostPlayerName,
   saveGame,
-  loadAiPolicy = loadPolicyFileSync,
-  loadAiPolicyById = loadOpponentPolicyByIdSync,
+  loadAiOpponentById = loadOpponentByIdSync,
   loadAiOpponentRoster = loadOpponentRosterSync,
 }) {
   assert(saveGame?.schema === SAVE_SCHEMA, 'Save file is not a Basileus multiplayer save.');
@@ -849,8 +843,7 @@ export function createRoomFromSave({
     hostSessionId,
     hostPlayerName,
     config,
-    loadAiPolicy,
-    loadAiPolicyById,
+    loadAiOpponentById,
     loadAiOpponentRoster,
   });
 
@@ -862,7 +855,7 @@ export function createRoomFromSave({
   room.seats = Array.from({ length: room.config.playerCount }, (_, seatId) =>
     normalizeSavedSeat(savedRoom.seats?.[seatId], seatId)
   );
-  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, room.seats, loadAiPolicy, loadAiPolicyById);
+  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, room.seats, loadAiOpponentById);
   room.refreshStatusFromGame();
   if (room.status !== ROOM_STATUS.FINISHED) {
     room.status = ROOM_STATUS.IN_PROGRESS;

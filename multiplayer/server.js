@@ -10,9 +10,9 @@ import {
 } from './service.js';
 import { closeServer, jsonResponse, listenServer, serveStatic } from './httpUtils.js';
 import {
-  loadOpponentPolicyByIdSync,
   loadOpponentRosterSync,
-} from '../ai/policyStore.js';
+  loadOpponentByIdSync,
+} from '../ai/opponentRoster.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -79,8 +79,7 @@ function applyCorsHeaders(req, res) {
 
 export async function startMultiplayerServer(options = {}) {
   const manager = new MultiplayerRoomManager({
-    loadAiPolicy: options.loadAiPolicy,
-    loadAiPolicyById: options.loadAiPolicyById || loadOpponentPolicyByIdSync,
+    loadAiOpponentById: options.loadAiOpponentById || loadOpponentByIdSync,
     loadAiOpponentRoster: options.loadAiOpponentRoster || loadOpponentRosterSync,
   });
   const host = options.host || '127.0.0.1';

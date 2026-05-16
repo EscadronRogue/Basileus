@@ -1,7 +1,7 @@
 {
   "name": "basileus-game",
   "version": "0.1.0",
-  "description": "A 3-5 player browser strategy game of dynastic profiteering inside the Byzantine Empire, with WebSocket multiplayer and local evolving-policy AI.",
+  "description": "A 3-5 player browser strategy game of dynastic profiteering inside the Byzantine Empire, with WebSocket multiplayer and built-in heuristic AI.",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",
@@ -29,10 +29,8 @@
   "scripts": {
     "serve": "node multiplayer/server.js",
     "serve:multiplayer": "node multiplayer/server.js",
-    "ai:train": "node ai/train.js",
-    "ai:evolve": "node ai/train.js",
     "ai:evaluate": "node ai/evaluate.js",
-    "ai:tournament": "node ai/evaluate.js --tournament",
+    "ai:tournament": "node ai/evaluate.js --league",
     "test:economy": "node engine/economy.test.js",
     "test:ai": "node --test ai/brain.test.js ai/purge.test.js",
     "test:multiplayer": "node multiplayer/verify.js",

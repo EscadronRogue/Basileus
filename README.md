@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes local evolving-policy AI seats, and includes a pure Node WebSocket multiplayer server.
+Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes built-in heuristic AI seats, and includes a pure Node WebSocket multiplayer server.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **Local evolving AI.** AI seats use transparent learned heuristics and the same engine validators as human actions.
+- **Heuristic AI.** AI seats use named strategic personalities and the same engine validators as human actions.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -60,12 +60,10 @@ npm run serve:multiplayer
 | --- | --- |
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
-| `npm run ai:train` | Runs local policy evolution and writes a named opponent under `ai/opponents/`. |
-| `npm run ai:evolve` | Alias for `npm run ai:train`. |
-| `npm run ai:evaluate` | Evaluates the current local policy. |
-| `npm run ai:tournament` | Runs the richer policy-vs-baseline evaluation harness. |
+| `npm run ai:evaluate` | Evaluates a heuristic strategy or a single matchup. |
+| `npm run ai:tournament` | Runs the heuristic league against self-play, pairwise, and random baselines. |
 | `npm run test:economy` | Engine/economy rules tests. |
-| `npm run test:ai` | Evolving AI runtime, action, and learning smoke tests. |
+| `npm run test:ai` | Heuristic AI runtime, action, and simulation smoke tests. |
 | `npm run test:ui` | Browser controller and panel tests. |
 | `npm run test:multiplayer` | End-to-end multiplayer protocol verifier. |
 | `npm test` | Runs the full local test suite. |
@@ -94,7 +92,7 @@ Render notes:
 .
 ├── index.html              # Live game entry point
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
-├── ai/                     # Local evolving-policy learner and runtime
+├── ai/                     # Heuristic opponents, legal action generation, simulations
 ├── assets/                 # SVG map, hitzones, stylesheets
 ├── data/                   # Static game data (provinces, titles, invasion decks)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
@@ -117,49 +115,32 @@ Useful entry points:
 
 - `engine/state.js` - game state shape and reducers
 - `engine/turnflow.js` - round/phase orchestration
-- `ai/brain.js` - evolving policy runtime integration
+- `ai/brain.js` - heuristic AI runtime integration
 - `multiplayer/wsServer.js` - handcoded WebSocket framing
 
-## Local Evolving AI
+## Heuristic AI
 
-Evolve a policy locally:
+AI seats are built-in named strategies. Each candidate action is generated through the same legal action layer as human play, then scored with rule-aware heuristics: official score deltas, category shares, title control, frontier coverage, coup pressure, treasury efficiency, reward choices, and target pressure against leaders.
 
-```bash
-npm run ai:train -- --episodes 1000
-```
+Current personalities:
 
-By default, training now mixes full games with short legal round rollouts, uses score-shaped terminal rewards, includes defensive heuristic opponents, and promotes checkpoints from multi-seed tournament confidence bounds.
+- `alexios` - balanced score growth, throne pressure, and empire survival.
+- `irene` - defensive tax command and low-risk imperial continuity.
+- `zoe` - court appointments, church income, revocations, and intrigue.
+- `niketas` - estate purchases, gold reserves, and selective mercenary spending.
+- `basil` - troops, frontier command, and aggressive capital claims.
 
-Evolve only from legal random midgame snapshots and short round rollouts:
-
-```bash
-npm run ai:train -- --training-mode round --episodes 1000 --rollout-rounds 1
-```
-
-Evolve from a hybrid of full games and short round rollouts:
+Run the full league:
 
 ```bash
-npm run ai:train -- --training-mode hybrid --round-mode-rate 0.5 --episodes 1000 --rollout-rounds 1
+npm run ai:tournament -- --episodes 20 --seed-count 3
 ```
 
-The AI no longer uses layered black-box approximators or anonymous tensors. Every candidate action is described by named, rule-derived features: official score-share deltas, category-point deltas, title shifts, treasury changes, frontier troop coverage, reward choices, and target relations. Self-play learns transparent weights for those features.
-
-The reward is outcome-driven and score-shaped by default: winning a survived game is `+1`, other surviving players receive their official score share, and a fall of Constantinople assigns blame to players who under-contributed to the defense relative to their legal frontier troop capacity and to players whose broader posture externalized risk onto the empire. Use `--reward-mode sparse` to return to winner-only terminal rewards. At each completed round, the learner also receives potential-based shaping from the official scoring rules: `(round / maxRounds) * (projected score points / maximum possible score)`, where the maximum possible score is derived from the four scoring categories and their three point thresholds.
-
-Training also records a posture ledger from the same semantic action features used by the policy: private consolidation, public resilience, table transfer, rival suppression, risk externalization, and winner transfer. If the empire survives but a learner loses, its terminal reward is reduced by its normalized share of altruistic transfer and kingmaking. If the empire falls, its terminal penalty is distributed by normalized free-riding and selfish-risk shares. These adjustments use shares derived from observed game deltas rather than tuned penalty coefficients.
-
-Each trained AI is one named opponent file. New policies receive a random romanized Greek first name, and the setup menu lists exactly the JSON files present in `ai/opponents/`; no manifest is used. Drop a policy into that folder to make it playable, or remove it from the folder to remove it from the menu.
-
-The learner writes checkpoints to `ai/policy-checkpoints/`, evaluates them with a small tournament, and promotes the best checkpoint to the named opponent output file. A starter opponent is committed under `ai/opponents/` so the local server has an AI opponent out of the box.
-
-Human play can be folded back into learning as a human-opponent source. Single-player and multiplayer runtime actions are recorded as legal-action snapshots when an `aiMeta` runtime is active. In a local single-player browser session, run `window.__basileus.downloadHumanFeedback()` to export the current trace, then drop the exported JSON file into `ai/human-games/`:
+Run one matchup:
 
 ```bash
-mkdir ai/human-games
-npm run ai:train -- --episodes 1000
+npm run ai:evaluate -- --tournament --matchup --strategy basil --opponent random
 ```
-
-Learning automatically scans `ai/human-games/` recursively for JSON exports. You can use `--human-games path/to/folder` or `--human-feedback path/to/file.json` when you want a specific dataset. The learner distills those games into a human-style policy opponent, mixes that opponent into self-play, and reports policy-vs-human tournament results when checkpoints are evaluated.
 
 ## License
 
