@@ -138,7 +138,8 @@ function chooseCourtConfirmation(state, playerId) {
 
 export function runAICourtAutomation(state, meta, options = {}) {
   if (!state || state.phase !== 'court' || !meta) return { ok: true, actions: 0 };
-  if ((options.mode || 'finish') === 'react') return { ok: true, actions: 0 };
+  const mode = options.mode || 'finish';
+  const shouldConfirm = mode !== 'react';
 
   let applied = 0;
   for (const player of state.players || []) {
@@ -146,7 +147,7 @@ export function runAICourtAutomation(state, meta, options = {}) {
     if (state.courtActions?.playerConfirmed?.has(player.id)) continue;
 
     const plannedActions = chooseAICourtActions(state, player.id, {
-      maxActions: options.maxActions || 3,
+      maxActions: options.maxActions || (shouldConfirm ? 3 : 1),
       depth: options.depth,
     });
     for (const action of plannedActions) {
@@ -157,6 +158,7 @@ export function runAICourtAutomation(state, meta, options = {}) {
       meta?.decisionLog?.push?.(`court:${player.id}:ai:${action.label || action.kind}`);
     }
 
+    if (!shouldConfirm) continue;
     const action = chooseCourtConfirmation(state, player.id);
     const result = applyLegalAction(state, action, meta);
     if (!result.ok) continue;

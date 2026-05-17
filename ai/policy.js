@@ -89,6 +89,37 @@ function courtActionBias(state, action, playerId, context = {}) {
   return 0;
 }
 
+function courtActivityScore(state, action, playerId, context = {}) {
+  const payload = action?.payload || {};
+  const targetPlayerId = getActionTargetPlayerId(state, action);
+  const leaderId = context.leaderId ?? getLeadingOpponentId(state, playerId);
+  const themeId = getActionThemeId(action);
+  const theme = themeId ? state.themes?.[themeId] : null;
+
+  if (payload.action === 'buy') {
+    const amount = Math.max(0, Number(payload.amount) || 0);
+    return 24 + themeValue(theme) - (amount * 0.35);
+  }
+  if (
+    payload.action === 'basileus-appoint'
+    || payload.action === 'appoint-strategos'
+    || payload.action === 'appoint-bishop'
+  ) {
+    let score = 14 + (theme ? themeValue(theme) * 0.32 : 0);
+    if (targetPlayerId === playerId) score += 14;
+    if (targetPlayerId === leaderId) score -= 22;
+    return score;
+  }
+  if (payload.action === 'recruit') return 22;
+  if (payload.action === 'hire-mercenaries') return 8 + ((Number(payload.count) || 0) * 2);
+  if (payload.action === 'revoke') {
+    if (targetPlayerId === playerId) return -50;
+    return targetPlayerId === leaderId ? 34 : 14;
+  }
+  if (payload.action === 'gift') return 6 + (theme ? themeValue(theme) * 0.2 : 0);
+  return -10;
+}
+
 function scoreAppliedAction(state, playerId, action, context = {}) {
   const trial = cloneAiState(state);
   const result = applyLegalAction(trial, action);
@@ -160,13 +191,56 @@ function searchCourt(state, playerId, depth) {
   return best;
 }
 
+function actionAlreadyChosen(actions, candidate) {
+  const payload = candidate?.payload || {};
+  return actions.some((action) => {
+    const existing = action?.payload || {};
+    if (existing.action !== payload.action) return false;
+    if (payload.themeId && existing.themeId === payload.themeId) return true;
+    if (payload.office && existing.office === payload.office) return true;
+    if (payload.value && existing.value === payload.value) return true;
+    return JSON.stringify(existing) === JSON.stringify(payload);
+  });
+}
+
+function fillCourtAgenda(state, playerId, actions, maxActions) {
+  const planState = cloneAiState(state);
+  const plan = [];
+  for (const action of actions) {
+    const result = applyLegalAction(planState, action);
+    if (result.ok) plan.push(action);
+  }
+
+  const context = { leaderId: getLeadingOpponentId(planState, playerId) };
+  while (plan.length < maxActions) {
+    const candidate = getCourtCandidateActions(planState, playerId)
+      .filter((action) => !actionAlreadyChosen(plan, action))
+      .map((action) => ({
+        action,
+        score: courtActivityScore(planState, action, playerId, context),
+      }))
+      .filter((entry) => entry.score > 9)
+      .sort((left, right) => (
+        (right.score - left.score)
+        || left.action.id.localeCompare(right.action.id)
+      ))[0]?.action || null;
+
+    if (!candidate) break;
+    const result = applyLegalAction(planState, candidate);
+    if (!result.ok) break;
+    plan.push(candidate);
+  }
+
+  return plan;
+}
+
 export function chooseAICourtActions(state, playerId, options = {}) {
   const maxActions = Math.max(0, Number(options.maxActions) || COURT_MAX_ACTIONS);
   const candidateCount = getCourtCandidateActions(state, playerId).length;
   const adaptiveDepth = candidateCount > 90 ? 2 : COURT_SEARCH_DEPTH;
   const depth = Math.max(1, Number(options.depth) || adaptiveDepth);
   const result = searchCourt(state, playerId, depth);
-  return result.actions.slice(0, maxActions);
+  return fillCourtAgenda(state, playerId, result.actions.slice(0, maxActions), maxActions);
 }
 
 function orderShapeScore(state, playerId, action, options = {}) {

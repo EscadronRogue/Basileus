@@ -109,7 +109,7 @@ test('strategic court automation acts before confirming during finish mode', () 
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
 
   const reactive = runAICourtAutomation(state, meta, { mode: 'react' });
-  assert.equal(reactive.actions, 0);
+  assert.ok(reactive.actions > 0);
   for (const player of state.players.filter((entry) => entry.id !== 1)) {
     assert.equal(state.courtActions.playerConfirmed.has(player.id), false);
   }
@@ -121,6 +121,7 @@ test('strategic court automation acts before confirming during finish mode', () 
   }
   assert.equal(state.courtActions.playerConfirmed.has(1), false);
   assert.ok(Object.keys(state.pendingProfessionalArmies || {}).length > 0);
+  assert.ok(Object.keys(state.landAuctions || {}).length > 0);
   assert.ok(meta.decisionLog.lines.some((line) => line.includes(':ai:')));
 });
 

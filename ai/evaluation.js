@@ -132,6 +132,16 @@ function scoreOfficePosition(state, playerId) {
   for (const theme of getPlayerThemes(state, playerId)) {
     score += ((Number(theme.P) || 0) * 2.5) + ((Number(theme.T) || 0) * 0.8);
   }
+  for (const auction of Object.values(state.landAuctions || {})) {
+    if (Number(auction?.bidderId) !== playerId) continue;
+    const theme = state.themes?.[auction.themeId];
+    if (!theme || theme.occupied || theme.owner !== null || theme.id === 'CPL') continue;
+    score += ((Number(theme.P) || 0) * 7)
+      + ((Number(theme.T) || 0) * 2.4)
+      + ((Number(theme.L) || 0) * 0.8)
+      + ((Number(theme.C) || 0) * 0.9)
+      - ((Number(auction.amount) || 0) * 0.45);
+  }
 
   return score;
 }
