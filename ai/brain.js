@@ -146,10 +146,13 @@ export function runAICourtAutomation(state, meta, options = {}) {
     if (!isAIPlayer(meta, player.id)) continue;
     if (state.courtActions?.playerConfirmed?.has(player.id)) continue;
 
-    const plannedActions = chooseAICourtActions(state, player.id, {
-      maxActions: options.maxActions || (shouldConfirm ? 3 : 1),
-      depth: options.depth,
-    });
+    const planningOptions = { depth: options.depth };
+    if (Number.isFinite(Number(options.maxActions))) {
+      planningOptions.maxActions = Number(options.maxActions);
+    } else if (!shouldConfirm) {
+      planningOptions.maxActions = 1;
+    }
+    const plannedActions = chooseAICourtActions(state, player.id, planningOptions);
     for (const action of plannedActions) {
       if (state.courtActions?.playerConfirmed?.has(player.id)) break;
       const result = applyLegalAction(state, action, meta);

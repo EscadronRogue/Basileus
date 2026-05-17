@@ -35,6 +35,7 @@ import {
   listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
+import { summarizeOrders } from './evaluation.js';
 import {
   PLACEHOLDER_AI_OPPONENTS,
   loadOpponentByIdSync,
@@ -125,6 +126,17 @@ test('strategic court automation acts before confirming during finish mode', () 
   assert.ok(meta.decisionLog.lines.some((line) => line.includes(':ai:')));
 });
 
+test('strategic court automation is not stopped by the old small per-seat cap', () => {
+  const state = prepareInteractiveState({ playerCount: 3, seed: 21 });
+  const meta = createAIMeta(state, { humanPlayerIds: [] });
+
+  runAICourtAutomation(state, meta, { mode: 'finish' });
+  const realCourtActions = meta.decisionLog.lines
+    .filter((line) => line.includes(':ai:') && !line.endsWith(':confirm'));
+
+  assert.ok(realCourtActions.length > state.players.length * 4);
+});
+
 test('strategic AI orders submit legal scored orders', () => {
   const state = prepareInteractiveState({ seed: 23 });
   phaseOrders(state);
@@ -140,6 +152,33 @@ test('strategic AI orders submit legal scored orders', () => {
   assert.ok(state.allOrders[aiPlayerId]);
   assert.equal(orders.debug.decision.factors[0].label, 'projected score');
   assert.ok(orders.debug.decision.factors.some((factor) => factor.label === 'frontier'));
+});
+
+test('strategic AI commits movable troops to a threatened frontier', () => {
+  const state = prepareInteractiveState({ seed: 41 });
+  phaseOrders(state);
+
+  const aiPlayerId = 2;
+  const meta = createAIMeta(state, { humanPlayerIds: [1] });
+  const orders = buildAIOrders(state, meta, aiPlayerId);
+  const summary = summarizeOrders(state, aiPlayerId, orders);
+
+  assert.equal(summary.offices.some((entry) => entry.officeKey === 'ADMIRAL'), true);
+  assert.ok(summary.frontierTroops > 0);
+});
+
+test('strategic AI does not always dump movable troops into the frontier', () => {
+  const state = prepareInteractiveState({ seed: 21 });
+  phaseOrders(state);
+
+  const aiPlayerId = 2;
+  const meta = createAIMeta(state, { humanPlayerIds: [1] });
+  const orders = buildAIOrders(state, meta, aiPlayerId);
+  const summary = summarizeOrders(state, aiPlayerId, orders);
+
+  assert.equal(summary.offices.some((entry) => entry.officeKey === 'ADMIRAL'), true);
+  assert.ok(summary.capitalTroops > 0);
+  assert.ok(summary.frontierTroops < summary.totalTroops);
 });
 
 test('simultaneous strategic order planning ignores already submitted human orders', () => {

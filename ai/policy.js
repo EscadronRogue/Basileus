@@ -22,12 +22,14 @@ import {
   phaseResolution,
 } from '../engine/turnflow.js';
 import { getPlayer } from '../engine/state.js';
+import { isCapitalLockedOfficeKey } from '../engine/orders.js';
 
 const COURT_SEARCH_DEPTH = 3;
 const COURT_BRANCH_LIMIT = 8;
 const COURT_PREFILTER_LIMIT = 16;
 const COURT_MIN_GAIN = 0.75;
-const COURT_MAX_ACTIONS = 3;
+const COURT_ACTIVITY_MIN_SCORE = 9;
+const COURT_SAFETY_ACTION_LIMIT = 80;
 const ORDER_RNG_SAMPLES = [0, 0.5, 0.999999];
 
 function isDealAction(action) {
@@ -116,7 +118,7 @@ function courtActivityScore(state, action, playerId, context = {}) {
     if (targetPlayerId === playerId) return -50;
     return targetPlayerId === leaderId ? 34 : 14;
   }
-  if (payload.action === 'gift') return 6 + (theme ? themeValue(theme) * 0.2 : 0);
+  if (payload.action === 'gift') return 2 + (theme ? themeValue(theme) * 0.05 : 0);
   return -10;
 }
 
@@ -203,44 +205,63 @@ function actionAlreadyChosen(actions, candidate) {
   });
 }
 
-function fillCourtAgenda(state, playerId, actions, maxActions) {
+function fillCourtAgenda(state, playerId, actions, maxActions = Infinity) {
+  const hasActionLimit = Number.isFinite(maxActions);
+  const actionLimit = hasActionLimit
+    ? Math.max(0, Number(maxActions) || 0)
+    : COURT_SAFETY_ACTION_LIMIT;
   const planState = cloneAiState(state);
   const plan = [];
   for (const action of actions) {
+    if (plan.length >= actionLimit) break;
     const result = applyLegalAction(planState, action);
     if (result.ok) plan.push(action);
   }
 
-  const context = { leaderId: getLeadingOpponentId(planState, playerId) };
-  while (plan.length < maxActions) {
-    const candidate = getCourtCandidateActions(planState, playerId)
-      .filter((action) => !actionAlreadyChosen(plan, action))
-      .map((action) => ({
-        action,
-        score: courtActivityScore(planState, action, playerId, context),
+  while (plan.length < actionLimit) {
+    const baseScore = evaluateState(planState, playerId);
+    const context = {
+      leaderId: getLeadingOpponentId(planState, playerId),
+      baseScore,
+    };
+    const candidate = rankCourtActions(planState, playerId)
+      .filter((entry) => !actionAlreadyChosen(plan, entry.action))
+      .map((entry) => ({
+        ...entry,
+        activityScore: courtActivityScore(planState, entry.action, playerId, context),
+        expectedGain: entry.score - baseScore,
       }))
-      .filter((entry) => entry.score > 9)
+      .filter((entry) => (
+        entry.expectedGain > COURT_MIN_GAIN
+        || entry.activityScore > COURT_ACTIVITY_MIN_SCORE
+      ))
       .sort((left, right) => (
-        (right.score - left.score)
+        (right.expectedGain - left.expectedGain)
+        || (right.activityScore - left.activityScore)
         || left.action.id.localeCompare(right.action.id)
-      ))[0]?.action || null;
+      ))[0] || null;
 
     if (!candidate) break;
-    const result = applyLegalAction(planState, candidate);
+    const result = applyLegalAction(planState, candidate.action);
     if (!result.ok) break;
-    plan.push(candidate);
+    plan.push(candidate.action);
   }
 
   return plan;
 }
 
 export function chooseAICourtActions(state, playerId, options = {}) {
-  const maxActions = Math.max(0, Number(options.maxActions) || COURT_MAX_ACTIONS);
+  const maxActions = Number.isFinite(Number(options.maxActions))
+    ? Math.max(0, Number(options.maxActions))
+    : Infinity;
   const candidateCount = getCourtCandidateActions(state, playerId).length;
   const adaptiveDepth = candidateCount > 90 ? 2 : COURT_SEARCH_DEPTH;
   const depth = Math.max(1, Number(options.depth) || adaptiveDepth);
   const result = searchCourt(state, playerId, depth);
-  return fillCourtAgenda(state, playerId, result.actions.slice(0, maxActions), maxActions);
+  const startingActions = Number.isFinite(maxActions)
+    ? result.actions.slice(0, maxActions)
+    : result.actions;
+  return fillCourtAgenda(state, playerId, startingActions, maxActions);
 }
 
 function orderShapeScore(state, playerId, action, options = {}) {
@@ -249,20 +270,49 @@ function orderShapeScore(state, playerId, action, options = {}) {
   const leaderId = getLeadingOpponentId(state, playerId);
   const averageStrength = getAverageInvasionStrength(state);
   const fairShare = averageStrength > 0 ? averageStrength / Math.max(1, state.players.length) : 0;
-  const frontierFit = fairShare > 0
-    ? -Math.abs(summary.frontierTroops - fairShare) * 1.4
+  const projectedOpponent = Boolean(options.projectedOpponent);
+  const movableTroops = summary.offices
+    .filter((entry) => !isCapitalLockedOfficeKey(entry.officeKey))
+    .reduce((total, entry) => total + entry.troops, 0);
+  const targetMultiplier = projectedOpponent ? 1.15 : 0.78;
+  const targetFrontier = fairShare > 0
+    ? Math.min(movableTroops, Math.max(1, fairShare * targetMultiplier))
     : 0;
-  const frontierContribution = Math.min(summary.frontierTroops, fairShare || summary.frontierTroops) * 1.2;
+  const frontierShortfall = targetFrontier > 0
+    ? Math.max(0, targetFrontier - summary.frontierTroops)
+    : 0;
+  const frontierSurplus = targetFrontier > 0
+    ? Math.max(0, summary.frontierTroops - targetFrontier)
+    : 0;
+  const frontierReward = projectedOpponent ? 3 : 1.9;
+  const shortfallPenalty = projectedOpponent ? 3.4 : 1.35;
+  const surplusPenalty = projectedOpponent ? 0.2 : 1.25;
+  const frontierContribution = targetFrontier > 0
+    ? (Math.min(summary.frontierTroops, targetFrontier) * frontierReward)
+      - (frontierShortfall * shortfallPenalty)
+      - (frontierSurplus * surplusPenalty)
+    : 0;
+  const zeroFrontierPenalty = targetFrontier > 0 && summary.frontierTroops <= 0
+    ? (projectedOpponent ? -20 : -8)
+    : 0;
   let candidateScore = 0;
 
-  if (summary.candidate === playerId) candidateScore += summary.capitalTroops * 1.4 + 8;
-  else if (summary.candidate === state.basileusId) candidateScore += summary.capitalTroops * 0.25 + 3;
+  if (projectedOpponent) {
+    if (summary.candidate === playerId) candidateScore += summary.capitalTroops * 0.35 + 2;
+    else if (summary.candidate === state.basileusId) candidateScore += summary.capitalTroops * 0.15 + 1;
+    else candidateScore += summary.capitalTroops * 0.25;
+  } else if (summary.candidate === playerId) candidateScore += summary.capitalTroops * 1.85 + 8;
+  else if (summary.candidate === state.basileusId) candidateScore += summary.capitalTroops * 0.2 + 2;
   else candidateScore += summary.capitalTroops * 0.45;
 
-  if (summary.candidate === leaderId) candidateScore -= summary.capitalTroops * 1.2 + 8;
-  if (options.projectedOpponent && summary.candidate === playerId) candidateScore += 3;
+  if (summary.candidate === leaderId) {
+    candidateScore -= projectedOpponent
+      ? summary.capitalTroops * 0.8 + 4
+      : summary.capitalTroops * 1.35 + 9;
+  }
+  if (projectedOpponent && summary.candidate === playerId) candidateScore += 2;
 
-  return frontierFit + frontierContribution + candidateScore;
+  return frontierContribution + zeroFrontierPenalty + candidateScore;
 }
 
 function chooseProjectedOrderAction(state, playerId) {
@@ -346,7 +396,8 @@ export function chooseAIOrderAction(state, playerId) {
     }))
     .sort((left, right) => (
       (right.score - left.score)
-      || (right.summary.frontierTroops - left.summary.frontierTroops)
+      || (right.summary.capitalTroops - left.summary.capitalTroops)
+      || (left.summary.frontierTroops - right.summary.frontierTroops)
       || left.action.id.localeCompare(right.action.id)
     ));
   return scored[0] || null;
