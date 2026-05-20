@@ -73,10 +73,10 @@
           <h3>Provinces &amp; Money</h3>
           <p>Each province outside Constantinople has three original values: <strong>P</strong> (profit to a private owner), <strong>T</strong> (troops raised by its office), and <strong>C</strong> (church gold). Constantinople has no provincial economy.</p>
           <ul>
-            <li><strong>Buying land</strong> happens in Estates and costs at least 2&times;P. The owner collects P during Income.</li>
-            <li><strong>Troops</strong> come from T. A province with a Strategos sends its troops to that Strategos; otherwise they flow to the regional Domestic or Admiral, then the Basileus through the regional cascade.</li>
+            <li><strong>Buying land</strong> happens in Estates and costs twice the province's profit value. The owner collects that profit during Income.</li>
+            <li><strong>Troops</strong> come from the province's troop value. A province with a Strategos sends its troops to that Strategos; otherwise they flow to the regional Domestic or Admiral, then the Basileus through the regional cascade.</li>
             <li><strong>Church value</strong> goes directly to the province Bishop. Unassigned church value flows to the Patriarch.</li>
-            <li><strong>Church gift.</strong> Donating your estate sets P and T to 0, makes C equal to original P+T+C, transfers the province to the church, and seats you as Bishop.</li>
+            <li><strong>Church gift.</strong> Donating your estate converts all original profit, troop, and church value into church value, transfers the province to the church, and seats you as Bishop.</li>
             <li><strong>Occupation.</strong> Lost provinces suspend their owner and strategos, keep their bishop, and pay only original church value to that bishop until reconquered.</li>
           </ul>
 
@@ -108,14 +108,14 @@
 
           <h3>Debt &amp; Defenders</h3>
           <ul>
-            <li><strong>Best defender.</strong> When the empire can reconquer provinces, the top frontier contributors take turns choosing either to restore a province to the empire as free-citizen land or take 2&times;P gold. Gold leaves the farthest pending province along the invasion route occupied, keeping the frontier contiguous.</li>
+            <li><strong>Best defender.</strong> When the empire can reconquer provinces, the top frontier contributors take turns choosing either to restore a province to the empire as free-citizen land or take twice its profit value in gold. Gold leaves the farthest pending province along the invasion route occupied, keeping the frontier contiguous.</li>
           </ul>
         </div>
       </details>
 
       <div class="setup-field">
         <label>Number of Players</label>
-        <select id="setupPlayers">
+        <select id="setupPlayers" class="setup-select-source" aria-hidden="true" tabindex="-1">
           <option value="random">Random Player Count</option>
           <option value="3">3 Players</option>
           <option value="4" selected>4 Players</option>
@@ -125,7 +125,7 @@
 
       <div class="setup-field">
         <label>Game Length</label>
-        <select id="setupDeck">
+        <select id="setupDeck" class="setup-select-source" aria-hidden="true" tabindex="-1">
           <option value="random">Random Length</option>
           <option value="6">Short (6 invasions)</option>
           <option value="9" selected>Standard (9 invasions)</option>
@@ -135,7 +135,7 @@
 
       <div class="setup-field">
         <label>Play Mode</label>
-        <select id="setupMode">
+        <select id="setupMode" class="setup-select-source" aria-hidden="true" tabindex="-1">
           <option value="random">Random Mode</option>
           <option value="single" selected>Single Player vs AI</option>
           <option value="hotseat">Hotseat (all human)</option>
@@ -146,7 +146,7 @@
       <div id="singlePlayerFields">
         <div class="setup-field">
           <label>Your Seat</label>
-          <select id="setupSeat"></select>
+          <select id="setupSeat" class="setup-select-source" aria-hidden="true" tabindex="-1"></select>
         </div>
 
         <div class="setup-field">
@@ -178,8 +178,8 @@
         </div>
 
         <div id="multiplayerActions" class="setup-actions">
-          <button class="btn-start" id="btnCreateRoom" type="button">Create Room</button>
-          <button class="btn-secondary-link" id="btnJoinRoom" type="button">Join Room</button>
+          <button class="btn-primary" id="btnCreateRoom" type="button">Create Room</button>
+          <button class="btn-secondary" id="btnJoinRoom" type="button">Join Room</button>
         </div>
       </div>
 
@@ -190,7 +190,7 @@
 
       <div class="setup-actions" id="defaultSetupActions">
         <p id="setupStartError" class="setup-hint setup-error" role="alert"></p>
-        <button class="btn-start" id="btnStart">Begin</button>
+        <button class="btn-primary" id="btnStart">Begin</button>
       </div>
     </div>
   </div>

@@ -1,7 +1,8 @@
 import { buildFinalScores } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
-import { runIncome } from '../engine/cascade.js';
-import { getPlayer } from '../engine/state.js';
+import { readTroopEntry, runIncome } from '../engine/cascade.js';
+import { getOfficeHolder, getPlayer } from '../engine/state.js';
+import { formatGoldHtml, formatTroopsHtml } from '../engine/presentation.js';
 import {
   renderCourtPanel,
   renderEstatesPanel,
@@ -12,7 +13,7 @@ import {
   renderTitleRedistributionPanel,
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
-import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
+import { getPlayerStyleAttr, renderPlayerRoleName, renderTitleBadge } from './labels.js';
 import { renderIcon } from './icons.js';
 
 export function createDefaultUiState() {
@@ -237,31 +238,27 @@ export function renderEmpireFallenBanner(state) {
   banner.innerHTML = '<strong>Empire Fallen</strong><span>Constantinople has been sacked. The game ends now; the highest-scoring dynasty wins.</span>';
 }
 
-function formatCompactValue(value, mode = 'plain') {
-  const numeric = Number(value) || 0;
-  const normalized = Number.isInteger(numeric) ? numeric : Math.round(numeric * 100) / 100;
-  const magnitude = Math.abs(normalized);
-  if (mode === 'plus') return `+${magnitude}`;
-  if (mode === 'minus') return `-${magnitude}`;
-  return `${normalized}`;
-}
-
 export function getPlayerTabEconomy(player, administration, state = null) {
-  void state;
   const income = administration?.income?.[player.id] || 0;
+  const troops = Object.keys(state?.currentTroops || {}).reduce((total, officeKey) => {
+    if (getOfficeHolder(state, officeKey) !== player.id) return total;
+    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+    return total + entry.normal + entry.capitalLocked;
+  }, 0);
   return {
-    reserve: formatCompactValue(player.gold),
-    income: formatCompactValue(income, 'plus'),
+    reserve: Number(player.gold) || 0,
+    income: Number(income) || 0,
+    troops,
   };
 }
 
 export function renderPlayerTabFinance(economy) {
+  const incomeTone = Number(economy.income) < 0 ? 'upkeep' : 'income';
   return `
-    <span class="tab-finance" aria-label="Reserve and income" title="Gold reserve and next income">
-      <span class="tab-finance-icon" aria-hidden="true">${renderIcon('gold')}</span>
-      <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
-      <span class="tab-finance-separator" aria-hidden="true">·</span>
-      <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
+    <span class="tab-finance" aria-label="Reserve, income, and troops" title="Gold reserve, next income, and office troops">
+      ${formatGoldHtml(economy.reserve, { displayValue: economy.reserve })}
+      ${formatGoldHtml(economy.income, { signed: true, tone: incomeTone, displayValue: economy.income })}
+      ${formatTroopsHtml(economy.troops, { displayValue: economy.troops })}
     </span>
   `;
 }
@@ -276,7 +273,9 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
     const economy = getPlayerTabEconomy(player, administration, state);
     const badges = typeof getBadges === 'function' ? getBadges(player) : [];
     const badgeHtml = badges.filter(Boolean).join('');
-    const crown = player.id === state.basileusId ? '<span class="tab-crown" title="Basileus">B</span>' : '';
+    const basileusBadge = player.id === state.basileusId
+      ? renderTitleBadge(state, 'BASILEUS', { holderId: player.id, compact: true })
+      : '';
     return `
       <button class="player-tab ${player.id === activePlayerId ? 'active' : ''}"
         data-player="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
@@ -284,7 +283,7 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
           <span class="tab-name">${player.dynasty}</span>
           ${renderPlayerTabFinance(economy)}
         </span>
-        <span class="tab-flags">${badgeHtml}${crown}</span>
+        <span class="tab-flags">${badgeHtml}${basileusBadge}</span>
       </button>
     `;
   }).join('');
@@ -338,7 +337,7 @@ function renderNotificationCard(notification, uiState, scopeKey) {
       </div>
       <div class="notification-meta">
         <span>${getNotificationActionLabel(notification.action)}</span>
-        ${read ? '' : `<button type="button" class="btn-secondary-link notification-read-btn" data-notification-scope="${scopeKey}" data-notification-read="${notification.id}">Mark read</button>`}
+        ${read ? '' : `<button type="button" class="btn-secondary notification-read-btn" data-notification-scope="${scopeKey}" data-notification-read="${notification.id}">Mark read</button>`}
       </div>
     </div>
   `;
@@ -424,7 +423,7 @@ export function renderScoringHtml(state, options = {}) {
   const scores = buildScores(state);
   const topScore = scores[0]?.points ?? 0;
   const newGameButton = options.includeNewGame
-    ? '<button class="btn-new-game" type="button" onclick="location.reload()">New Game</button>'
+    ? '<button class="btn-primary" type="button" onclick="location.reload()">New Game</button>'
     : '';
   const actionButtons = [newGameButton].filter(Boolean).join('');
 
@@ -440,7 +439,7 @@ export function renderScoringHtml(state, options = {}) {
           const isWinner = score.points === topScore && topScore > 0;
           return `
           <div class="score-row ${isWinner ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
-            <span class="score-rank">${rank}${isWinner ? '★' : ''}</span>
+            <span class="score-rank" aria-label="${isWinner ? 'Winner, rank' : 'Rank'} ${rank}">${rank}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
             <span class="score-breakdown">
               ${score.categories.map((category) => {

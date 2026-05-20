@@ -415,9 +415,9 @@ body::before {
 .player-tab,
 .player-tab .tab-name,
 .player-tab .tab-finance,
-.player-tab .tab-finance-value,
 .player-tab .tab-you,
-.player-tab .tab-crown { color: #ffffff; text-shadow: inherit; }
+.player-tab .title-token,
+.player-tab .value { color: #ffffff; text-shadow: inherit; }
 
 .tab-body {
   min-width: 0;
@@ -439,7 +439,7 @@ body::before {
 .tab-finance {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 7px;
   min-width: 0;
   max-width: 100%;
   white-space: nowrap;
@@ -451,15 +451,11 @@ body::before {
   font-weight: 700;
 }
 
-.tab-finance-value,
-.tab-finance-separator {
-  display: inline-block;
+.tab-finance .value,
+.tab-finance .icon { color: #ffffff; }
+.tab-finance .value {
+  font-size: 12px;
   min-width: 0;
-}
-
-.tab-finance-separator {
-  opacity: 0.72;
-  font-weight: 500;
 }
 
 .tab-you {
@@ -472,7 +468,12 @@ body::before {
   letter-spacing: 1px;
   text-transform: uppercase;
 }
-.tab-crown { font-size: 14px; }
+.player-tab .title-token {
+  border-width: 2px;
+  padding: 2px 6px 3px;
+  font-size: 9px;
+  line-height: 1.1;
+}
 
 .tab-flags {
   display: flex;
@@ -802,18 +803,6 @@ body::before {
 .player-dashboard .sidebar-panel-title,
 .player-dashboard .sidebar-panel-kicker,
 .player-dashboard .sidebar-panel-subtitle,
-.player-dashboard .dynasty-name,
-.player-dashboard .dynasty-title,
-.player-dashboard .dashboard-list-title,
-.player-dashboard .dashboard-list-note,
-.player-dashboard .dashboard-list-value,
-.player-dashboard .dashboard-tag,
-.player-dashboard .gold-display,
-.player-dashboard .gold-amount,
-.player-dashboard .gold-projection,
-.player-dashboard .stat-label,
-.player-dashboard .stat-value,
-.player-dashboard .stat-icon,
 .player-dashboard .player-role-name {
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
@@ -821,27 +810,9 @@ body::before {
 
 /* Display type for headings to match the cartouche grammar. */
 .player-dashboard .sidebar-panel-title,
-.player-dashboard .sidebar-panel-kicker,
-.player-dashboard .dynasty-name,
-.player-dashboard .stat-label,
-.player-dashboard .stat-icon { font-family: var(--font-display); letter-spacing: 0.4px; }
+.player-dashboard .sidebar-panel-kicker { font-family: var(--font-display); letter-spacing: 0.4px; }
 
-.player-dashboard .stat {
-  background: rgba(20,8,0,0.18);
-  border: 1px solid rgba(240,200,90,0.32);
-  border-radius: 2px;
-}
-
-.player-dashboard .stat-button:hover { filter: brightness(1.06); }
-
-.player-dashboard .stat-button.active {
-  background: rgba(20,8,0,0.32);
-  border-color: rgba(240,200,90,0.65);
-  box-shadow: inset 0 0 0 1px rgba(240,200,90,0.45);
-}
-
-.player-dashboard .sidebar-panel-badge,
-.player-dashboard .dashboard-tag {
+.player-dashboard .sidebar-panel-badge {
   background: rgba(20,8,0,0.28);
   color: inherit;
   text-shadow: inherit;
@@ -884,255 +855,8 @@ body::before {
   border-top: 1px solid rgba(240,200,90,0.28);
 }
 
-.dynasty-crest {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--dynasty-color, var(--player-color, var(--parch-3)));
-  background: color-mix(in srgb, var(--dynasty-color, var(--player-color)) 72%, #1a1008 28%);
-  border: 2px solid rgba(255,255,255,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 18px;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-  flex-shrink: 0;
-}
-
-.dashboard-header {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-3);
-}
-
-.dynasty-info { flex: 1; min-width: 0; }
-
-.dynasty-name {
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-.dynasty-title {
-  font-family: var(--font-body);
-  font-size: 12px;
-  opacity: 0.8;
-  margin-top: 1px;
-}
-
-.gold-display {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-}
-
-.gold-amount {
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.gold-projection {
-  font-size: 10px;
-  opacity: 0.75;
-  letter-spacing: 0.2px;
-}
-
-.gold-icon { font-size: 14px; }
-
-.dashboard-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
-}
-
-.stat {
-  flex: 1;
-  padding: 10px var(--sp-3);
-  border-radius: var(--r-sm);
-  text-align: center;
-  background: rgba(0,0,0,0.1);
-  border: 1px solid rgba(255,255,255,0.12);
-}
-
-.stat-button {
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  transition: all 0.15s;
-}
-
-.stat-button:hover { filter: brightness(1.08); }
-
-.stat-button.active {
-  background: rgba(255,255,255,0.18);
-  border-color: rgba(255,255,255,0.35);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
-}
-
-.stat-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: rgba(0,0,0,0.15);
-  font-size: 10px;
-  letter-spacing: 1px;
-  opacity: 0.8;
-}
-
-.stat-label {
-  display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  opacity: 0.75;
-}
-
-.stat-value {
-  display: block;
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 600;
-}
-
 /* ── Fold Sections ─────────────────────────────────────────────────── */
-.fold-section {
-  border: 1px solid var(--parch-2);
-  border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.7);
-  overflow: hidden;
-  box-shadow: var(--shadow-card);
-}
-
-.fold-section + .fold-section { margin-top: var(--sp-3); }
-.fold-section.focused { border-color: var(--parch-3); }
-
-.fold-summary {
-  list-style: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  min-height: var(--touch-target);
-  padding: 9px 12px;
-  cursor: pointer;
-  background: rgba(240,228,195,0.4);
-  transition: background 0.12s;
-}
-.fold-summary:hover { background: rgba(240,228,195,0.7); }
-.fold-summary::-webkit-details-marker { display: none; }
-
-.fold-summary-title {
-  font-family: var(--font-display);
-  font-size: 12px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--gold-1);
-}
-
-.fold-summary-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.fold-summary-badge,
-.fold-summary-note {
-  font-size: 12px;
-  color: var(--umber-3);
-}
-
-.fold-body {
-  padding: var(--sp-2) var(--sp-3) var(--sp-3);
-  border-top: 1px solid rgba(168,116,32,0.15);
-}
-
 /* ── Dashboard Lists ─────────────────────────────────────────────── */
-.dashboard-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.dashboard-list.compact { margin-top: var(--sp-2); }
-
-.dashboard-list-row,
-.dashboard-opinion-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  padding: 9px 12px;
-  border-radius: var(--r-md);
-  background: rgba(255,252,240,0.85);
-  border: 1px solid rgba(168,116,32,0.14);
-}
-
-.dashboard-list-title {
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--umber-1);
-  font-weight: 500;
-}
-
-.dashboard-list-note {
-  font-size: 11px;
-  color: var(--umber-2);
-  margin-top: 2px;
-  line-height: 1.4;
-}
-
-.dashboard-list-value {
-  font-family: var(--font-display);
-  font-size: 11px;
-  color: var(--umber-1);
-  text-align: right;
-  white-space: nowrap;
-  overflow-wrap: anywhere;
-}
-
-.dashboard-empty {
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--umber-3);
-  font-style: italic;
-  padding: var(--sp-2) 0;
-}
-
-.dashboard-tag {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(168,116,32,0.12);
-  border: 1px solid rgba(168,116,32,0.2);
-  font-family: var(--font-display);
-  font-size: 9px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--gold-2);
-}
-
-.dashboard-tag.loyal, .dashboard-tag.warm {
-  background: rgba(58,107,40,0.12);
-  border-color: rgba(58,107,40,0.22);
-  color: var(--win);
-}
-.dashboard-tag.cold, .dashboard-tag.hostile {
-  background: rgba(160,48,48,0.10);
-  border-color: rgba(160,48,48,0.20);
-  color: var(--crimson-1);
-}
-
 .deal-thread-list,
 .deal-clause-editor-list {
   display: flex;
@@ -1300,8 +1024,8 @@ body::before {
   line-height: 1.45;
 }
 
-.deal-composer-head .btn-secondary-link,
-.deal-clause-head .btn-secondary-link {
+.deal-composer-head .btn-secondary,
+.deal-clause-head .btn-secondary {
   width: auto;
   min-height: 0;
   padding: 7px 10px;
@@ -1317,7 +1041,7 @@ body::before {
 .deal-thread-actions .appt-btn,
 .deal-thread-actions .btn-dismiss,
 .deal-thread-actions .btn-recruit,
-.deal-thread-actions .btn-secondary-link {
+.deal-thread-actions .btn-secondary {
   flex: 1 1 150px;
 }
 
@@ -1470,44 +1194,6 @@ body::before {
 }
 
 .dashboard-opinion-debt { font-size: 11px; color: var(--umber-2); }
-
-.dashboard-opinion-row.human-target {
-  border-color: var(--player-color, var(--parch-3));
-  border-color: color-mix(in srgb, var(--player-color, var(--parch-3)) 55%, var(--parch-2) 45%);
-}
-
-/* Finance cards */
-.finance-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 158px), 1fr));
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-2);
-}
-
-.finance-card {
-  padding: 9px 10px;
-  border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.9);
-  border: 1px solid var(--parch-2);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  box-shadow: var(--shadow-card);
-}
-
-.finance-label {
-  font-family: var(--font-display);
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--umber-3);
-}
-
-.finance-card strong {
-  font-family: var(--font-display);
-  font-size: 16px;
-  color: var(--umber-1);
-}
 
 /* ── Phase Headers ─────────────────────────────────────────────────── */
 .phase-header {
@@ -2013,113 +1699,11 @@ body::before {
 }
 .merc-total .over-budget { color: var(--crimson-1); font-weight: 600; }
 
-/* Candidate buttons — share the cartouche grammar at row scale. */
-.candidate-grid { display: flex; flex-direction: column; gap: var(--sp-2); }
-
-.candidate-btn {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  padding: 10px 14px 11px;
-  background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(
-      45deg,
-      rgba(255,250,225,0.07) 0 1px,
-      transparent 1px 5px
-    ),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
-  border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
-  border-radius: 3px;
-  color: #fceec3;
-  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
-  cursor: pointer;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.4px;
-  transition: filter 0.12s;
-  text-align: left;
-  box-shadow:
-    inset 0 0 0 1px rgba(240,200,90,0.45),
-    inset 0 1px 0 rgba(255,250,228,0.18),
-    inset 0 -1px 0 rgba(20,8,0,0.22),
-    var(--shadow-card);
-}
-.candidate-btn:hover { filter: brightness(1.06); }
-.candidate-btn.selected {
-  border-color: var(--role-outline-color, var(--role-color, var(--gold-1)));
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.75), 0 0 0 4px var(--role-outline-color, var(--role-color, var(--gold-1)));
-}
-.candidate-btn, .candidate-btn * { color: inherit; text-shadow: inherit; }
-
-.candidate-crest {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 11px;
-  color: #fff;
-  flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-}
-
-.current-basileus-tag {
-  margin-left: auto;
-  white-space: normal;
-  text-align: right;
-  font-size: 9px;
-  color: var(--gold-2);
-  font-family: var(--font-display);
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
 /* ── Primary Action Buttons ──────────────────────────────────────── */
 .court-actions,
 .orders-actions,
 .resolution-actions {
   padding: var(--main-panel-pad);
-}
-
-.btn-confirm,
-.btn-lock-orders,
-.btn-continue,
-.btn-new-game {
-  width: 100%;
-  min-height: var(--touch-target);
-  padding: 11px;
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  border: 1px solid rgba(168,116,32,0.55);
-  border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(200,146,30,0.20) 0%, rgba(168,116,32,0.10) 100%);
-  color: var(--gold-1);
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: var(--shadow-inset), var(--shadow-card);
-}
-.btn-confirm:hover,
-.btn-lock-orders:hover,
-.btn-continue:hover,
-.btn-new-game:hover {
-  background: linear-gradient(180deg, rgba(200,146,30,0.30) 0%, rgba(168,116,32,0.16) 100%);
-  border-color: var(--gold-1);
-  box-shadow: var(--shadow-inset), 0 4px 18px rgba(168,116,32,0.18);
-}
-.btn-confirm.disabled,
-.btn-confirm:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  pointer-events: none;
 }
 
 .scoring-actions {
@@ -2484,31 +2068,6 @@ body::before {
   color: var(--umber-1);
 }
 .theme-values { color: var(--umber-3); margin-left: 3px; }
-
-/* Dashboard province */
-.dashboard-province {
-  margin-top: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--parch-0);
-  border: 1px solid var(--parch-2);
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-card);
-}
-.dashboard-province-head {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: 4px;
-}
-/* Province name + region are encoded by the cartouche itself
-   (outline = region, background = owner). No wrapper styling needed. */
-.dashboard-province-meta,
-.dashboard-province-detail {
-  font-size: 12px;
-  color: var(--umber-2);
-  line-height: 1.4;
-}
-.dashboard-province-detail + .dashboard-province-detail { margin-top: 2px; }
 
 /* ── Map SVG Styles ──────────────────────────────────────────────── */
 .adjacency-line {
@@ -2901,7 +2460,8 @@ body::before {
    so they read against the dynasty fill. The text already inherits
    #ffffff in these contexts via existing rules. */
 .player-tab .icon,
-.candidate-btn .icon,
+.candidate-row .icon,
+.player-choice-btn .icon,
 .player-dashboard .icon,
 .player-role-name .icon,
 .province-token .icon,
@@ -2945,14 +2505,6 @@ body::before {
 .value.income { color: var(--win); }
 .value.upkeep { color: var(--crimson-1); }
 .value.muted  { color: var(--umber-3); }
-
-/* Tab-finance run: one coin icon prefix + three tabular values. */
-.tab-finance-icon {
-  display: inline-flex;
-  align-items: center;
-  margin-right: 1px;
-}
-.tab-finance-icon .icon { font-size: 12px; color: #ffffff; opacity: 0.94; }
 
 /* Balance-of-power pie title takes the category icon */
 .balance-pie-icon { font-size: 13px; margin-right: 5px; }
@@ -3008,91 +2560,9 @@ body::before {
 }
 
 /* ── Choice grids (player picker / province picker) ─────────────────── */
-.player-choice-grid,
-.province-choice-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-
-.player-choice-btn,
-.province-choice-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: 2px;
-  border: 0;
-  background: transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: filter 0.12s, transform 0.12s;
-}
-
-.player-choice-btn:hover,
-.province-choice-btn:hover { filter: brightness(1.06); }
-
-.player-choice-btn.selected .player-role-name,
-.province-choice-btn.selected .province-token {
-  box-shadow:
-    inset 0 0 0 1px rgba(240,200,90,0.70),
-    inset 0 1px 0 rgba(255,250,228,0.20),
-    inset 0 -1px 0 rgba(20,8,0,0.24),
-    0 0 0 1.5px var(--gold-4),
-    0 0 0 4px var(--cart-border, var(--gold-1)),
-    0 1px 4px rgba(46,30,15,0.24);
-}
-
-.province-note { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-
-.province-choice-grid [data-role="theme-choice-buttons"] {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-}
-
 /* Revocation choice grid — same cartouche pattern as player/province
    choice grids. Each button wraps one or two cartouches that describe
    what the revocation will affect. */
-.revocation-shell { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: 6px; }
-.revocation-group { display: flex; flex-direction: column; gap: 4px; }
-.revocation-group-label {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--umber-3);
-}
-.revocation-choice-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-.revocation-choice-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px;
-  border: 0;
-  background: transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: filter 0.12s;
-}
-.revocation-choice-btn:hover { filter: brightness(1.06); }
-.revocation-choice-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
-.revocation-choice-btn.selected .player-role-name,
-.revocation-choice-btn.selected .province-token,
-.revocation-choice-btn.selected .title-token {
-  box-shadow:
-    inset 0 0 0 1px rgba(240,200,90,0.70),
-    inset 0 1px 0 rgba(255,250,228,0.20),
-    inset 0 -1px 0 rgba(20,8,0,0.24),
-    0 0 0 1.5px var(--gold-4),
-    0 0 0 4px var(--cart-border, var(--gold-1)),
-    0 1px 4px rgba(46,30,15,0.24);
-}
-
 /* ── Nested-cartouche flattening ─────────────────────────────────────
    When a player cartouche appears INSIDE a container that already
    carries the same player+role visual language (the dashboard panel
@@ -3100,10 +2570,11 @@ body::before {
    chip dissolves into plain inline text. This avoids the chip-in-chip
    double-bordered look while preserving identical typography. */
 .player-tab .player-role-name,
-.candidate-btn .player-role-name,
+.candidate-row .player-role-name,
 .score-row .player-role-name,
 .player-dashboard .sidebar-panel-head .player-role-name,
-.player-dashboard .sidebar-panel-badge .player-role-name {
+.player-dashboard .sidebar-panel-badge .player-role-name,
+.balance-panel .sidebar-panel-badge .player-role-name {
   background: none;
   border: 0;
   padding: 0;
@@ -3345,9 +2816,114 @@ body::before {
 .rules-card-body li { margin: 2px 0; }
 .rules-card-body strong { color: var(--umber-0); }
 
+.setup-select-source,
+.room-config-source {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.setup-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.setup-choice-btn,
+.setup-ai-opponent-btn {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 3px solid var(--empire-border);
+  border-radius: 4px;
+  background-color: var(--parch-1);
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.30) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.45) 0%, rgba(168,116,32,0.12) 100%);
+  color: var(--umber-1);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(240,200,90,0.38);
+}
+.setup-choice-btn:hover,
+.setup-ai-opponent-btn:hover { filter: brightness(1.04); }
+.setup-choice-btn.selected,
+.setup-ai-opponent-btn.selected {
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  background-color: var(--player-color, var(--gold-1));
+  border-color: var(--role-outline-color, var(--gold-1));
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.70),
+    0 0 0 2px rgba(240,200,90,0.34);
+}
+
 .setup-ai-roster { display: grid; gap: var(--sp-2); }
-.setup-ai-seat { display: grid; gap: 4px; }
-.setup-ai-seat span { font-size: 12px; color: var(--umber-2); }
+.setup-ai-seat {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 3px solid var(--role-outline-color, var(--empire-border));
+  border-radius: 4px;
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  box-shadow: inset 0 0 0 1px rgba(240,200,90,0.45);
+}
+.setup-ai-seat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  color: var(--umber-2);
+  text-shadow: none;
+  background: rgba(255,252,240,0.72);
+  border: 1px solid var(--parch-2);
+}
+.setup-ai-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.setup-ai-copy strong {
+  font-family: var(--font-display);
+  font-size: 12px;
+}
+.setup-ai-copy span {
+  font-size: 12px;
+  opacity: 0.78;
+}
+.setup-ai-choice-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.setup-ai-seat .choice-crest,
+.multiplayer-seat .choice-crest {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(20,8,0,0.30);
+  border: 1px solid rgba(240,200,90,0.55);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+}
 
 .setup-actions {
   display: flex;
@@ -3355,61 +2931,11 @@ body::before {
   gap: var(--sp-2);
   margin-top: var(--sp-5);
 }
-.setup-actions .btn-start { margin-top: 0; }
-
-/* Primary CTA — the "Begin" button */
-.btn-start {
+.setup-actions .btn-primary,
+.setup-actions .btn-secondary {
   width: 100%;
-  min-height: var(--touch-target);
-  padding: 13px;
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 3.5px;
-  text-transform: uppercase;
-  border: 1px solid rgba(168,116,32,0.65);
-  border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(200,146,30,0.22) 0%, rgba(168,116,32,0.10) 100%);
-  color: var(--gold-0);
-  cursor: pointer;
-  transition: all 0.25s;
-  box-shadow:
-    inset 0 1px 0 rgba(255,248,220,0.55),
-    0 6px 24px rgba(168,116,32,0.12);
+  margin-top: 0;
 }
-.btn-start:hover {
-  background: linear-gradient(180deg, rgba(200,146,30,0.32) 0%, rgba(168,116,32,0.18) 100%);
-  border-color: var(--gold-0);
-  box-shadow:
-    inset 0 1px 0 rgba(255,248,220,0.65),
-    0 8px 28px rgba(168,116,32,0.20);
-}
-.btn-start:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
-
-.btn-secondary-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: var(--touch-target);
-  padding: 10px 12px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--parch-2);
-  background: rgba(168,116,32,0.04);
-  color: var(--umber-2);
-  text-decoration: none;
-  font-family: var(--font-display);
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  transition: all 0.2s;
-}
-.btn-secondary-link:hover {
-  border-color: var(--parch-3);
-  color: var(--gold-1);
-  background: rgba(168,116,32,0.08);
-}
-.btn-secondary-link:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Multiplayer ─────────────────────────────────────────────────── */
 .multiplayer-lobby-card { width: min(720px, calc(100vw - 40px)); }
@@ -3434,20 +2960,42 @@ body::before {
 .multiplayer-seat-list { display: flex; flex-direction: column; gap: var(--sp-2); }
 
 .multiplayer-seat {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--sp-3);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
   align-items: center;
   padding: var(--sp-3);
-  border-radius: var(--r-md);
-  border: 1px solid var(--parch-2);
-  background: rgba(255,252,240,0.75);
+  border-radius: 4px;
+  border: 3px solid var(--role-outline-color, var(--empire-border));
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  box-shadow: inset 0 0 0 1px rgba(240,200,90,0.45);
 }
 .multiplayer-seat.is-you {
-  border-color: rgba(58,107,40,0.35);
-  background: rgba(58,107,40,0.04);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.75),
+    0 0 0 2px rgba(240,200,90,0.35);
 }
-.multiplayer-seat-copy { display: flex; flex-direction: column; gap: 4px; }
+.multiplayer-seat-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.multiplayer-seat-copy strong {
+  font-family: var(--font-display);
+  color: #ffffff;
+}
+.multiplayer-seat-copy .setup-hint,
+.multiplayer-seat .setup-hint {
+  color: rgba(255,255,255,0.72);
+  text-shadow: inherit;
+  margin: 0;
+}
 .multiplayer-seat-actions {
   display: flex;
   align-items: center;
@@ -3456,23 +3004,7 @@ body::before {
   justify-content: flex-end;
 }
 
-.btn-seat-kind, #btnLeaveRoom {
-  border: 1px solid rgba(168,116,32,0.3);
-  background: rgba(168,116,32,0.08);
-  color: var(--gold-1);
-  cursor: pointer;
-  padding: 5px 12px;
-  border-radius: var(--r-sm);
-  font-family: var(--font-display);
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  transition: all 0.12s;
-}
-.btn-seat-kind:hover, #btnLeaveRoom:hover {
-  background: rgba(168,116,32,0.15);
-  border-color: var(--gold-1);
-}
+.multiplayer-ai-choice-row { justify-content: flex-end; }
 
 .multiplayer-banner {
   margin-bottom: var(--sp-3);
@@ -3517,13 +3049,10 @@ body::before {
 }
 
 .sidebar-panel-badge,
-.dashboard-list-value,
-.score-breakdown,
-.current-basileus-tag {
+.score-breakdown {
   max-width: 48%;
 }
 
-.fold-body,
 .court-section,
 .orders-section,
 .resolution-section,
@@ -3534,25 +3063,14 @@ body::before {
   min-width: 0;
 }
 
-.toggle-btn,
-.merc-btn,
 .btn-recruit,
 .btn-dismiss,
-.btn-seat-kind,
 #btnLeaveRoom,
 .inline-button {
   min-height: 36px;
 }
 
-.market-item,
-.gift-item,
-.candidate-btn,
-.deploy-row,
-.merc-row,
 .history-entry-card,
-.dashboard-list-row,
-.dashboard-opinion-row,
-.finance-card,
 .theme-chip,
 .score-row {
   min-width: 0;
@@ -3597,14 +3115,8 @@ textarea {
 .action-shell,
 .history-panel,
 .player-dashboard,
-.market-item,
-.gift-item,
-.candidate-btn,
-.deploy-row,
-.merc-row,
-.finance-card,
-.dashboard-list-row,
-.dashboard-opinion-row {
+.candidate-row,
+.multiplayer-seat {
   font-size: 1rem;
   line-height: 1.5;
 }
@@ -3629,57 +3141,27 @@ textarea {
 .sidebar-panel-badge { font-size: 12px; }
 
 .section-hint,
-.dashboard-list-note,
-.dashboard-list-value,
-.dashboard-province-detail,
-.dashboard-province-meta,
-.dashboard-opinion-debt,
-.theme-detail,
-.market-detail,
-.gift-detail,
-.deploy-note,
-.merc-note,
-.history-entry-body,
-.history-entry-meta,
-.fold-summary-note,
+.history-entry-summary,
 .war-estimate,
 .section-empty {
   font-size: 0.98rem;
   line-height: 1.55;
 }
 
-.dashboard-list-title,
-.market-title,
-.gift-title,
-.theme-title,
-.appt-label,
-.deploy-title,
-.merc-title,
-.history-entry-title,
-.fold-title,
 .candidate-name {
   font-size: 1.05rem;
   line-height: 1.35;
 }
 
-.stat-label,
-.dashboard-tag,
-.current-basileus-tag,
-.finance-label,
 .score-label,
 .vote-breakdown,
 .badge-detail {
   font-size: 0.82rem;
 }
 
-.btn-confirm,
-.btn-lock-orders,
-.btn-continue,
-.btn-new-game,
-button.deploy-toggle,
-button.market-buy,
-button.gift-button,
-button.merc-button {
+.btn-primary,
+.btn-secondary,
+.btn-danger {
   font-size: 0.9rem;
 }
 
@@ -3805,33 +3287,18 @@ button.merc-button {
   }
 
   .sidebar-panel-badge { white-space: normal; text-align: right; }
-  .fold-summary { align-items: flex-start; flex-wrap: wrap; }
-  .fold-summary-meta { flex-wrap: wrap; justify-content: flex-end; }
-
-  .dashboard-header,
   .army-row,
   .score-row,
   .multiplayer-seat {
     align-items: stretch;
   }
 
-  .dashboard-list-row,
-  .dashboard-opinion-row,
   .army-row,
   .merc-row,
   .score-row {
     flex-wrap: wrap;
   }
 
-  .dashboard-list-row,
-  .dashboard-opinion-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px 10px;
-  }
-
-  .dashboard-list-value,
-  .dashboard-opinion-meta,
   .score-breakdown,
   .score-total {
     text-align: right;
@@ -3839,16 +3306,14 @@ button.merc-button {
 
   .theme-market,
   .gift-options,
-  .appt-grid,
-  .finance-grid {
+  .appt-grid {
     grid-template-columns: 1fr;
   }
 
   .market-item,
   .gift-item,
   .deploy-row,
-  .merc-row,
-  .candidate-btn {
+  .merc-row {
     padding: 10px 12px;
   }
 
@@ -3902,9 +3367,9 @@ button.merc-button {
     padding: 24px 18px;
   }
   .setup-card h1 { font-size: 25px; letter-spacing: 4px; }
-  .setup-field select,
   .setup-field input,
-  .setup-ai-seat select {
+  .setup-choice-btn,
+  .setup-ai-opponent-btn {
     min-height: var(--touch-target);
     font-size: 16px;
   }
@@ -3916,12 +3381,6 @@ button.merc-button {
   #roundDisplay { margin-right: auto; }
   .phase-badge { padding: 4px 8px; }
   .connection-badge { padding: 4px 8px; }
-  .dashboard-header { flex-wrap: wrap; }
-  .gold-display { align-items: flex-start; width: 100%; }
-  .dashboard-list-row,
-  .dashboard-opinion-row { grid-template-columns: 1fr; }
-  .dashboard-list-value,
-  .dashboard-opinion-meta,
   .score-breakdown,
   .score-total { text-align: left; }
   .score-row { display: grid; grid-template-columns: auto minmax(0, 1fr); }
@@ -3943,29 +3402,10 @@ button.merc-button {
   }
 
   .sidebar-panel-badge,
-  .dashboard-list-value,
-  .score-breakdown,
-  .current-basileus-tag {
+  .score-breakdown {
     max-width: 100%;
   }
 
-  .deploy-row {
-    grid-template-columns: 1fr;
-  }
-
-  .merc-controls,
-  .deploy-toggle {
-    justify-content: stretch;
-  }
-
-  .merc-btn,
-  .merc-count {
-    flex: 1;
-  }
-
-  .market-cost {
-    margin-left: 0;
-  }
 }
 
 /* ── Scrollbar (global) ──────────────────────────────────────────── */
@@ -3978,50 +3418,11 @@ button.merc-button {
 .panel-collapsed .sidebar-panel-body { display: none; }
 
 #multiplayerActions.setup-actions { flex-direction: row; flex-wrap: wrap; }
-#multiplayerActions .btn-start { flex: 1; min-width: 120px; }
+#multiplayerActions .btn-primary,
+#multiplayerActions .btn-secondary { flex: 1; min-width: 120px; }
 
 #setupMultiplayerError { color: var(--crimson-1); font-style: normal; }
 .setup-error { color: var(--crimson-1); font-style: normal; width: 100%; }
-
-/* Fold sections inside a dynasty-colored dashboard should blend with the role color */
-.player-dashboard .fold-section {
-  background: rgba(0,0,0,0.12);
-  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.16)));
-}
-.player-dashboard .fold-summary {
-  background: rgba(0,0,0,0.10);
-}
-.player-dashboard .fold-summary:hover {
-  background: rgba(0,0,0,0.18);
-}
-.player-dashboard .fold-body {
-  border-top-color: rgba(255,255,255,0.12);
-}
-.player-dashboard .fold-summary-title { color: rgba(255,255,255,0.85); }
-.player-dashboard .fold-summary-badge,
-.player-dashboard .fold-summary-note { color: rgba(255,255,255,0.6); }
-.player-dashboard .finance-card,
-.player-dashboard .fold-section .finance-card {
-  background: rgba(255,255,255,0.14) !important;
-  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.14))) !important;
-}
-.player-dashboard .finance-label,
-.player-dashboard .fold-section .finance-label {
-  color: rgba(255,255,255,0.6) !important;
-}
-.player-dashboard .finance-card strong,
-.player-dashboard .fold-section .finance-card strong {
-  color: rgba(255,255,255,0.95) !important;
-}
-.player-dashboard .dashboard-list-row,
-.player-dashboard .dashboard-opinion-row {
-  background: rgba(255,255,255,0.12);
-  border-color: var(--role-outline-color, var(--role-color, rgba(255,255,255,0.12)));
-}
-.player-dashboard .dashboard-list-title { color: rgba(255,255,255,0.95); }
-.player-dashboard .dashboard-list-note { color: rgba(255,255,255,0.65); }
-.player-dashboard .dashboard-list-value { color: rgba(255,255,255,0.95); }
-.player-dashboard .dashboard-empty { color: rgba(255,255,255,0.55); }
 
 /* Sidebar section divider — thin gold rule */
 .sidebar-section-divider {
@@ -4031,37 +3432,12 @@ button.merc-button {
   opacity: 0.6;
 }
 
-/* Score row winner crown */
-.score-row.winner .score-rank::after {
-  content: ' ☩';
-  font-size: 14px;
-  color: var(--gold-1);
-}
-
-/* Tighter label sizing for very small stat icons */
-.stat-icon { font-size: 9px; }
 
 /* Action panel gets a slight warm tint header */
 #actionPanel > .court-panel > .phase-header,
 #actionPanel > .orders-panel > .phase-header,
 #actionPanel > .resolution-panel > .phase-header {
   background: linear-gradient(180deg, rgba(240,228,195,0.7) 0%, transparent 100%);
-}
-
-/* Ensure setup-card ai roster selects match overall style */
-.setup-ai-seat select {
-  width: 100%;
-  padding: 7px 10px;
-  background: rgba(255,252,240,0.85);
-  border: 1px solid var(--parch-2);
-  border-radius: var(--r-sm);
-  color: var(--umber-1);
-  font-family: var(--font-body);
-  font-size: 13px;
-}
-.setup-ai-seat select:focus {
-  outline: none;
-  border-color: var(--gold-1);
 }
 
 /* ── Balance of Power Panel ────────────────────────────────────────────
@@ -4109,19 +3485,20 @@ button.merc-button {
   min-width: 14px;
 }
 
-.balance-rank-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1px solid rgba(20,8,0,0.35);
-  flex-shrink: 0;
-}
-
 .balance-rank-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.balance-rank-name .player-role-name {
+  max-width: 100%;
+}
+
+.balance-header-points {
+  font-family: var(--font-display);
+  color: inherit;
   white-space: nowrap;
 }
 
@@ -4986,8 +4363,9 @@ button.merc-button {
   gap: 6px;
   font-family: var(--font-display);
 }
-.war-tug-value .icon { font-size: 20px; color: inherit; }
-.war-tug-num {
+.war-tug-value .value,
+.war-tug-value .icon { color: inherit; }
+.war-tug-value .value {
   font-size: 28px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -5086,8 +4464,7 @@ button.merc-button {
   font-size: 14px;
   color: var(--umber-0);
 }
-.vote-troops .icon { font-size: 14px; color: var(--umber-1); }
-.vote-troops-num { font-variant-numeric: tabular-nums; font-weight: 700; }
+.vote-troops .value { font-size: 14px; }
 
 /* Empire-fallen banner inside resolution panel */
 .empire-fall-banner {
@@ -5155,7 +4532,7 @@ button.merc-button {
   color: var(--umber-1);
 }
 .reward-card-body .muted { color: var(--umber-3); font-style: italic; }
-.reward-card-body .icon { font-size: 13px; color: var(--umber-1); margin: 0 2px; }
+.reward-card-body .value { font-size: 13px; }
 
 .reward-card-choice {
   display: grid;
@@ -5196,7 +4573,7 @@ button.merc-button {
   letter-spacing: 0;
   line-height: 1.35;
 }
-.reward-choice-desc .icon { font-size: 13px; }
+.reward-choice-desc .value { font-size: 13px; }
 .reward-choice-restore { color: var(--win); border-color: rgba(58,107,40,0.45); background: linear-gradient(180deg, rgba(58,107,40,0.15) 0%, rgba(58,107,40,0.06) 100%); }
 .reward-choice-restore:hover:not(:disabled) { background: linear-gradient(180deg, rgba(58,107,40,0.24) 0%, rgba(58,107,40,0.10) 100%); border-color: var(--win); }
 .reward-choice-restore .reward-choice-kicker { color: var(--win); }

@@ -2,6 +2,7 @@ import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
 import { loadBrowserAiOpponentRoster } from './ai/brain.js';
+import { DYNASTY_COLORS } from './data/invasions.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 
@@ -37,6 +38,46 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function seatCartoucheStyle(seat) {
+  const color = DYNASTY_COLORS[(Math.max(1, Number(seat) || 1) - 1) % DYNASTY_COLORS.length] || '#5a3810';
+  return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
+}
+
+function renderSetupChoiceControl(select) {
+  if (!select) return;
+  select.classList.add('setup-select-source');
+  let row = select.nextElementSibling;
+  if (!row?.matches?.(`[data-setup-choice="${select.id}"]`)) {
+    row = document.createElement('div');
+    row.className = 'setup-choice-row';
+    row.dataset.setupChoice = select.id;
+    row.setAttribute('role', 'radiogroup');
+    row.setAttribute('aria-label', select.closest('.setup-field')?.querySelector('label')?.textContent?.trim() || select.id);
+    select.insertAdjacentElement('afterend', row);
+  }
+  row.innerHTML = [...select.options].map((option) => `
+    <button type="button"
+      class="setup-choice-btn${option.selected ? ' selected' : ''}"
+      role="radio"
+      aria-checked="${option.selected ? 'true' : 'false'}"
+      data-setup-choice-value="${escapeHtml(option.value)}">
+      ${escapeHtml(option.textContent.trim())}
+    </button>
+  `).join('');
+  row.querySelectorAll('[data-setup-choice-value]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (select.value === button.dataset.setupChoiceValue) return;
+      select.value = button.dataset.setupChoiceValue;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      renderSetupChoiceControl(select);
+    });
+  });
+}
+
+function renderSetupChoiceControls() {
+  [setupPlayers, setupDeck, setupMode, setupSeat].forEach(renderSetupChoiceControl);
 }
 
 function getNonRandomOptionValues(select) {
@@ -83,6 +124,7 @@ function refreshSeatOptions() {
       return `<option value="${seat}" ${String(seat) === clampedSeat ? 'selected' : ''}>Seat ${seat}</option>`;
     }),
   ].join('');
+  renderSetupChoiceControl(setupSeat);
 }
 
 function updateStartAvailability() {
@@ -117,7 +159,7 @@ function renderAiRoster() {
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
   if (!aiOpponentRosterLoaded) {
-    setupAiRoster.innerHTML = '<div class="setup-ai-seat"><span>Loading AI placeholders...</span><span>Preparing named seats</span></div>';
+    setupAiRoster.innerHTML = '<div class="setup-ai-seat setup-ai-seat-empty"><strong>Loading AI placeholders...</strong><span>Preparing named seats</span></div>';
     setupAiRosterHint.textContent = 'AI seats are placeholders until a new AI system is installed.';
     updateStartAvailability();
     return;
@@ -125,8 +167,8 @@ function renderAiRoster() {
 
   if (!aiOpponentRoster.length) {
     setupAiRoster.innerHTML = `
-      <div class="setup-ai-seat">
-        <span>No AI opponents found</span>
+      <div class="setup-ai-seat setup-ai-seat-empty">
+        <strong>No AI opponents found</strong>
         <span>${escapeHtml(aiOpponentRosterError || 'No AI placeholders are available.')}</span>
       </div>
     `;
@@ -141,24 +183,37 @@ function renderAiRoster() {
       ? existing
       : aiOpponentRoster[index % aiOpponentRoster.length]?.id;
     selectedAiOpponentBySeat.set(seat, selectedId);
+    const selectedOpponent = aiOpponentRoster.find((opponent) => opponent.id === selectedId);
     return `
-    <div class="setup-ai-seat">
-      <span>Seat ${seat}</span>
-      <select class="setup-ai-opponent-select" data-seat="${seat}">
-        ${aiOpponentRoster.map((opponent) => `
-          <option value="${escapeHtml(opponent.id)}" ${opponent.id === selectedId ? 'selected' : ''}>
-            ${escapeHtml(opponent.firstName || opponent.id)}
-          </option>
-        `).join('')}
-      </select>
-    </div>
-  `;
+      <div class="setup-ai-seat" style="${seatCartoucheStyle(seat)}" data-seat="${seat}">
+        <span class="choice-crest">S${seat}</span>
+        <span class="setup-ai-copy">
+          <strong>Seat ${seat}</strong>
+          <span>${escapeHtml(selectedOpponent?.firstName || selectedOpponent?.id || 'Choose opponent')}</span>
+        </span>
+        <span class="setup-ai-choice-row">
+          ${aiOpponentRoster.map((opponent) => {
+            const label = opponent.firstName || opponent.id;
+            const selected = opponent.id === selectedId;
+            return `
+              <button type="button"
+                class="setup-ai-opponent-btn${selected ? ' selected' : ''}"
+                data-seat="${seat}"
+                data-ai-opponent="${escapeHtml(opponent.id)}">
+                ${escapeHtml(label)}
+              </button>
+            `;
+          }).join('')}
+        </span>
+      </div>
+    `;
   }).join('');
 
-  setupAiRoster.querySelectorAll('.setup-ai-opponent-select').forEach((select) => {
-    select.addEventListener('change', () => {
-      selectedAiOpponentBySeat.set(Number(select.dataset.seat), select.value);
+  setupAiRoster.querySelectorAll('.setup-ai-opponent-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedAiOpponentBySeat.set(Number(button.dataset.seat), button.dataset.aiOpponent);
       setSetupError('');
+      renderAiRoster();
     });
   });
 
@@ -329,11 +384,19 @@ document.getElementById('setupSeed').addEventListener('keydown', (event) => {
 });
 
 setupPlayers.addEventListener('change', () => {
+  renderSetupChoiceControl(setupPlayers);
   refreshSeatOptions();
   renderAiRoster();
 });
-setupMode.addEventListener('change', refreshModeVisibility);
-setupSeat.addEventListener('change', renderAiRoster);
+setupDeck.addEventListener('change', () => renderSetupChoiceControl(setupDeck));
+setupMode.addEventListener('change', () => {
+  renderSetupChoiceControl(setupMode);
+  refreshModeVisibility();
+});
+setupSeat.addEventListener('change', () => {
+  renderSetupChoiceControl(setupSeat);
+  renderAiRoster();
+});
 setupRoomCode.addEventListener('input', () => {
   setupRoomCode.value = setupRoomCode.value
     .toUpperCase()
@@ -361,6 +424,7 @@ setupRoomCode.addEventListener('keydown', (event) => {
 });
 
 refreshSeatOptions();
+renderSetupChoiceControls();
 refreshModeVisibility();
 
 loadBrowserAiOpponentRoster(undefined, { required: false })

@@ -7,6 +7,7 @@ import {
   renderHiddenGameOverOverlay,
   renderPlayerTabs,
 } from './sharedView.js';
+import { DYNASTY_COLORS } from '../data/invasions.js';
 
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
 const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
@@ -32,6 +33,31 @@ function escapeHtml(value) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+function seatCartoucheStyle(seatId) {
+  const color = DYNASTY_COLORS[(Math.max(0, Number(seatId) || 0)) % DYNASTY_COLORS.length] || '#5a3810';
+  return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
+}
+
+function renderRoomChoiceButtons(name, options, selectedValue) {
+  return `
+    <div class="setup-choice-row room-choice-row" data-room-choice="${name}" role="radiogroup">
+      ${options.map((option) => {
+        const selected = String(option.value) === String(selectedValue);
+        return `
+          <button type="button"
+            class="setup-choice-btn room-config-choice${selected ? ' selected' : ''}"
+            role="radio"
+            aria-checked="${selected ? 'true' : 'false'}"
+            data-room-target="${name}"
+            data-room-value="${escapeHtml(option.value)}">
+            ${escapeHtml(option.label)}
+          </button>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 function readStorage() {
@@ -639,7 +665,7 @@ export class MultiplayerController {
       const dynasty = seat.dynasty || `Seat ${Number(seat.seatId) + 1}`;
       const status = seat.status === 'disconnected' ? 'Away' : 'Open';
       return `
-        <button class="btn-secondary-link btn-live-claim-seat" type="button" data-seat-id="${seat.seatId}">
+        <button class="btn-secondary btn-live-claim-seat" type="button" data-seat-id="${seat.seatId}">
           Claim ${escapeHtml(dynasty)} (${status})
         </button>
       `;
@@ -659,7 +685,7 @@ export class MultiplayerController {
         <strong>Recovery Save</strong>
         <span>Download the full server state so this match can be restored if the host service restarts.</span>
         <div class="setup-actions">
-          <button class="btn-secondary-link" type="button" data-action="save-multiplayer-room">Save Match</button>
+          <button class="btn-secondary" type="button" data-action="save-multiplayer-room">Save Match</button>
         </div>
       </div>
     `;
@@ -769,17 +795,19 @@ export class MultiplayerController {
         <div class="setup-field">
           <label>Players</label>
           ${isHost ? `
-            <select id="roomPlayerCount">
+            <select id="roomPlayerCount" class="room-config-source" aria-hidden="true" tabindex="-1">
               ${[3, 4, 5].map((count) => `<option value="${count}" ${count === config.playerCount ? 'selected' : ''}>${count} players</option>`).join('')}
             </select>
+            ${renderRoomChoiceButtons('roomPlayerCount', [3, 4, 5].map((count) => ({ value: count, label: `${count} players` })), config.playerCount)}
           ` : `<div class="setup-hint">${config.playerCount} players</div>`}
         </div>
         <div class="setup-field">
           <label>Game Length</label>
           ${isHost ? `
-            <select id="roomDeckSize">
+            <select id="roomDeckSize" class="room-config-source" aria-hidden="true" tabindex="-1">
               ${[6, 9, 12].map((count) => `<option value="${count}" ${count === config.deckSize ? 'selected' : ''}>${count} invasions</option>`).join('')}
             </select>
+            ${renderRoomChoiceButtons('roomDeckSize', [6, 9, 12].map((count) => ({ value: count, label: `${count} invasions` })), config.deckSize)}
           ` : `<div class="setup-hint">${config.deckSize} invasions</div>`}
         </div>
         <div class="setup-field">
@@ -791,7 +819,8 @@ export class MultiplayerController {
           <label>Seats</label>
           <div class="multiplayer-seat-list">
             ${seats.map((seat) => `
-              <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}">
+              <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}" style="${seatCartoucheStyle(seat.seatId)}">
+                <span class="choice-crest">${seat.seatId + 1}</span>
                 <div class="multiplayer-seat-copy">
                   <strong>Seat ${seat.seatId + 1}</strong>
                   <span>${seat.dynasty || (seat.kind === 'ai' ? 'AI opponent' : (seat.claimed ? 'Human dynasty claimed' : 'Awaiting dynasty'))}</span>
@@ -799,21 +828,27 @@ export class MultiplayerController {
                 </div>
                 <div class="multiplayer-seat-actions">
                   ${seat.kind === 'human' && !seat.claimed && controlledSeatId == null ? `
-                    <button class="btn-start btn-claim-seat" type="button" data-seat-id="${seat.seatId}">Claim</button>
+                    <button class="btn-primary btn-claim-seat" type="button" data-seat-id="${seat.seatId}">Claim</button>
                   ` : ''}
                   ${isHost && !seat.claimed ? `
-                    <button class="btn-secondary-link btn-seat-kind" type="button" data-seat-id="${seat.seatId}" data-kind="${seat.kind === 'ai' ? 'human' : 'ai'}">
+                    <button class="btn-secondary" type="button" data-seat-kind data-seat-id="${seat.seatId}" data-kind="${seat.kind === 'ai' ? 'human' : 'ai'}">
                       ${seat.kind === 'ai' ? 'Set Human' : 'Set AI'}
                     </button>
                   ` : ''}
                   ${isHost && !seat.claimed && seat.kind === 'ai' && aiOpponents.length ? `
-                    <select class="setup-ai-opponent-select multiplayer-ai-opponent" data-seat-id="${seat.seatId}">
-                      ${aiOpponents.map((opponent) => `
-                        <option value="${escapeHtml(opponent.id)}" ${opponent.id === seat.aiOpponentId ? 'selected' : ''}>
-                          ${escapeHtml(opponent.firstName || opponent.id)}
-                        </option>
-                      `).join('')}
-                    </select>
+                    <span class="setup-ai-choice-row multiplayer-ai-choice-row">
+                      ${aiOpponents.map((opponent) => {
+                        const selected = opponent.id === seat.aiOpponentId;
+                        return `
+                          <button type="button"
+                            class="setup-ai-opponent-btn multiplayer-ai-opponent${selected ? ' selected' : ''}"
+                            data-seat-id="${seat.seatId}"
+                            data-ai-opponent="${escapeHtml(opponent.id)}">
+                            ${escapeHtml(opponent.firstName || opponent.id)}
+                          </button>
+                        `;
+                      }).join('')}
+                    </span>
                   ` : ''}
                   ${seat.isViewerSeat ? '<span class="setup-hint">You</span>' : ''}
                 </div>
@@ -823,8 +858,8 @@ export class MultiplayerController {
         </div>
         <div class="setup-actions">
           ${isHost && controlledSeatId == null ? '<span class="setup-hint">Claim one human seat before starting the match.</span>' : ''}
-          ${isHost ? `<button class="btn-start" type="button" id="btnStartRoom" ${this.roomSnapshot.canStart ? '' : 'disabled'}>Start Match</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
-          <button class="btn-secondary-link" type="button" id="btnLeaveRoom">${controlledSeatId != null ? 'Leave Seat' : 'Close Connection'}</button>
+          ${isHost ? `<button class="btn-primary" type="button" id="btnStartRoom" ${this.roomSnapshot.canStart ? '' : 'disabled'}>Start Match</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
+          <button class="btn-secondary" type="button" id="btnLeaveRoom">${controlledSeatId != null ? 'Leave Seat' : 'Close Connection'}</button>
         </div>
       </div>
     `;
@@ -843,10 +878,10 @@ export class MultiplayerController {
       });
     });
 
-    this.setupDialog.querySelectorAll('.btn-seat-kind').forEach((button) => {
+    this.setupDialog.querySelectorAll('[data-seat-kind]').forEach((button) => {
       button.addEventListener('click', () => {
         const seatId = Number(button.dataset.seatId);
-        const selectedOpponent = this.setupDialog.querySelector(`.multiplayer-ai-opponent[data-seat-id="${seatId}"]`)?.value;
+        const selectedOpponent = this.setupDialog.querySelector(`.multiplayer-ai-opponent.selected[data-seat-id="${seatId}"]`)?.dataset.aiOpponent;
         this.send('set_seat_kind', {
           seatId,
           kind: button.dataset.kind,
@@ -855,12 +890,25 @@ export class MultiplayerController {
       });
     });
 
-    this.setupDialog.querySelectorAll('.multiplayer-ai-opponent').forEach((select) => {
-      select.addEventListener('change', () => {
+    this.setupDialog.querySelectorAll('.room-config-choice').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = this.setupDialog.querySelector(`#${button.dataset.roomTarget}`);
+        if (!target) return;
+        target.value = button.dataset.roomValue;
+        button.closest('.room-choice-row')?.querySelectorAll('.room-config-choice').forEach((choice) => {
+          const selected = choice === button;
+          choice.classList.toggle('selected', selected);
+          choice.setAttribute('aria-checked', selected ? 'true' : 'false');
+        });
+      });
+    });
+
+    this.setupDialog.querySelectorAll('.multiplayer-ai-opponent').forEach((button) => {
+      button.addEventListener('click', () => {
         this.send('set_seat_kind', {
-          seatId: Number(select.dataset.seatId),
+          seatId: Number(button.dataset.seatId),
           kind: 'ai',
-          aiOpponentId: select.value,
+          aiOpponentId: button.dataset.aiOpponent,
         });
       });
     });

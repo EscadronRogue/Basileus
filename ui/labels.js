@@ -63,8 +63,8 @@ export function getProvinceStyleAttr(state, theme) {
   return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; --province-region-color: ${getRegionColor(theme?.region)};`;
 }
 
-// Plain-text variant — kept verbatim so history summaries, ARIA labels, and
-// the existing tests (ui/gameController.test.js asserts `P1 T1 C0`) still work.
+// Plain-text value codes stay available for history summaries, ARIA labels,
+// tooltips, and tests even though visible DOM uses icon cartouches.
 export function formatProvinceValuesText(theme) {
   if (theme?.id === 'CPL') return '';
   const profit = Math.max(0, Number(theme?.P) || 0);
@@ -113,8 +113,8 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
     theme.occupied ? 'occupied' : '',
     theme.owner === 'church' ? 'church' : '',
   ].filter(Boolean).join(' ');
-  // Keep the plain-text P/T/C in the tooltip so screen-readers + the
-  // text-only summary still convey the values.
+  // Keep plain-text value codes in the tooltip so screen-readers and text-only
+  // summaries still convey the values.
   const valuesText = formatProvinceValuesText(theme);
   const tooltip = valuesText
     ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`

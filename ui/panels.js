@@ -1,6 +1,6 @@
 // ui/panels.js - compact phase panels for the updated ruleset.
 import { MAJOR_TITLES } from '../data/titles.js';
-import { runIncome, readTroopEntry } from '../engine/cascade.js';
+import { readTroopEntry } from '../engine/cascade.js';
 import { getMinimumLandBid, suggestMajorTitleAssignments } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
 import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerThemes } from '../engine/state.js';
@@ -9,15 +9,12 @@ import {
   formatTroopsHtml,
   formatChurchHtml,
   formatMercenariesHtml,
-  formatProvinceYield,
 } from '../engine/presentation.js';
 import { renderIcon } from './icons.js';
 import {
   getPlayerStyleAttr,
   renderPlayerRoleName,
-  renderPlayerRoleNameById,
   renderProvinceBadge,
-  renderProvinceBadgeList,
   renderThemeOfficeBadge,
   renderTitleBadge,
 } from './labels.js';
@@ -211,6 +208,17 @@ function renderRevocationChoiceGrid(state, targets, options = {}) {
       }).join('')}
     </div>
   `;
+}
+
+function renderArmyOfficeBadge(state, officeKey) {
+  if (String(officeKey).startsWith('STRAT_')) {
+    return renderThemeOfficeBadge(state, 'STRATEGOS', String(officeKey).replace('STRAT_', ''));
+  }
+  return renderTitleBadge(state, officeKey, {
+    holderId: getOfficeHolder(state, officeKey),
+    label: getOfficeDisplayName(state, officeKey),
+    compact: true,
+  });
 }
 
 export function renderTitleRedistributionPanel(container, state, playerId, callbacks = {}, options = {}) {
@@ -740,7 +748,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
             return `
               <article class="army-card" data-army-card="${officeKey}">
                 <header class="army-card-head">
-                  <span class="army-card-title">${escapeHtml(getOfficeDisplayName(state, officeKey))}</span>
+                  <span class="army-card-title">${renderArmyOfficeBadge(state, officeKey)}</span>
                   <span class="army-card-count">${formatTroopsHtml(max, { label: 'Troops' })}</span>
                 </header>
                 ${entry.capitalLocked ? `<p class="army-card-sub">${formatTroopsHtml(entry.capitalLocked)} capital locked</p>` : ''}
@@ -749,7 +757,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
                   <input type="range" min="0" max="${max}" value="${current.funded}" data-army-funded="${officeKey}">
                   <span class="army-slider-readout">
                     <span class="army-slider-num" data-funded-readout="${officeKey}">${current.funded}</span>
-                    <span class="army-slider-cost" data-funded-cost="${officeKey}">${formatGoldHtml(-current.funded)}</span>
+                    <span class="army-slider-cost" data-funded-cost="${officeKey}">${formatGoldHtml(-current.funded, { tone: 'upkeep' })}</span>
                   </span>
                 </label>
                 <div class="segmented-control">
@@ -770,7 +778,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
               <input type="range" min="0" max="10" value="${draft.mercenaries.count || 0}" data-mercenary-count>
               <span class="army-slider-readout">
                 <span class="army-slider-num" data-mercenary-num>${draft.mercenaries.count || 0}</span>
-                <span class="army-slider-cost" data-mercenary-cost>${formatGoldHtml(-mercCost)}</span>
+                <span class="army-slider-cost" data-mercenary-cost>${formatGoldHtml(-mercCost, { tone: 'upkeep' })}</span>
               </span>
             </label>
             <div class="segmented-control">
@@ -805,7 +813,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       const readout = container.querySelector(`[data-funded-readout="${officeKey}"]`);
       if (readout) readout.textContent = next;
       const costEl = container.querySelector(`[data-funded-cost="${officeKey}"]`);
-      if (costEl) costEl.innerHTML = formatGoldHtml(-next);
+      if (costEl) costEl.innerHTML = formatGoldHtml(-next, { tone: 'upkeep' });
     });
     input.addEventListener('change', rerender);
   });
@@ -820,7 +828,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   container.querySelector('[data-mercenary-count]')?.addEventListener('input', (event) => {
     draft.mercenaries.count = Number(event.target.value) || 0;
     const cost = container.querySelector('[data-mercenary-cost]');
-    if (cost) cost.innerHTML = formatGoldHtml(-getMercenaryHireCost(0, draft.mercenaries.count));
+    if (cost) cost.innerHTML = formatGoldHtml(-getMercenaryHireCost(0, draft.mercenaries.count), { tone: 'upkeep' });
     const num = container.querySelector('[data-mercenary-num]');
     if (num) num.textContent = String(draft.mercenaries.count);
   });
@@ -900,12 +908,12 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
       <div class="war-tug">
         <div class="war-tug-side empire">
           <span class="war-tug-label">Empire</span>
-          <span class="war-tug-value">${renderIcon('troop')}<span class="war-tug-num">${empireTroops}</span></span>
+          <span class="war-tug-value">${formatTroopsHtml(empireTroops)}</span>
         </div>
         <span class="war-tug-vs">vs</span>
         <div class="war-tug-side invader">
           <span class="war-tug-label">Invader</span>
-          <span class="war-tug-value">${renderIcon('troop')}<span class="war-tug-num">${invaderStrength}</span></span>
+          <span class="war-tug-value">${formatTroopsHtml(invaderStrength)}</span>
         </div>
       </div>
       ${themesLost.length ? `
@@ -949,7 +957,7 @@ function renderCoupResultCard(state, coup) {
           ${voteRows.map((row) => `
             <div class="vote-row">
               ${renderPlayerRoleName(state, getPlayer(state, row.candidateId), `Player ${row.candidateId + 1}`)}
-              <span class="vote-troops">${renderIcon('troop')}<span class="vote-troops-num">${row.troops}</span></span>
+              <span class="vote-troops">${formatTroopsHtml(row.troops)}</span>
             </div>
           `).join('')}
         </div>
@@ -983,7 +991,7 @@ function renderDefenderRewardCard(state, reward) {
       </header>
       <div class="reward-card-body">
         ${defender ? renderPlayerRoleName(state, defender) : 'Defender'}
-        <span class="muted">contributed ${renderIcon('troop')}${reward.troops || 0} to the frontier.</span>
+        <span class="muted">contributed ${formatTroopsHtml(reward.troops || 0)} to the frontier.</span>
       </div>
       <div class="reward-card-choice">
         <button type="button" class="btn-primary reward-choice-restore" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire">
@@ -992,7 +1000,7 @@ function renderDefenderRewardCard(state, reward) {
         </button>
         <button type="button" class="btn-secondary reward-choice-gold" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold">
           <span class="reward-choice-kicker">Take</span>
-          <span class="reward-choice-desc">${renderIcon('gold')}${gold} into your reserve (province stays occupied)</span>
+          <span class="reward-choice-desc">${formatGoldHtml(gold)} into your reserve (province stays occupied)</span>
         </button>
       </div>
     </article>

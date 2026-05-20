@@ -132,13 +132,13 @@ test('notification panel labels deployment actions with updated vocabulary', () 
   assert.doesNotMatch(panel.innerHTML, />Orders</);
 });
 
-test('player finance omits retired upkeep copy', () => {
+test('player finance renders compact icon values without retired upkeep copy', () => {
   const state = makeState();
   state.players[0].gold = 4;
 
   const html = renderPlayerTabFinance(getPlayerTabEconomy(state.players[0], { income: { 0: 1 } }, state));
 
-  assert.match(html, /Reserve and income/);
+  assert.match(html, /Reserve, income, and troops/);
   assert.doesNotMatch(html, new RegExp('upkeep|prof' + 'essional', 'i'));
 });
 

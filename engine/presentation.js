@@ -10,7 +10,7 @@
 // UI panels SHOULD prefer the *Html variants for live displays. History
 // strings and any sink that escapes its input MUST keep the plain ones.
 
-import { renderValue, renderIcon } from '../ui/icons.js';
+import { renderValue, renderIcon, provinceValueEntries } from '../ui/icons.js';
 
 function normalizeDisplayNumber(value) {
   const numeric = Number(value) || 0;
@@ -72,10 +72,10 @@ export function formatMercenariesHtml(value, options = {}) {
 
 export function formatProvinceYieldHtml(theme) {
   if (theme?.id === 'CPL') return '';
-  const profit = Math.max(0, Number(theme?.P) || 0);
-  const troops = Math.max(0, Number(theme?.T) || 0);
-  const church = Math.max(0, Number(theme?.C) || 0);
-  return `${formatGoldHtml(profit)} ${formatTroopsHtml(troops)} ${formatChurchHtml(church)}`;
+  return provinceValueEntries(theme)
+    .filter((entry) => entry.value > 0)
+    .map((entry) => renderValue(entry.kind, entry.value))
+    .join(' ');
 }
 
 // Re-export the bare icon helper so panels can use it without a second import.

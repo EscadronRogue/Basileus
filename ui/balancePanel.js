@@ -7,7 +7,7 @@
 // dynasty, so players can see how much of each pool is still up for grabs.
 
 import { buildBalanceOfPower } from '../engine/scoring.js';
-import { getPlayerStyleAttr } from './labels.js';
+import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
 import { formatPlayerLabel, getPlayer } from '../engine/state.js';
 import { renderIcon } from './icons.js';
 
@@ -140,8 +140,7 @@ function renderRanking(state, scores) {
         return `
           <li class="balance-rank-row ${isLeader ? 'leader' : ''}" style="${getPlayerStyleAttr(state, entry.playerId)}">
             <span class="balance-rank-no">${rank}${tied && isLeader ? '*' : ''}</span>
-            <span class="balance-rank-dot" style="background:var(--player-color)"></span>
-            <span class="balance-rank-name">${formatPlayerLabel(entry.player)}</span>
+            <span class="balance-rank-name">${renderPlayerRoleName(state, entry.player)}</span>
             <span class="balance-rank-points">${entry.points} pt${entry.points === 1 ? '' : 's'}</span>
           </li>
         `;
@@ -150,12 +149,12 @@ function renderRanking(state, scores) {
   `;
 }
 
-function getHeaderBadge(scores, winners) {
+function getHeaderBadge(state, scores, winners) {
   if (!scores.length) return '';
   const top = scores[0];
   if (!top || top.points === 0) return 'Tied';
   if (winners.length > 1) return `${winners.length}-way tie · ${top.points} pt${top.points === 1 ? '' : 's'}`;
-  return `${formatPlayerLabel(top.player)} · ${top.points} pt${top.points === 1 ? '' : 's'}`;
+  return `${renderPlayerRoleName(state, top.player)} <span class="balance-header-points">${top.points} pt${top.points === 1 ? '' : 's'}</span>`;
 }
 
 function panelOpen(uiState) {
@@ -169,7 +168,7 @@ export function renderBalancePanel(container, state, options = {}) {
   const uiState = options.uiState || null;
   const isOpen = panelOpen(uiState);
   const balance = buildBalanceOfPower(state);
-  const badge = getHeaderBadge(balance.scores, balance.winners);
+  const badge = getHeaderBadge(state, balance.scores, balance.winners);
 
   container.classList.toggle('panel-collapsed', !isOpen);
   container.innerHTML = `

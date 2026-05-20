@@ -100,7 +100,7 @@ export function renderValue(kind, value, opts = {}) {
   if (!ICON_PATHS[kind]) return '';
   const num = Number(value) || 0;
   const isFractional = !Number.isInteger(num);
-  const formatted = isFractional ? Math.round(num * 100) / 100 : num;
+  const formatted = opts.displayValue ?? (isFractional ? Math.round(num * 100) / 100 : num);
   const prefix = opts.signed && num > 0 ? '+' : (num < 0 ? '' : '');
   // Number(-3) → "-3" naturally, so only prepend "+" for positives when signed.
   const labelText = resolveLabelText(kind, value, opts.label);
