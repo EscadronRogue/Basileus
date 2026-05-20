@@ -148,60 +148,99 @@ export async function handleMultiplayerApiRequest(manager, req, url) {
   throw createMultiplayerError(404, 'Unknown API route.');
 }
 
+// Per-connection rate limit. The legitimate client sends a handful of
+// messages per second at peak (orders submission, deal back-and-forth,
+// heartbeats); a token-bucket of 30 messages with 30/s refill leaves
+// plenty of headroom for bursts while killing flooders.
+const RATE_BUCKET_SIZE = 30;
+const RATE_REFILL_PER_MS = 30 / 1000;
+
+function createRateLimiter() {
+  let tokens = RATE_BUCKET_SIZE;
+  let lastRefill = Date.now();
+  return function consume() {
+    const now = Date.now();
+    tokens = Math.min(RATE_BUCKET_SIZE, tokens + (now - lastRefill) * RATE_REFILL_PER_MS);
+    lastRefill = now;
+    if (tokens < 1) return false;
+    tokens -= 1;
+    return true;
+  };
+}
+
 export function attachMultiplayerSocketServer(server, manager, options = {}) {
   attachWebSocketServer(server, (connection) => {
     let activeRoom = null;
     let activeSessionId = null;
+    // Serialise message processing per connection. handleClientMessage is
+    // async and mutates game state, so without a chain two messages from
+    // the same socket could interleave their writes (e.g. submit_orders +
+    // start_game). The chain only resolves; rejections from a single
+    // message must not poison subsequent ones.
+    let messageChain = Promise.resolve();
+    const consumeRateToken = createRateLimiter();
 
-    connection.onMessage(async (message) => {
-      try {
-        if (!activeRoom) {
-          if (message?.type !== 'hello') {
-            connection.sendJson({
-              type: 'action_rejected',
-              reason: 'Send hello before any other WebSocket message.',
-            });
-            return;
-          }
-
-          const room = manager.getRoom(message.roomCode);
-          if (!room) {
-            connection.sendJson({
-              type: 'action_rejected',
-              reason: 'Room not found.',
-            });
-            connection.close();
-            return;
-          }
-
-          const sessionToken = String(message.sessionToken || '').trim();
-          if (!sessionToken || !room.sessions.has(sessionToken)) {
-            connection.sendJson({
-              type: 'action_rejected',
-              reason: 'Session token is invalid for this room.',
-            });
-            connection.close();
-            return;
-          }
-
-          activeRoom = room;
-          activeSessionId = sessionToken;
-          room.attachConnection(activeSessionId, connection);
-
-          room.sendInitialSync(activeSessionId);
-          room.broadcastRoomSnapshot();
-          if (room.gameState) room.broadcastGameSnapshots();
-          return;
-        }
-
-        if (message?.type === 'heartbeat') {
-          return;
-        }
-
-        await activeRoom.handleClientMessage(activeSessionId, message);
-      } catch (error) {
-        activeRoom?.reject(activeSessionId, message?.requestId || null, error?.message || 'WebSocket command failed.');
+    connection.onMessage((message) => {
+      if (!consumeRateToken()) {
+        // Don't let a flooder amplify the message chain.
+        connection.sendJson({
+          type: 'action_rejected',
+          requestId: message?.requestId || null,
+          reason: 'Rate limit exceeded. Slow down.',
+        });
+        return;
       }
+
+      messageChain = messageChain.then(async () => {
+        try {
+          if (!activeRoom) {
+            if (message?.type !== 'hello') {
+              connection.sendJson({
+                type: 'action_rejected',
+                reason: 'Send hello before any other WebSocket message.',
+              });
+              return;
+            }
+
+            const room = manager.getRoom(message.roomCode);
+            if (!room) {
+              connection.sendJson({
+                type: 'action_rejected',
+                reason: 'Room not found.',
+              });
+              connection.close();
+              return;
+            }
+
+            const sessionToken = String(message.sessionToken || '').trim();
+            if (!sessionToken || !room.sessions.has(sessionToken)) {
+              connection.sendJson({
+                type: 'action_rejected',
+                reason: 'Session token is invalid for this room.',
+              });
+              connection.close();
+              return;
+            }
+
+            activeRoom = room;
+            activeSessionId = sessionToken;
+            room.attachConnection(activeSessionId, connection);
+
+            room.sendInitialSync(activeSessionId);
+            room.broadcastRoomSnapshot();
+            if (room.gameState) room.broadcastGameSnapshots();
+            return;
+          }
+
+          if (message?.type === 'heartbeat') {
+            return;
+          }
+
+          await activeRoom.handleClientMessage(activeSessionId, message);
+        } catch (error) {
+          activeRoom?.reject(activeSessionId, message?.requestId || null, error?.message || 'WebSocket command failed.');
+        }
+      }).catch(() => { /* swallow so the chain keeps running */ });
     });
 
     connection.onClose(() => {

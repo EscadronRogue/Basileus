@@ -271,7 +271,13 @@ function relocateDisplacedBishop(state, themeId, playerId) {
     });
     return null;
   }
-  const nextTheme = candidates[Math.floor((state.rng ? state.rng() : Math.random()) * candidates.length)];
+  if (typeof state.rng !== 'function') {
+    // The engine guarantees a seeded RNG (see README "Deterministic core").
+    // Falling back to Math.random would silently break reproducibility, so
+    // surface the missing RNG as a hard error instead.
+    throw new Error('engine/actions.js: state.rng is required (deterministic core).');
+  }
+  const nextTheme = candidates[Math.floor(state.rng() * candidates.length)];
   nextTheme.bishop = playerId;
   nextTheme.bishopIsDonor = false;
   markTitleAppointedThisTurn(state, getMinorTitleSlotKey(nextTheme.id, 'bishop'));
@@ -676,6 +682,17 @@ export function applyTitleRedistribution(state, basileusId = state.basileusId, t
       ])),
     },
   });
+  return { ok: true };
+}
+
+export function computeWealth(state, playerId) {
+  return getPlayerFinalScore(state, playerId)?.points ?? getPlayer(state, playerId)?.gold ?? 0;
+}
+
+export function computeFullWealth(state, playerId, projectedIncome) {
+  void projectedIncome;
+  return computeWealth(state, playerId);
+}
   return { ok: true };
 }
 

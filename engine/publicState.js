@@ -13,7 +13,14 @@ const NON_PUBLIC_STATE_KEYS = [
 
 export function clonePlain(value) {
   if (value == null) return value;
-  return JSON.parse(JSON.stringify(value));
+  // structuredClone preserves Sets/Maps/Dates and avoids the silent
+  // data loss of the JSON round-trip. Fall back to the JSON path only
+  // for the unusual case of a value structuredClone refuses.
+  try {
+    return structuredClone(value);
+  } catch {
+    return JSON.parse(JSON.stringify(value));
+  }
 }
 
 export function serializeCourtActions(courtActions = null) {

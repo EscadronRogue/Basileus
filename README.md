@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **AI seat placeholders.** AI slots can be reserved and named, but the old decision system has been removed.
+- **AI seat placeholders.** AI slots can be reserved, named, and will play a legal fallback move every turn (confirm in court, take the first legal deployment plan). There is no strategic decision system today — the previous one was removed and single-player against the placeholder is intentionally easy. See `docs/roadmap.md` for what a real AI would need.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -125,3 +125,8 @@ Current placeholders are named `placeholder-1`, `placeholder-2`, etc. They do no
 ## License
 
 All rights reserved. The source is published for transparency and personal/educational reading; no license to copy, modify, or redistribute is granted. Open an issue if you want to discuss broader use.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for branch, commit-message,
+and testing conventions.

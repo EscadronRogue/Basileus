@@ -17,8 +17,44 @@ export const MIME_TYPES = new Map([
   ['.ico', 'image/x-icon'],
 ]);
 
+// Security headers attached to every response from this server. They are
+// conservative but compatible with the game (single-origin, no third-party
+// scripts, no embedded fonts).
+const BASE_SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+  'cross-origin-opener-policy': 'same-origin',
+  'permissions-policy': 'geolocation=(), microphone=(), camera=()',
+};
+
+// CSP for the HTML shell. The game ships zero third-party scripts but the
+// HTML contains inline <style>/<script> blocks, so 'unsafe-inline' is
+// reluctantly kept. WebSocket connections are allowed because the deployed
+// page targets a Render host.
+const HTML_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self' data:",
+  "connect-src 'self' https: wss: ws:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join('; ');
+
+function applySecurityHeaders(res, { html = false } = {}) {
+  for (const [name, value] of Object.entries(BASE_SECURITY_HEADERS)) {
+    res.setHeader(name, value);
+  }
+  if (html) res.setHeader('content-security-policy', HTML_CSP);
+}
+
 export function jsonResponse(res, statusCode, payload) {
   const body = JSON.stringify(payload);
+  applySecurityHeaders(res);
   res.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
@@ -50,8 +86,11 @@ export async function serveStatic(req, res, url, projectRoot, options = {}) {
     error.statusCode = 404;
     throw error;
   }
+  const ext = extname(filePath).toLowerCase();
+  const isHtml = ext === '.html' || ext === '.htm';
+  applySecurityHeaders(res, { html: isHtml });
   res.writeHead(200, {
-    'content-type': MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream',
+    'content-type': MIME_TYPES.get(ext) || 'application/octet-stream',
     'content-length': fileInfo.size,
     'cache-control': 'no-store',
   });

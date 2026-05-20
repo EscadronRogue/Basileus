@@ -186,14 +186,22 @@ export function buildAIOrders(state, meta, playerId) {
 }
 
 function cloneForOrderPlanning(state) {
-  const clone = JSON.parse(JSON.stringify(state));
-  clone.rng = state.rng;
-  if (state.courtActions) {
-    clone.courtActions = {
-      ...clone.courtActions,
-      playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
-    };
+  // structuredClone preserves Sets/Maps; the JSON fallback flattens them
+  // so we rebuild the one Set the engine relies on. The RNG is a function
+  // and never survives either clone path, so re-attach it explicitly.
+  let clone;
+  try {
+    clone = structuredClone(state);
+  } catch {
+    clone = JSON.parse(JSON.stringify(state));
+    if (state.courtActions) {
+      clone.courtActions = {
+        ...clone.courtActions,
+        playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
+      };
+    }
   }
+  clone.rng = state.rng;
   clone.allOrders = {};
   return clone;
 }

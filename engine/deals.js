@@ -35,7 +35,13 @@ const TROOP_CLAUSE_KINDS = new Set([
 const RECURRING_TROOP_KINDS = new Set(TROOP_CLAUSE_KINDS);
 function clonePlain(value) {
   if (value == null) return value;
-  return JSON.parse(JSON.stringify(value));
+  // structuredClone preserves Sets/Maps/Dates; JSON-stringify silently
+  // flattens them. Fall back to JSON only if structuredClone refuses.
+  try {
+    return structuredClone(value);
+  } catch {
+    return JSON.parse(JSON.stringify(value));
+  }
 }
 
 function toInt(value, fallback = null) {

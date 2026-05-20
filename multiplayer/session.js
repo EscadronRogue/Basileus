@@ -1,4 +1,19 @@
-import assert from 'node:assert/strict';
+// Validation errors are control-flow for user-input checks (rejected
+// commands), distinct from real programming bugs. The catch sites in
+// handleClientMessage / handleGameCommand surface error.message back to
+// the client, so swapping AssertionError for this class is transparent
+// to existing callers but stops conflating invariants with input checks.
+export class ValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ValidationError';
+    this.isValidation = true;
+  }
+}
+
+function assert(condition, message) {
+  if (!condition) throw new ValidationError(message || 'Validation failed.');
+}
 
 import { createGameState, getPlayer, formatPlayerLabel, makeRng } from '../engine/state.js';
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
@@ -707,8 +722,13 @@ export class MultiplayerRoom {
         return;
       }
 
-      throw new Error('Unknown in-game command.');
+      throw new ValidationError('Unknown in-game command.');
     } catch (error) {
+      if (error && !error.isValidation && !(error instanceof TypeError)) {
+        // Real programming bug; log it but still reject the request so
+        // the client doesn't hang. Logging is intentionally cheap here.
+        console.error('handleGameCommand: unexpected error', error);
+      }
       this.reject(sessionId, requestId, error?.message || 'Command failed.');
     }
   }
@@ -797,8 +817,11 @@ export class MultiplayerRoom {
         return;
       }
 
-      throw new Error('Unknown lobby command.');
+      throw new ValidationError('Unknown lobby command.');
     } catch (error) {
+      if (error && !error.isValidation && !(error instanceof TypeError)) {
+        console.error('handleClientMessage: unexpected error', error);
+      }
       this.reject(sessionId, requestId, error?.message || 'Command failed.');
     }
   }
@@ -806,13 +829,19 @@ export class MultiplayerRoom {
 
 export function createRoomCode(existingRoomCodes = new Set()) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  while (true) {
+  // 32^6 ≈ 1.07B codes; with 1000 attempts the collision probability
+  // stays negligible even at scales the server can never realistically
+  // reach. The bound prevents a pathological infinite loop if the
+  // alphabet is ever shrunk or the room map is ever poisoned with a
+  // full enumeration of codes.
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
     let code = '';
     for (let index = 0; index < 6; index += 1) {
       code += alphabet[Math.floor(Math.random() * alphabet.length)];
     }
     if (!existingRoomCodes.has(code)) return code;
   }
+  throw new Error('Could not generate a unique room code after 1000 attempts.');
 }
 
 export function createRoom({

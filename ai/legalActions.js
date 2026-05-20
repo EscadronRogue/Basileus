@@ -19,14 +19,22 @@ import { MAJOR_TITLES } from '../data/titles.js';
 export const AI_DEALS_ENABLED = false;
 
 function cloneForValidation(state) {
-  const clone = JSON.parse(JSON.stringify(state));
-  clone.rng = state.rng;
-  if (state.courtActions) {
-    clone.courtActions = {
-      ...clone.courtActions,
-      playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
-    };
+  // structuredClone keeps Sets/Maps intact; the JSON fallback flattens
+  // them, so the defensive rebuild stays in the JSON branch.
+  let clone;
+  try {
+    clone = structuredClone(state);
+  } catch {
+    clone = JSON.parse(JSON.stringify(state));
+    if (state.courtActions) {
+      clone.courtActions = {
+        ...clone.courtActions,
+        playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
+      };
+    }
   }
+  // The RNG is a function and never survives either clone path.
+  clone.rng = state.rng;
   return clone;
 }
 
