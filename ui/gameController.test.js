@@ -11,6 +11,7 @@ import {
 } from './panels.js';
 import {
   createDefaultUiState,
+  getPhaseRenderKey,
   getPlayerTabEconomy,
   renderNotificationsPanel,
   renderPlayerTabFinance,
@@ -71,6 +72,9 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   const basileusPanel = makePanelContainer();
   renderCourtPanel(basileusPanel, state, state.basileusId, {}, { uiState: createDefaultUiState() });
   assert.match(basileusPanel.innerHTML, /Empress/);
+  assert.match(basileusPanel.innerHTML, /End Court/);
+  assert.doesNotMatch(basileusPanel.innerHTML, /Skip Action/);
+  assert.doesNotMatch(basileusPanel.innerHTML, /Confirm Court/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Appoint Strategos/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Appoint Bishop/);
 
@@ -96,24 +100,56 @@ test('estates panel lists free land bids before deployment', () => {
 test('deployment panel uses funded armies and mercenary slider schema', () => {
   const state = makeState();
   state.phase = 'deployment';
+  state.players[state.basileusId].gold = 1;
   state.currentTroops = {
     BASILEUS: { normal: 2, capitalLocked: 1 },
   };
   const container = makePanelContainer();
+  const uiState = createDefaultUiState();
+  uiState.drafts[`deployment:${state.round}:${state.basileusId}`] = {
+    armies: {
+      BASILEUS: { funded: 1, destination: 'frontier' },
+    },
+    mercenaries: { count: 2, destination: 'frontier' },
+    candidate: state.basileusId,
+  };
 
-  renderOrdersPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
+  renderOrdersPanel(container, state, state.basileusId, {}, { uiState });
 
   assert.match(container.innerHTML, /Deployment/);
   assert.match(container.innerHTML, /Funding/);
+  assert.match(container.innerHTML, /Mercs/);
+  assert.match(container.innerHTML, /Unfunded troops stay home/);
   assert.match(container.innerHTML, /capital locked/);
   assert.match(container.innerHTML, /Mercenaries/);
   assert.match(container.innerHTML, /Lock Deployment/);
+});
+
+test('default interface opens the action lane and keeps support panels collapsed', () => {
+  const uiState = createDefaultUiState();
+
+  assert.equal(uiState.panels.action, true);
+  assert.equal(uiState.panels.dashboard, true);
+  assert.equal(uiState.panels.notifications, false);
+  assert.equal(uiState.panels.balance, false);
+  assert.equal(uiState.panels.history, false);
+});
+
+test('phase render key changes when the active phase or ending changes', () => {
+  const state = makeState();
+  state.phase = 'court';
+  const courtKey = getPhaseRenderKey(state);
+  state.phase = 'deployment';
+  assert.notEqual(getPhaseRenderKey(state), courtKey);
+  state.gameOver = { type: 'empire_fallen' };
+  assert.match(getPhaseRenderKey(state), /empire_fallen/);
 });
 
 test('notification panel labels deployment actions with updated vocabulary', () => {
   const state = makeState();
   const panel = makePanelContainer();
   const uiState = createDefaultUiState();
+  uiState.panels.notifications = true;
   const privateData = {
     notifications: [{
       id: 'order-lock:test',

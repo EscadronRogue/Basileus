@@ -19,10 +19,12 @@ import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG } from '../render/mapRenderer.js';
 import {
   createDefaultUiState,
+  getPhaseRenderKey,
   renderGameActionPanel,
   renderGameFrame,
   renderHiddenGameOverOverlay,
   renderPlayerTabs,
+  scrollPhasePanelIntoView,
 } from './sharedView.js';
 
 export class GameController {
@@ -47,6 +49,7 @@ export class GameController {
     this.selectedProvinceId = null;
     this.activePlayer = this.config.humanPlayerIds[0] ?? 0;
     this.uiState = createDefaultUiState();
+    this.lastPhaseKey = null;
   }
 
   async init() {
@@ -128,6 +131,13 @@ export class GameController {
   }
 
   render() {
+    const phaseKey = getPhaseRenderKey(this.state);
+    const phaseChanged = phaseKey !== this.lastPhaseKey;
+    if (phaseChanged) {
+      this.clearActionError();
+      this.uiState.panels.action = true;
+    }
+
     const privateData = this.buildPrivateData(this.activePlayer);
     renderGameFrame({
       state: this.state,
@@ -142,6 +152,19 @@ export class GameController {
       renderGameOverOverlay: () => this.renderGameOver(),
       rerender: () => this.render(),
     });
+
+    if (phaseChanged) {
+      this.lastPhaseKey = phaseKey;
+      scrollPhasePanelIntoView();
+    }
+  }
+
+  setActionError(reason) {
+    this.uiState.actionError = reason || 'That action is not available.';
+  }
+
+  clearActionError() {
+    this.uiState.actionError = '';
   }
 
   buildPrivateData(playerId) {
@@ -190,6 +213,7 @@ export class GameController {
       privateData: this.buildPrivateData(this.activePlayer),
       canControl,
       spectatorMessage,
+      error: this.uiState.actionError,
       handlers: {
         court: this.createCourtHandlers(this.activePlayer),
         estates: this.createEstateHandlers(this.activePlayer),
@@ -207,15 +231,22 @@ export class GameController {
         defenderRewardChoice: (rewardId, choice) => {
           const result = handleDefenderRewardChoice(this.state, this.aiMeta, this, this.activePlayer, rewardId, choice);
           if (!result.ok) {
+            this.setActionError(result.reason);
             this.render();
             return;
           }
+          this.clearActionError();
           this.render();
         },
         continue: (shell) => {
           const reassignment = this.tryResolveTitleReassignment(shell);
-          if (!reassignment.ok) return;
+          if (!reassignment.ok) {
+            this.setActionError(reassignment.reason);
+            this.render();
+            return;
+          }
           handleContinueAfterResolution(this.state, this.aiMeta, this);
+          this.clearActionError();
           this.render();
         },
       },
@@ -226,16 +257,17 @@ export class GameController {
     const dispatch = (payload) => {
       const result = handleHumanCourtAction(this.state, this.aiMeta, this, playerId, payload);
       if (!result.ok) {
+        this.setActionError(result.reason);
         this.render();
         return;
       }
+      this.clearActionError();
       this.ensureHumanFocus();
       this.render();
     };
 
     return {
       gift: (themeId) => dispatch({ action: 'gift', themeId }),
-      skip: () => dispatch({ action: 'skip' }),
       'deal-send': (payload) => dispatch({ action: 'deal-send', ...payload }),
       'deal-counter': (payload) => dispatch({ action: 'deal-counter', ...payload }),
       'deal-accept': (payload) => dispatch({ action: 'deal-accept', ...payload }),
@@ -243,9 +275,11 @@ export class GameController {
       'confirm-court': () => {
         const result = handleHumanCourtConfirmation(this.state, this.aiMeta, this, playerId);
         if (!result.ok) {
+          this.setActionError(result.reason);
           this.render();
           return;
         }
+        this.clearActionError();
         this.ensureHumanFocus();
         this.render();
       },
@@ -274,9 +308,11 @@ export class GameController {
           amount: data.amount,
         });
         if (!result.ok) {
+          this.setActionError(result.reason);
           this.render();
           return;
         }
+        this.clearActionError();
         this.render();
       },
     };
@@ -285,18 +321,22 @@ export class GameController {
   confirmEstates() {
     const result = handleEstatesConfirmation(this.state, this.aiMeta, this);
     if (!result.ok) {
+      this.setActionError(result.reason);
       this.render();
       return;
     }
+    this.clearActionError();
     this.render();
   }
 
   confirmTitleRedistribution(assignments) {
     const result = handleManualTitleReassignment(this.state, this.aiMeta, this, this.activePlayer, assignments);
     if (!result.ok) {
+      this.setActionError(result.reason);
       this.render();
       return;
     }
+    this.clearActionError();
     this.renderPlayerTabs();
     this.render();
   }
@@ -304,9 +344,11 @@ export class GameController {
   lockOrders(orders) {
     const result = handleHumanOrders(this.state, this.aiMeta, this, this.activePlayer, orders);
     if (!result.ok) {
+      this.setActionError(result.reason);
       this.render();
       return;
     }
+    this.clearActionError();
     this.render();
   }
 

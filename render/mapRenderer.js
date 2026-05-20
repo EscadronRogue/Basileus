@@ -166,7 +166,7 @@ export async function createMapSVG(containerId, options = {}) {
   importProvinceShapes(svg, provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, hitzonesSvg);
   invasionOrigins = parseInvasionOrigins(originSvg);
 
-  container.replaceChildren(svg);
+  container.replaceChildren(svg, createMapControls(svg));
   ensureSvgIconSymbols(svg);
   configureThreatHatchPatterns(svg);
 
@@ -178,6 +178,39 @@ export async function createMapSVG(containerId, options = {}) {
   });
 
   return svg;
+}
+
+function createMapControls(svg) {
+  const controls = document.createElement('div');
+  controls.className = 'map-controls';
+  controls.setAttribute('aria-label', 'Map zoom controls');
+
+  const makeButton = (label, title, action) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'map-control-btn';
+    button.textContent = label;
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      action();
+    });
+    return button;
+  };
+
+  const zoomAtCenter = (factor) => {
+    const rect = svg.getBoundingClientRect();
+    zoomMapAtClientPoint(svg, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+  };
+
+  controls.append(
+    makeButton('+', 'Zoom in', () => zoomAtCenter(MAP_ZOOM_STEP)),
+    makeButton('-', 'Zoom out', () => zoomAtCenter(1 / MAP_ZOOM_STEP)),
+    makeButton('1:1', 'Reset map view', () => resetMapView(svg)),
+  );
+  return controls;
 }
 
 

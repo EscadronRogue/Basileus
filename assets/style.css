@@ -329,6 +329,37 @@ body::before {
   touch-action: none;
 }
 
+.map-controls {
+  position: absolute;
+  right: calc(var(--map-shell-pad) + 10px);
+  bottom: calc(var(--map-shell-pad) + 10px);
+  z-index: 3;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(100,70,20,0.20);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.86);
+  box-shadow: var(--shadow-card);
+}
+
+.map-control-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(168,116,32,0.28);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.92);
+  color: var(--umber-1);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.map-control-btn:hover {
+  border-color: var(--gold-1);
+  background: rgba(240,228,198,0.96);
+}
+
 .game-map {
   display: block;
   width: auto;
@@ -351,6 +382,7 @@ body::before {
 
 /* ── Player Tabs ─────────────────────────────────────────────────── */
 #playerTabBar {
+  order: 1;
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
@@ -504,6 +536,12 @@ body::before {
   scrollbar-color: var(--parch-3) var(--parch-1);
 }
 
+#actionPanel { order: 2; scroll-margin-top: var(--sidebar-gap); }
+#playerDashboard { order: 3; }
+#notificationPanel { order: 4; }
+#balancePanel { order: 5; }
+#historyPanel { order: 6; }
+
 #sidebar::-webkit-scrollbar { width: 8px; }
 #sidebar::-webkit-scrollbar-track { background: var(--parch-1); }
 #sidebar::-webkit-scrollbar-thumb {
@@ -538,6 +576,11 @@ body::before {
   border: 1px solid rgba(168,116,32,0.16);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-card);
+}
+
+#actionPanel .action-shell {
+  border-color: rgba(168,116,32,0.30);
+  background: rgba(255,252,240,0.70);
 }
 
 .sidebar-panel-head {
@@ -853,6 +896,39 @@ body::before {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid rgba(240,200,90,0.28);
+}
+
+.selected-province-cue {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: var(--sp-3);
+  padding: 9px 12px;
+  border: 1px solid rgba(168,116,32,0.24);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.76);
+}
+
+.selected-province-cue-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+
+.action-error {
+  margin-bottom: var(--sp-3);
+  padding: 10px 12px;
+  border: 1px solid rgba(160,48,48,0.36);
+  border-radius: var(--r-md);
+  background: rgba(160,48,48,0.08);
+  color: var(--crimson-1);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 /* ── Fold Sections ─────────────────────────────────────────────────── */
@@ -2672,8 +2748,8 @@ body::before {
     linear-gradient(160deg, var(--parch-0) 0%, var(--parch-1) 100%);
   border: 1px solid var(--parch-3);
   border-radius: var(--r-lg);
-  padding: var(--sp-6) var(--sp-5);
-  width: 440px;
+  padding: var(--sp-5);
+  width: 520px;
   max-width: 90vw;
   max-height: calc(var(--game-vh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
@@ -2715,11 +2791,11 @@ body::before {
   font-size: 13px;
   color: var(--umber-2);
   font-style: italic;
-  margin-bottom: var(--sp-5);
+  margin-bottom: var(--sp-4);
   letter-spacing: 0.3px;
 }
 
-.setup-field { margin-bottom: var(--sp-4); }
+.setup-field { margin-bottom: var(--sp-3); }
 
 .setup-field label {
   display: block;
@@ -2833,8 +2909,8 @@ body::before {
 
 .setup-choice-btn,
 .setup-ai-opponent-btn {
-  min-height: 34px;
-  padding: 7px 10px;
+  min-height: 32px;
+  padding: 6px 10px;
   border: 3px solid var(--empire-border);
   border-radius: 4px;
   background-color: var(--parch-1);
@@ -3919,6 +3995,12 @@ textarea {
   font-family: var(--font-display);
   font-size: 12.5px;
 }
+.orders-budget-label {
+  color: var(--umber-3);
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
 .orders-budget .orders-budget-of {
   color: var(--umber-3);
   font-size: 9.5px;
@@ -3929,8 +4011,8 @@ textarea {
   border-color: rgba(160,48,48,0.45);
   background: rgba(160,48,48,0.10);
 }
-.orders-budget.over .orders-budget-spent .value,
-.orders-budget.over .orders-budget-spent .icon { color: var(--crimson-1); }
+.orders-budget.over [data-orders-merc-cost] .value,
+.orders-budget.over [data-orders-merc-cost] .icon { color: var(--crimson-1); }
 
 .army-card-stack { display: flex; flex-direction: column; gap: 10px; }
 .army-card {
@@ -3999,6 +4081,8 @@ textarea {
 }
 .army-slider-cost .value,
 .army-slider-cost .icon { color: var(--crimson-1); }
+[data-funded-cost].army-slider-cost .value,
+[data-funded-cost].army-slider-cost .icon { color: var(--win); }
 .army-slider-cost { font-size: 12.5px; }
 
 /* Candidate selector — cartouche rows like the player tabs, with

@@ -2,10 +2,12 @@ import { hydratePublicState } from '../engine/publicState.js';
 import { createMapSVG } from '../render/mapRenderer.js';
 import {
   createDefaultUiState,
+  getPhaseRenderKey,
   renderGameActionPanel,
   renderGameFrame,
   renderHiddenGameOverOverlay,
   renderPlayerTabs,
+  scrollPhasePanelIntoView,
 } from './sharedView.js';
 import { DYNASTY_COLORS } from '../data/invasions.js';
 
@@ -234,6 +236,7 @@ export class MultiplayerController {
     this.localFinishedAtMs = 0;
     this.intentionalClose = false;
     this.uiState = createDefaultUiState();
+    this.lastPhaseKey = null;
   }
 
   persistSession() {
@@ -725,7 +728,6 @@ export class MultiplayerController {
   createCourtHandlers() {
     return {
       gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
-      skip: () => this.send('court_action', { action: 'skip' }),
       'deal-send': (payload) => this.send('court_action', { action: 'deal-send', ...payload }),
       'deal-counter': (payload) => this.send('court_action', { action: 'deal-counter', ...payload }),
       'deal-accept': (payload) => this.send('court_action', { action: 'deal-accept', ...payload }),
@@ -944,10 +946,17 @@ export class MultiplayerController {
   }
 
   renderGame() {
-    if (!this.state) return;
+    const state = this.state;
+    if (!state) return;
+    const phaseKey = getPhaseRenderKey(state);
+    const phaseChanged = phaseKey !== this.lastPhaseKey;
+    if (phaseChanged) {
+      this.uiState.panels.action = true;
+    }
     this.ensureMap().then(() => {
+      if (this.state !== state) return;
       renderGameFrame({
-        state: this.state,
+        state,
         activePlayerId: this.viewPlayerId,
         selectedProvinceId: this.selectedProvinceId,
         uiState: this.uiState,
@@ -960,6 +969,10 @@ export class MultiplayerController {
         renderGameOverOverlay: () => this.renderGameOverOverlay(),
         rerender: () => this.render(),
       });
+      if (phaseChanged) {
+        this.lastPhaseKey = phaseKey;
+        scrollPhasePanelIntoView();
+      }
     });
   }
 

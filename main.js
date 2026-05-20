@@ -177,6 +177,18 @@ function renderAiRoster() {
     return;
   }
 
+  if (seatAssignmentUnresolved) {
+    setupAiRoster.innerHTML = `
+      <div class="setup-ai-seat setup-ai-seat-empty">
+        <strong>AI names assigned at start</strong>
+        <span>Random setup will resolve your seat first, then fill the remaining seats with Greek placeholders.</span>
+      </div>
+    `;
+    setupAiRosterHint.textContent = 'Choose a fixed player count and seat to customize individual AI names.';
+    updateStartAvailability();
+    return;
+  }
+
   setupAiRoster.innerHTML = aiSeats.map((seat, index) => {
     const existing = selectedAiOpponentBySeat.get(seat);
     const selectedId = aiOpponentRoster.some((opponent) => opponent.id === existing)
