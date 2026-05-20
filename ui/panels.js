@@ -276,20 +276,25 @@ export function renderHistoryPanel(container, state, options = {}) {
   const isOpen = options.uiState?.panels?.history ?? false;
   container.classList?.toggle?.('panel-collapsed', !isOpen);
   const history = Array.isArray(state.history) ? state.history.slice(-30).reverse() : [];
+  const countLabel = history.length ? `${history.length} entries` : 'Empty';
   container.innerHTML = `
-    <div class="sidebar-panel${isOpen ? '' : ' is-collapsed'}">
+    <div class="history-panel sidebar-panel${isOpen ? '' : ' is-collapsed'}">
       <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="history" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Chronicle</span>
           <span class="sidebar-panel-title">History</span>
         </span>
+        <span class="sidebar-panel-badge">${countLabel}</span>
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body history-list">
           ${history.length ? history.map((entry) => `
-            <article class="history-entry">
-              <span class="history-meta">R${entry.round} ${escapeHtml(entry.phase)}</span>
-              <strong>${escapeHtml(entry.summary)}</strong>
+            <article class="history-entry-card">
+              <header class="history-entry-head">
+                <span class="history-entry-round">R${entry.round}</span>
+                <span class="history-entry-phase">${escapeHtml(entry.phase)}</span>
+              </header>
+              <div class="history-entry-summary">${escapeHtml(entry.summary)}</div>
             </article>
           `).join('') : '<div class="panel-empty">No history yet.</div>'}
         </div>
@@ -298,22 +303,25 @@ export function renderHistoryPanel(container, state, options = {}) {
   `;
 }
 
-export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null) {
+export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null, options = {}) {
   if (!container || !state) return;
   const player = getPlayer(state, playerId);
+  const isOpen = options.uiState?.panels?.dashboard ?? true;
   const selected = selectedProvinceId ? state.themes[selectedProvinceId] : null;
   const titles = [
     playerId === state.basileusId ? renderTitleBadge(state, 'BASILEUS', { holderId: playerId, compact: true }) : '',
     ...(player?.majorTitles || []).map((titleKey) => renderTitleBadge(state, titleKey, { holderId: playerId, compact: true })),
   ].filter(Boolean).join(' ');
+  container.classList?.toggle?.('panel-collapsed', !isOpen);
   container.innerHTML = `
-    <div class="sidebar-panel dashboard-panel">
-      <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="dashboard">
+    <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="${player ? getPlayerStyleAttr(state, player.id) : ''}">
+      <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Dynasty</span>
           <span class="sidebar-panel-title">${player ? renderPlayerRoleName(state, player) : 'No dynasty'}</span>
         </span>
       </button>
+      ${isOpen ? `
       <div class="sidebar-panel-body">
         <div class="dashboard-stat-row">
           <span class="dashboard-stat-label">${renderIcon('gold')} Gold</span>
@@ -331,6 +339,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           </div>
         ` : ''}
       </div>
+      ` : ''}
     </div>
   `;
 }

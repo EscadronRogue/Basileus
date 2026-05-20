@@ -18,7 +18,7 @@ import { renderIcon } from './icons.js';
 export function createDefaultUiState() {
   return {
     panels: {
-      dashboard: false,
+      dashboard: true,
       balance: true,
       notifications: true,
       history: false,
