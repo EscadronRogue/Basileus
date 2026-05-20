@@ -108,7 +108,7 @@ function buildObligationNotifications(state, viewerId, dealView, notifications) 
       title: 'Deal commitments affect your orders',
       body: lockedBits.join(', '),
       urgent: false,
-      action: 'open_orders',
+      action: 'open_deployment',
       round: state.round,
       phase: state.phase,
     });
@@ -134,14 +134,14 @@ function buildRevocationNotifications(state, viewerId, notifications) {
 }
 
 function buildPendingActionNotifications(state, viewerId, notifications) {
-  if (state.pendingTitleReassignment && Number(state.nextBasileusId) === Number(viewerId)) {
+  if (state.phase === 'title_redistribution' && Number(state.basileusId) === Number(viewerId)) {
     pushNotification(notifications, {
       id: `title-reassignment:${viewerId}:${state.round}`,
       kind: 'title_reassignment',
       title: 'Redistribute the major offices',
-      body: 'Your dynasty has taken the throne and must assign the major titles.',
+      body: 'As Basileus, confirm or redistribute the major titles before income.',
       urgent: true,
-      action: 'open_resolution',
+      action: 'open_title_redistribution',
       round: state.round,
       phase: state.phase,
     });

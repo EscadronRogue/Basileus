@@ -2,243 +2,103 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createGameState } from '../engine/state.js';
-import { buildFinalScores } from '../engine/scoring.js';
-import { setDealParticipantIds } from '../engine/deals.js';
+import { phaseCourt } from '../engine/turnflow.js';
 import { submitHumanOrders } from '../engine/commands.js';
-import {
-  advanceToNextInteractivePhase,
-  phaseOrders,
-} from '../engine/turnflow.js';
+import { suggestMajorTitleAssignments } from '../engine/actions.js';
 import {
   buildAIOrders,
   buildSimultaneousAIOrders,
   createAIMeta,
-  getRecentPublicLog,
-  hydrateAiOpponent,
   isAIPlayer,
-  loadBrowserAiOpponentRoster,
-  observeCourtAction,
   planMajorTitleAssignment,
   runAICourtAutomation,
 } from './brain.js';
-import {
-  AI_DEALS_ENABLED,
-  applyLegalAction,
-  listLegalCourtActions,
-  listLegalOrderActions,
-  listLegalRewardActions,
-  listLegalTitleAssignments,
-} from './legalActions.js';
-import {
-  PLACEHOLDER_AI_OPPONENTS,
-  loadOpponentByIdSync,
-  loadOpponentRosterSync,
-} from './opponentRoster.js';
 
-function prepareInteractiveState(options = {}) {
-  const state = createGameState({
-    playerCount: options.playerCount || 4,
-    deckSize: options.deckSize || 2,
-    seed: options.seed || 11,
-    historyEnabled: false,
-  });
-  setDealParticipantIds(state, state.players.map((player) => player.id));
-  advanceToNextInteractivePhase(state);
+function makeState() {
+  const state = createGameState({ playerCount: 4, deckSize: 2, seed: 13, historyEnabled: true });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  for (const player of state.players) player.majorTitles = [];
+  state.players[1].majorTitles = ['DOM_EAST', 'PATRIARCH'];
+  state.players[2].majorTitles = ['DOM_WEST'];
+  state.players[3].majorTitles = ['ADMIRAL'];
   return state;
 }
 
-function cloneState(state) {
-  const clone = JSON.parse(JSON.stringify(state));
-  clone.rng = state.rng;
-  if (state.courtActions) {
-    clone.courtActions = {
-      ...clone.courtActions,
-      playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
-    };
-  }
-  return clone;
-}
+test('AI meta keeps declared human seats under human control', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0, 2] });
 
-test('AI metadata preserves human and placeholder seat boundaries', () => {
-  const state = createGameState({ playerCount: 4, deckSize: 1, seed: 11 });
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-
-  assert.equal(meta.placeholderOnly, true);
-  assert.equal(meta.humanPlayerIds.has(1), true);
-  assert.equal(isAIPlayer(meta, 0), true);
-  assert.equal(isAIPlayer(meta, 1), false);
-  assert.equal(meta.players[0].opponent.id, 'placeholder-1');
-  assert.equal(meta.players[0].opponent.placeholder, true);
-  assert.equal(typeof meta.players[0].displayName, 'string');
+  assert.equal(isAIPlayer(meta, 0), false);
+  assert.equal(isAIPlayer(meta, 1), true);
+  assert.equal(isAIPlayer(meta, 2), false);
+  assert.equal(isAIPlayer(meta, 3), true);
 });
 
-test('built-in AI placeholder roster keeps Greek names available', () => {
-  const roster = loadOpponentRosterSync();
-  assert.equal(roster.length, PLACEHOLDER_AI_OPPONENTS.length);
-  assert.equal(roster[0].id, 'placeholder-1');
-  assert.equal(roster[0].firstName, 'Achilleus');
-  assert.equal(loadOpponentByIdSync('placeholder-2').firstName, 'Alexandros');
-  assert.equal(loadOpponentByIdSync('missing', 2).id, 'placeholder-3');
-  assert.equal(hydrateAiOpponent('placeholder-4').placeholder, true);
-});
+test('placeholder court automation only confirms AI players', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  state.phase = 'income';
+  phaseCourt(state);
 
-test('browser opponent roster falls back to local placeholders', async () => {
-  const previousFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({ ok: false, status: 404 });
-
-  try {
-    const roster = await loadBrowserAiOpponentRoster('/missing');
-    assert.equal(roster.length, PLACEHOLDER_AI_OPPONENTS.length);
-    await assert.rejects(
-      () => loadBrowserAiOpponentRoster('/missing', { required: true }),
-      /Could not list AI placeholders/,
-    );
-  } finally {
-    globalThis.fetch = previousFetch;
-  }
-});
-
-test('placeholder court automation only passes during finish mode', () => {
-  const state = prepareInteractiveState({ seed: 21 });
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-
-  const reactive = runAICourtAutomation(state, meta, { mode: 'react' });
-  assert.equal(reactive.actions, 0);
-  for (const player of state.players.filter((entry) => entry.id !== 1)) {
-    assert.equal(state.courtActions.playerConfirmed.has(player.id), false);
-  }
-
-  const finishing = runAICourtAutomation(state, meta, { mode: 'finish' });
-  assert.equal(finishing.actions, 3);
-  for (const player of state.players.filter((entry) => entry.id !== 1)) {
-    assert.equal(state.courtActions.playerConfirmed.has(player.id), true);
-  }
-  assert.equal(state.courtActions.playerConfirmed.has(1), false);
-});
-
-test('placeholder AI orders submit legal fallback orders', () => {
-  const state = prepareInteractiveState({ seed: 23 });
-  phaseOrders(state);
-
-  const aiPlayerId = 2;
-  assert.ok(listLegalOrderActions(state, aiPlayerId).length > 0);
-
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-  const orders = buildAIOrders(state, meta, aiPlayerId);
-  const result = submitHumanOrders(state, aiPlayerId, orders);
+  const result = runAICourtAutomation(state, meta, { mode: 'finish' });
 
   assert.equal(result.ok, true);
-  assert.ok(state.allOrders[aiPlayerId]);
+  assert.equal(state.courtActions.playerConfirmed.has(0), false);
+  assert.equal(state.courtActions.playerConfirmed.has(1), true);
+  assert.equal(state.courtActions.playerConfirmed.has(2), true);
+  assert.equal(state.courtActions.playerConfirmed.has(3), true);
+});
+
+test('placeholder orders use the deployment schema and prefer the incumbent', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  state.phase = 'deployment';
+  state.currentTroops = {
+    DOM_EAST: { normal: 2, capitalLocked: 0 },
+    PATRIARCH: { normal: 1, capitalLocked: 0 },
+  };
+
+  const orders = buildAIOrders(state, meta, 1);
+
+  assert.equal(orders.candidate, state.basileusId);
+  assert.equal(orders.mercenaries.count, 0);
+  assert.equal(orders.armies.DOM_EAST.funded, 2);
+  assert.equal(orders.armies.PATRIARCH.funded, 1);
   assert.equal(orders.debug.decision.factors[0].label, 'placeholder');
 });
 
-test('simultaneous placeholder order planning ignores already submitted human orders', () => {
-  const state = prepareInteractiveState({ seed: 24 });
-  const cleanState = prepareInteractiveState({ seed: 24 });
-  phaseOrders(state);
-  phaseOrders(cleanState);
-  const humanId = 1;
-  const aiPlayerId = state.players.find((player) => player.id !== humanId).id;
-  const humanAction = listLegalOrderActions(state, humanId).find((action) => action.orders.candidate === humanId);
-  assert.ok(humanAction);
-  assert.equal(applyLegalAction(state, humanAction).ok, true);
+test('simultaneous AI planning ignores already submitted human deployment orders', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  state.phase = 'deployment';
+  state.currentTroops = {
+    BASILEUS: { normal: 1, capitalLocked: 0 },
+    DOM_EAST: { normal: 1, capitalLocked: 0 },
+    DOM_WEST: { normal: 1, capitalLocked: 0 },
+    ADMIRAL: { normal: 1, capitalLocked: 0 },
+  };
 
-  const meta = createAIMeta(state, { humanPlayerIds: [humanId] });
-  const cleanMeta = createAIMeta(cleanState, { humanPlayerIds: [humanId] });
-  const planned = buildSimultaneousAIOrders(state, meta).find((entry) => entry.playerId === aiPlayerId);
-  const independentlyPlanned = buildSimultaneousAIOrders(cleanState, cleanMeta).find((entry) => entry.playerId === aiPlayerId);
-
-  assert.deepEqual(planned.orders.deployments, independentlyPlanned.orders.deployments);
-  assert.equal(planned.orders.candidate, independentlyPlanned.orders.candidate);
-});
-
-test('generated court and order actions are accepted by engine validators', () => {
-  const state = prepareInteractiveState({ seed: 21 });
-  const courtActions = listLegalCourtActions(state, state.basileusId);
-  assert.ok(courtActions.length > 0);
-  for (const action of courtActions.slice(0, 30)) {
-    const result = applyLegalAction(cloneState(state), action);
-    assert.equal(result.ok, true, action.label);
-  }
-
-  for (const player of state.players) {
-    const confirm = listLegalCourtActions(state, player.id).find((action) => action.kind === 'court-confirm');
-    assert.ok(confirm);
-    assert.equal(applyLegalAction(state, confirm).ok, true);
-  }
-  phaseOrders(state);
-
-  const orderActions = listLegalOrderActions(state, 0);
-  assert.ok(orderActions.length > 0);
-  for (const action of orderActions.slice(0, 20)) {
-    const result = applyLegalAction(cloneState(state), action);
-    assert.equal(result.ok, true, action.label);
-  }
-});
-
-test('generated reward and title-assignment actions are legal', () => {
-  const state = prepareInteractiveState({ playerCount: 4, seed: 31 });
-  state.phase = 'resolution';
-  state.nextBasileusId = state.players.find((player) => player.id !== state.basileusId).id;
-
-  const titleActions = listLegalTitleAssignments(state, state.nextBasileusId);
-  assert.ok(titleActions.length > 0);
-  assert.equal(applyLegalAction(cloneState(state), titleActions[0]).ok, true);
-
-  const rewardState = prepareInteractiveState({ seed: 32 });
-  rewardState.phase = 'resolution';
-  rewardState.pendingDefenderRewards = [{
-    id: 'test-reward',
-    themeId: 'OPS',
-    originalThemeId: 'OPS',
-    defenderId: 0,
-    rank: 1,
-    troops: 4,
-    goldValue: 2,
-    resolved: false,
-  }];
-  const rewardActions = listLegalRewardActions(rewardState, 0);
-  assert.equal(rewardActions.length, 2);
-  for (const action of rewardActions) {
-    assert.equal(applyLegalAction(cloneState(rewardState), action).ok, true);
-  }
-});
-
-test('placeholder title assignment picks a legal fallback when needed', () => {
-  const state = prepareInteractiveState({ playerCount: 4, seed: 41 });
-  state.phase = 'resolution';
-  state.nextBasileusId = state.players.find((player) => player.id !== state.basileusId).id;
-  const meta = createAIMeta(state, { humanPlayerIds: [state.basileusId] });
-
-  const action = planMajorTitleAssignment(state, meta, state.nextBasileusId);
-  assert.equal(action?.kind, 'title-assignment');
-  assert.equal(applyLegalAction(cloneState(state), action, meta).ok, true);
-});
-
-test('generic AI deal action expansion remains disabled', () => {
-  assert.equal(AI_DEALS_ENABLED, false);
-});
-
-test('placeholder metadata records observations without an opinion model', () => {
-  const state = prepareInteractiveState({ seed: 51 });
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-
-  observeCourtAction(state, meta, {
-    type: 'appointment',
-    actorId: 1,
-    appointeeId: 0,
-    previousHolderId: 2,
-    value: 1,
+  const humanSubmit = submitHumanOrders(state, 0, {
+    armies: { BASILEUS: { funded: 1, destination: 'capital' } },
+    mercenaries: { count: 0, destination: 'frontier' },
+    candidate: 0,
   });
+  assert.equal(humanSubmit.ok, true);
 
-  assert.equal(getRecentPublicLog(meta).length, 1);
-  assert.equal(meta.players[0].trust, undefined);
-  assert.equal(meta.players[0].grievance, undefined);
+  const plans = buildSimultaneousAIOrders(state, meta);
+
+  assert.deepEqual(plans.map((plan) => plan.playerId).sort(), [1, 2, 3]);
+  assert.equal(Object.hasOwn(state.allOrders, 1), false);
 });
 
-test('official final scoring remains category-share based', () => {
-  const state = prepareInteractiveState({ playerCount: 3, deckSize: 1, seed: 93 });
-  const final = buildFinalScores(state);
-  assert.equal(final.scores.length, 3);
-  assert.equal(final.scores[0].categories.length, 4);
+test('AI title planning returns a legal title redistribution action', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  state.phase = 'title_redistribution';
+
+  const action = planMajorTitleAssignment(state, meta, state.basileusId);
+
+  assert.equal(action.kind, 'title-assignment');
+  assert.deepEqual(action.assignments, suggestMajorTitleAssignments(state, state.basileusId));
 });

@@ -1,25 +1,5 @@
-// engine/combat.js - Invasion resolution: advance or reconquest
+// engine/combat.js - invasion resolution and occupation effects.
 
-import { clearPendingOfficeArmies } from './state.js';
-
-function clearStrategosArmy(state, themeId) {
-  const officeKey = `STRAT_${themeId}`;
-  for (const player of state.players) {
-    if (player.professionalArmies[officeKey] != null) {
-      delete player.professionalArmies[officeKey];
-    }
-  }
-  clearPendingOfficeArmies(state, officeKey);
-}
-
-/**
- * Resolve the frontier battle.
- * @param {object} state - game state
- * @param {number} frontierTroops - total troops sent to frontier (F)
- * @param {number} invaderStrength - rolled strength (S)
- * @param {object} invasion - the invasion card
- * @returns {{ outcome, themesLost: string[], themesRecovered: string[], reachedCPL: boolean }}
- */
 export function resolveInvasion(state, frontierTroops, invaderStrength, invasion) {
   const F = frontierTroops;
   const S = invaderStrength;
@@ -27,7 +7,7 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
   const initiallyOccupied = new Set(
     Object.values(state.themes)
       .filter((theme) => theme.occupied)
-      .map((theme) => theme.id)
+      .map((theme) => theme.id),
   );
   const result = {
     outcome: F > S ? 'victory' : F < S ? 'defeat' : 'stalemate',
@@ -39,9 +19,7 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
     advancePath: [],
   };
 
-  if (F === S) {
-    return result;
-  }
+  if (F === S) return result;
 
   if (F < S) {
     let remaining = S - F;
@@ -55,17 +33,13 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
         result.advancePath.push('CPL');
         break;
       }
-
       const theme = state.themes[themeId];
       if (!theme) continue;
-
       if (projectedOccupied.has(themeId)) {
         result.advancePath.push(themeId);
         continue;
       }
-
       if (remaining < captureCost) break;
-
       remaining -= captureCost;
       captureCost += 1;
       projectedOccupied.add(themeId);
@@ -77,56 +51,52 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
 
   let surplus = F - S;
   let recoverCost = 1;
-  const reverseRoute = route
-    .slice()
-    .reverse()
-    .filter((themeId) => themeId !== 'CPL');
+  const reverseRoute = route.slice().reverse().filter((themeId) => themeId !== 'CPL');
   const projectedRecovered = new Set(initiallyOccupied);
-
   for (const themeId of reverseRoute) {
     if (surplus < recoverCost) break;
-
     const theme = state.themes[themeId];
     if (!theme || !projectedRecovered.has(themeId)) continue;
-
     surplus -= recoverCost;
     recoverCost += 1;
     projectedRecovered.delete(themeId);
     result.advancePath.push(themeId);
     result.themesRecovered.push(themeId);
   }
-
   return result;
 }
 
-/**
- * Apply invasion results to state (mutates).
- * Lost provinces lose their owner and strategos but keep their bishop: the bishop
- * stays appointed (and continues to receive a share of the church pool) even
- * though the lost province no longer contributes its church value.
- * Recovered provinces become ownerless but keep any bishop who remained attached
- * during occupation. The defender reward step in turnflow may leave some pending
- * reconquests occupied if defenders choose gold.
- */
+function suspendOwnerOnLoss(theme) {
+  if (theme.owner == null) return;
+  theme.suspendedOwner = theme.owner;
+  theme.owner = null;
+}
+
 export function applyInvasionResult(state, result) {
   for (const themeId of result.themesLost) {
     const theme = state.themes[themeId];
     if (!theme) continue;
-    clearStrategosArmy(state, themeId);
+    suspendOwnerOnLoss(theme);
     theme.occupied = true;
-    theme.owner = null;
     theme.strategos = null;
-    // bishop & bishopIsDonor intentionally preserved — bishops keep their share
-    // of the church pool when their province is occupied. The C value of the
-    // province does not contribute (filtered out in the cascade by occupied=true).
+    // Bishops remain seated. Occupied-province church income uses origin.C.
   }
 
   for (const themeId of result.themesRecovered) {
     const theme = state.themes[themeId];
     if (!theme) continue;
-    clearStrategosArmy(state, themeId);
     theme.occupied = false;
-    theme.owner = null;
+    if (theme.suspendedOwner != null) {
+      theme.owner = theme.suspendedOwner;
+      if (theme.owner === 'church') {
+        theme.P = 0;
+        theme.T = 0;
+        theme.C = (Number(theme.origin?.P) || 0) + (Number(theme.origin?.T) || 0) + (Number(theme.origin?.C) || 0);
+      }
+      theme.suspendedOwner = null;
+    } else {
+      theme.owner = null;
+    }
     theme.strategos = null;
   }
 

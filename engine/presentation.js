@@ -16,21 +16,16 @@ export function formatTroops(count, noun = 'troop') {
   return `${amount} ${noun}${amount === 1 ? '' : 's'}`;
 }
 
-export function formatLevies(count) {
-  const amount = Math.max(0, normalizeDisplayNumber(count));
-  return `${amount} ${amount === 1 ? 'levy' : 'levies'}`;
-}
-
 export function formatMercenaries(count) {
   const amount = Math.max(0, normalizeDisplayNumber(count));
   return `${amount} ${amount === 1 ? 'mercenary' : 'mercenaries'}`;
 }
 
 export function formatProvinceYield(theme, options = {}) {
+  if (theme?.id === 'CPL') return '';
   const profit = Math.max(0, Number(theme?.P) || 0);
-  const tax = Math.max(0, Number(theme?.T) || 0);
-  const levies = Math.max(0, Number(theme?.L) || 0);
+  const troops = Math.max(0, Number(theme?.T) || 0);
   const church = Math.max(0, Number(theme?.C) || 0);
-  if (options.compact) return `P${profit} / T${tax} / L${levies} / C${church}`;
-  return `Profit ${profit} / Tax ${tax} / Levies ${levies} / Church ${church}`;
+  if (options.compact) return `P${profit} / T${troops} / C${church}`;
+  return `Profit ${profit} / Troops ${troops} / Church ${church}`;
 }

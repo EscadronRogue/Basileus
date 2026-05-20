@@ -1,14 +1,15 @@
 import { buildFinalScores } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
-import { runAdministration } from '../engine/cascade.js';
-import { getPlayerProfessionalUpkeep } from '../engine/actions.js';
+import { runIncome } from '../engine/cascade.js';
 import { getPlayer } from '../engine/state.js';
 import {
   renderCourtPanel,
+  renderEstatesPanel,
   renderHistoryPanel,
   renderOrdersPanel,
   renderPlayerDashboard,
   renderResolutionPanelDetailed,
+  renderTitleRedistributionPanel,
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
@@ -138,9 +139,11 @@ function markRenderedNotificationsRead(uiState, container) {
 export const PHASE_NAMES = {
   setup: 'Setup',
   invasion: 'Invasion',
-  administration: 'Administration',
+  title_redistribution: 'Title Redistribution',
+  income: 'Income',
   court: 'Court',
-  orders: 'Secret Orders',
+  estates: 'Estates',
+  deployment: 'Deployment',
   resolution: 'Resolution',
   cleanup: 'Cleanup',
   scoring: 'Final Scoring',
@@ -149,24 +152,30 @@ export const PHASE_NAMES = {
 export const PHASE_TOOLTIPS = {
   setup: 'Provinces, titles and starting gold are dealt out.',
   invasion: 'A new invasion is drawn. Its route shows which provinces are at risk.',
-  administration: 'Provinces pay out gold and raise levies automatically.',
-  court: 'Bid on estates, appoint officers, recruit troops, then confirm.',
-  orders: 'Each player privately sends every troop to the Capital (coup) or Frontier (war), and picks who to back for the throne.',
+  title_redistribution: 'The Basileus confirms or redistributes the major titles.',
+  income: 'Provinces pay out gold and raise troops automatically.',
+  court: 'Each player takes one appointment, revocation, church gift, or skip action.',
+  estates: 'Dynasties bid for private land.',
+  deployment: 'Each player funds armies, hires mercenaries, chooses destinations, and backs a claimant.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
-  cleanup: 'Pay 1 gold per professional troop. Levies and mercenaries disband.',
-  scoring: 'Each 25% share of church income, estate income, tax income, and gold reserves scores 1 point, up to 3 per category.',
+  cleanup: 'Per-turn state clears before the next invasion.',
+  scoring: 'Each 25% share of church income, estate income, and gold reserves scores 1 point, up to 3 per category.',
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
+  title_redistribution: 'Redistribute Major Titles',
   court: 'Imperial Court',
-  orders: 'Secret Orders',
+  estates: 'Estates',
+  deployment: 'Deployment',
   resolution: 'Resolution',
   scoring: 'Final Reckoning',
 };
 
 export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
+  title_redistribution: '',
   court: '',
-  orders: '',
+  estates: '',
+  deployment: '',
   resolution: '',
   scoring: '',
 };
@@ -227,11 +236,6 @@ export function renderEmpireFallenBanner(state) {
   banner.innerHTML = '<strong>Empire Fallen</strong><span>Constantinople has been sacked. The game ends now; the highest-scoring dynasty wins.</span>';
 }
 
-function getPlayerMaintenance(player, state = null) {
-  if (state) return getPlayerProfessionalUpkeep(state, player.id);
-  return Object.values(player?.professionalArmies || {}).reduce((total, count) => total + count, 0);
-}
-
 function formatCompactValue(value, mode = 'plain') {
   const numeric = Number(value) || 0;
   const normalized = Number.isInteger(numeric) ? numeric : Math.round(numeric * 100) / 100;
@@ -242,18 +246,18 @@ function formatCompactValue(value, mode = 'plain') {
 }
 
 export function getPlayerTabEconomy(player, administration, state = null) {
+  void state;
   const income = administration?.income?.[player.id] || 0;
-  const upkeep = getPlayerMaintenance(player, state);
   return {
     reserve: formatCompactValue(player.gold),
     income: formatCompactValue(income, 'plus'),
-    expense: formatCompactValue(upkeep, 'minus'),
+    expense: formatCompactValue(0, 'minus'),
   };
 }
 
 export function renderPlayerTabFinance(economy) {
   return `
-    <span class="tab-finance" aria-label="Reserve, income, and upkeep" title="Reserve | income / upkeep">
+    <span class="tab-finance" aria-label="Reserve and income" title="Reserve | income">
       <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
       <span class="tab-finance-separator" aria-hidden="true">|</span>
       <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
@@ -267,7 +271,7 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
   const tabBar = document.getElementById('playerTabBar');
   if (!tabBar || !state) return;
 
-  const administration = runAdministration(state);
+  const administration = runIncome(state);
 
   tabBar.innerHTML = state.players.map((player) => {
     const economy = getPlayerTabEconomy(player, administration, state);
@@ -315,9 +319,11 @@ export function renderActionShell(panel, state, uiState) {
 function getNotificationActionLabel(action) {
   return {
     open_deals: 'Deals',
-    open_orders: 'Orders',
+    open_orders: 'Deployment',
+    open_deployment: 'Deployment',
     open_history: 'History',
     open_resolution: 'Resolution',
+    open_title_redistribution: 'Titles',
   }[action] || 'Notice';
 }
 
@@ -426,7 +432,7 @@ export function renderScoringHtml(state, options = {}) {
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Highest point total wins. Each 25% share of Church income, Estate income, Tax income, and Gold reserves is worth 1 point, up to 3 per category.</p>
+      <p class="section-hint">Highest point total wins. Each 25% share of Church income, Estate income, and Gold reserves is worth 1 point, up to 3 per category.</p>
       <div class="score-list">
         ${scores.map((score) => {
           const rank = scores.filter((other) => other.points > score.points).length + 1;
@@ -496,6 +502,12 @@ export function renderGameActionPanel({
   }
 
   switch (state.phase) {
+    case 'title_redistribution':
+      renderTitleRedistributionPanel(shell, state, activePlayerId, {
+        confirmTitleRedistribution: handlers.confirmTitleRedistribution,
+      }, { uiState });
+      break;
+
     case 'court':
       renderCourtPanel(shell, state, activePlayerId, handlers.court || {}, {
         selectedProvinceId,
@@ -504,7 +516,14 @@ export function renderGameActionPanel({
       });
       break;
 
-    case 'orders':
+    case 'estates':
+      renderEstatesPanel(shell, state, activePlayerId, {
+        buy: handlers.estates?.buy,
+        confirmEstates: handlers.confirmEstates,
+      }, { uiState });
+      break;
+
+    case 'deployment':
       renderOrdersPanel(shell, state, activePlayerId, {
         lockOrders: handlers.lockOrders,
       }, {

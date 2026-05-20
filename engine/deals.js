@@ -3,9 +3,9 @@ import {
   formatPlayerLabel,
   getOfficeDisplayName,
   getPlayer,
-  getPlayerMercenaryTroops,
-  MERCENARY_COMPANY_KEY,
+  getOfficeHolder,
 } from './state.js';
+import { getTroopEntryTotal, readTroopEntry } from './cascade.js';
 
 export const DEAL_THREAD_STATUS = {
   OPEN: 'open',
@@ -33,8 +33,6 @@ const TROOP_CLAUSE_KINDS = new Set([
 ]);
 
 const RECURRING_TROOP_KINDS = new Set(TROOP_CLAUSE_KINDS);
-const CAPITAL_LOCKED_OFFICES = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
-
 function clonePlain(value) {
   if (value == null) return value;
   return JSON.parse(JSON.stringify(value));
@@ -180,34 +178,16 @@ function normalizeClauseDirection(actorId, counterpartyId, rawClause = {}) {
 }
 
 function getPlayerOrderChunks(state, playerId) {
-  const player = getPlayer(state, playerId);
-  if (!player) return [];
-
-  const officeKeys = new Set();
-  if (playerId === state.basileusId) officeKeys.add('BASILEUS');
-  for (const titleKey of player.majorTitles || []) officeKeys.add(titleKey);
-  if (state.empress === playerId) officeKeys.add('EMPRESS');
-  if (state.chiefEunuchs === playerId) officeKeys.add('CHIEF_EUNUCHS');
-  for (const theme of Object.values(state.themes || {})) {
-    if (theme.strategos === playerId && !theme.occupied) {
-      officeKeys.add(`STRAT_${theme.id}`);
-    }
-  }
-  if (getPlayerMercenaryTroops(state, playerId) > 0) {
-    officeKeys.add(MERCENARY_COMPANY_KEY);
-  }
-
-  return [...officeKeys]
+  return Object.keys(state.currentTroops || {})
+    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
     .map((officeKey) => {
-      const professionals = officeKey === MERCENARY_COMPANY_KEY ? 0 : (player.professionalArmies?.[officeKey] || 0);
-      const levies = officeKey === MERCENARY_COMPANY_KEY ? 0 : (state.currentLevies?.[officeKey] || 0);
-      const mercenaries = officeKey === MERCENARY_COMPANY_KEY ? getPlayerMercenaryTroops(state, playerId) : 0;
-      const troops = professionals + levies + mercenaries;
+      const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+      const troops = getTroopEntryTotal(entry);
       return {
         officeKey,
         officeName: getOfficeDisplayName(state, officeKey),
         troops,
-        capitalOnly: CAPITAL_LOCKED_OFFICES.has(officeKey),
+        capitalOnly: entry.normal <= 0 && entry.capitalLocked > 0,
       };
     })
     .filter((chunk) => chunk.troops > 0)
@@ -1112,40 +1092,6 @@ export function consumeAppointmentPromise(state, appointerId, appointeeId) {
   }
 }
 
-export function validateDismissAgainstDeals(state, playerId, officeKey, count) {
-  if (!TROOP_CLAUSE_KINDS.size) return { ok: true };
-  const player = getPlayer(state, playerId);
-  if (!player) return { ok: true };
-  const dismissCount = Math.max(0, Number(count) || 0);
-  if (dismissCount <= 0) return { ok: true };
-  const current = player.professionalArmies?.[officeKey] || 0;
-  if (dismissCount > current) return { ok: true };
-
-  const snapshot = clonePlain({
-    professionalArmies: player.professionalArmies || {},
-  });
-  player.professionalArmies[officeKey] = Math.max(0, current - dismissCount);
-  if (player.professionalArmies[officeKey] === 0) delete player.professionalArmies[officeKey];
-
-  const groups = collectTroopCommitmentGroups(state, []);
-  let result = { ok: true };
-  for (const group of groups) {
-    if (group.playerId !== playerId) continue;
-    if (group.error) {
-      result = fail(group.error);
-      break;
-    }
-    const plan = buildTroopCommitmentPlan(state, playerId, group.capitalRequired, group.frontierRequired);
-    if (!plan.ok) {
-      result = fail(`${playerName(state, playerId)} cannot dismiss those troops without breaking accepted deal commitments.`);
-      break;
-    }
-  }
-
-  player.professionalArmies = snapshot.professionalArmies;
-  return result;
-}
-
 export function buildOrderLocksForPlayer(state, playerId) {
   ensureDealState(state);
   const requirements = buildDueTroopRequirements(state, playerId);
@@ -1212,15 +1158,24 @@ export function normalizeOrdersWithDealLocks(state, playerId, orders, options = 
   if (!locks.ok) return locks;
   const nextOrders = {
     ...orders,
-    deployments: {
-      ...(orders.deployments || {}),
+    armies: {
+      ...(orders.armies || {}),
+    },
+    mercenaries: {
+      count: Math.max(0, Number(orders.mercenaries?.count) || 0),
+      destination: orders.mercenaries?.destination === 'capital' ? 'capital' : 'frontier',
     },
   };
   if (locks.candidateId != null) {
     nextOrders.candidate = locks.candidateId;
   }
   for (const [officeKey, destination] of Object.entries(locks.committedOfficeKeys || {})) {
-    nextOrders.deployments[officeKey] = destination;
+    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+    const max = entry.normal + entry.capitalLocked;
+    nextOrders.armies[officeKey] = {
+      funded: max,
+      destination,
+    };
   }
   return { ok: true, orders: nextOrders, orderLocks: locks };
 }

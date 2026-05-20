@@ -1,4 +1,4 @@
-import { runAdministration } from './cascade.js';
+import { runIncome } from './cascade.js';
 import { getPlayer } from './state.js';
 
 export const SCORE_CATEGORIES = [
@@ -11,11 +11,6 @@ export const SCORE_CATEGORIES = [
     key: 'estate',
     label: 'Estate Income',
     description: 'Income from owned estates.',
-  },
-  {
-    key: 'tax',
-    label: 'Tax Income',
-    description: 'Income from imperial, regional, and provincial tax offices.',
   },
   {
     key: 'gold',
@@ -61,11 +56,11 @@ function scoreCategory(state, administration, category) {
 }
 
 export function buildFinalScores(state) {
-  const administration = runAdministration(state);
+  const income = runIncome(state);
   const categoryScores = new Map();
 
   for (const category of SCORE_CATEGORIES) {
-    for (const entry of scoreCategory(state, administration, category)) {
+    for (const entry of scoreCategory(state, income, category)) {
       if (!categoryScores.has(entry.playerId)) categoryScores.set(entry.playerId, []);
       categoryScores.get(entry.playerId).push(entry);
     }
@@ -74,7 +69,7 @@ export function buildFinalScores(state) {
   const scores = state.players.map((player) => {
     const categories = categoryScores.get(player.id) || [];
     const points = categories.reduce((total, category) => total + category.points, 0);
-    const projectedIncome = administration.income[player.id] || 0;
+    const projectedIncome = income.income[player.id] || 0;
     return {
       player,
       playerId: player.id,
@@ -98,7 +93,7 @@ export function buildFinalScores(state) {
     winners,
     topScore,
     topWealth: topScore,
-    administration,
+    income,
   };
 }
 
@@ -109,8 +104,8 @@ export function getPlayerFinalScore(state, playerId) {
 // Value of each category sitting outside player hands ("free citizens" share).
 // Only estate income is meaningfully held by free citizens — unowned, unoccupied
 // land pays its profit to nobody, so it counts toward the citizens' slice in
-// the balance-of-power pie. Tax and church revenue are extracted from citizens
-// rather than retained by them, and gold reserves are dynastic only.
+// the balance-of-power pie. Church revenue is extracted from citizens rather
+// than retained by them, and gold reserves are dynastic only.
 function getFreeCitizensCategoryValue(state, categoryKey) {
   if (categoryKey !== 'estate') return 0;
   return Object.values(state.themes).reduce((total, theme) => {

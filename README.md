@@ -101,7 +101,7 @@ Render notes:
 
 ## Game Overview
 
-Players are rival noble houses inside the Byzantine Empire. Each round, gold flows in from provinces, titles are auctioned and reshuffled, invasions strike the frontier, and players plot intrigue against each other. The Basileus seat rotates based on cascading title rules. Win by earning points for each 25% share of church income, estate income, tax income, and gold reserves while surviving the political fallout.
+Players are rival noble houses inside the Byzantine Empire. Each round draws an invasion, lets the Basileus confirm the major titles, pays estate and church income, opens a one-action Court, auctions free estates, and resolves simultaneous Deployment. Win by earning points for each 25% share of church income, estate income, and gold reserves while surviving the political fallout.
 
 The full rule set lives in the engine. Read `engine/turnflow.js` and `engine/cascade.js` for the canonical source.
 

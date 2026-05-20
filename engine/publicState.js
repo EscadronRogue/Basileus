@@ -58,7 +58,7 @@ export function sanitizePublicHistory(state) {
 
     if (nextEvent.type === 'orders_submitted') {
       nextEvent.details = null;
-      nextEvent.summary = `${nextEvent.summary || ''}`.trim() || 'Secret orders are sealed.';
+      nextEvent.summary = `${nextEvent.summary || ''}`.trim() || 'Deployment orders are sealed.';
     }
 
     sanitized.push(nextEvent);
@@ -79,44 +79,28 @@ export function serializePublicGameState(state, viewerSeatId = null) {
   publicState.players = serializePlayersForViewer(state, viewerSeatId);
   publicState.themes = clonePlain(state.themes || {});
   publicState.currentInvasion = serializeCurrentInvasion(state.currentInvasion);
-  publicState.currentLevies = clonePlain(state.currentLevies || {});
+  publicState.currentTroops = clonePlain(state.currentTroops || {});
   publicState.allOrders = serializeSubmittedOrders(state);
   publicState.lastCoupResult = clonePlain(state.lastCoupResult);
   publicState.lastWarResult = clonePlain(state.lastWarResult);
   publicState.gameOver = clonePlain(state.gameOver);
   publicState.history = sanitizePublicHistory(state);
   publicState.courtActions = serializeCourtActions(state.courtActions);
-  publicState.recruitedThisRound = clonePlain(state.recruitedThisRound || {});
-  publicState.pendingTitleReassignment = Boolean(state.pendingTitleReassignment)
-    || state.nextBasileusId !== state.basileusId;
+  publicState.mercenaryOrders = clonePlain(state.mercenaryOrders || {});
 
   return publicState;
 }
 
 export function hydratePublicState(rawState = {}) {
-  const { currentMercenaryHires, ...rest } = rawState;
-  const hydratedMercenaries = rawState.currentMercenaryTroops && typeof rawState.currentMercenaryTroops === 'object'
-    ? rawState.currentMercenaryTroops
-    : (currentMercenaryHires && typeof currentMercenaryHires === 'object'
-      ? Object.fromEntries(
-        Object.entries(currentMercenaryHires).map(([playerId, officeMap]) => [
-          playerId,
-          Object.values(officeMap || {}).reduce((total, count) => total + (Math.max(0, Number(count) || 0)), 0),
-        ])
-      )
-      : {});
   return {
-    ...rest,
+    ...rawState,
     historyEnabled: true,
     history: Array.isArray(rawState.history) ? rawState.history : [],
     players: Array.isArray(rawState.players) ? rawState.players : [],
     themes: rawState.themes && typeof rawState.themes === 'object' ? rawState.themes : {},
-    currentLevies: rawState.currentLevies && typeof rawState.currentLevies === 'object' ? rawState.currentLevies : {},
-    currentMercenaryTroops: hydratedMercenaries,
+    currentTroops: rawState.currentTroops && typeof rawState.currentTroops === 'object' ? rawState.currentTroops : {},
+    mercenaryOrders: rawState.mercenaryOrders && typeof rawState.mercenaryOrders === 'object' ? rawState.mercenaryOrders : {},
     allOrders: rawState.allOrders && typeof rawState.allOrders === 'object' ? rawState.allOrders : {},
-    recruitedThisRound: rawState.recruitedThisRound && typeof rawState.recruitedThisRound === 'object'
-      ? rawState.recruitedThisRound
-      : {},
     courtActions: hydrateCourtActions(rawState.courtActions),
   };
 }

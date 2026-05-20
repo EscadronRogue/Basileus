@@ -1,6 +1,6 @@
 // ui/balancePanel.js — Balance of Power sidebar panel.
 //
-// Renders the four scoring-category pies (Estate, Tax, Church, Gold) together
+// Renders the scoring-category pies (Estate, Church, Gold) together
 // with a live ranking based on the official scoring rule (1 point per 25%
 // share of the player-only pool, capped at 3 per category). The pies show a
 // "free citizens" slice in any category where value isn't yet held by a
@@ -174,7 +174,7 @@ export function renderBalancePanel(container, state, options = {}) {
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body">
-          <p class="section-hint">Each 25% share of a category scores 1 point (max 3). Free citizens are shown for context only — buying their land converts their slice into yours.</p>
+          <p class="section-hint">Each 25% share of a category scores 1 point (max 3). Free citizens are shown for context only; estate bids convert their slice into yours.</p>
           ${renderRanking(state, balance.scores)}
           <div class="balance-pie-grid">
             ${balance.categories.map((category) => renderPieCard(state, category)).join('')}

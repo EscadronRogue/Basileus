@@ -7,16 +7,20 @@ import {
   advanceToNextInteractivePhase,
   applyDefenderRewardChoice,
   allOrdersSubmitted,
+  confirmTitleRedistribution,
   getPendingDefenderRewards,
   hasPendingDefenderRewards,
   isCourtComplete,
   phaseCleanup,
-  phaseOrders,
+  phaseDeployment,
+  phaseEstates,
   phaseResolution,
 } from './turnflow.js';
 import {
   applyCourtAction,
+  applyEstateAction,
   applyManualTitleReassignment,
+  confirmEstates,
   confirmCourt,
   submitHumanOrders,
 } from './commands.js';
@@ -28,6 +32,7 @@ import {
   invalidateRoundContext,
   isAIPlayer,
   observeCourtAction,
+  planMajorTitleAssignment,
   runAICourtAutomation,
 } from '../ai/brain.js';
 
@@ -105,12 +110,12 @@ export function autoResolveUnavailableHumanAppointments(state, playerId) {
 
 export function maybeAdvanceCourt(state, aiMeta = null) {
   if (state && isCourtComplete(state)) {
-    phaseOrders(state);
+    phaseEstates(state);
     if (aiMeta) invalidateRoundContext(aiMeta);
   }
 }
 
-// Drives AI through their automated phases (court, orders) and auto-advances
+// Drives AI through their automated phases (court, estates, deployment) and auto-advances
 // non-interactive phases. Returns the planned AI title assignment when a
 // resolution requires title reassignment; otherwise null.
 export function processAiFlow(state, aiMeta, options = {}) {
@@ -125,19 +130,41 @@ export function processAiFlow(state, aiMeta, options = {}) {
 
     if (state.gameOver || state.phase === 'scoring' || state.phase === 'resolution') break;
 
-    if (state.phase === 'court') {
-      if (hasAiSeats) {
-        runAICourtAutomation(state, aiMeta, { mode: courtMode });
-      }
-      if (courtMode === 'finish' && isCourtComplete(state)) {
-        phaseOrders(state);
+    if (state.phase === 'title_redistribution') {
+      if (hasAiSeats && isAIPlayer(aiMeta, state.basileusId)) {
+        const planned = planMajorTitleAssignment(state, aiMeta, state.basileusId);
+        const assignments = planned?.assignments || planned;
+        const result = confirmTitleRedistribution(state, state.basileusId, assignments);
+        if (!result.ok) throw new Error(result.reason || `AI player ${state.basileusId} could not redistribute titles.`);
         invalidateRoundContext(aiMeta);
         continue;
       }
       break;
     }
 
-    if (state.phase === 'orders') {
+    if (state.phase === 'court') {
+      if (hasAiSeats) {
+        runAICourtAutomation(state, aiMeta, { mode: courtMode });
+      }
+      if (courtMode === 'finish' && isCourtComplete(state)) {
+        phaseEstates(state);
+        invalidateRoundContext(aiMeta);
+        continue;
+      }
+      break;
+    }
+
+    if (state.phase === 'estates') {
+      const hasHumanSeats = (aiMeta?.humanPlayerIds?.size || 0) > 0;
+      if (!hasHumanSeats) {
+        phaseDeployment(state);
+        invalidateRoundContext(aiMeta);
+        continue;
+      }
+      break;
+    }
+
+    if (state.phase === 'deployment') {
       if (hasAiSeats) {
         for (const plan of buildSimultaneousAIOrders(state, aiMeta)) {
           const result = submitHumanOrders(state, plan.playerId, plan.orders);
@@ -148,15 +175,7 @@ export function processAiFlow(state, aiMeta, options = {}) {
       }
 
       if (allOrdersSubmitted(state)) {
-        const previousBasileusId = state.basileusId;
         phaseResolution(state);
-        if (hasAiSeats) {
-          const aftermath = handlePostResolutionAI(state, aiMeta, {
-            previousBasileusId,
-            autoApplyTitleAssignments: false,
-          });
-          pendingAiTitleAssignment = aftermath.plannedAssignment;
-        }
       }
       break;
     }
@@ -190,7 +209,6 @@ export function continueAfterResolution(state, aiMeta, pendingAiTitleAssignment 
     return { ok: false, reason: 'Continue is only available during resolution.', pendingAiTitleAssignment };
   }
 
-  applyPendingAiTitleAssignment(state, aiMeta, pendingAiTitleAssignment);
   autoResolveAiDefenderRewards(state, aiMeta);
   if (hasPendingDefenderRewards(state)) {
     return { ok: false, reason: 'Resolve all best-defender rewards before continuing.', pendingAiTitleAssignment };
@@ -241,6 +259,19 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
   return { ...result, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 
+export function handleHumanEstateAction(state, aiMeta, context = {}, playerId, payload = {}, options = {}) {
+  ensureRuntimeContext(context);
+  const result = applyEstateAction(state, playerId, payload);
+  if (!result.ok) return result;
+  writePending(context, processPostHumanAction(state, aiMeta, {
+    ...options,
+    observation: null,
+    courtMode: options.courtMode || 'react',
+    pendingAiTitleAssignment: context.pendingAiTitleAssignment,
+  }));
+  return { ...result, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
+}
+
 export function handleHumanCourtConfirmation(state, aiMeta, context = {}, playerId, options = {}) {
   ensureRuntimeContext(context);
   autoResolveUnavailableHumanAppointments(state, playerId);
@@ -254,6 +285,17 @@ export function handleHumanCourtConfirmation(state, aiMeta, context = {}, player
     pendingAiTitleAssignment: context.pendingAiTitleAssignment,
   }));
   if (!aiMeta) maybeAdvanceCourt(state, aiMeta);
+  return { ...result, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
+}
+
+export function handleEstatesConfirmation(state, aiMeta, context = {}, options = {}) {
+  ensureRuntimeContext(context);
+  const result = confirmEstates(state);
+  if (!result.ok) return result;
+  writePending(context, processAiFlow(state, aiMeta, {
+    ...options,
+    pendingAiTitleAssignment: context.pendingAiTitleAssignment,
+  }));
   return { ...result, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 
@@ -276,9 +318,8 @@ export function handleHumanOrders(state, aiMeta, context = {}, playerId, orders 
 
 export function handleManualTitleReassignment(state, aiMeta, context = {}, playerId, assignments = {}) {
   ensureRuntimeContext(context);
-  if (!state || state.phase !== 'resolution') return fail('Major title reassignment is only allowed during resolution.');
-  if (state.nextBasileusId === state.basileusId) return fail('No new Basileus needs to reassign titles.');
-  if (playerId !== state.nextBasileusId) return fail('Only the new Basileus may assign major titles.');
+  if (!state || state.phase !== 'title_redistribution') return fail('Major title redistribution is only allowed during Title Redistribution.');
+  if (playerId !== state.basileusId) return fail('Only the Basileus may assign major titles.');
   const result = applyManualTitleReassignment(state, aiMeta, playerId, assignments);
   if (!result.ok) return result;
   context.pendingAiTitleAssignment = null;
@@ -302,7 +343,7 @@ export function resolvePendingTitleReassignment(state, aiMeta, context = {}, ass
   }
 
   if (assignments) {
-    return handleManualTitleReassignment(state, aiMeta, context, state.nextBasileusId, assignments);
+    return handleManualTitleReassignment(state, aiMeta, context, state.basileusId, assignments);
   }
 
   return { ok: true, pendingAiTitleAssignment: context.pendingAiTitleAssignment };

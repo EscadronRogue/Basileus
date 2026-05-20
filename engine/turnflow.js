@@ -1,98 +1,85 @@
-// engine/turnflow.js — Streamlined turn flow controller
-// Phases: invasion → administration → court → orders → resolution → cleanup
-// Most phases auto-resolve. Only Court and Orders require player input.
-
-import { runAdministration } from './cascade.js';
+// engine/turnflow.js - turn controller for the updated ruleset.
+import { readTroopEntry, runIncome } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
-import {
-  applyDebtDisbanding,
-  payMaintenance,
-  resolveCoup,
-  restoreSuspendedProfessionals,
-  settleLandAuctions,
-} from './actions.js';
+import { applyTitleRedistribution, resolveCoup, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
-import {
-  getOfficeDisplayName,
-  getPlayer,
-  getPlayerMercenaryAssignments,
-  activatePendingProfessionalArmies,
-  formatPlayerLabel,
-  isMercenaryCompanyOfficeKey,
-  MERCENARY_COMPANY_KEY,
-  rollInvasionStrength,
-} from './state.js';
-import { formatTroops, formatGold } from './presentation.js';
-import { getDefenderRewardGold, getThemeProfitValue } from './rules.js';
+import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
+import { formatGold, formatTroops } from './presentation.js';
+import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
 
-export const PHASES = ['invasion', 'administration', 'court', 'orders', 'resolution', 'cleanup'];
-export const STARTING_ADMINISTRATION_GOLD = 4;
+export const PHASES = ['invasion', 'title_redistribution', 'income', 'court', 'estates', 'deployment', 'resolution', 'cleanup'];
+export const STARTING_INCOME_GOLD = 4;
 
-function isStartingAdministration(state) {
-  return state.round === 1 && !state.startingAdministrationResolved;
+function isStartingIncome(state) {
+  return state.round === 1 && !state.startingIncomeResolved;
 }
 
-function buildStartingAdministrationIncome(state) {
-  return Object.fromEntries(state.players.map(player => [player.id, STARTING_ADMINISTRATION_GOLD]));
+function buildStartingIncome(state) {
+  return Object.fromEntries(state.players.map((player) => [player.id, STARTING_INCOME_GOLD]));
 }
 
 function playerName(state, playerId) {
   const player = getPlayer(state, playerId);
-  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
+  return player?.firstName ? `${player.firstName} ${player.dynasty}`.trim() : player?.dynasty || `Player ${Number(playerId) + 1}`;
 }
 
 function officeName(state, officeKey) {
   return getOfficeDisplayName(state, officeKey);
 }
 
-function buildPlayerResolutionContribution(state, player, orders) {
-  const officeKeys = new Set(Object.keys(player.professionalArmies || {}));
-  const mercenaryEntries = getPlayerMercenaryAssignments(state, player.id);
-  const mercenaryMap = new Map(mercenaryEntries.map(entry => [entry.officeKey, entry.count]));
+function getOrderArmyKeys(state, playerId) {
+  return Object.keys(state.currentTroops || {})
+    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
+    .sort((left, right) => left.localeCompare(right));
+}
 
-  if (state.currentLevies) {
-    for (const officeKey of Object.keys(state.currentLevies)) {
-      if (getOfficeHolder(state, officeKey) === player.id) {
-        officeKeys.add(officeKey);
-      }
-    }
-  }
+function getArmySize(state, officeKey) {
+  const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+  return entry.normal + entry.capitalLocked;
+}
 
-  for (const officeKey of mercenaryMap.keys()) {
-    officeKeys.add(officeKey);
-  }
+function normalizeDestination(value) {
+  return value === 'capital' ? 'capital' : 'frontier';
+}
 
+function buildPlayerResolutionContribution(state, player, orders = {}) {
   const offices = [];
   let capitalTroops = 0;
   let frontierTroops = 0;
 
-  for (const officeKey of officeKeys) {
-    const professionalTroops = player.professionalArmies?.[officeKey] || 0;
-    const levyTroops = isMercenaryCompanyOfficeKey(officeKey)
-      ? 0
-      : (getOfficeHolder(state, officeKey) === player.id ? (state.currentLevies?.[officeKey] || 0) : 0);
-    const mercenaryTroops = mercenaryMap.get(officeKey) || 0;
-    const totalTroops = professionalTroops + levyTroops + mercenaryTroops;
+  for (const officeKey of getOrderArmyKeys(state, player.id)) {
+    const pool = readTroopEntry(state.currentTroops?.[officeKey]);
+    const totalTroops = pool.normal + pool.capitalLocked;
     if (totalTroops <= 0) continue;
+    const order = orders.armies?.[officeKey] || {};
+    const funded = Math.max(0, Math.min(totalTroops, Number(order.funded) || 0));
+    const fundedLocked = Math.min(pool.capitalLocked, funded);
+    const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
+    const destination = normalizeDestination(order.destination);
+    const officeCapital = fundedLocked + (destination === 'capital' ? fundedNormal : 0);
+    const officeFrontier = destination === 'frontier' ? fundedNormal : 0;
 
-    // Court titles that grant capital-locked levies cannot send their troops to the
-    // frontier. Their orders are always treated as 'capital' regardless of player input.
-    const destination = CAPITAL_LOCKED_OFFICES.has(officeKey)
-      ? 'capital'
-      : (orders.deployments?.[officeKey] || 'frontier');
-    if (destination === 'capital') capitalTroops += totalTroops;
-    else frontierTroops += totalTroops;
-
+    capitalTroops += officeCapital;
+    frontierTroops += officeFrontier;
     offices.push({
       officeKey,
       officeName: officeName(state, officeKey),
-      professionalTroops,
-      levyTroops,
-      mercenaryTroops,
       totalTroops,
+      fundedTroops: funded,
+      unfundedTroops: totalTroops - funded,
+      normalTroops: pool.normal,
+      capitalLockedTroops: pool.capitalLocked,
       destination,
+      capitalTroops: officeCapital,
+      frontierTroops: officeFrontier,
     });
+  }
+
+  const mercenaries = getPlayerMercenaryOrder(state, player.id);
+  if (mercenaries.count > 0) {
+    if (mercenaries.destination === 'capital') capitalTroops += mercenaries.count;
+    else frontierTroops += mercenaries.count;
   }
 
   return {
@@ -103,33 +90,25 @@ function buildPlayerResolutionContribution(state, player, orders) {
     capitalTroops,
     frontierTroops,
     offices,
-    mercenaries: mercenaryEntries.map(entry => ({
-      officeKey: entry.officeKey,
-      officeName: officeName(state, entry.officeKey),
-      count: entry.count,
-    })),
+    mercenaries,
     debug: orders.debug || null,
   };
 }
 
-// ─── Phase: Invasion ───
 export function phaseInvasion(state) {
-  state.round++;
+  state.round += 1;
   state.phase = 'invasion';
-
   if (state.invasionDeck.length === 0) {
-    // No more invasions → game ends
     state.phase = 'scoring';
     return;
   }
-
   state.currentInvasion = state.invasionDeck.shift();
-  state.invasionStrength = 0; // Will be rolled at resolution
+  state.invasionStrength = 0;
   state.log.push({
     type: 'invasion',
     invader: state.currentInvasion.name,
     strengthRange: state.currentInvasion.strength,
-    round: state.round
+    round: state.round,
   });
   recordHistoryEvent(state, {
     category: 'system',
@@ -143,138 +122,134 @@ export function phaseInvasion(state) {
   });
 }
 
-// ─── Phase: Administration (auto-resolved) ───
-export function phaseAdministration(state) {
-  state.phase = 'administration';
-  const administration = runAdministration(state);
+export function phaseTitleRedistribution(state) {
+  state.phase = 'title_redistribution';
+}
+
+export function confirmTitleRedistribution(state, playerId, assignments) {
+  if (state.phase !== 'title_redistribution') return { ok: false, reason: 'Title redistribution is not available right now.' };
+  if (playerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus may redistribute major titles.' };
+  const result = applyTitleRedistribution(state, state.basileusId, assignments);
+  if (!result.ok) return result;
+  phaseIncome(state);
+  phaseCourt(state);
+  return { ok: true };
+}
+
+export function phaseIncome(state) {
+  state.phase = 'income';
+  const computed = runIncome(state);
   const result = {
-    ...administration,
-    income: isStartingAdministration(state)
-      ? buildStartingAdministrationIncome(state)
-      : administration.income,
+    ...computed,
+    income: isStartingIncome(state) ? buildStartingIncome(state) : computed.income,
   };
 
-  // Apply gold income
   for (const [pidStr, amount] of Object.entries(result.income)) {
-    const pid = Number(pidStr);
-    const player = state.players.find(p => p.id === pid);
+    const player = getPlayer(state, Number(pidStr));
     if (player) player.gold += amount;
   }
-  state.startingAdministrationResolved = state.startingAdministrationResolved || state.round === 1;
-
-  // Debt is checked only after the turn's automatic income has been paid. A
-  // player who can climb back to zero or above from offices, land, or church
-  // income does not lose professional troops.
-  result.debtDisbands = {};
-  for (const player of state.players) {
-    const debtResult = applyDebtDisbanding(state, player.id, state.rng);
-    if (debtResult.disbanded > 0) {
-      result.debtDisbands[player.id] = debtResult;
-    }
-  }
-
-  // Store levies for deployment phase
-  state.currentLevies = result.levies;
+  state.startingIncomeResolved = state.startingIncomeResolved || state.round === 1;
+  state.currentTroops = result.troops;
 
   state.log.push({
-    type: 'admin_complete',
+    type: 'income_complete',
     income: result.income,
-    levies: result.levies,
-    debtDisbands: result.debtDisbands,
+    troops: result.troops,
     round: state.round,
   });
   recordHistoryEvent(state, {
     category: 'system',
-    type: 'administration',
-    summary: `Administration pays income and raises levies for round ${state.round}.`,
+    type: 'income',
+    summary: `Income pays gold and raises troops for round ${state.round}.`,
     details: {
       income: Object.entries(result.income).map(([playerId, amount]) => ({
         playerId: Number(playerId),
         playerName: playerName(state, Number(playerId)),
         amount,
       })),
-      levies: Object.entries(result.levies).map(([officeKey, amount]) => ({
-        officeKey,
-        officeName: officeName(state, officeKey),
-        amount,
-      })),
-      debtDisbands: Object.entries(result.debtDisbands).map(([playerId, entry]) => ({
-        playerId: Number(playerId),
-        playerName: playerName(state, Number(playerId)),
-        disbanded: entry.disbanded,
-        lost: entry.lost,
-      })),
+      troops: Object.entries(result.troops).map(([officeKey, entry]) => {
+        const troopEntry = readTroopEntry(entry);
+        return {
+          officeKey,
+          officeName: officeName(state, officeKey),
+          normal: troopEntry.normal,
+          capitalLocked: troopEntry.capitalLocked,
+        };
+      }),
     },
   });
   return result;
 }
 
-// ─── Phase: Court (requires player input) ───
-// This phase doesn't auto-resolve — the UI drives it.
-// Players perform actions: appointments, purchases, gifts, negotiations, revocations.
-// When all players confirm, advance. Appointments are valuable optional actions,
-// not mandatory gates.
 export function phaseCourt(state) {
   state.phase = 'court';
   const dealRound = startCourtDealRound(state);
-  if (!dealRound.ok) {
-    throw new Error(dealRound.reason || 'Failed to prepare the court deal state.');
-  }
-  // Reset court action tracking for this round.
+  if (!dealRound.ok) throw new Error(dealRound.reason || 'Failed to prepare the court deal state.');
   state.courtActions = {
-    basileusAppointed: false,
-    domesticEastAppointed: false,
-    domesticWestAppointed: false,
-    admiralAppointed: false,
-    patriarchAppointed: false,
-    // Per-player count of revocations this round. Each player's nth revocation
-    // costs n troops, or 2n gold for Patriarch bishop revocations.
-    revocationsUsed: {},
+    actionUsed: {},
     appointedThisTurn: {},
-    appointmentsByRecipient: {},
+    revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.landAuctions = {};
 }
 
 export function isCourtComplete(state) {
-  const ca = state.courtActions;
-  return ca.playerConfirmed.size === state.players.length;
+  return (state.courtActions?.playerConfirmed?.size || 0) === state.players.length;
 }
 
-// ─── Phase: Orders (secret, simultaneous — requires player input) ───
-export function phaseOrders(state) {
+export function phaseEstates(state) {
+  state.phase = 'estates';
+  state.landAuctions = {};
+}
+
+export function phaseDeployment(state) {
   settleLandAuctions(state);
-  state.phase = 'orders';
+  state.phase = 'deployment';
   state.allOrders = {};
-  // Each player must submit: deployments, candidate
-  // UI handles this — each player fills in their orders simultaneously
+  state.mercenaryOrders = {};
 }
 
 export function submitOrders(state, playerId, orders) {
-  // orders: { deployments: { officeKey: 'capital'|'frontier' }, candidate: playerId }
+  const player = getPlayer(state, playerId);
+  if (!player) return { ok: false, reason: 'Player not found.' };
+  if (state.allOrders?.[playerId]) return { ok: false, reason: 'Orders are already locked for this seat.' };
+
+  let unfundedGold = 0;
+  for (const officeKey of getOrderArmyKeys(state, playerId)) {
+    const total = getArmySize(state, officeKey);
+    const funded = Math.max(0, Math.min(total, Number(orders.armies?.[officeKey]?.funded) || 0));
+    unfundedGold += total - funded;
+  }
+
+  const mercCount = Math.max(0, Math.min(10, Number(orders.mercenaries?.count) || 0));
+  const mercCost = getMercenaryHireCost(0, mercCount);
+  player.gold += unfundedGold;
+  player.gold -= mercCost;
+  if (mercCount > 0) {
+    state.mercenaryOrders[playerId] = {
+      count: mercCount,
+      destination: normalizeDestination(orders.mercenaries?.destination),
+    };
+  }
+
   state.allOrders[playerId] = orders;
   recordHistoryEvent(state, {
     category: 'orders',
     type: 'orders_submitted',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} locks secret orders.`,
-    details: {
-      candidateId: orders.candidate,
-      candidateName: playerName(state, orders.candidate),
-    },
+    summary: `${playerName(state, playerId)} locks deployment orders.`,
+    details: { candidateId: orders.candidate, candidateName: playerName(state, orders.candidate) },
   });
+  return { ok: true, unfundedGold, mercCost };
 }
 
 export function allOrdersSubmitted(state) {
-  return Object.keys(state.allOrders).length === state.players.length;
+  return Object.keys(state.allOrders || {}).length === state.players.length;
 }
 
-// ─── Phase: Resolution (auto after all orders revealed) ───
 export function phaseResolution(state) {
   state.phase = 'resolution';
 
-  // 1. Compute capital and frontier troops
   const capitalTroops = {};
   const orderBreakdowns = [];
   const frontierContributions = [];
@@ -283,18 +258,12 @@ export function phaseResolution(state) {
   for (const player of state.players) {
     const orders = state.allOrders[player.id];
     if (!orders) continue;
-
     const breakdown = buildPlayerResolutionContribution(state, player, orders);
     orderBreakdowns.push(breakdown);
     capitalTroops[player.id] = breakdown.capitalTroops;
     totalFrontier += breakdown.frontierTroops;
-
     if (breakdown.frontierTroops > 0) {
-      frontierContributions.push({
-        playerId: player.id,
-        playerName: breakdown.playerName,
-        troops: breakdown.frontierTroops,
-      });
+      frontierContributions.push({ playerId: player.id, playerName: breakdown.playerName, troops: breakdown.frontierTroops });
     }
   }
 
@@ -317,7 +286,6 @@ export function phaseResolution(state) {
     });
   }
 
-  // 2. COUP
   const coupResult = resolveCoup(state, state.allOrders, capitalTroops);
   state.lastCoupResult = coupResult;
   state.nextBasileusId = coupResult.winner;
@@ -335,15 +303,9 @@ export function phaseResolution(state) {
         candidateName: playerName(state, Number(candidateId)),
         troops,
       })),
-      contributions: coupResult.contributions.map(entry => ({
-        ...entry,
-        playerName: playerName(state, entry.playerId),
-        candidateName: playerName(state, entry.candidateId),
-      })),
     },
   });
 
-  // 3. WAR
   const invasion = state.currentInvasion;
   let warResult = null;
   if (invasion) {
@@ -354,15 +316,10 @@ export function phaseResolution(state) {
       contributions: frontierContributions,
     };
     applyInvasionResult(state, warResult);
-    // After a successful repulse, top contributors decide whether each recovered
-    // province returns to the empire as free-citizen land or stays occupied in
-    // exchange for gold. Gold choices always abandon the farthest pending
-    // reconquest, preserving a contiguous imperial frontier.
     state.pendingDefenderRewards = createDefenderRewardQueue(state, warResult, frontierContributions);
     preparePendingReconquestRewards(state, state.pendingDefenderRewards);
     warResult.defenderRewards = state.pendingDefenderRewards;
     state.lastWarResult = warResult;
-
     state.log.push({
       type: 'war',
       invader: invasion.name,
@@ -371,7 +328,7 @@ export function phaseResolution(state) {
       outcome: warResult.outcome,
       themesLost: warResult.themesLost,
       themesRecovered: warResult.themesRecovered,
-      round: state.round
+      round: state.round,
     });
     recordHistoryEvent(state, {
       category: 'resolution',
@@ -398,25 +355,36 @@ export function phaseResolution(state) {
   return { coupResult, warResult };
 }
 
-// ─── Best-defender reward ───
-// After a successful invasion repulse, top contributors (by frontier troops) each
-// decide whether one reconquerable province returns to the empire as free-citizen
-// land or remains occupied in exchange for 2× its profit in gold. Defenders cycle
-// in rank order. Imperial reconquests are assigned from the capital outward;
-// gold choices abandon the farthest pending province so the recovered frontier
-// stays contiguous.
 function rankedDefenders(contributions = []) {
   return contributions
-    .filter(entry => (Number(entry.troops) || 0) > 0)
+    .filter((entry) => (Number(entry.troops) || 0) > 0)
     .slice()
     .sort((a, b) => (b.troops - a.troops) || (a.playerId - b.playerId));
+}
+
+function restoreReconqueredTheme(state, theme) {
+  if (!theme || theme.id === 'CPL') return false;
+  theme.occupied = false;
+  if (theme.suspendedOwner != null) {
+    theme.owner = theme.suspendedOwner;
+    if (theme.suspendedOwner === 'church') {
+      theme.P = 0;
+      theme.T = 0;
+      theme.C = (Number(theme.origin?.P) || 0) + (Number(theme.origin?.T) || 0) + (Number(theme.origin?.C) || 0);
+    }
+    theme.suspendedOwner = null;
+  } else {
+    theme.owner = null;
+  }
+  theme.strategos = null;
+  return true;
 }
 
 function setReconquestThemeStatus(state, themeId, recovered) {
   const theme = state.themes[themeId];
   if (!theme || theme.id === 'CPL') return false;
-  theme.occupied = !recovered;
-  theme.owner = null;
+  if (recovered) return restoreReconqueredTheme(state, theme);
+  theme.occupied = true;
   theme.strategos = null;
   return true;
 }
@@ -432,22 +400,16 @@ function getReconquestThemeOrder(rewards) {
   return rewards
     .map((reward, fallbackIndex) => ({
       themeId: reward.originalThemeId || reward.themeId,
-      index: Number.isFinite(Number(reward.reconquestIndex))
-        ? Number(reward.reconquestIndex)
-        : fallbackIndex,
+      index: Number.isFinite(Number(reward.reconquestIndex)) ? Number(reward.reconquestIndex) : fallbackIndex,
     }))
-    .filter(entry => Boolean(entry.themeId))
+    .filter((entry) => Boolean(entry.themeId))
     .sort((a, b) => a.index - b.index)
-    .map(entry => entry.themeId);
+    .map((entry) => entry.themeId);
 }
 
 function getRemainingReconquestThemeIds(rewards) {
-  const assigned = new Set(
-    rewards
-      .filter(reward => reward.resolved && reward.themeId)
-      .map(reward => reward.themeId)
-  );
-  return getReconquestThemeOrder(rewards).filter(themeId => !assigned.has(themeId));
+  const assigned = new Set(rewards.filter((reward) => reward.resolved && reward.themeId).map((reward) => reward.themeId));
+  return getReconquestThemeOrder(rewards).filter((themeId) => !assigned.has(themeId));
 }
 
 function reassignUnresolvedDefenderRewards(state, rewards) {
@@ -463,9 +425,7 @@ function reassignUnresolvedDefenderRewards(state, rewards) {
 
 function preparePendingReconquestRewards(state, rewards) {
   if (!Array.isArray(rewards) || rewards.length === 0) return;
-  for (const themeId of getReconquestThemeOrder(rewards)) {
-    setReconquestThemeStatus(state, themeId, false);
-  }
+  for (const themeId of getReconquestThemeOrder(rewards)) setReconquestThemeStatus(state, themeId, false);
   reassignUnresolvedDefenderRewards(state, rewards);
 }
 
@@ -473,7 +433,6 @@ export function createDefenderRewardQueue(state, warResult, contributions) {
   const themes = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
   const defenders = rankedDefenders(contributions);
   if (themes.length === 0 || defenders.length === 0) return [];
-
   return themes.map((themeId, i) => {
     const defender = defenders[i % defenders.length];
     const theme = state.themes[themeId];
@@ -497,9 +456,7 @@ export function createDefenderRewardQueue(state, warResult, contributions) {
 
 export function getPendingDefenderRewards(state, playerId = null) {
   const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards : [];
-  return rewards.filter((reward) => (
-    !reward.resolved && (playerId == null || reward.defenderId === playerId)
-  ));
+  return rewards.filter((reward) => !reward.resolved && (playerId == null || reward.defenderId === playerId));
 }
 
 export function hasPendingDefenderRewards(state) {
@@ -515,17 +472,13 @@ export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'l
 
   const remainingThemeIds = getRemainingReconquestThemeIds(rewards);
   const normalizedChoice = choice === 'gold' ? 'gold' : 'empire';
-  const affectedThemeId = normalizedChoice === 'gold'
-    ? remainingThemeIds[remainingThemeIds.length - 1]
-    : remainingThemeIds[0];
+  const affectedThemeId = normalizedChoice === 'gold' ? remainingThemeIds[remainingThemeIds.length - 1] : remainingThemeIds[0];
   const theme = state.themes[affectedThemeId];
   if (!theme) return { ok: false, reason: 'Rewarded province no longer exists.' };
   syncRewardTheme(reward, state, affectedThemeId);
 
   if (normalizedChoice === 'empire') {
-    if (!setReconquestThemeStatus(state, affectedThemeId, true)) {
-      return { ok: false, reason: 'That province can no longer be restored.' };
-    }
+    if (!setReconquestThemeStatus(state, affectedThemeId, true)) return { ok: false, reason: 'That province can no longer be restored.' };
     reward.choice = 'empire';
     reward.gold = 0;
   } else {
@@ -539,14 +492,7 @@ export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'l
 
   reward.resolved = true;
   reassignUnresolvedDefenderRewards(state, rewards);
-  state.log.push({
-    type: 'defender_reward',
-    player: playerId,
-    theme: reward.themeId,
-    choice: reward.choice,
-    gold: reward.gold || 0,
-    round: state.round,
-  });
+  state.log.push({ type: 'defender_reward', player: playerId, theme: reward.themeId, choice: reward.choice, gold: reward.gold || 0, round: state.round });
   recordHistoryEvent(state, {
     category: 'resolution',
     type: 'defender_reward',
@@ -565,12 +511,6 @@ export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'l
       profit: getThemeProfitValue(theme),
     },
   });
-
-  if (state.lastWarResult?.defenderRewards) {
-    const linked = state.lastWarResult.defenderRewards.find((entry) => entry.id === reward.id);
-    if (linked && linked !== reward) Object.assign(linked, reward);
-  }
-
   return { ok: true, reward };
 }
 
@@ -591,124 +531,56 @@ export function applyDefenderRewards(state, warResult, contributions) {
   return autoResolveDefenderRewards(state);
 }
 
-// ─── Phase: Cleanup ───
 export function phaseCleanup(state) {
   state.phase = 'cleanup';
-
   finalizeDealRound(state);
 
-  // 1. Pay professional army maintenance
-  for (const player of state.players) {
-    payMaintenance(state, player.id);
-  }
-
-  // Professional troops sent on revocation or appointment missions return after
-  // maintenance, so they are paid for the round while unavailable for more actions.
-  restoreSuspendedProfessionals(state);
-  activatePendingProfessionalArmies(state);
-
-  // 2. Levies expire, mercenaries disband (just clear the references)
-  state.currentLevies = {};
-
-  // 3. New Basileus takes office (if coup succeeded)
   if (state.nextBasileusId !== state.basileusId) {
     const oldBasileus = state.basileusId;
     state.basileusId = state.nextBasileusId;
-    // New basileus must reassign all major titles — UI will handle this
-    state.pendingTitleReassignment = true;
     state.log.push({ type: 'new_basileus', old: oldBasileus, new: state.basileusId, round: state.round });
     recordHistoryEvent(state, {
       category: 'system',
       type: 'new_basileus',
       summary: `${playerName(state, state.basileusId)} takes the throne from ${playerName(state, oldBasileus)}.`,
-      details: {
-        oldBasileusId: oldBasileus,
-        oldBasileusName: playerName(state, oldBasileus),
-        newBasileusId: state.basileusId,
-        newBasileusName: playerName(state, state.basileusId),
-      },
+      details: { oldBasileusId: oldBasileus, newBasileusId: state.basileusId },
     });
-  } else {
-    state.pendingTitleReassignment = false;
   }
 
-  // 4. Check end of game
-  if (state.gameOver) return; // Constantinople fell during war
+  if (state.gameOver) return;
   if (state.invasionDeck.length === 0 && state.round >= state.maxRounds) {
     state.phase = 'scoring';
     return;
   }
 
-  // 5. Clear orders
   state.allOrders = {};
-  state.currentMercenaryTroops = {};
+  state.mercenaryOrders = {};
+  state.currentTroops = {};
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;
   state.pendingDefenderRewards = [];
+  state.courtActions = null;
 }
 
-// ─── Helper: who holds an office ───
-function getOfficeHolder(state, officeKey) {
-  if (officeKey === MERCENARY_COMPANY_KEY) return null;
-  if (officeKey === 'BASILEUS') return state.basileusId;
-  if (officeKey === 'DOM_EAST' || officeKey === 'DOM_WEST' || officeKey === 'ADMIRAL' || officeKey === 'PATRIARCH') {
-    for (const p of state.players) {
-      if (p.majorTitles.includes(officeKey)) return p.id;
-    }
-    return null;
-  }
-  if (officeKey === 'EMPRESS') return state.empress ?? null;
-  if (officeKey === 'CHIEF_EUNUCHS') return state.chiefEunuchs ?? null;
-  // Strategos: STRAT_<themeId>
-  if (officeKey.startsWith('STRAT_')) {
-    const themeId = officeKey.replace('STRAT_', '');
-    return state.themes[themeId]?.strategos ?? null;
-  }
-  return null;
-}
-
-// Capital-locked offices: troops from these offices may only be deployed in the capital.
-const CAPITAL_LOCKED_OFFICES = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
-
-export function isCapitalLockedOffice(officeKey) {
-  return CAPITAL_LOCKED_OFFICES.has(officeKey);
-}
-
-// ─── Auto-advance through non-interactive phases ───
 export function advanceToNextInteractivePhase(state) {
-  // From current phase, auto-resolve everything until we hit court or orders
   while (true) {
     if (state.gameOver || state.phase === 'scoring') return;
-
     if (state.phase === 'setup' || state.phase === 'cleanup') {
       phaseInvasion(state);
       continue;
     }
-
     if (state.phase === 'invasion') {
       if (state.phase === 'scoring') return;
-      phaseAdministration(state);
-      continue;
+      phaseTitleRedistribution(state);
+      return;
     }
-
-    if (state.phase === 'administration') {
+    if (state.phase === 'title_redistribution') return;
+    if (state.phase === 'income') {
       phaseCourt(state);
-      return; // Court requires input
+      return;
     }
-
-    if (state.phase === 'court') {
-      return; // Waiting for player input
-    }
-
-    if (state.phase === 'orders') {
-      return; // Waiting for player input
-    }
-
-    if (state.phase === 'resolution') {
-      return; // Resolution requires explicit continuation/reward choices.
-    }
-
+    if (state.phase === 'court' || state.phase === 'estates' || state.phase === 'deployment' || state.phase === 'resolution') return;
     break;
   }
 }

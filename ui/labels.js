@@ -63,11 +63,11 @@ export function getProvinceStyleAttr(state, theme) {
 }
 
 export function formatProvinceValuesText(theme) {
+  if (theme?.id === 'CPL') return '';
   const profit = Math.max(0, Number(theme?.P) || 0);
-  const tax = Math.max(0, Number(theme?.T) || 0);
-  const levies = Math.max(0, Number(theme?.L) || 0);
+  const troops = Math.max(0, Number(theme?.T) || 0);
   const church = Math.max(0, Number(theme?.C) || 0);
-  return `P${profit} T${tax} L${levies} C${church}`;
+  return `P${profit} T${troops} C${church}`;
 }
 
 
@@ -87,8 +87,9 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
   if (!theme) return options.fallback || '';
   const churchValue = Math.max(0, Number(theme.C) || 0);
-  const values = options.showValues
-    ? `<span class="province-token-values">${formatProvinceValuesText(theme)}</span>`
+  const valuesText = formatProvinceValuesText(theme);
+  const values = options.showValues && valuesText
+    ? `<span class="province-token-values">${valuesText}</span>`
     : '';
   const classes = [
     'province-token',

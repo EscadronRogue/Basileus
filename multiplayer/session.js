@@ -8,6 +8,8 @@ import {
   handleContinueAfterResolution,
   handleHumanCourtAction,
   handleHumanCourtConfirmation,
+  handleHumanEstateAction,
+  handleEstatesConfirmation,
   handleHumanOrders,
   handleManualTitleReassignment,
   startInteractiveRuntime,
@@ -33,7 +35,7 @@ export const ROOM_STATUS = {
 };
 
 export const SAVE_SCHEMA = 'basileus.multiplayer.save';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 function createOpenSeat(seatId) {
   return {
@@ -655,6 +657,22 @@ export class MultiplayerRoom {
         return;
       }
 
+      if (message.type === 'estate_action') {
+        const seat = this.requireHumanSeatForSession(sessionId);
+        const result = handleHumanEstateAction(this.gameState, this.aiMeta, this, seat.seatId, message);
+        assert(result.ok, result.reason);
+        this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
+        return;
+      }
+
+      if (message.type === 'confirm_estates') {
+        this.requireHumanSeatForSession(sessionId);
+        const result = handleEstatesConfirmation(this.gameState, this.aiMeta, this);
+        assert(result.ok, result.reason);
+        this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
+        return;
+      }
+
       if (message.type === 'submit_orders') {
         const seat = this.requireHumanSeatForSession(sessionId);
         const submitResult = handleHumanOrders(this.gameState, this.aiMeta, this, seat.seatId, message.orders);
@@ -683,10 +701,6 @@ export class MultiplayerRoom {
       if (message.type === 'continue_after_resolution') {
         assert(this.isHostSession(sessionId), 'Only the host can advance past resolution.');
         assert(this.gameState.phase === 'resolution', 'Continue is only available during resolution.');
-        const needsHumanReassignment = this.gameState.nextBasileusId !== this.gameState.basileusId
-          && this.seats[this.gameState.nextBasileusId]?.kind === 'human'
-          && this.pendingAiTitleAssignment == null;
-        assert(!needsHumanReassignment, 'The new Basileus must reassign major titles first.');
         const continuation = handleContinueAfterResolution(this.gameState, this.aiMeta, this);
         assert(continuation.ok, continuation.reason);
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });

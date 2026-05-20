@@ -1,71 +1,26 @@
-﻿// ui/panels.js â€” Interactive UI panels: Court, Orders, player dashboard
+// ui/panels.js - compact phase panels for the updated ruleset.
 import { MAJOR_TITLES } from '../data/titles.js';
-import { runAdministration } from '../engine/cascade.js';
-import {
-  canPayAppointmentCost,
-  canPayPatriarchBishopAppointmentCost,
-  canPayPatriarchBishopRevocationCost,
-  canPayRevocationCost,
-  canRecruitProfessional,
-  checkRevocationCurrentTurnAppointment,
-  getLandAuction,
-  getMinimumLandBid,
-  getNextAppointmentCost,
-  getPatriarchBishopAppointmentGoldCost,
-  getPlayerProfessionalUpkeep,
-  suggestMajorTitleAssignments,
-} from '../engine/actions.js';
-import {
-  getMercenaryHireCost,
-  getNormalOwnerIncome,
-  getNormalTaxIncome,
-  getThemeChurchValue,
-  getThemeLandPrice,
-  getThemeOwnerIncome,
-  isThemeThreatened,
-} from '../engine/rules.js';
-import {
-  getFreeThemes,
-  getPlayerThemes,
-  getPlayer,
-  getPlayerMercenaryTroops,
-  formatPlayerLabel,
-  getOfficeMercenaryCount,
-  getPlayerMercenaryAssignments,
-  getPlayerMercenaryTotal,
-  getPendingProfessionalCount,
-  getPlayerPendingProfessionalTotal,
-  hasSelfAppointmentLock,
-  hasRevocationTargetLock,
-  MERCENARY_COMPANY_KEY,
-} from '../engine/state.js';
-import { summarizeDealClause } from '../engine/deals.js';
-import {
-  formatGold,
-  formatLevies,
-  formatMercenaries,
-  formatProvinceYield,
-  formatTroops,
-} from '../engine/presentation.js';
+import { runIncome, readTroopEntry } from '../engine/cascade.js';
+import { getMinimumLandBid, suggestMajorTitleAssignments } from '../engine/actions.js';
+import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
+import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerThemes } from '../engine/state.js';
+import { formatGold, formatMercenaries, formatProvinceYield, formatTroops } from '../engine/presentation.js';
 import {
   getPlayerStyleAttr,
-  getProvinceStyleAttr,
-  getRegionLabel,
   renderPlayerRoleName,
   renderPlayerRoleNameById,
   renderProvinceBadge,
   renderProvinceBadgeList,
-  renderTitleBadge,
   renderThemeOfficeBadge,
+  renderTitleBadge,
 } from './labels.js';
 
-
-function renderThemeChoiceButtons(state, themes, selectedId) {
-  return themes.map((theme) => `
-    <button type="button" class="province-choice-btn ${theme.id === selectedId ? 'selected' : ''}" data-theme-choice="${theme.id}" style="${getProvinceStyleAttr(state, theme)}">
-      ${renderProvinceBadge(state, theme, { showValues: true })}
-    </button>
-  `).join('');
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function getDraftBucket(uiState, state, scope, playerId) {
@@ -76,2800 +31,445 @@ function getDraftBucket(uiState, state, scope, playerId) {
   return uiState.drafts[key];
 }
 
-function ensureNestedDraft(draft, key) {
-  if (!draft[key] || typeof draft[key] !== 'object') draft[key] = {};
-  return draft[key];
+function getPlayerOptions(state, selectedId = '') {
+  return state.players.map((player) => `
+    <option value="${player.id}" ${Number(selectedId) === player.id ? 'selected' : ''}>${escapeHtml(player.firstName ? `${player.firstName} ${player.dynasty}` : player.dynasty)}</option>
+  `).join('');
 }
 
-function renderThemeChoiceControl(state, themes, inputId, selectedId, options = {}) {
-  const normalizedSelectedId = themes.some((theme) => theme.id === selectedId) ? selectedId : '';
-  const inputIdAttr = inputId ? ` id="${inputId}"` : '';
-  const extraClass = options.className ? ` ${options.className}` : '';
-  const hidden = options.hidden ? ' style="display:none"' : '';
-  const draftField = options.draftField ? ` data-draft-field="${options.draftField}"` : '';
-  return `
-    <div class="province-choice-grid${extraClass}" data-theme-choice-group${hidden}>
-      ${renderThemeChoiceButtons(state, themes, normalizedSelectedId)}
-      <input type="hidden"${inputIdAttr}${draftField} class="appt-theme-select" value="${normalizedSelectedId}">
-    </div>`;
+function actionUsed(state, playerId) {
+  return Boolean(state.courtActions?.actionUsed?.[playerId]);
 }
 
-// Court titles whose levies are locked to the capital.
-const CAPITAL_LOCKED_OFFICE_KEYS = new Set(['EMPRESS', 'PATRIARCH', 'CHIEF_EUNUCHS']);
-
-function isCapitalLockedOfficeKey(officeKey) {
-  return CAPITAL_LOCKED_OFFICE_KEYS.has(officeKey);
-}
-
-// â”€â”€â”€ Helpers used everywhere â”€â”€â”€
-//
-// `label` is HTML â€” for major/minor offices it's a single title cartouche,
-// and for theme commands it's a "<title-cartouche> of <land-cartouche>" pair.
-// `plain` is a fallback string for non-HTML contexts (e.g. log copy).
-function getPlayerOffices(state, playerId, options = {}) {
-  const offices = [];
-  const titleBadge = (kind, opts) => renderTitleBadge(state, kind, { holderId: playerId, compact: true, ...opts });
-  if (playerId === state.basileusId) {
-    offices.push({ key: 'BASILEUS', label: titleBadge('BASILEUS'), plain: 'Basileus' });
-  }
+function roleKeysForCourt(state, playerId) {
   const player = getPlayer(state, playerId);
-  for (const t of player.majorTitles) {
-    offices.push({ key: t, label: titleBadge(t), plain: MAJOR_TITLES[t]?.name || t, capitalLocked: t === 'PATRIARCH' });
-  }
-  if (state.empress === playerId) {
-    offices.push({ key: 'EMPRESS', label: titleBadge('EMPRESS'), plain: 'Empress', capitalLocked: true });
-  }
-  if (state.chiefEunuchs === playerId) {
-    offices.push({ key: 'CHIEF_EUNUCHS', label: titleBadge('CHIEF_EUNUCHS'), plain: 'Chief of Eunuchs', capitalLocked: true });
-  }
-  for (const theme of Object.values(state.themes)) {
-    if (theme.strategos === playerId && !theme.occupied) {
-      offices.push({
-        key: `STRAT_${theme.id}`,
-        label: renderThemeOfficeBadge(state, 'STRATEGOS', theme.id),
-        plain: `Strategos of ${theme.name}`,
-      });
+  return [
+    playerId === state.basileusId ? 'BASILEUS' : null,
+    ...(player?.majorTitles || []),
+  ].filter(Boolean);
+}
+
+function regionTitleFor(theme) {
+  return { east: 'DOM_EAST', west: 'DOM_WEST', sea: 'ADMIRAL' }[theme?.region] || null;
+}
+
+function getStrategosTargets(state, playerId) {
+  const roles = new Set(roleKeysForCourt(state, playerId));
+  return Object.values(state.themes || {}).filter((theme) => (
+    theme.id !== 'CPL'
+    && !theme.occupied
+    && theme.owner !== 'church'
+    && theme.strategos == null
+    && roles.has(regionTitleFor(theme))
+  ));
+}
+
+function getBishopTargets(state, playerId) {
+  const roles = new Set(roleKeysForCourt(state, playerId));
+  if (!roles.has('PATRIARCH')) return [];
+  return Object.values(state.themes || {}).filter((theme) => (
+    theme.id !== 'CPL'
+    && theme.bishop == null
+    && (Number(theme.origin?.C) || 0) >= 1
+  ));
+}
+
+function getGiftTargets(state, playerId) {
+  return getPlayerThemes(state, playerId).filter((theme) => (
+    !theme.occupied && (Number(theme.origin?.C) || 0) >= 1
+  ));
+}
+
+function getRevocationTargets(state, playerId) {
+  const roles = new Set(roleKeysForCourt(state, playerId));
+  const targets = [];
+  for (const theme of Object.values(state.themes || {})) {
+    if (theme.id === 'CPL') continue;
+    if (theme.strategos != null && roles.has(regionTitleFor(theme))) {
+      targets.push({ value: `minor:${theme.id}:strategos`, label: `Strategos of ${theme.name}` });
+    }
+    if (theme.bishop != null && roles.has('PATRIARCH')) {
+      targets.push({ value: `minor:${theme.id}:bishop`, label: `Bishop of ${theme.name}` });
+    }
+    if (playerId === state.basileusId && theme.owner != null && !theme.occupied) {
+      targets.push({ value: `theme:${theme.id}`, label: `${theme.owner === 'church' ? 'Church land' : 'Estate'} in ${theme.name}` });
     }
   }
-  if (options.includeMercenaryCompany) {
-    offices.push({
-      key: MERCENARY_COMPANY_KEY,
-      label: 'Mercenary Company',
-      plain: 'Mercenary Company',
-      mercenaryOnly: true,
-    });
-  }
-  return offices;
+  if (playerId === state.basileusId && state.empress != null) targets.push({ value: 'court:EMPRESS', label: 'Empress' });
+  if (playerId === state.basileusId && state.chiefEunuchs != null) targets.push({ value: 'court:CHIEF_EUNUCHS', label: 'Chief of Eunuchs' });
+  return targets;
 }
 
-function getTotalProfessionalArmy(state, playerId) {
-  const player = getPlayer(state, playerId);
-  const active = Object.values(player.professionalArmies).reduce((s, n) => s + n, 0);
-  return active + getPlayerPendingProfessionalTotal(state, playerId);
+function bindSelectAction(container, selector, callback) {
+  container.querySelector(selector)?.addEventListener('click', () => callback?.());
 }
 
-function getNextMercenaryCost(state, playerId) {
-  return getMercenaryHireCost(getPlayerMercenaryTotal(state, playerId), 1);
-}
-
-function panelIsOpen(uiState, key, fallback = true) {
-  const value = uiState?.panels?.[key];
-  return value == null ? fallback : Boolean(value);
-}
-
-function sectionIsOpen(uiState, key, fallback = true) {
-  const value = uiState?.sections?.[key];
-  return value == null ? fallback : Boolean(value);
-}
-
-function formatSigned(value) {
-  const rounded = Math.round(value * 100) / 100;
-  return rounded > 0 ? `+${rounded}` : `${rounded}`;
-}
-
-function renderArmySummaryLine(entry) {
-  if (entry.officeKey === MERCENARY_COMPANY_KEY) {
-    return `${formatMercenaries(entry.mercenaries)} | No levies | No professional troops`;
-  }
-  const pending = Number(entry.pendingProfessionalTroops) || 0;
-  const pendingText = pending > 0 ? ` | ${formatTroops(pending)} pending next round` : '';
-  return `Professional troops ${entry.professionalTroops} | ${formatLevies(entry.levies)} | ${formatMercenaries(entry.mercenaries)}${pendingText}`;
-}
-
-function getPrivateIncomeProjection(state, playerId) {
-  return getPlayerThemes(state, playerId).reduce(
-    (total, theme) => total + getThemeOwnerIncome(theme),
-    0
-  );
-}
-
-function getProjectedFinance(state, playerId) {
-  const player = getPlayer(state, playerId);
-  const administration = runAdministration(state);
-  const projectedIncome = administration.income[playerId] || 0;
-  const privateIncome = getPrivateIncomeProjection(state, playerId);
-  const officeIncome = projectedIncome - privateIncome;
-  const maintenance = getPlayerProfessionalUpkeep(state, playerId);
-  const nextTreasury = player.gold + projectedIncome - maintenance;
-  const officeKeys = new Set(getPlayerOffices(state, playerId).map((office) => office.key));
-  const levyProjection = Object.entries(administration.levies || {}).reduce((total, [officeKey, count]) => (
-    officeKeys.has(officeKey) ? total + count : total
-  ), 0);
-
-  return {
-    projectedIncome,
-    privateIncome,
-    officeIncome,
-    maintenance,
-    nextTreasury,
-    levyProjection,
-  };
-}
-
-function getPlayerTitleEntries(state, playerId) {
-  const titles = [];
-  const titleBadge = (kind, opts) => renderTitleBadge(state, kind, { holderId: playerId, compact: true, ...opts });
-  if (playerId === state.basileusId) {
-    titles.push({ scope: 'throne', label: titleBadge('BASILEUS') });
-  }
-
-  const player = getPlayer(state, playerId);
-  for (const titleKey of player.majorTitles) {
-    titles.push({ scope: 'major', label: titleBadge(titleKey) });
-  }
-  if (state.empress === playerId) {
-    titles.push({ scope: 'minor', label: titleBadge('EMPRESS') });
-  }
-  if (state.chiefEunuchs === playerId) {
-    titles.push({ scope: 'minor', label: titleBadge('CHIEF_EUNUCHS') });
-  }
-  for (const theme of Object.values(state.themes)) {
-    if (theme.occupied) continue;
-    if (theme.strategos === playerId) {
-      titles.push({ scope: 'minor', label: renderThemeOfficeBadge(state, 'STRATEGOS', theme.id) });
-    }
-    if (theme.bishop === playerId) {
-      titles.push({ scope: 'minor', label: renderThemeOfficeBadge(state, 'BISHOP', theme.id) });
-    }
-  }
-  return titles;
-}
-
-function getPlayerArmyEntries(state, playerId, includeEmpty = false, options = {}) {
-  return getPlayerOffices(state, playerId, { includeMercenaryCompany: Boolean(options.includeMercenaryCompany) })
-    .map((office) => ({
-      officeKey: office.key,
-      label: office.label,
-      professionalTroops: office.mercenaryOnly ? 0 : (getPlayer(state, playerId).professionalArmies[office.key] || 0),
-      pendingProfessionalTroops: office.mercenaryOnly ? 0 : getPendingProfessionalCount(state, playerId, office.key),
-      levies: office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0),
-      mercenaries: office.mercenaryOnly ? getPlayerMercenaryTroops(state, playerId) : getOfficeMercenaryCount(state, playerId, office.key),
-    }))
-    .map((entry) => ({
-      ...entry,
-      total: entry.professionalTroops + entry.pendingProfessionalTroops + entry.levies + entry.mercenaries,
-    }))
-    .filter((entry) => includeEmpty || entry.total > 0);
-}
-
-function getOpinionDescriptor(value) {
-  if (value >= 2.5) return 'loyal';
-  if (value >= 1) return 'warm';
-  if (value > -1) return 'wary';
-  if (value > -2.5) return 'cold';
-  return 'hostile';
-}
-
-function getPlayerOpinionRows(state, aiMeta, playerId) {
-  if (!aiMeta || aiMeta.placeholderOnly || aiMeta.humanPlayerIds.has(playerId)) return [];
-
-  const perspective = aiMeta.players[playerId];
-  const humanId = [...aiMeta.humanPlayerIds][0] ?? null;
-
-  return state.players
-    .filter((player) => player.id !== playerId)
-    .map((player) => {
-      const trust = perspective?.trust?.[player.id] || 0;
-      const grievance = perspective?.grievance?.[player.id] || 0;
-      const net = trust - grievance;
-      const owesThem = perspective?.obligations?.[player.id] || 0;
-      const theyOwe = aiMeta.players[player.id]?.obligations?.[playerId] || 0;
-      return {
-        playerId: player.id,
-        name: renderPlayerRoleName(state, player),
-        isHuman: player.id === humanId,
-        net,
-        trust,
-        grievance,
-        owesThem,
-        theyOwe,
-        descriptor: getOpinionDescriptor(net),
-      };
-    })
-    .sort((left, right) => {
-      if (left.isHuman && !right.isHuman) return -1;
-      if (!left.isHuman && right.isHuman) return 1;
-      return right.net - left.net;
-    });
-}
-
-function renderFoldSection(sectionKey, title, bodyHtml, uiState, options = {}) {
-  if (!bodyHtml) return '';
-  const isOpen = sectionIsOpen(uiState, sectionKey, options.defaultOpen !== false);
-  const badge = options.badge ? `<span class="fold-summary-badge">${options.badge}</span>` : '';
-  const focusedClass = options.focused ? ' focused' : '';
-  return `
-    <details class="fold-section${focusedClass}" data-section-key="${sectionKey}" ${isOpen ? 'open' : ''}>
-      <summary class="fold-summary">
-        <span class="fold-summary-title">${title}</span>
-        <span class="fold-summary-meta">${badge}</span>
-      </summary>
-      <div class="fold-body">
-        ${bodyHtml}
-      </div>
-    </details>
-  `;
-}
-
-function countMinorTitles(state, playerId) {
-  let count = 0;
-  if (state.empress === playerId) count++;
-  if (state.chiefEunuchs === playerId) count++;
-  for (const t of Object.values(state.themes)) {
-    if (t.strategos === playerId) count++;
-    if (t.bishop === playerId) count++;
-  }
-  return count;
-}
-
-function getSelectablePlayers(state, selectedId, options = {}) {
-  const excludeId = options.excludeId;
-  const players = state.players.filter((player) => excludeId == null || player.id !== excludeId);
-  const normalizedSelectedId = players.some((player) => player.id === selectedId) ? selectedId : '';
-  return { players, selectedId: normalizedSelectedId };
-}
-
-function renderPlayerChoiceControl(state, inputId, selectedId, options = {}) {
-  const { players, selectedId: normalizedSelectedId } = getSelectablePlayers(state, selectedId, options);
-  if (!players.length) return `<input type="hidden" id="${inputId || ''}" class="appt-player-select" value="">`;
-  const inputIdAttr = inputId ? ` id="${inputId}"` : '';
-  return `
-    <div class="player-choice-grid" data-player-choice-group>
-      ${players.map((player) => `
-        <button type="button" class="player-choice-btn ${player.id === normalizedSelectedId ? 'selected' : ''}" data-player-choice="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
-          ${renderPlayerRoleName(state, player)}${player.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}
-        </button>
-      `).join('')}
-      <input type="hidden"${inputIdAttr} class="appt-player-select" value="${normalizedSelectedId}">
-    </div>`;
-}
-
-function getAppointmentChoiceOptions(state, appointerId) {
-  return hasSelfAppointmentLock(state, appointerId) ? { excludeId: appointerId } : {};
-}
-
-function resolveAppointmentAppointeeId(state, appointerId, draft = {}) {
-  const options = getAppointmentChoiceOptions(state, appointerId);
-  return getSelectablePlayers(state, Number(draft.appointeeId), options).selectedId;
-}
-
-function hasAppointmentAppointee(appointeeId) {
-  return Number.isInteger(Number(appointeeId)) && String(appointeeId) !== '';
-}
-
-function formatAppointmentCost(cost) {
-  return `${cost} troop${cost === 1 ? '' : 's'}`;
-}
-
-function renderAppointmentCostLine(state, appointerId, appointeeId) {
-  const paymentCheck = canPayAppointmentCost(state, appointerId, appointeeId);
-  const helper = paymentCheck.reason
-    ? paymentCheck.reason
-    : paymentCheck.ok
-    ? `${formatAppointmentCost(paymentCheck.available || 0)} available`
-    : `Need ${formatAppointmentCost(paymentCheck.cost)}, have ${formatAppointmentCost(paymentCheck.available || 0)}`;
-  return `
-    <div class="appt-cost-line ${paymentCheck.ok ? '' : 'blocked'}" data-appointment-cost>
-      <span>Selected cost</span>
-      <strong data-appointment-cost-value>${formatAppointmentCost(paymentCheck.cost)}</strong>
-      <small data-appointment-cost-help>${helper}</small>
-    </div>
-  `;
-}
-
-function renderGoldAppointmentCostLine(state, appointerId, appointeeId) {
-  const paymentCheck = canPayPatriarchBishopAppointmentCost(state, appointerId, appointeeId);
-  const helper = paymentCheck.reason
-    ? paymentCheck.reason
-    : paymentCheck.ok
-    ? `${formatGold(paymentCheck.availableGold || 0)} available`
-    : `Need ${formatGold(paymentCheck.goldCost)}, have ${formatGold(paymentCheck.availableGold || 0)}`;
-  return `
-    <div class="appt-cost-line ${paymentCheck.ok ? '' : 'blocked'}" data-appointment-cost>
-      <span>Selected cost</span>
-      <strong data-appointment-cost-value>${formatGold(paymentCheck.goldCost)}</strong>
-      <small data-appointment-cost-help>${helper}</small>
-    </div>
-  `;
-}
-
-function renderAppointmentColumn(label, bodyHtml) {
-  return `<div class="appt-column">
-    <span class="appt-column-label">${label}</span>
-    ${bodyHtml}
-  </div>`;
-}
-
-function renderAppointmentGrid(titleOrLandHtml, appointeeHtml) {
-  return `<div class="appt-grid">
-    ${renderAppointmentColumn('Office / province', titleOrLandHtml)}
-    ${renderAppointmentColumn('Appointee', appointeeHtml)}
-  </div>`;
-}
-
-function getProvinceSummary(state, provinceId) {
-  if (!provinceId) return null;
-  const theme = state.themes[provinceId];
-  if (!theme) return null;
-
-  let ownerLabel = 'Free citizens';
-  if (theme.occupied) ownerLabel = 'Occupied by invaders';
-  else if (theme.owner === 'church') ownerLabel = 'Church estate';
-  else if (theme.owner !== null) ownerLabel = `${renderPlayerRoleNameById(state, theme.owner, 'Unknown')} estate`;
-
-  const strategos = theme.strategos !== null ? renderPlayerRoleNameById(state, theme.strategos, 'Unknown') : 'None';
-  const bishop = theme.bishop !== null ? renderPlayerRoleNameById(state, theme.bishop, 'Unknown') : 'None';
-
-  return {
-    id: theme.id,
-    name: theme.name,
-    region: getRegionLabel(theme.region),
-    ownerLabel,
-    strategos,
-    bishop,
-    occupied: theme.occupied,
-    profit: theme.P,
-    tax: theme.T,
-    levies: theme.L,
-    church: getThemeChurchValue(theme),
-    threatened: isThemeThreatened(state, theme.id),
-    landPrice: getThemeLandPrice(theme),
-    normalOwnerIncome: getNormalOwnerIncome(theme),
-    normalTaxIncome: getNormalTaxIncome(theme),
-    strategosTaxIncome: theme.owner === 'church' ? 0 : getNormalTaxIncome(theme),
-    strategosLevyIncome: theme.owner === 'church' ? 0 : theme.L,
-  };
-}
-
-function getSuggestedThemeId(themes, selectedProvinceId, draft = null, draftKey = 'themeId') {
-  if (themes.some(theme => theme.id === draft?.[draftKey])) return draft[draftKey];
-  return '';
-}
-
-function getOpenStrategosThemes(state, region = null) {
-  return Object.values(state.themes).filter(theme =>
-    !theme.occupied &&
-    theme.id !== 'CPL' &&
-    theme.owner !== 'church' &&
-    theme.strategos === null &&
-    (region == null || theme.region === region)
-  );
-}
-
-function getOpenBishopThemes(state, region = null) {
-  return Object.values(state.themes).filter(theme =>
-    !theme.occupied &&
-    theme.id !== 'CPL' &&
-    theme.bishop === null &&
-    (Number(theme.C) || 0) >= 1 &&
-    (region == null || theme.region === region)
-  );
-}
-
-function getOpenBasileusMinorTitleTypes(state) {
-  const types = [];
-  if (state.empress === null) types.push({ value: 'EMPRESS', label: 'Empress' });
-  if (state.chiefEunuchs === null) types.push({ value: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs' });
-  if (getOpenStrategosThemes(state).length > 0) types.push({ value: 'STRATEGOS', label: 'Strategos' });
-  if (getOpenBishopThemes(state).length > 0) types.push({ value: 'BISHOP', label: 'Bishop' });
-  return types;
-}
-
-function getPhaseLabel(phase) {
-  return {
-    setup: 'Setup',
-    invasion: 'Invasion',
-    administration: 'Administration',
-    court: 'Court',
-    orders: 'Orders',
-    resolution: 'Resolution',
-    cleanup: 'Cleanup',
-    scoring: 'Scoring',
-  }[phase] || phase;
-}
-
-function isAiHistoryActor(aiMeta, actorId) {
-  if (!aiMeta || actorId == null) return false;
-  return !aiMeta.humanPlayerIds.has(actorId);
-}
-
-function renderDecisionFactors(decision) {
-  if (!decision?.factors?.length) return '';
-
-  return `
-    <div class="history-decision">
-      <div class="history-subhead">${decision.title || 'Runtime reasoning'}</div>
-      <div class="history-factor-list">
-        ${decision.factors.map((entry) => `
-          <div class="history-factor ${entry.impact || 'neutral'}">
-            <span class="history-factor-label">${entry.label}</span>
-            ${entry.value != null ? `<span class="history-factor-value">${entry.value}</span>` : ''}
-            <div class="history-factor-note">${entry.note}</div>
-          </div>
+export function renderTitleRedistributionPanel(container, state, playerId, callbacks = {}, options = {}) {
+  const assignments = options.assignments || suggestMajorTitleAssignments(state, state.basileusId);
+  container.innerHTML = `
+    <section class="phase-card title-redistribution-panel">
+      <h3>Redistribute Major Titles</h3>
+      <div class="section-list">
+        ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => `
+          <label class="form-row">
+            <span>${escapeHtml(title.name)}</span>
+            <select data-title-assignment="${titleKey}" ${playerId === state.basileusId ? '' : 'disabled'}>
+              ${state.players
+                .filter((player) => player.id !== state.basileusId)
+                .map((player) => `<option value="${player.id}" ${Number(assignments[titleKey]) === player.id ? 'selected' : ''}>${escapeHtml(player.firstName ? `${player.firstName} ${player.dynasty}` : player.dynasty)}</option>`)
+                .join('')}
+            </select>
+          </label>
         `).join('')}
       </div>
-    </div>
-  `;
-}
-
-function renderOfficeBreakdown(offices = []) {
-  if (!offices.length) return '';
-  return `
-    <div class="history-subhead">Troop Assignments</div>
-    <div class="history-breakdown-list">
-      ${offices.map((office) => `
-        <div class="history-breakdown-row">
-          <span>${office.officeName}</span>
-          <span>${office.totalTroops} to ${office.destination}</span>
-        </div>
-        <div class="history-breakdown-note">
-          Professional ${office.professionalTroops} | ${formatLevies(office.levyTroops)} | ${formatMercenaries(office.mercenaryTroops)}
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-function renderCoupContributionGroups(state, votes = [], contributions = []) {
-  const candidateIds = [...new Set([
-    ...votes.map(entry => entry.candidateId),
-    ...contributions.map(entry => entry.candidateId),
-  ])];
-
-  if (!candidateIds.length) return '';
-
-  const orderedCandidates = candidateIds
-    .map(candidateId => ({
-      candidateId,
-      candidateName: renderPlayerRoleNameById(state, candidateId, `Player ${candidateId + 1}`),
-      troops: votes.find(entry => entry.candidateId === candidateId)?.troops || 0,
-    }))
-    .sort((left, right) => right.troops - left.troops);
-
-  return `
-    <div class="history-breakdown-group">
-      ${orderedCandidates.map((candidate) => {
-        const supporters = contributions
-          .filter(entry => entry.candidateId === candidate.candidateId)
-          .sort((left, right) => right.troops - left.troops);
-
-        return `
-          <div class="history-breakdown-block">
-            <div class="history-breakdown-head">
-              <span>For ${candidate.candidateName}</span>
-              <span>${candidate.troops} troops</span>
-            </div>
-            ${supporters.length ? supporters.map((supporter) => `
-              <div class="history-breakdown-row">
-                <span>${supporter.playerName}</span>
-                <span>${supporter.troops}</span>
-              </div>
-            `).join('') : '<div class="history-breakdown-note">No player committed troops to this claimant.</div>'}
-          </div>
-        `;
-      }).join('')}
-    </div>
-  `;
-}
-
-function renderWarContributionBreakdown(contributions = []) {
-  if (!contributions.length) return '<div class="history-breakdown-note">No frontier troops were committed.</div>';
-  return `
-    <div class="history-breakdown-list">
-      ${contributions
-        .slice()
-        .sort((left, right) => right.troops - left.troops)
-        .map((entry) => `
-          <div class="history-breakdown-row">
-            <span>${entry.playerName}</span>
-            <span>${entry.troops} frontier troops</span>
-          </div>
-        `).join('')}
-    </div>
-  `;
-}
-
-function renderTitleAssignments(assignments = {}) {
-  const rows = Object.values(assignments);
-  if (!rows.length) return '';
-  return `
-    <div class="history-breakdown-list">
-      ${rows.map((entry) => `
-        <div class="history-breakdown-row">
-          <span>${entry.titleName}</span>
-          <span>${entry.playerName}</span>
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-function renderHistoryDetails(state, event) {
-  if (!event.details) return '';
-
-  if (event.type === 'administration') {
-    return `
-      <div class="history-subhead">Income</div>
-      <div class="history-breakdown-list">
-        ${event.details.income.map((entry) => `
-          <div class="history-breakdown-row">
-            <span>${entry.playerName}</span>
-            <span>${formatGold(entry.amount, { signed: true })}</span>
-          </div>
-        `).join('')}
+      <p class="form-error" data-role="title-reassignment-error"></p>
+      <div class="panel-actions">
+        <button type="button" class="btn-primary" data-action="confirm-title-redistribution" ${playerId === state.basileusId ? '' : 'disabled'}>Confirm Titles</button>
       </div>
-      <div class="history-subhead">Levies</div>
-      <div class="history-breakdown-list">
-        ${event.details.levies.map((entry) => `
-          <div class="history-breakdown-row">
-            <span>${entry.officeName}</span>
-            <span>${formatLevies(entry.amount)}</span>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  if (event.type === 'orders_revealed') {
-    return `
-      <div class="history-breakdown-list">
-        <div class="history-breakdown-row">
-          <span>Candidate</span>
-          <span>${event.details.candidateName}</span>
-        </div>
-        <div class="history-breakdown-row">
-          <span>Capital</span>
-          <span>${event.details.capitalTroops} troops</span>
-        </div>
-        <div class="history-breakdown-row">
-          <span>Frontier</span>
-          <span>${event.details.frontierTroops} troops</span>
-        </div>
-      </div>
-      ${renderOfficeBreakdown(event.details.offices)}
-    `;
-  }
-
-  if (event.type === 'coup_result') {
-    return renderCoupContributionGroups(state, event.details.votes, event.details.contributions);
-  }
-
-  if (event.type === 'war_result') {
-    return `
-      <div class="history-breakdown-list">
-        <div class="history-breakdown-row">
-          <span>Empire strength</span>
-          <span>${event.details.frontierTroops}</span>
-        </div>
-        ${event.details.estimatedStrengthRange?.length === 2 ? `
-          <div class="history-breakdown-row">
-            <span>Estimated invader range</span>
-            <span>${event.details.estimatedStrengthRange[0]}-${event.details.estimatedStrengthRange[1]}</span>
-          </div>
-        ` : ''}
-        <div class="history-breakdown-row">
-          <span>Invader strength</span>
-          <span>${event.details.invaderStrength}</span>
-        </div>
-        ${event.details.themesLost?.length ? `
-          <div class="history-breakdown-note province-note">Lost: ${renderProvinceBadgeList(state, event.details.themesLost)}</div>
-        ` : ''}
-        ${event.details.themesRecovered?.length ? `
-          <div class="history-breakdown-note province-note">Recoverable: ${renderProvinceBadgeList(state, event.details.themesRecovered)}</div>
-        ` : ''}
-      </div>
-      ${renderWarContributionBreakdown(event.details.contributions)}
-    `;
-  }
-
-  if (event.type === 'major_title_reassignment') {
-    return renderTitleAssignments(event.details.assignments);
-  }
-
-  if (event.type === 'invasion_drawn') {
-    return `<div class="history-breakdown-note province-note">Route: ${renderProvinceBadgeList(state, event.details.route)}</div>`;
-  }
-
-  return '';
-}
-
-function renderHistoryEntry(state, event, aiMeta) {
-  const actorLabel = event.actorId != null ? renderPlayerRoleNameById(state, event.actorId, `Player ${event.actorId + 1}`) : 'Empire';
-  const aiActor = event.actorAi === true || isAiHistoryActor(aiMeta, event.actorId);
-  const extra = `${renderHistoryDetails(state, event)}${renderDecisionFactors(event.decision)}`;
-  const badge = aiActor ? '<span class="history-entry-tag">AI</span>' : '';
-  const meta = `
-    <div class="history-entry-head">
-      <span class="history-entry-round">R${event.round}</span>
-      <span class="history-entry-phase">${getPhaseLabel(event.phase)}</span>
-      <span class="history-entry-actor">${actorLabel}</span>
-      ${badge}
-    </div>
+    </section>
   `;
-
-  if (!extra) {
-    return `
-      <div class="history-entry-card ${aiActor ? 'ai-entry' : ''}">
-        ${meta}
-        <div class="history-entry-summary">${event.summary}</div>
-      </div>
-    `;
-  }
-
-  return `
-    <details class="history-entry-card history-entry-expandable ${aiActor ? 'ai-entry' : ''}">
-      <summary>
-        ${meta}
-        <div class="history-entry-summary">${event.summary}</div>
-      </summary>
-      <div class="history-entry-detail">
-        ${extra}
-      </div>
-    </details>
-  `;
+  bindSelectAction(container, '[data-action="confirm-title-redistribution"]', () => {
+    const payload = Object.fromEntries(
+      Array.from(container.querySelectorAll('[data-title-assignment]')).map((select) => [select.dataset.titleAssignment, Number(select.value)]),
+    );
+    callbacks.confirmTitleRedistribution?.(payload);
+  });
 }
 
 export function renderHistoryPanel(container, state, options = {}) {
-  if (!container) return;
-
-  const events = Array.isArray(state.history) ? [...state.history].reverse() : [];
-  const isOpen = panelIsOpen(options.uiState, 'history', true);
-  container.classList.toggle('panel-collapsed', !isOpen);
+  if (!container || !state) return;
+  const isOpen = options.uiState?.panels?.history ?? false;
+  container.classList?.toggle?.('panel-collapsed', !isOpen);
+  const history = Array.isArray(state.history) ? state.history.slice(-30).reverse() : [];
   container.innerHTML = `
-    <div class="history-panel sidebar-panel${isOpen ? '' : ' is-collapsed'}">
-      <button class="sidebar-panel-head history-panel-head" type="button" data-ui-panel-toggle="history" aria-expanded="${isOpen}">
+    <div class="sidebar-panel${isOpen ? '' : ' is-collapsed'}">
+      <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="history" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
-          <span class="sidebar-panel-kicker">Imperial Chronicle</span>
+          <span class="sidebar-panel-kicker">Chronicle</span>
           <span class="sidebar-panel-title">History</span>
         </span>
-        <span class="sidebar-panel-badge">${events.length} entries</span>
       </button>
       ${isOpen ? `
-        <div class="sidebar-panel-body">
-          ${events.length ? `
-            <div class="history-panel-list">
-              ${events.map((event) => renderHistoryEntry(state, event, options.aiMeta || null)).join('')}
-            </div>
-          ` : '<div class="history-panel-empty">The chronicle will fill as the game unfolds.</div>'}
+        <div class="sidebar-panel-body history-list">
+          ${history.length ? history.map((entry) => `
+            <article class="history-entry">
+              <span class="history-meta">R${entry.round} ${escapeHtml(entry.phase)}</span>
+              <strong>${escapeHtml(entry.summary)}</strong>
+            </article>
+          `).join('') : '<div class="panel-empty">No history yet.</div>'}
         </div>
       ` : ''}
     </div>
   `;
 }
 
-// â”€â”€â”€ Player Dashboard â”€â”€â”€
-export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null, options = {}) {
+export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null) {
+  if (!container || !state) return;
   const player = getPlayer(state, playerId);
-  if (!player) return;
-
-  const isBasileus = playerId === state.basileusId;
-  const themes = getPlayerThemes(state, playerId);
-  const selectedProvince = getProvinceSummary(state, selectedProvinceId);
-  const titleEntries = getPlayerTitleEntries(state, playerId);
-  const armyEntries = getPlayerArmyEntries(state, playerId, false, {
-    includeMercenaryCompany: getPlayerMercenaryTroops(state, playerId) > 0,
-  });
-  const finance = getProjectedFinance(state, playerId);
-  const opinionRows = getPlayerOpinionRows(state, options.aiMeta || null, playerId);
-  const isOpen = panelIsOpen(options.uiState, 'dashboard', true);
-  const dashboardFocus = options.uiState?.dashboardFocus || null;
-
-  container.classList.toggle('panel-collapsed', !isOpen);
-
-  const financeSection = renderFoldSection(
-    'dashboard:finance',
-    'Finances',
-    `
-      <p class="section-hint">Final points come from share thresholds: each 25% of church income, estate income, tax income, or gold reserves is worth 1 point, up to 3 per category.</p>
-      <div class="finance-grid">
-        <div class="finance-card" title="Gold currently in your treasury.">
-          <span class="finance-label">Current gold</span>
-          <strong>${formatGold(player.gold)}</strong>
-        </div>
-        <div class="finance-card" title="Gold you will receive at the next Administration phase.">
-          <span class="finance-label">Next income</span>
-          <strong>${formatGold(finance.projectedIncome, { signed: true })}</strong>
-        </div>
-        <div class="finance-card" title="1 gold per professional troop, paid each Cleanup.">
-          <span class="finance-label">Army upkeep</span>
-          <strong>${formatGold(-finance.maintenance)}</strong>
-        </div>
-        <div class="finance-card" title="Treasury after next income and upkeep.">
-          <span class="finance-label">Projected treasury</span>
-          <strong>${formatGold(finance.nextTreasury)}</strong>
-        </div>
-      </div>
-      <div class="dashboard-list compact">
-        <div class="dashboard-list-row" title="Profit (P) from each owned province.">
-          <span>Estate income this round</span>
-          <span class="dashboard-list-value">${formatGold(finance.privateIncome, { signed: true })}</span>
-        </div>
-        <div class="dashboard-list-row" title="Tax cascade from offices you hold (Basileus, Domestic, Admiral, Strategos, Bishop, Patriarch, Empress, Chief of Eunuchs).">
-          <span>Office income this round</span>
-          <span class="dashboard-list-value">${formatGold(finance.officeIncome, { signed: true })}</span>
-        </div>
-        <div class="dashboard-list-row" title="Levies your offices will raise next Administration. They disband at end of round.">
-          <span>Levies next Administration</span>
-          <span class="dashboard-list-value">${formatLevies(finance.levyProjection)}</span>
-        </div>
-        <div class="dashboard-list-row" title="1 gold per professional troop. Mercenaries cost nothing in upkeep but disband each round.">
-          <span>Professional upkeep next Cleanup</span>
-          <span class="dashboard-list-value">${formatGold(-finance.maintenance)}</span>
-        </div>
-      </div>
-    `,
-    options.uiState,
-    {
-      defaultOpen: true,
-      badge: formatGold(player.gold),
-    }
-  );
-
-  const themeSection = renderFoldSection(
-    'dashboard:themes',
-    'Estates',
-    themes.length ? `
-      <p class="section-hint">P / T / L = profit (yours), tax (cascade), levies (raised by region or Strategos). Threatened estates are on the current invasion route. Sale price below = 2&times;P.</p>
-      <div class="dashboard-list">
-        ${themes.map((theme) => `
-          <div class="dashboard-list-row">
-            <div>
-              <div class="dashboard-list-title">${renderProvinceBadge(state, theme, { showValues: true })}</div>
-              <div class="dashboard-list-note">${formatProvinceYield(theme)}${(Number(theme.C) || 0) > 0 ? ` | C${Number(theme.C) || 0}` : ''}${isThemeThreatened(state, theme.id) ? ' | threatened' : ''}</div>
-            </div>
-            <span class="dashboard-list-value">${formatGold(getThemeLandPrice(theme))}</span>
-          </div>
-        `).join('')}
-      </div>
-    ` : '<div class="dashboard-empty">No estates yet.</div>',
-    options.uiState,
-    {
-      defaultOpen: dashboardFocus === 'themes',
-      badge: `${themes.length}`,
-      focused: dashboardFocus === 'themes',
-    }
-  );
-
-  const armySection = renderFoldSection(
-    'dashboard:army',
-    'Army',
-    armyEntries.length ? `
-      <p class="section-hint">Troops are split per office. Each office orders its troops to the Capital or the Frontier separately during Secret Orders.</p>
-      <div class="dashboard-list">
-        ${armyEntries.map((entry) => `
-          <div class="dashboard-list-row">
-            <div>
-              <div class="dashboard-list-title">${entry.label}</div>
-              <div class="dashboard-list-note">${renderArmySummaryLine(entry)}</div>
-            </div>
-            <span class="dashboard-list-value">${formatTroops(entry.total)}</span>
-          </div>
-        `).join('')}
-      </div>
-    ` : '<div class="dashboard-empty">No professional troops raised.</div>',
-    options.uiState,
-    {
-      defaultOpen: dashboardFocus === 'army',
-      badge: `${getTotalProfessionalArmy(state, playerId)}`,
-      focused: dashboardFocus === 'army',
-    }
-  );
-
-  const titleSection = renderFoldSection(
-    'dashboard:titles',
-    'Titles',
-    titleEntries.length ? `
-      <p class="section-hint">Each title carries an income share and the right to act in Court. A successful coup forces redistribution of the four major titles.</p>
-      <div class="dashboard-list">
-        ${titleEntries.map((entry) => `
-          <div class="dashboard-list-row">
-            <div class="dashboard-list-title">${entry.label}</div>
-            <span class="dashboard-tag">${entry.scope}</span>
-          </div>
-        `).join('')}
-      </div>
-    ` : '<div class="dashboard-empty">No offices or titles held.</div>',
-    options.uiState,
-    {
-      defaultOpen: dashboardFocus === 'titles',
-      badge: `${titleEntries.length}`,
-      focused: dashboardFocus === 'titles',
-    }
-  );
-
-  const provinceSection = selectedProvince ? renderFoldSection(
-    'dashboard:province',
-    'Selected Province',
-    `
-      <div class="dashboard-province">
-        <div class="dashboard-province-head">
-          ${renderProvinceBadge(state, selectedProvince.id, { showValues: true })}
-        </div>
-        <div class="dashboard-province-meta">Price ${formatGold(selectedProvince.landPrice)}${(Number(selectedProvince.church) || 0) > 0 ? ` | Church C${Number(selectedProvince.church) || 0}` : ''}${selectedProvince.threatened ? ' | threatened' : ''}</div>
-        <div class="dashboard-province-detail">Owner: ${selectedProvince.ownerLabel}</div>
-        <div class="dashboard-province-detail">Profit / Tax / Levies: ${formatProvinceYield(selectedProvince)}</div>
-        <div class="dashboard-province-detail">Strategos: ${selectedProvince.strategos}</div>
-        <div class="dashboard-province-detail">Bishop: ${selectedProvince.bishop}</div>
-      </div>
-    `,
-    options.uiState,
-    {
-      defaultOpen: true,
-    }
-  ) : '';
-
-  const opinionsSection = opinionRows.length ? renderFoldSection(
-    'dashboard:opinions',
-    'AI Opinions',
-    `
-      <div class="dashboard-list">
-        ${opinionRows.map((row) => `
-          <div class="dashboard-opinion-row ${row.isHuman ? 'human-target' : ''}">
-            <div>
-              <div class="dashboard-list-title">${row.name}${row.isHuman ? ' (You)' : ''}</div>
-              <div class="dashboard-list-note">Net ${formatSigned(row.net)} | trust ${row.trust} | grievance ${row.grievance}</div>
-            </div>
-            <div class="dashboard-opinion-meta">
-              <span class="dashboard-tag ${row.descriptor}">${row.descriptor}</span>
-              <span class="dashboard-opinion-debt">owes ${row.owesThem} / owed ${row.theyOwe}</span>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `,
-    options.uiState,
-    {
-      defaultOpen: dashboardFocus === 'opinions',
-      focused: dashboardFocus === 'opinions',
-    }
-  ) : '';
-
+  const selected = selectedProvinceId ? state.themes[selectedProvinceId] : null;
+  const titles = [
+    playerId === state.basileusId ? renderTitleBadge(state, 'BASILEUS', { holderId: playerId, compact: true }) : '',
+    ...(player?.majorTitles || []).map((titleKey) => renderTitleBadge(state, titleKey, { holderId: playerId, compact: true })),
+  ].filter(Boolean).join(' ');
   container.innerHTML = `
-    <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="${getPlayerStyleAttr(state, player.id)}">
-      <button class="sidebar-panel-head player-dashboard-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
+    <div class="sidebar-panel dashboard-panel">
+      <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="dashboard">
         <span class="sidebar-panel-head-copy">
-          <span class="sidebar-panel-kicker">Dynasty View</span>
-          <span class="sidebar-panel-title">${renderPlayerRoleName(state, player)}</span>
-          <span class="sidebar-panel-subtitle">${isBasileus ? 'Basileus' : (player.majorTitles.map((titleKey) => MAJOR_TITLES[titleKey]?.name || titleKey).join(', ') || 'Untitled dynasty')}</span>
+          <span class="sidebar-panel-kicker">Dynasty</span>
+          <span class="sidebar-panel-title">${player ? renderPlayerRoleName(state, player) : 'No dynasty'}</span>
         </span>
-        <span class="sidebar-panel-badge">${formatGold(player.gold)} | ${formatGold(finance.projectedIncome, { signed: true })} | ${formatGold(-finance.maintenance)}</span>
       </button>
-      ${isOpen ? `
-        <div class="sidebar-panel-body">
-          <!-- Dynasty crest, name, titles and gold are already shown by the
-               panel head above; the body jumps straight into stats and
-               drill-downs to avoid the chip-in-chip duplication. -->
-          <div class="dashboard-stats">
-            <button class="stat stat-button ${dashboardFocus === 'themes' ? 'active' : ''}" type="button" data-dashboard-focus="themes">
-              <span class="stat-icon">LND</span>
-              <span class="stat-label">Estates</span>
-              <span class="stat-value">${themes.length}</span>
-            </button>
-            <button class="stat stat-button ${dashboardFocus === 'army' ? 'active' : ''}" type="button" data-dashboard-focus="army">
-              <span class="stat-icon">ARM</span>
-              <span class="stat-label">Army</span>
-              <span class="stat-value">${getTotalProfessionalArmy(state, player.id)}</span>
-            </button>
-            <button class="stat stat-button ${dashboardFocus === 'titles' ? 'active' : ''}" type="button" data-dashboard-focus="titles">
-              <span class="stat-icon">TTL</span>
-              <span class="stat-label">Titles</span>
-              <span class="stat-value">${titleEntries.length}</span>
-            </button>
+      <div class="sidebar-panel-body">
+        <div class="dashboard-stat-row">
+          <span>Gold</span><strong>${formatGold(player?.gold || 0)}</strong>
+        </div>
+        <div class="dashboard-token-row">${titles || '<span class="muted">No major office</span>'}</div>
+        ${selected ? `
+          <div class="selected-province">
+            ${renderProvinceBadge(state, selected, { showValues: true })}
+            <span>${escapeHtml(formatProvinceYield(selected))}</span>
           </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
 
-          ${financeSection}
-          ${themeSection}
-          ${armySection}
-          ${titleSection}
-          ${provinceSection}
-          ${opinionsSection}
+function renderCourtAppointments(state, playerId, draft) {
+  const strategoi = getStrategosTargets(state, playerId);
+  const bishops = getBishopTargets(state, playerId);
+  const courtTargets = playerId === state.basileusId
+    ? [
+      state.empress == null ? { titleType: 'EMPRESS', label: 'Empress' } : null,
+      state.chiefEunuchs == null ? { titleType: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs' } : null,
+    ].filter(Boolean)
+    : [];
+  if (!strategoi.length && !bishops.length && !courtTargets.length) return '';
+  return `
+    <details class="action-fold" open>
+      <summary>Appoint</summary>
+      ${courtTargets.length ? `
+        <div class="form-grid">
+          <select data-appoint-court-title>${courtTargets.map((entry) => `<option value="${entry.titleType}">${entry.label}</option>`).join('')}</select>
+          <select data-appoint-court-player>${getPlayerOptions(state, draft.appointeeId)}</select>
+          <button type="button" class="btn-primary" data-action="appoint-court">Appoint</button>
         </div>
       ` : ''}
-    </div>
-  `;
-  return;
-
-}
-
-function encodeDealPayload(value) {
-  return encodeURIComponent(JSON.stringify(value));
-}
-
-function decodeDealPayload(value) {
-  try {
-    return JSON.parse(decodeURIComponent(String(value || '')));
-  } catch {
-    return null;
-  }
-}
-
-function getPrivateEstateOptions(state) {
-  return Object.values(state.themes)
-    .filter((theme) => theme.owner !== null && theme.owner !== 'church')
-    .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function getDealCounterpartyLabel(state, playerId) {
-  return renderPlayerRoleNameById(state, playerId, `Player ${Number(playerId) + 1}`);
-}
-
-function buildEditableClausePreset(viewerId, clause) {
-  return {
-    kind: clause.kind,
-    direction: clause.giverId === viewerId ? 'give' : 'ask',
-    startTriggerType: clause.startTrigger?.type || 'immediate',
-    triggerPlayerId: clause.startTrigger?.playerId ?? '',
-    amount: clause.payload?.totalAmount ?? '',
-    durationTurns: clause.durationTurns ?? '',
-    troopCount: clause.payload?.troopCount ?? '',
-    candidateId: clause.payload?.candidateId ?? '',
-    themeId: clause.payload?.themeId ?? '',
-    appointmentCount: clause.payload?.appointmentCount ?? '',
-  };
-}
-
-function getDealKindOptions() {
-  return [
-    { value: 'gold', label: 'Gold payment' },
-    { value: 'estate', label: 'Land transfer' },
-    { value: 'coup_support', label: 'Back a claimant in the coup' },
-    { value: 'frontier_support', label: 'Send troops to the frontier' },
-    { value: 'appointment_promise', label: 'Promise future appointments' },
-    { value: 'non_revocation', label: 'Promise not to revoke posts or estates' },
-  ];
-}
-
-function getDealDirectionOptions(kind) {
-  switch (kind) {
-    case 'gold':
-      return [
-        { value: 'give', label: 'You pay them' },
-        { value: 'ask', label: 'They pay you' },
-      ];
-    case 'estate':
-      return [
-        { value: 'give', label: 'You give land' },
-        { value: 'ask', label: 'They give land to you' },
-      ];
-    case 'coup_support':
-      return [
-        { value: 'give', label: 'You promise support' },
-        { value: 'ask', label: 'They promise support' },
-      ];
-    case 'frontier_support':
-      return [
-        { value: 'give', label: 'You send troops' },
-        { value: 'ask', label: 'They send troops' },
-      ];
-    case 'appointment_promise':
-      return [
-        { value: 'give', label: 'You promise appointments' },
-        { value: 'ask', label: 'They promise appointments' },
-      ];
-    case 'non_revocation':
-      return [
-        { value: 'give', label: 'You promise protection' },
-        { value: 'ask', label: 'They promise protection' },
-      ];
-    default:
-      return [
-        { value: 'give', label: 'You offer this' },
-        { value: 'ask', label: 'You ask for this' },
-      ];
-  }
-}
-
-function getDealClauseHelpText(kind) {
-  switch (kind) {
-    case 'gold':
-      return 'Use this for money paid right away or split across later court phases.';
-    case 'estate':
-      return 'This transfers one private estate. Any privileges or attached offices stay with the land.';
-    case 'coup_support':
-      return 'This later locks troops in the capital and forces support for one claimant.';
-    case 'frontier_support':
-      return 'This later locks troops to the frontier against the invader.';
-    case 'appointment_promise':
-      return 'This reserves future legal appointments. You are not naming a specific title yet.';
-    case 'non_revocation':
-      return 'This stops the promiser from revoking the other dynasty\'s posts or estates for a set time.';
-    default:
-      return '';
-  }
-}
-
-function renderDealSelectField(label, fieldName, options, selectedValue, extraAttributes = '') {
-  return `
-    <label class="deal-field">
-      <span>${label}</span>
-      <select class="appt-select" data-deal-field="${fieldName}" ${extraAttributes}>
-        ${options.map((option) => `
-          <option value="${option.value}" ${String(option.value) === String(selectedValue) ? 'selected' : ''}>${option.label}</option>
-        `).join('')}
-      </select>
-    </label>
-  `;
-}
-
-function renderDealNumberField(label, fieldName, value, extraAttributes = '') {
-  return `
-    <label class="deal-field">
-      <span>${label}</span>
-      <input class="army-dismiss-count deal-number" type="number" min="1" step="1" value="${value}" data-deal-field="${fieldName}" ${extraAttributes}>
-    </label>
-  `;
-}
-
-function getDealEstateOptionsForComposer(state, playerId, counterpartyId, direction) {
-  const ownerId = direction === 'give' ? playerId : Number(counterpartyId);
-  return getPrivateEstateOptions(state)
-    .filter((theme) => Number(theme.owner) === Number(ownerId));
-}
-
-function summarizeDealDraft(state, playerId, counterpartyId, draft = {}) {
-  const kind = draft.kind || 'gold';
-  const direction = draft.direction || 'give';
-  const otherLabel = counterpartyId == null || counterpartyId === ''
-    ? 'the other dynasty'
-    : getDealCounterpartyLabel(state, Number(counterpartyId));
-  const hasTriggerPlayer = draft.triggerPlayerId !== '' && draft.triggerPlayerId != null;
-  const triggerPlayerId = hasTriggerPlayer && Number.isInteger(Number(draft.triggerPlayerId))
-    ? Number(draft.triggerPlayerId)
-    : playerId;
-  const triggerLabel = draft.startTriggerType === 'when_player_is_basileus'
-    ? ` once ${getDealCounterpartyLabel(state, triggerPlayerId)} becomes Basileus`
-    : '';
-  const amount = Number(draft.amount) || 1;
-  const durationTurns = Number(draft.durationTurns) || 1;
-  const troopCount = Number(draft.troopCount) || 1;
-  const appointmentCount = Number(draft.appointmentCount) || 1;
-  const candidateLabel = draft.candidateId === '' || draft.candidateId == null
-    ? 'a claimant'
-    : getDealCounterpartyLabel(state, Number(draft.candidateId));
-  const estateName = draft.themeId && state.themes?.[draft.themeId]
-    ? state.themes[draft.themeId].name
-    : 'that estate';
-
-  if (kind === 'gold') {
-    return direction === 'give'
-      ? `You pay ${amount} gold to ${otherLabel}${durationTurns > 1 ? ` over ${durationTurns} court phases` : ''}${triggerLabel}.`
-      : `${otherLabel} pays ${amount} gold to you${durationTurns > 1 ? ` over ${durationTurns} court phases` : ''}${triggerLabel}.`;
-  }
-  if (kind === 'estate') {
-    return direction === 'give'
-      ? `You transfer ${estateName} to ${otherLabel}${triggerLabel}.`
-      : `${otherLabel} transfers ${estateName} to you${triggerLabel}.`;
-  }
-  if (kind === 'coup_support') {
-    return direction === 'give'
-      ? `You commit ${troopCount} troop${troopCount === 1 ? '' : 's'} to back ${candidateLabel} in the coup for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`
-      : `${otherLabel} commits ${troopCount} troop${troopCount === 1 ? '' : 's'} to back ${candidateLabel} in the coup for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`;
-  }
-  if (kind === 'frontier_support') {
-    return direction === 'give'
-      ? `You send ${troopCount} troop${troopCount === 1 ? '' : 's'} to the frontier for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`
-      : `${otherLabel} sends ${troopCount} troop${troopCount === 1 ? '' : 's'} to the frontier for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`;
-  }
-  if (kind === 'appointment_promise') {
-    return direction === 'give'
-      ? `You promise ${otherLabel} your next ${appointmentCount} legal appointment${appointmentCount === 1 ? '' : 's'}${triggerLabel}.`
-      : `${otherLabel} promises you their next ${appointmentCount} legal appointment${appointmentCount === 1 ? '' : 's'}${triggerLabel}.`;
-  }
-  if (kind === 'non_revocation') {
-    return direction === 'give'
-      ? `You promise not to revoke ${otherLabel}'s posts or estates for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`
-      : `${otherLabel} promises not to revoke your posts or estates for ${durationTurns} turn${durationTurns === 1 ? '' : 's'}${triggerLabel}.`;
-  }
-  return '';
-}
-
-function serializeDealRow(row) {
-  return {
-    kind: row.querySelector('[data-deal-field="kind"]')?.value || 'gold',
-    direction: row.querySelector('[data-deal-field="direction"]')?.value || 'give',
-    startTriggerType: row.querySelector('[data-deal-field="start-trigger"]')?.value || 'immediate',
-    triggerPlayerId: row.querySelector('[data-deal-field="trigger-player"]')?.value || '',
-    amount: row.querySelector('[data-deal-field="amount"]')?.value || '',
-    durationTurns: row.querySelector('[data-deal-field="duration"]')?.value || '',
-    troopCount: row.querySelector('[data-deal-field="troops"]')?.value || '',
-    candidateId: row.querySelector('[data-deal-field="candidate"]')?.value || '',
-    themeId: row.querySelector('[data-deal-field="estate"]')?.value || '',
-    appointmentCount: row.querySelector('[data-deal-field="appointments"]')?.value || '',
-  };
-}
-
-function createDefaultDealClause(playerId) {
-  return {
-    kind: 'gold',
-    direction: 'give',
-    startTriggerType: 'immediate',
-    triggerPlayerId: '',
-    amount: 1,
-    durationTurns: 1,
-    troopCount: 1,
-    candidateId: playerId,
-    themeId: '',
-    appointmentCount: 1,
-  };
-}
-
-function normalizeDealDraft(dealDraft, playerId, eligibleIds) {
-  if (!dealDraft || typeof dealDraft !== 'object') {
-    return {
-      mode: 'send',
-      threadId: '',
-      expectedRevision: '',
-      counterpartyId: eligibleIds[0] ?? '',
-      clauses: [createDefaultDealClause(playerId)],
-    };
-  }
-
-  const counterpartyId = eligibleIds.some((id) => String(id) === String(dealDraft.counterpartyId))
-    ? dealDraft.counterpartyId
-    : eligibleIds[0] ?? '';
-  const mode = dealDraft.mode === 'counter' ? 'counter' : 'send';
-  const clauses = Array.isArray(dealDraft.clauses) && dealDraft.clauses.length
-    ? dealDraft.clauses
-    : [createDefaultDealClause(playerId)];
-  dealDraft.mode = mode;
-  dealDraft.threadId = mode === 'counter' ? dealDraft.threadId || '' : '';
-  dealDraft.expectedRevision = mode === 'counter' ? dealDraft.expectedRevision || '' : '';
-  dealDraft.counterpartyId = counterpartyId;
-  dealDraft.clauses = clauses;
-  return dealDraft;
-}
-
-function renderDealToggle(fieldName, options, selectedValue) {
-  return `
-    <div class="deal-toggle" data-deal-toggle="${fieldName}">
-      ${options.map((option) => `
-        <button type="button" class="deal-toggle-btn ${String(option.value) === String(selectedValue) ? 'selected' : ''}" data-deal-toggle-value="${option.value}">${option.label}</button>
-      `).join('')}
-      <input type="hidden" data-deal-field="${fieldName}" value="${selectedValue}">
-    </div>
-  `;
-}
-
-function renderDealClauseEditorRow(state, playerId, rowIndex, preset = null, counterpartyId = null) {
-  const allPlayers = state.players.slice();
-  const nextPreset = preset || {};
-  const kind = nextPreset.kind || 'gold';
-  const direction = nextPreset.direction || 'give';
-  const triggerType = nextPreset.startTriggerType || 'immediate';
-  const triggerPlayerId = nextPreset.triggerPlayerId ?? playerId;
-  const durationTurns = nextPreset.durationTurns ?? 1;
-  const amount = nextPreset.amount ?? 1;
-  const troopCount = nextPreset.troopCount ?? 1;
-  const candidateId = nextPreset.candidateId ?? playerId;
-  const estateOptions = getDealEstateOptionsForComposer(state, playerId, counterpartyId, direction);
-  const themeId = estateOptions.some((theme) => theme.id === nextPreset.themeId)
-    ? nextPreset.themeId
-    : estateOptions[0]?.id ?? '';
-  const appointmentCount = nextPreset.appointmentCount ?? 1;
-  const directionOptions = getDealDirectionOptions(kind);
-  const preview = summarizeDealDraft(state, playerId, counterpartyId, {
-    kind,
-    direction,
-    startTriggerType: triggerType,
-    triggerPlayerId,
-    amount,
-    durationTurns,
-    troopCount,
-    candidateId,
-    themeId,
-    appointmentCount,
-  });
-
-  const detailFields = [];
-  if (kind === 'gold') {
-    detailFields.push(renderDealNumberField('Total gold', 'amount', amount));
-    detailFields.push(renderDealNumberField('Spread over (court phases)', 'duration', durationTurns));
-  } else if (kind === 'estate') {
-    detailFields.push(renderDealSelectField(
-      'Estate',
-      'estate',
-      estateOptions.length
-        ? estateOptions.map((theme) => ({ value: theme.id, label: theme.name }))
-        : [{ value: '', label: 'No estate available' }],
-      themeId,
-      estateOptions.length ? '' : 'disabled',
-    ));
-  } else if (kind === 'coup_support') {
-    detailFields.push(renderDealSelectField(
-      'Claimant to back',
-      'candidate',
-      allPlayers.map((player) => ({ value: player.id, label: getDealCounterpartyLabel(state, player.id) })),
-      candidateId,
-    ));
-    detailFields.push(renderDealNumberField('Troops per turn', 'troops', troopCount));
-    detailFields.push(renderDealNumberField('Duration (turns)', 'duration', durationTurns));
-  } else if (kind === 'frontier_support') {
-    detailFields.push(renderDealNumberField('Troops per turn', 'troops', troopCount));
-    detailFields.push(renderDealNumberField('Duration (turns)', 'duration', durationTurns));
-  } else if (kind === 'appointment_promise') {
-    detailFields.push(renderDealNumberField('Future appointments', 'appointments', appointmentCount));
-  } else if (kind === 'non_revocation') {
-    detailFields.push(renderDealNumberField('Protection (turns)', 'duration', durationTurns));
-  }
-
-  const triggerOptions = [
-    { value: 'immediate', label: 'Right away' },
-    { value: 'when_player_is_basileus', label: 'On coronation' },
-  ];
-
-  return `
-    <div class="deal-clause-editor" data-deal-clause-row data-row-index="${rowIndex}">
-      <div class="deal-clause-head">
-        <span class="deal-clause-title">Clause ${rowIndex + 1}</span>
-        <button type="button" class="btn-secondary-link deal-remove-clause" data-action="deal-remove-clause">Remove</button>
-      </div>
-      <div class="deal-clause-help">${getDealClauseHelpText(kind)}</div>
-      <div class="deal-form-grid">
-        ${renderDealSelectField('Type', 'kind', getDealKindOptions(), kind)}
-        <label class="deal-field">
-          <span>Direction</span>
-          ${renderDealToggle('direction', directionOptions, direction)}
-        </label>
-        <label class="deal-field">
-          <span>Trigger</span>
-          ${renderDealToggle('start-trigger', triggerOptions, triggerType)}
-        </label>
-        ${triggerType === 'when_player_is_basileus'
-          ? renderDealSelectField(
-              'Coronation of',
-              'trigger-player',
-              allPlayers.map((player) => ({ value: player.id, label: getDealCounterpartyLabel(state, player.id) })),
-              triggerPlayerId,
-            )
-          : ''}
-      </div>
-      ${detailFields.length ? `<div class="deal-form-grid deal-detail-grid">${detailFields.join('')}</div>` : ''}
-      <div class="deal-clause-preview" data-deal-preview>${preview}</div>
-    </div>
-  `;
-}
-
-function renderDealStatusPills(counts) {
-  const pills = [
-    { label: 'Awaiting You', count: counts.pendingInbox, urgent: counts.pendingInbox > 0 },
-    { label: 'Awaiting Reply', count: counts.pendingOutbox, urgent: false },
-    { label: 'Active Obligations', count: counts.activeObligations, urgent: false },
-  ];
-  return `
-    <div class="deal-status-row">
-      ${pills.map((pill) => `
-        <span class="deal-status-pill${pill.urgent ? ' urgent' : ''}">
-          <span class="deal-status-count">${pill.count}</span>
-          <span class="deal-status-label">${pill.label}</span>
-        </span>
-      `).join('')}
-    </div>
-  `;
-}
-
-function renderDealThreadCard(state, viewerId, thread, disabled = false) {
-  const open = thread.status === 'open';
-  const awaitingViewer = open && thread.awaitingPlayerId === viewerId;
-  const counterpartyId = thread.playerIds.find((playerId) => playerId !== viewerId);
-  const currentOffer = thread.currentOffer || null;
-  const clauseHtml = currentOffer?.clauses?.length
-    ? `<div class="deal-clause-list">${currentOffer.clauses.map((clause) => `
-        <div class="deal-clause-chip">${summarizeDealClause(state, clause, viewerId)}</div>
-      `).join('')}</div>`
-    : '<div class="dashboard-empty">No clauses recorded.</div>';
-  const statusLabel = open
-    ? (awaitingViewer ? 'Awaiting You' : 'Awaiting Reply')
-    : thread.status === 'accepted' ? 'Accepted' : 'Refused';
-  const statusTone = !open
-    ? (thread.status === 'accepted' ? 'loyal' : 'wary')
-    : (awaitingViewer ? 'warm' : 'cold');
-  const editableClauses = currentOffer?.clauses?.map((clause) => buildEditableClausePreset(viewerId, clause)) || [];
-
-  const actionsHtml = open ? (awaitingViewer && !disabled
-    ? `<div class="deal-thread-actions">
-        <button class="appt-btn" data-action="deal-accept" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Accept</button>
-        <button class="btn-recruit" data-action="deal-open-counter" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}" data-counterparty-id="${counterpartyId}" data-counter-clauses="${encodeDealPayload(editableClauses)}">Counter</button>
-        <button class="btn-dismiss" data-action="deal-refuse" data-thread-id="${thread.id}" data-thread-revision="${thread.revision}">Refuse</button>
-      </div>`
-    : `<div class="deal-thread-meta">Waiting on ${getDealCounterpartyLabel(state, thread.awaitingPlayerId)}.</div>`)
-    : '';
-
-  return `
-    <div class="deal-thread-card ${open ? 'open' : 'closed'}">
-      <div class="deal-thread-head">
-        <div class="deal-thread-title">
-          <span class="dashboard-list-title">${getDealCounterpartyLabel(state, counterpartyId)}</span>
-          <span class="deal-thread-rev">v${thread.revision}</span>
+      ${strategoi.length ? `
+        <div class="form-grid">
+          <select data-appoint-strategos-theme>${strategoi.map((theme) => `<option value="${theme.id}">${escapeHtml(theme.name)}</option>`).join('')}</select>
+          <select data-appoint-strategos-player>${getPlayerOptions(state, draft.appointeeId)}</select>
+          <button type="button" class="btn-primary" data-action="appoint-strategos">Appoint Strategos</button>
         </div>
-        <span class="dashboard-tag ${statusTone}">${statusLabel}</span>
-      </div>
-      ${clauseHtml}
-      ${actionsHtml}
-    </div>
+      ` : ''}
+      ${bishops.length ? `
+        <div class="form-grid">
+          <select data-appoint-bishop-theme>${bishops.map((theme) => `<option value="${theme.id}">${escapeHtml(theme.name)}</option>`).join('')}</select>
+          <select data-appoint-bishop-player>${getPlayerOptions(state, draft.appointeeId)}</select>
+          <button type="button" class="btn-primary" data-action="appoint-bishop">Appoint Bishop</button>
+        </div>
+      ` : ''}
+    </details>
   `;
 }
 
-function groupDealThreads(threads, viewerId) {
-  const awaitingYou = [];
-  const awaitingThem = [];
-  const closed = [];
-  for (const thread of threads) {
-    if (thread.status !== 'open') closed.push(thread);
-    else if (thread.awaitingPlayerId === viewerId) awaitingYou.push(thread);
-    else awaitingThem.push(thread);
-  }
-  return { awaitingYou, awaitingThem, closed };
-}
-
-function renderDealThreadGroup(state, playerId, threads, label, disabled, options = {}) {
-  if (!threads.length) return '';
-  const collapsedAttr = options.collapsed ? '' : 'open';
+function renderCourtRevocations(state, playerId) {
+  const targets = getRevocationTargets(state, playerId);
+  if (!targets.length) return '';
   return `
-    <details class="deal-thread-group" ${collapsedAttr}>
-      <summary class="deal-thread-group-summary">
-        <span>${label}</span>
-        <span class="deal-thread-group-count">${threads.length}</span>
-      </summary>
-      <div class="deal-thread-list">
-        ${threads.map((thread) => renderDealThreadCard(state, playerId, thread, disabled)).join('')}
+    <details class="action-fold">
+      <summary>Revoke</summary>
+      <div class="form-grid">
+        <select data-revoke-target>${targets.map((entry) => `<option value="${entry.value}">${escapeHtml(entry.label)}</option>`).join('')}</select>
+        <button type="button" class="btn-danger" data-action="revoke">Revoke</button>
       </div>
     </details>
   `;
 }
 
-function renderDealsSection(state, playerId, privateData, courtAlreadyConfirmed, dealDraft = {}) {
-  const dealThreads = Array.isArray(privateData?.dealThreads) ? privateData.dealThreads : [];
-  const eligibleIds = Array.isArray(privateData?.dealEligiblePlayerIds) ? privateData.dealEligiblePlayerIds : [];
-  const counts = privateData?.dealCounts || { pendingInbox: 0, pendingOutbox: 0, activeObligations: 0 };
-  const normalizedDraft = normalizeDealDraft(dealDraft, playerId, eligibleIds);
-  const initialCounterpartyId = normalizedDraft.counterpartyId;
-  const isCounterMode = normalizedDraft.mode === 'counter';
-  const groups = groupDealThreads(dealThreads, playerId);
-
-  const threadsHtml = dealThreads.length
-    ? `
-      ${renderDealThreadGroup(state, playerId, groups.awaitingYou, 'Awaiting your reply', courtAlreadyConfirmed)}
-      ${renderDealThreadGroup(state, playerId, groups.awaitingThem, 'Awaiting other dynasty', courtAlreadyConfirmed)}
-      ${renderDealThreadGroup(state, playerId, groups.closed, 'Settled this round', courtAlreadyConfirmed, { collapsed: true })}
-    `
-    : '<div class="dashboard-empty">No deals opened yet this round.</div>';
-
-  if (!eligibleIds.length) {
-    return `
-      <p class="section-hint">No other dynasty is available to negotiate with right now.</p>
-      ${renderDealStatusPills(counts)}
-      ${threadsHtml}
-    `;
-  }
-
+function renderCourtGifts(state, playerId) {
+  const targets = getGiftTargets(state, playerId);
+  if (!targets.length) return '';
   return `
-    <p class="section-hint">Negotiate binding multi-clause deals during Court. Each clause adds one promise; both sides must agree before anything fires.</p>
-    ${renderDealStatusPills(counts)}
-    ${threadsHtml}
-    <div class="deal-composer" data-deal-composer data-composer-mode="${normalizedDraft.mode}" data-composer-thread-id="${normalizedDraft.threadId || ''}" data-composer-expected-revision="${normalizedDraft.expectedRevision || ''}">
-      <div class="deal-composer-head">
-        <span class="dashboard-list-title" data-deal-composer-title>${isCounterMode ? `Counter Offer to ${getDealCounterpartyLabel(state, Number(initialCounterpartyId))}` : 'New Offer'}</span>
-        <button type="button" class="btn-secondary-link" data-action="deal-reset-composer" ${courtAlreadyConfirmed ? 'disabled' : ''}>Clear</button>
+    <details class="action-fold">
+      <summary>Gift Land</summary>
+      <div class="form-grid">
+        <select data-gift-theme>${targets.map((theme) => `<option value="${theme.id}">${escapeHtml(theme.name)}</option>`).join('')}</select>
+        <button type="button" class="btn-primary" data-action="gift">Gift</button>
       </div>
-      <div class="deal-form-grid deal-counterparty-row">
-        <label class="deal-field">
-          <span>Deal with</span>
-          <select class="appt-select" data-deal-composer-counterparty ${courtAlreadyConfirmed || isCounterMode ? 'disabled' : ''}>
-            ${eligibleIds.map((eligibleId) => `
-              <option value="${eligibleId}" ${String(eligibleId) === String(initialCounterpartyId) ? 'selected' : ''}>${getDealCounterpartyLabel(state, eligibleId)}</option>
-            `).join('')}
-          </select>
-        </label>
-      </div>
-      <div class="deal-clause-editor-list" data-deal-clause-list>
-        ${buildCounterClauseRowsHtml(state, playerId, normalizedDraft.clauses, initialCounterpartyId)}
-      </div>
-      <div class="deal-composer-actions">
-        <button class="btn-recruit" data-action="deal-add-clause" ${courtAlreadyConfirmed ? 'disabled' : ''}>Add Clause</button>
-        <button class="appt-btn deal-submit" data-action="deal-submit-offer" ${courtAlreadyConfirmed ? 'disabled' : ''}>${isCounterMode ? 'Send Counter' : 'Send Offer'}</button>
-      </div>
-    </div>
+    </details>
   `;
 }
 
-function renderDealLocksSection(state, playerId, orderLocks) {
-  if (!orderLocks?.ok) {
-    return `<div class="deal-locks-error">${orderLocks?.reason || 'Accepted deal commitments can no longer be fulfilled.'}</div>`;
-  }
-  if (!orderLocks.candidateId && !orderLocks.officeSelections?.length) return '';
-
-  return `
-    <div class="deal-lock-summary">
-      ${orderLocks.candidateId != null ? `<div class="deal-lock-row"><strong>Claimant locked:</strong> ${getDealCounterpartyLabel(state, orderLocks.candidateId)}</div>` : ''}
-      ${orderLocks.officeSelections?.length ? `
-        <div class="deal-lock-row"><strong>Locked deployments:</strong></div>
-        <div class="deal-clause-list">
-          ${orderLocks.officeSelections.map((selection) => `
-            <div class="deal-clause-chip">${selection.officeName} -> ${selection.destination} (${selection.troops} troops)</div>
-          `).join('')}
-        </div>
-      ` : ''}
-      ${orderLocks.capitalRequired > 0 ? `<div class="dashboard-list-note">Capital commitment: ${orderLocks.capitalRequired} troops.</div>` : ''}
-      ${orderLocks.frontierRequired > 0 ? `<div class="dashboard-list-note">Frontier commitment: ${orderLocks.frontierRequired} troops.</div>` : ''}
-    </div>
-  `;
-}
-
-// â”€â”€â”€ Court Phase Panel â”€â”€â”€
-export function renderCourtPanel(container, state, activePlayerId, callbacks, options = {}) {
+export function renderCourtPanel(container, state, activePlayerId, callbacks = {}, options = {}) {
+  if (!container || !state) return;
   const player = getPlayer(state, activePlayerId);
-  const isBasileus = activePlayerId === state.basileusId;
-  const selectedProvinceId = options.selectedProvinceId || null;
-  const uiSectionState = options.uiState || null;
-  const privateData = options.privateData || null;
-  const courtDraft = getDraftBucket(uiSectionState, state, 'court', activePlayerId);
-  const appointmentDraft = ensureNestedDraft(courtDraft, 'appointments');
-  const landBidDraft = ensureNestedDraft(courtDraft, 'landBids');
-
-  const appointmentParts = [];
-  if (isBasileus) {
-    appointmentParts.push(renderBasileusAppointments(state, selectedProvinceId, appointmentDraft.basileus || (appointmentDraft.basileus = {})));
-  }
-  for (const titleKey of player.majorTitles) {
-    if (titleKey === 'PATRIARCH') {
-      appointmentParts.push(renderPatriarchAppointment(state, selectedProvinceId, activePlayerId, appointmentDraft.patriarch || (appointmentDraft.patriarch = {})));
-    } else {
-      appointmentParts.push(renderStrategosAppointment(state, titleKey, selectedProvinceId, activePlayerId, appointmentDraft[titleKey] || (appointmentDraft[titleKey] = {})));
-    }
-  }
-
-  const availableThemes = getFreeThemes(state);
-  const playerOwnedThemes = getPlayerThemes(state, activePlayerId);
-  const courtAlreadyConfirmed = state.courtActions?.playerConfirmed?.has(activePlayerId);
-  const estatesBody = `
-    <p class="section-hint">Bid on free provinces. The first bid must be at least 2&times;P; later bids must be higher. Gold is paid into escrow immediately and refunded if another dynasty overbids you.</p>
-    ${availableThemes.length ? `
-      <div class="dashboard-list compact auction-list">
-        ${availableThemes.map((theme) => {
-          const auction = getLandAuction(state, theme.id);
-          const minimumBid = getMinimumLandBid(state, theme.id);
-          const draftAmount = Number(landBidDraft[theme.id]);
-          const bidAmount = Number.isFinite(draftAmount) && draftAmount >= minimumBid ? draftAmount : minimumBid;
-          landBidDraft[theme.id] = bidAmount;
-          const dueNow = auction?.bidderId === activePlayerId ? bidAmount - auction.amount : bidAmount;
-          const canAfford = player.gold >= dueNow;
-          const isRaisingOwnBid = auction?.bidderId === activePlayerId;
-          const highBid = auction
-            ? `High bid ${formatGold(auction.amount)} by ${renderPlayerRoleNameById(state, auction.bidderId, 'Unknown')}`
-            : `Opening bid ${formatGold(minimumBid)}`;
-          const buttonLabel = isRaisingOwnBid
-            ? `Raise to ${formatGold(bidAmount)} (pay ${formatGold(Math.max(0, dueNow))})`
-            : `Offer ${formatGold(bidAmount)} now`;
-          const statusLabel = canAfford
-            ? `Minimum ${formatGold(minimumBid)}`
-            : `Need ${formatGold(dueNow)}, have ${formatGold(player.gold)}`;
-          return `<div class="dashboard-list-row auction-row ${canAfford ? '' : 'disabled'} ${selectedProvinceId === theme.id ? 'selected' : ''}" data-auction-row data-min-bid="${minimumBid}" data-own-bid="${isRaisingOwnBid ? auction.amount : 0}" data-available-gold="${player.gold}">
-            <div class="auction-main">
-              <span class="auction-province">${renderProvinceBadge(state, theme, { showValues: true })}</span>
-              <span class="dashboard-list-note market-bid" data-bid-status>${highBid} | ${statusLabel}</span>
-            </div>
-            <div class="auction-controls">
-              <label class="deal-field auction-bid-control">
-              <span>Bid</span>
-              <input class="market-bid-input" type="number" min="${minimumBid}" step="1" value="${bidAmount}" data-bid-theme="${theme.id}">
-              </label>
-              <button class="appt-btn market-bid-btn ${canAfford ? '' : 'disabled'}" data-action="buy" data-theme="${theme.id}" ${canAfford ? '' : 'disabled'}>${buttonLabel}</button>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-    ` : '<div class="dashboard-empty">No free estates are available to buy right now.</div>'}
-  `;
-
-  const churchGiftsBody = `
-    <p class="section-hint">You lose ownership of the land and become its bishop. The province's profit and tax become 0; its church value becomes the old P+T. The church pool pays the Patriarch 2 shares first, then each bishop in seniority order.</p>
-    ${playerOwnedThemes.length ? `
-      <div class="gift-options">
-        ${playerOwnedThemes.map((theme) => {
-          const futureChurch = (Number(theme.P) || 0) + (Number(theme.T) || 0);
-          return `<button class="gift-item ${selectedProvinceId === theme.id ? 'selected' : ''}" data-action="gift" data-theme="${theme.id}">
-            ${renderProvinceBadge(state, theme, { showValues: true })} -> church value becomes ${futureChurch}
-          </button>`;
-        }).join('')}
-      </div>
-    ` : '<div class="dashboard-empty">No owned estate is available to gift to the church right now.</div>'}
-  `;
-
-  let courtHtml = `<div class="court-panel">
-    <div class="phase-header">
-      <h3>Imperial Court</h3>
-      <p class="section-hint">Take any actions you can afford, in any order. Confirm at the bottom when done. The next round begins once every player has confirmed.</p>
-    </div>`;
-
-  courtHtml += renderFoldSection(
-    'court:appointments',
-    'Appointments',
-    `<p class="section-hint">The first appointment to each recipient is free each round. Repeat appointments to the same recipient cost 1 troop, then 2, and so on, spent from offices you control. Patriarch bishop appointments instead cost 0, 2, 4... gold. You cannot appoint yourself twice in a row.</p>${appointmentParts.join('') || '<div class="dashboard-empty">This dynasty has no appointments left right now.</div>'}`,
-    uiSectionState,
-    {
-      defaultOpen: true,
-    }
-  );
-
-  courtHtml += renderFoldSection(
-    'court:estates',
-    'Estates',
-    estatesBody,
-    uiSectionState,
-    {
-      defaultOpen: false,
-    }
-  );
-
-  courtHtml += renderFoldSection(
-    'court:church-gifts',
-    'Church Gifts',
-    churchGiftsBody,
-    uiSectionState,
-    {
-      defaultOpen: false,
-      badge: playerOwnedThemes.length ? `${playerOwnedThemes.length} estate${playerOwnedThemes.length === 1 ? '' : 's'}` : null,
-    }
-  );
-
-  const revocationGroups = collectRevocationGroups(state, activePlayerId);
-  const canOpenRevocations = isBasileus
-    || player.majorTitles.some((titleKey) => ['PATRIARCH', 'DOM_EAST', 'DOM_WEST', 'ADMIRAL'].includes(titleKey));
-  if (canOpenRevocations) {
-    courtHtml += renderFoldSection(
-      'court:revocation',
-      'Revocation',
-      renderRevocationOptions(state, activePlayerId, courtDraft, revocationGroups),
-      uiSectionState,
-      {
-        defaultOpen: false,
-      }
-    );
-  }
-
-  courtHtml += renderFoldSection(
-    'court:armies',
-    'Armies',
-    `<p class="section-hint">Professional troops are permanent (max 1 recruit per office per round, ready next round, 1 gold upkeep per troop each Cleanup once active). Mercenaries last only this round and cost 1, +2, +3... per additional troop. The Patriarch, Empress and Chief of Eunuchs cannot hold professional troops.</p>${renderArmyManagement(state, activePlayerId)}`,
-    uiSectionState,
-    {
-      defaultOpen: true,
-    }
-  );
-
-  courtHtml += renderFoldSection(
-    'court:deals',
-    'Deals',
-    renderDealsSection(state, activePlayerId, privateData, courtAlreadyConfirmed, courtDraft.deals || (courtDraft.deals = {})),
-    uiSectionState,
-    {
-      defaultOpen: false,
-      badge: privateData?.dealCounts?.pendingInbox > 0
-        ? `${privateData.dealCounts.pendingInbox} awaiting`
-        : null,
-    }
-  );
-
-  courtHtml += renderFoldSection(
-    'court:confirm',
-    'Confirm',
-    `
-      <p class="section-hint">Confirming locks in your Court actions. Once every player has confirmed, the Secret Orders phase begins.</p>
-      <div class="court-actions">
-        <button class="btn-confirm ${courtAlreadyConfirmed ? 'disabled' : ''}" data-action="confirm-court" ${courtAlreadyConfirmed ? 'disabled' : ''}>
-          ${courtAlreadyConfirmed ? 'Court Confirmed' : 'Confirm Court Phase'}
-        </button>
-      </div>
-    `,
-    uiSectionState,
-    {
-      defaultOpen: true,
-    }
-  );
-
-  courtHtml += `</div>`;
-  container.innerHTML = courtHtml;
-
-  bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData, courtDraft);
-  return;
-
-}
-
-
-function bindThemeChoiceControls(root, appointmentDraft = null, state = null) {
-  root.querySelectorAll('[data-theme-choice]').forEach((button) => {
-    if (button.dataset.bound === 'true') return;
-    button.dataset.bound = 'true';
-    button.addEventListener('click', () => {
-      const group = button.closest('[data-theme-choice-group]');
-      const input = group?.querySelector('.appt-theme-select');
-      if (!input) return;
-      group.querySelectorAll('[data-theme-choice]').forEach((other) => other.classList.remove('selected'));
-      button.classList.add('selected');
-      input.value = button.dataset.themeChoice;
-      const block = button.closest('[data-appt-key]');
-      const key = block?.dataset.apptKey;
-      const field = input.dataset.draftField || 'themeId';
-      if (appointmentDraft && key) {
-        if (!appointmentDraft[key]) appointmentDraft[key] = {};
-        appointmentDraft[key][field] = button.dataset.themeChoice;
-      }
-      if (state) refreshAppointmentCostDisplay(state, block);
-    });
-  });
-}
-
-function refreshAppointmentCostDisplay(state, block) {
-  const appointerId = Number(block?.dataset?.appointerId);
-  const appointeeValue = block?.querySelector('.appt-player-select')?.value ?? '';
-  const appointeeId = appointeeValue === '' ? NaN : Number(appointeeValue);
-  if (!Number.isInteger(appointerId)) return;
-
-  const paysGold = block?.dataset?.appointmentPayment === 'patriarch-bishop-gold';
-  const paymentCheck = paysGold
-    ? canPayPatriarchBishopAppointmentCost(state, appointerId, appointeeId)
-    : canPayAppointmentCost(state, appointerId, appointeeId);
-  const formatCost = paysGold ? formatGold : formatAppointmentCost;
-  const available = paysGold ? paymentCheck.availableGold : paymentCheck.available;
-  const cost = paysGold ? paymentCheck.goldCost : paymentCheck.cost;
-  const costValue = block.querySelector('[data-appointment-cost-value]');
-  const costHelp = block.querySelector('[data-appointment-cost-help]');
-  const costLine = block.querySelector('[data-appointment-cost]');
-  const submitButton = block.querySelector('[data-appointment-submit]');
-  if (costValue) costValue.textContent = formatCost(cost);
-  if (costHelp) {
-    costHelp.textContent = paymentCheck.reason
-      ? paymentCheck.reason
-      : paymentCheck.ok
-      ? `${formatCost(available || 0)} available`
-      : `Need ${formatCost(cost)}, have ${formatCost(available || 0)}`;
-  }
-  costLine?.classList.toggle('blocked', !paymentCheck.ok);
-  if (submitButton) {
-    submitButton.textContent = `Appoint (${formatCost(cost)})`;
-    const ready = isAppointmentBlockReady(block);
-    submitButton.disabled = !ready || !paymentCheck.ok;
-    submitButton.classList.toggle('disabled', !ready || !paymentCheck.ok);
-  }
-}
-
-function isAppointmentBlockReady(block) {
-  if (!block) return false;
-  const appointeeValue = block.querySelector('.appt-player-select')?.value || '';
-  if (appointeeValue === '') return false;
-  const typeSelect = block.querySelector('#basileusApptType');
-  const titleType = typeSelect?.value || '';
-  if (typeSelect && titleType === '') return false;
-  const themeSelect = block.querySelector('.appt-theme-select');
-  const needsTheme = !typeSelect || titleType === 'STRATEGOS' || titleType === 'BISHOP';
-  return !needsTheme || Boolean(themeSelect?.value);
-}
-
-function getRevocationTargetPlayerId(state, value) {
-  const parts = String(value || '').split(':');
-  if (parts[0] === 'minor') {
-    const theme = state.themes?.[parts[1]];
-    return parts[2] === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
-  }
-  if (parts[0] === 'court') return parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-  if (parts[0] === 'theme') return state.themes?.[parts[1]]?.owner ?? null;
-  return null;
-}
-
-function isPatriarchGoldRevocationValue(state, actorId, value) {
-  const parts = String(value || '').split(':');
-  if (actorId === state.basileusId || parts[0] !== 'minor' || parts[2] !== 'bishop') return false;
-  return Boolean(getPlayer(state, actorId)?.majorTitles?.includes('PATRIARCH'));
-}
-
-function getRevocationPaymentCheck(state, actorId, value) {
-  const sameTurnAppointmentCheck = checkRevocationCurrentTurnAppointment(state, value);
-  if (!sameTurnAppointmentCheck.ok) return { ...sameTurnAppointmentCheck, cost: 0 };
-  const targetPlayerId = getRevocationTargetPlayerId(state, value);
-  if (isPatriarchGoldRevocationValue(state, actorId, value)) {
-    return canPayPatriarchBishopRevocationCost(state, actorId, targetPlayerId);
-  }
-  return canPayRevocationCost(state, actorId);
-}
-
-function formatRevocationPayment(check) {
-  if (!check?.ok && /appointed this turn/i.test(check?.reason || '')) return 'blocked';
-  if (check?.paymentType === 'gold') return formatGold(check.goldCost || check.cost || 0);
-  const cost = check?.cost || 0;
-  return `${cost} troop${cost === 1 ? '' : 's'}`;
-}
-
-function refreshRevocationCommitDisplay(state, actorId, shell) {
-  const hidden = shell?.querySelector('.revoke-select');
-  const value = hidden?.value || '';
-  const button = shell?.closest('.revocation')?.querySelector('[data-action="commit-revoke"]');
-  if (!button) return;
-  const check = value ? getRevocationPaymentCheck(state, actorId, value) : { ok: false, cost: 0 };
-  button.textContent = value ? `Revoke (${formatRevocationPayment(check)})` : 'Revoke';
-  button.disabled = !value || !check.ok;
-  button.classList.toggle('disabled', !value || !check.ok);
-}
-
-function refreshLandBidDisplay(row, input) {
-  const minimumBid = Number(row?.dataset?.minBid) || 0;
-  const ownBid = Number(row?.dataset?.ownBid) || 0;
-  const availableGold = Number(row?.dataset?.availableGold) || 0;
-  const bidAmount = Number(input?.value);
-  const displayAmount = Number.isFinite(bidAmount) ? bidAmount : minimumBid;
-  const validBid = Number.isFinite(bidAmount) && bidAmount >= minimumBid;
-  const dueNow = Math.max(0, displayAmount - ownBid);
-  const canAfford = validBid && dueNow <= availableGold;
-  const button = row?.querySelector('[data-action="buy"]');
-  const status = row?.querySelector('[data-bid-status]');
-
-  if (button) {
-    button.textContent = ownBid > 0
-      ? `Raise to ${formatGold(displayAmount)} (pay ${formatGold(dueNow)})`
-      : `Offer ${formatGold(displayAmount)} now`;
-    button.disabled = !canAfford;
-    button.classList.toggle('disabled', !canAfford);
-  }
-  row?.classList.toggle('disabled', !canAfford);
-  if (status) {
-    const note = !validBid
-      ? `Minimum ${formatGold(minimumBid)}`
-      : canAfford
-        ? `Minimum ${formatGold(minimumBid)}`
-        : `Need ${formatGold(dueNow)}, have ${formatGold(availableGold)}`;
-    const current = status.textContent.split('|')[0]?.trim() || '';
-    status.textContent = `${current} | ${note}`;
-  }
-}
-
-function bindCourtEvents(container, state, activePlayerId, callbacks, selectedProvinceId, privateData = null, courtDraft = {}) {
-  const appointmentDraft = ensureNestedDraft(courtDraft, 'appointments');
-  const landBidDraft = ensureNestedDraft(courtDraft, 'landBids');
-  container.querySelectorAll('[data-player-choice]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const group = button.closest('[data-player-choice-group]');
-      const input = group?.querySelector('.appt-player-select');
-      if (!input) return;
-      group.querySelectorAll('[data-player-choice]').forEach((other) => other.classList.remove('selected'));
-      button.classList.add('selected');
-      input.value = button.dataset.playerChoice;
-      const block = button.closest('[data-appt-key]');
-      const key = block?.dataset.apptKey;
-      if (key) {
-        if (!appointmentDraft[key]) appointmentDraft[key] = {};
-        appointmentDraft[key].appointeeId = Number(button.dataset.playerChoice);
-        refreshAppointmentCostDisplay(state, block);
-      }
-    });
-  });
-
-  bindThemeChoiceControls(container, appointmentDraft, state);
-
-  container.querySelectorAll('[data-bid-theme]').forEach((input) => {
-    input.addEventListener('input', () => {
-      landBidDraft[input.dataset.bidTheme] = Number(input.value) || 0;
-      refreshLandBidDisplay(input.closest('[data-auction-row]'), input);
-    });
-  });
-
-  // Buy land
-  container.querySelectorAll('[data-action="buy"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const input = container.querySelector(`[data-bid-theme="${btn.dataset.theme}"]`);
-      const amount = Number(input?.value || landBidDraft[btn.dataset.theme] || 0);
-      landBidDraft[btn.dataset.theme] = amount;
-      if (input) refreshLandBidDisplay(input.closest('[data-auction-row]'), input);
-      callbacks.buy?.(btn.dataset.theme, { amount });
-    });
-  });
-
-  // Gift to church
-  container.querySelectorAll('[data-action="gift"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      callbacks.gift?.(btn.dataset.theme);
-    });
-  });
-
-  // Confirm court
-  container.querySelectorAll('[data-action="confirm-court"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      callbacks['confirm-court']?.();
-    });
-  });
-
-  // Recruit professional troops
-  container.querySelectorAll('[data-action="recruit"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      callbacks.recruit?.(null, btn.dataset);
-    });
-  });
-
-  container.querySelectorAll('[data-action="hire-mercenaries"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      callbacks.hireMercenaries?.(null, { office: btn.dataset.office, count: 1 });
-    });
-  });
-
-  container.querySelectorAll('[data-action="dismiss"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const block = btn.closest('.army-row');
-      const countInput = block?.querySelector('.army-dismiss-count');
-      const count = countInput ? parseInt(countInput.value, 10) : 0;
-      callbacks.dismiss?.(null, { office: btn.dataset.office, count });
-    });
-  });
-
-  const basileusTypeSelect = container.querySelector('#basileusApptType');
-  const basileusThemeChoiceGroup = container.querySelector('#basileusApptThemeChoices');
-  const basileusThemeButtons = basileusThemeChoiceGroup?.querySelector('[data-role="theme-choice-buttons"]');
-  const basileusThemeSelect = container.querySelector('#basileusApptTheme');
-  if (basileusTypeSelect && basileusThemeChoiceGroup && basileusThemeButtons && basileusThemeSelect) {
-    const refreshThemeOptions = () => {
-      const appointmentType = basileusTypeSelect.value;
-      if (!appointmentDraft.basileus) appointmentDraft.basileus = {};
-      appointmentDraft.basileus.titleType = appointmentType;
-      const themes = appointmentType === 'STRATEGOS'
-        ? getOpenStrategosThemes(state)
-        : appointmentType === 'BISHOP'
-          ? getOpenBishopThemes(state)
-          : [];
-      const selectedThemeId = getSuggestedThemeId(themes, selectedProvinceId, appointmentDraft.basileus, 'themeId');
-
-      basileusThemeButtons.innerHTML = renderThemeChoiceButtons(state, themes, selectedThemeId);
-      basileusThemeSelect.value = selectedThemeId || '';
-      basileusThemeChoiceGroup.style.display = (appointmentType === 'STRATEGOS' || appointmentType === 'BISHOP') ? '' : 'none';
-      bindThemeChoiceControls(basileusThemeChoiceGroup, appointmentDraft, state);
-      refreshAppointmentCostDisplay(state, basileusTypeSelect.closest('[data-appt-key]'));
-    };
-
-    basileusTypeSelect.addEventListener('change', refreshThemeOptions);
-    refreshThemeOptions();
-  }
-
-  // Basileus appointment (1 minor title): commit button
-  container.querySelectorAll('[data-action="commit-basileus-appt"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const typeSelect = container.querySelector('#basileusApptType');
-      const playerSelect = container.querySelector('#basileusApptPlayer');
-      const themeSelect = container.querySelector('#basileusApptTheme');
-      if (!typeSelect) return;
-      const apptType = typeSelect.value;
-      const appointeeId = playerSelect?.value === '' ? NaN : parseInt(playerSelect.value);
-      const themeId = themeSelect ? themeSelect.value : null;
-      const needsTheme = apptType === 'STRATEGOS' || apptType === 'BISHOP';
-      if (!apptType || !Number.isInteger(appointeeId) || (needsTheme && !themeId)) return;
-      appointmentDraft.basileus = { ...(appointmentDraft.basileus || {}), titleType: apptType, appointeeId, themeId };
-      callbacks['basileus-appoint']?.(apptType, appointeeId, themeId);
-    });
-  });
-
-  // Strategos appointment
-  container.querySelectorAll('.strategos-commit').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const block = btn.closest('.appointment-block');
-      const themeSelect = block.querySelector('.appt-theme-select');
-      const playerSelect = block.querySelector('.appt-player-select');
-      const titleKey = btn.dataset.titlekey;
-      if (themeSelect?.value && playerSelect?.value) {
-        appointmentDraft[titleKey] = { ...(appointmentDraft[titleKey] || {}), themeId: themeSelect.value, appointeeId: parseInt(playerSelect.value) };
-        callbacks['appoint-strategos']?.(titleKey, themeSelect.value, parseInt(playerSelect.value));
-      }
-    });
-  });
-
-  // Bishop appointment
-  container.querySelectorAll('.bishop-commit').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const block = btn.closest('.appointment-block');
-      const themeSelect = block.querySelector('.appt-theme-select');
-      const playerSelect = block.querySelector('.appt-player-select');
-      if (themeSelect?.value && playerSelect?.value) {
-        appointmentDraft.patriarch = { ...(appointmentDraft.patriarch || {}), themeId: themeSelect.value, appointeeId: parseInt(playerSelect.value) };
-        callbacks['appoint-bishop']?.(themeSelect.value, parseInt(playerSelect.value));
-      }
-    });
-  });
-
-  // Revocation choice grid: clicking a cartouche stages the value on the
-  // hidden input, and the commit button submits it.
-  container.querySelectorAll('[data-revocation-group] .revocation-choice-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const group = btn.closest('[data-revocation-group]');
-      if (!group) return;
-      group.querySelectorAll('.revocation-choice-btn.selected').forEach((b) => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      const hidden = group.querySelector('.revoke-select');
-      if (hidden) hidden.value = btn.dataset.revokeValue || '';
-      courtDraft.revocationValue = btn.dataset.revokeValue || '';
-      refreshRevocationCommitDisplay(state, Number(group.dataset.revocationActor), group);
-    });
-  });
-  container.querySelectorAll('[data-action="commit-revoke"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const hidden = container.querySelector('.revoke-select');
-      if (hidden?.value) {
-        callbacks.revoke?.(hidden.value);
-      }
-    });
-  });
-
-  bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData, courtDraft.deals || (courtDraft.deals = {}));
-}
-
-function refreshDealClauseEditor(row, state, playerId, counterpartyId) {
-  const preview = row.querySelector('[data-deal-preview]');
-  if (!preview) return;
-  // The preview embeds player-role HTML (badge/colour spans) like every other
-  // dynasty label in the panel. Use innerHTML so those render instead of
-  // appearing as literal markup.
-  preview.innerHTML = summarizeDealDraft(state, playerId, counterpartyId, serializeDealRow(row));
-}
-
-function buildCounterClauseRowsHtml(state, playerId, clauses = [], counterpartyId = null) {
-  return clauses.length
-    ? clauses.map((clause, index) => renderDealClauseEditorRow(state, playerId, index, clause, counterpartyId)).join('')
-    : renderDealClauseEditorRow(state, playerId, 0, null, counterpartyId);
-}
-
-function refreshDealRowIndices(root) {
-  root.querySelectorAll('[data-deal-clause-row]').forEach((row, index) => {
-    row.dataset.rowIndex = String(index);
-    const title = row.querySelector('.deal-clause-title');
-    if (title) title.textContent = `Clause ${index + 1}`;
-  });
-}
-
-function bindDealComposerEvents(container, state, activePlayerId, callbacks, privateData = null, dealDraft = {}) {
-  const composer = container.querySelector('[data-deal-composer]');
-  if (!composer) return;
-
-  const clauseList = composer.querySelector('[data-deal-clause-list]');
-  const counterpartySelect = composer.querySelector('[data-deal-composer-counterparty]');
-  const titleEl = composer.querySelector('[data-deal-composer-title]');
-  const submitButton = composer.querySelector('[data-action="deal-submit-offer"]');
-
-  const getSelectedCounterpartyId = () => counterpartySelect?.value || '';
-  const syncDraft = (rows = null) => {
-    dealDraft.mode = composer.dataset.composerMode || 'send';
-    dealDraft.threadId = composer.dataset.composerThreadId || '';
-    dealDraft.expectedRevision = composer.dataset.composerExpectedRevision || '';
-    dealDraft.counterpartyId = getSelectedCounterpartyId();
-    dealDraft.clauses = rows || Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((row) => serializeDealRow(row));
-  };
-
-  const rerenderRows = (rows = null) => {
-    const drafts = rows || Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((row) => serializeDealRow(row));
-    syncDraft(drafts);
-    clauseList.innerHTML = buildCounterClauseRowsHtml(state, activePlayerId, drafts, getSelectedCounterpartyId());
-    clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
-    refreshDealRowIndices(clauseList);
-  };
-
-  const rerenderSingleRow = (row) => {
-    const drafts = Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((entry) => serializeDealRow(entry));
-    const rowIndex = Number(row.dataset.rowIndex) || 0;
-    drafts[rowIndex] = serializeDealRow(row);
-    rerenderRows(drafts);
-  };
-
-  const attachRowListeners = (row) => {
-    const rerenderFields = new Set(['kind', 'direction', 'start-trigger']);
-    row.querySelectorAll('[data-deal-field]').forEach((control) => {
-      if (control.tagName !== 'INPUT' && control.tagName !== 'SELECT') return;
-      // Skip the hidden inputs that back toggle widgets — toggles drive
-      // re-renders themselves via the click handler below.
-      if (control.type === 'hidden') return;
-      const fieldName = control.dataset.dealField || '';
-      const eventName = control.tagName === 'INPUT' ? 'input' : 'change';
-      control.addEventListener(eventName, () => {
-        if (rerenderFields.has(fieldName)) {
-          rerenderSingleRow(row);
-          return;
-        }
-        syncDraft();
-        refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
-      });
-    });
-    row.querySelectorAll('[data-deal-toggle]').forEach((toggle) => {
-      const fieldName = toggle.dataset.dealToggle;
-      const hidden = toggle.querySelector(`input[data-deal-field="${fieldName}"]`);
-      toggle.querySelectorAll('.deal-toggle-btn').forEach((btn) => {
-        btn.addEventListener('click', (event) => {
-          event.preventDefault();
-          if (hidden) hidden.value = btn.dataset.dealToggleValue || '';
-          toggle.querySelectorAll('.deal-toggle-btn').forEach((other) => other.classList.toggle('selected', other === btn));
-          if (rerenderFields.has(fieldName)) rerenderSingleRow(row);
-          else {
-            syncDraft();
-            refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
-          }
-        });
-      });
-    });
-    row.querySelector('[data-action="deal-remove-clause"]')?.addEventListener('click', () => {
-      row.remove();
-      if (!clauseList.querySelector('[data-deal-clause-row]')) {
-        clauseList.innerHTML = renderDealClauseEditorRow(state, activePlayerId, 0, null, getSelectedCounterpartyId());
-        clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
-      }
-      refreshDealRowIndices(clauseList);
-      syncDraft();
-    });
-    refreshDealClauseEditor(row, state, activePlayerId, getSelectedCounterpartyId());
-  };
-
-  const resetComposer = () => {
-    composer.dataset.composerMode = 'send';
-    composer.dataset.composerThreadId = '';
-    composer.dataset.composerExpectedRevision = '';
-    if (titleEl) titleEl.textContent = 'New Offer';
-    if (submitButton) submitButton.textContent = 'Send Offer';
-    if (counterpartySelect) counterpartySelect.disabled = false;
-    rerenderRows([createDefaultDealClause(activePlayerId)]);
-  };
-  const serializeRows = () => Array.from(clauseList.querySelectorAll('[data-deal-clause-row]')).map((row) => serializeDealRow(row));
-
-  composer.querySelector('[data-action="deal-add-clause"]')?.addEventListener('click', () => {
-    rerenderRows([
-      ...serializeRows(),
-      createDefaultDealClause(activePlayerId),
-    ]);
-  });
-
-  composer.querySelector('[data-action="deal-reset-composer"]')?.addEventListener('click', () => {
-    resetComposer();
-  });
-
-  counterpartySelect?.addEventListener('change', () => {
-    syncDraft();
-    rerenderRows();
-  });
-
-  submitButton?.addEventListener('click', () => {
-    const payload = {
-      counterpartyId: counterpartySelect?.value,
-      clauses: serializeRows(),
-    };
-    syncDraft(payload.clauses);
-    const mode = composer.dataset.composerMode || 'send';
-    if (mode === 'counter') {
-      callbacks['deal-counter']?.({
-        ...payload,
-        threadId: composer.dataset.composerThreadId,
-        expectedRevision: composer.dataset.composerExpectedRevision,
-      });
-      return;
-    }
-    callbacks['deal-send']?.(payload);
-  });
-
-  container.querySelectorAll('[data-action="deal-accept"]').forEach((button) => {
-    button.addEventListener('click', () => {
-      callbacks['deal-accept']?.({
-        threadId: button.dataset.threadId,
-        expectedRevision: button.dataset.threadRevision,
-      });
-    });
-  });
-
-  container.querySelectorAll('[data-action="deal-refuse"]').forEach((button) => {
-    button.addEventListener('click', () => {
-      callbacks['deal-refuse']?.({
-        threadId: button.dataset.threadId,
-        expectedRevision: button.dataset.threadRevision,
-      });
-    });
-  });
-
-  container.querySelectorAll('[data-action="deal-open-counter"]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const counterpartyId = button.dataset.counterpartyId || '';
-      const clauses = decodeDealPayload(button.dataset.counterClauses) || [];
-      composer.dataset.composerMode = 'counter';
-      composer.dataset.composerThreadId = button.dataset.threadId || '';
-      composer.dataset.composerExpectedRevision = button.dataset.threadRevision || '';
-      if (titleEl) titleEl.textContent = `Counter Offer to ${getDealCounterpartyLabel(state, Number(counterpartyId))}`;
-      if (submitButton) submitButton.textContent = 'Send Counter';
-      if (counterpartySelect) {
-        counterpartySelect.value = counterpartyId;
-        counterpartySelect.disabled = true;
-      }
-      rerenderRows(clauses);
-    });
-  });
-
-  clauseList.querySelectorAll('[data-deal-clause-row]').forEach(attachRowListeners);
-  refreshDealRowIndices(clauseList);
-  syncDraft();
-}
-
-// â”€â”€â”€ Basileus appointment: can appoint ANY minor title to ANY player â”€â”€â”€
-function renderBasileusAppointments(state, selectedProvinceId, draft = {}) {
-  const titleTypes = getOpenBasileusMinorTitleTypes(state);
-  if (!titleTypes.length) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">No Basileus appointment is available right now.</span>
-    </div>`;
-  }
-
-  const selectableThemes = [...getOpenStrategosThemes(state), ...getOpenBishopThemes(state)];
-  const selectedThemeId = getSuggestedThemeId(selectableThemes, selectedProvinceId, draft, 'themeId');
-  const appointerId = state.basileusId;
-  const selectedTitleType = titleTypes.some((type) => type.value === draft.titleType) ? draft.titleType : '';
-  const playerChoiceOptions = getAppointmentChoiceOptions(state, appointerId);
-  const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
-  const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
-  const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
-  const needsTheme = selectedTitleType === 'STRATEGOS' || selectedTitleType === 'BISHOP';
-  const canSubmit = Boolean(selectedTitleType)
-    && hasAppointmentAppointee(selectedAppointeeId)
-    && (!needsTheme || Boolean(selectedThemeId))
-    && paymentCheck.ok;
-  const label = state.courtActions?.basileusAppointed
-    ? 'Basileus: optionally appoint another court title or province office.'
-    : 'Basileus: optionally appoint a court title or province office.';
-
-  return `<div class="appointment-block" data-appt-key="basileus" data-appointer-id="${appointerId}">
-    <span class="appt-label">${label}</span>
-    <div class="appt-form">
-      ${renderAppointmentGrid(
-        `<select id="basileusApptType" class="appt-select">
-          <option value="">Choose title type...</option>
-          ${titleTypes.map((type) => `<option value="${type.value}" ${type.value === selectedTitleType ? 'selected' : ''}>${type.label}</option>`).join('')}
-        </select>
-        <div id="basileusApptThemeChoices" class="province-choice-grid" data-theme-choice-group style="display:none">
-          <div data-role="theme-choice-buttons"></div>
-          <input type="hidden" id="basileusApptTheme" class="appt-theme-select" value="${selectedThemeId}">
-        </div>`,
-        renderPlayerChoiceControl(state, 'basileusApptPlayer', selectedAppointeeId, playerChoiceOptions)
-      )}
-      ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
-      <button class="appt-btn" data-appointment-submit data-action="commit-basileus-appt" ${canSubmit ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
-    </div>
-  </div>`;
-}
-
-// â”€â”€â”€ Strategos appointment: Domestic/Admiral picks theme + player â”€â”€â”€
-function renderStrategosAppointment(state, titleKey, selectedProvinceId, appointerId, draft = {}) {
-  const title = MAJOR_TITLES[titleKey];
-  if (!title) return '';
-  const region = title.region;
-  const themes = getOpenStrategosThemes(state, region);
-  const selectedThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
-
-  if (!themes.length) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">No open Strategos post remains for ${title.name}.</span>
-    </div>`;
-  }
-
-  const playerChoiceOptions = getAppointmentChoiceOptions(state, appointerId);
-  const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
-  const nextCost = getNextAppointmentCost(state, appointerId, selectedAppointeeId);
-  const paymentCheck = canPayAppointmentCost(state, appointerId, selectedAppointeeId);
-  const canSubmit = Boolean(selectedThemeId) && hasAppointmentAppointee(selectedAppointeeId) && paymentCheck.ok;
-  const label = state.courtActions?.[`${titleKey}_appointed`]
-    ? `${title.name}: optionally appoint another Strategos.`
-    : `${title.name}: optionally appoint a province Strategos.`;
-
-  return `<div class="appointment-block" data-appt-key="${titleKey}" data-appointer-id="${appointerId}">
-    <span class="appt-label">${label}</span>
-    <div class="appt-form">
-      ${renderAppointmentGrid(
-        renderThemeChoiceControl(state, themes, null, selectedThemeId),
-        renderPlayerChoiceControl(state, null, selectedAppointeeId, playerChoiceOptions)
-      )}
-      ${renderAppointmentCostLine(state, appointerId, selectedAppointeeId)}
-      <button class="appt-btn strategos-commit" data-appointment-submit data-titlekey="${titleKey}" ${canSubmit ? '' : 'disabled'}>Appoint (${formatAppointmentCost(nextCost)})</button>
-    </div>
-  </div>`;
-}
-
-// â”€â”€â”€ Patriarch appointment: picks theme + player for Bishop â”€â”€â”€
-function renderPatriarchAppointment(state, selectedProvinceId, appointerId, draft = {}) {
-  const themes = getOpenBishopThemes(state);
-  const selectedThemeId = getSuggestedThemeId(themes, selectedProvinceId, draft, 'themeId');
-
-  if (!themes.length) {
-    return `<div class="appointment-block done">
-      <span class="appt-label">No open Bishop post remains for the Patriarch.</span>
-    </div>`;
-  }
-
-  const playerChoiceOptions = getAppointmentChoiceOptions(state, appointerId);
-  const selectedAppointeeId = resolveAppointmentAppointeeId(state, appointerId, draft);
-  const goldCost = getPatriarchBishopAppointmentGoldCost(state, appointerId, selectedAppointeeId);
-  const paymentCheck = canPayPatriarchBishopAppointmentCost(state, appointerId, selectedAppointeeId);
-  const canSubmit = Boolean(selectedThemeId) && hasAppointmentAppointee(selectedAppointeeId) && paymentCheck.ok;
-  const label = state.courtActions?.patriarchAppointed
-    ? 'Patriarch: optionally appoint another Bishop.'
-    : 'Patriarch: optionally appoint a province Bishop.';
-
-  return `<div class="appointment-block" data-appt-key="patriarch" data-appointer-id="${appointerId}" data-appointment-payment="patriarch-bishop-gold">
-    <span class="appt-label">${label}</span>
-    <div class="appt-form">
-      ${renderAppointmentGrid(
-        renderThemeChoiceControl(state, themes, null, selectedThemeId),
-        renderPlayerChoiceControl(state, null, selectedAppointeeId, playerChoiceOptions)
-      )}
-      ${renderGoldAppointmentCostLine(state, appointerId, selectedAppointeeId)}
-      <button class="appt-btn bishop-commit" data-appointment-submit ${canSubmit ? '' : 'disabled'}>Appoint (${formatGold(goldCost)})</button>
-    </div>
-  </div>`;
-}
-
-// â”€â”€â”€ Revocation: cartouche grid (same grammar as appointment) â”€â”€â”€
-function renderRevocationOptions(state, actorId, courtDraft = {}, groups = collectRevocationGroups(state, actorId)) {
-  const validValues = new Set(groups.flatMap((group) => group.items.map((item) => item.value)));
-  const selectedValue = validValues.has(courtDraft.revocationValue) ? courtDraft.revocationValue : '';
-  if (!selectedValue) courtDraft.revocationValue = '';
-  const selectedCostCheck = selectedValue ? getRevocationPaymentCheck(state, actorId, selectedValue) : { ok: false, cost: 0 };
-  const isBasileus = actorId === state.basileusId;
-  const player = getPlayer(state, actorId);
-  const hasPatriarch = Boolean(player?.majorTitles?.includes('PATRIARCH'));
-  const hasRegionalCommand = Boolean(player?.majorTitles?.some((titleKey) => ['DOM_EAST', 'DOM_WEST', 'ADMIRAL'].includes(titleKey)));
-  const authorityLabel = isBasileus
-    ? 'The Basileus can revoke minor titles and estates.'
-    : hasPatriarch && hasRegionalCommand
-      ? 'The Patriarch can revoke bishops; regional commands can revoke strategoi in their jurisdiction.'
-      : hasPatriarch
-        ? 'The Patriarch can revoke bishops.'
-      : 'Regional commanders can revoke strategoi in their jurisdiction.';
-
-  const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0);
-  const body = totalItems
-    ? groups.filter((g) => g.items.length).map((group) => `
-        <div class="revocation-group">
-          <div class="revocation-group-label">${group.label}</div>
-          <div class="revocation-choice-grid">
-            ${group.items.map((item) => {
-              const itemCheck = getRevocationPaymentCheck(state, actorId, item.value);
-              return `
-              <button type="button" class="revocation-choice-btn ${selectedValue === item.value ? 'selected' : ''}" data-revoke-value="${item.value}" ${itemCheck.ok ? '' : 'disabled'}>
-                ${item.body}
-              </button>
-            `;
-            }).join('')}
-          </div>
+  const draft = getDraftBucket(options.uiState, state, 'court', activePlayerId);
+  const used = actionUsed(state, activePlayerId);
+  container.innerHTML = `
+    <section class="phase-card court-panel">
+      <h3>${player ? renderPlayerRoleName(state, player) : 'Court'}</h3>
+      <div class="dashboard-token-row">${roleKeysForCourt(state, activePlayerId).map((role) => renderTitleBadge(state, role, { holderId: activePlayerId, compact: true })).join(' ')}</div>
+      ${used ? '<div class="panel-empty">Court action recorded.</div>' : `
+        ${renderCourtAppointments(state, activePlayerId, draft)}
+        ${renderCourtRevocations(state, activePlayerId)}
+        ${renderCourtGifts(state, activePlayerId)}
+        <div class="panel-actions">
+          <button type="button" class="btn-secondary" data-action="skip">Skip Action</button>
         </div>
-      `).join('')
-    : '<p class="section-hint">Nothing currently revocable.</p>';
-  const ruleText = !isBasileus && hasPatriarch
-    ? `${authorityLabel} Patriarch bishop revocations use doubled per-revocation gold costs: 2, 4, 6...${hasRegionalCommand ? ' Strategos revocations still use the normal escalating troop cost.' : ''} Titles appointed this turn cannot be revoked. You cannot revoke the same player twice in a row.`
-    : `${authorityLabel} Each revocation this round costs more troops for this player: 1 for the first, 2 for the second, 3 for the third... Titles appointed this turn cannot be revoked. You cannot revoke the same player twice in a row. Levies are spent before professionals; mission professionals still pay upkeep and return next round.`;
-
-  return `<div class="revocation">
-    <p class="section-hint">${ruleText}</p>
-    <div class="revocation-shell" data-revocation-group data-revocation-actor="${actorId}">
-      ${body}
-      <input type="hidden" class="revoke-select" value="${selectedValue}">
-    </div>
-    <button class="appt-btn" data-action="commit-revoke" style="margin-top:6px" ${selectedValue && selectedCostCheck.ok && totalItems ? '' : 'disabled'}>${selectedValue ? `Revoke (${formatRevocationPayment(selectedCostCheck)})` : 'Revoke'}</button>
-  </div>`;
-}
-
-// Build the cartouche rows for each revocable category. The button body
-// is the visual signature ("what gets revoked"); the value is the same
-// colon-encoded token the existing event handler already understands.
-function collectRevocationGroups(state, actorId = state.basileusId) {
-  const actor = getPlayer(state, actorId);
-  const isBasileus = actorId === state.basileusId;
-  const minor = [];
-  for (const t of Object.values(state.themes)) {
-    const canRevokeStrategos = isBasileus
-      || (t.region === 'east' && actor?.majorTitles?.includes('DOM_EAST'))
-      || (t.region === 'west' && actor?.majorTitles?.includes('DOM_WEST'))
-      || (t.region === 'sea' && actor?.majorTitles?.includes('ADMIRAL'));
-    if (!t.occupied && t.strategos !== null && canRevokeStrategos && !hasRevocationTargetLock(state, actorId, t.strategos)) {
-      minor.push({
-        value: `minor:${t.id}:strategos`,
-        body: renderThemeOfficeBadge(state, 'STRATEGOS', t.id),
-      });
-    }
-    if (t.bishop !== null && (isBasileus || actor?.majorTitles?.includes('PATRIARCH')) && !hasRevocationTargetLock(state, actorId, t.bishop)) {
-      minor.push({
-        value: `minor:${t.id}:bishop`,
-        body: renderThemeOfficeBadge(state, 'BISHOP', t.id),
-      });
-    }
-  }
-  if (isBasileus && state.empress !== null && !hasRevocationTargetLock(state, actorId, state.empress)) {
-    minor.push({
-      value: 'court:EMPRESS',
-      body: renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true }),
-    });
-  }
-  if (isBasileus && state.chiefEunuchs !== null && !hasRevocationTargetLock(state, actorId, state.chiefEunuchs)) {
-    minor.push({
-      value: 'court:CHIEF_EUNUCHS',
-      body: renderTitleBadge(state, 'CHIEF_EUNUCHS', { holderId: state.chiefEunuchs, compact: true }),
-    });
-  }
-
-  const estates = isBasileus
-    ? Object.values(state.themes)
-      .filter((t) => t.owner !== null && t.owner !== 'church' && !t.occupied)
-      .filter((t) => !hasRevocationTargetLock(state, actorId, t.owner))
-      .map((t) => ({
-        value: `theme:${t.id}`,
-        body: renderProvinceBadge(state, t, { compact: true }),
-      }))
-    : [];
-
-  return [
-    { label: 'Minor Titles', items: minor },
-    { label: 'Estates', items: estates },
-  ];
-}
-
-// â”€â”€â”€ Army Management with recruitment limit â”€â”€â”€
-function renderArmyManagement(state, playerId) {
-  const player = getPlayer(state, playerId);
-  const offices = getPlayerOffices(state, playerId, { includeMercenaryCompany: true });
-  const nextMercCost = getNextMercenaryCost(state, playerId);
-  return `
-    <div class="army-grid">
-      ${offices.map((office) => {
-        const professionalTroops = office.mercenaryOnly ? 0 : (player.professionalArmies[office.key] || 0);
-        const pendingProfessionalTroops = office.mercenaryOnly ? 0 : getPendingProfessionalCount(state, playerId, office.key);
-        const levies = office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0);
-        const mercenaries = office.mercenaryOnly ? getPlayerMercenaryTroops(state, playerId) : 0;
-        const totalTroops = professionalTroops + levies + mercenaries;
-        const recruitCheck = office.mercenaryOnly ? { ok: false, reason: 'Mercenary row' } : canRecruitProfessional(state, playerId, office.key);
-        const canRecruit = recruitCheck.ok;
-        const recruitLabel = canRecruit
-          ? 'Recruit +1 professional troop (ready next round)'
-          : (recruitCheck.reason?.includes('cannot hold')
-            ? 'No professional troops here'
-            : recruitCheck.reason?.includes('debt')
-              ? 'No recruiting while in debt'
-              : 'Already recruited this round');
-        const canAffordMercenary = player.gold >= nextMercCost;
-        const hireLabel = `Hire 1 mercenary (${formatGold(nextMercCost)})`;
-        return `<div class="army-row">
-          <div class="army-office">
-            <span>${office.label}</span>
-            <span class="army-count">${formatTroops(totalTroops)}</span>
-            <span class="army-count">${renderArmySummaryLine({ officeKey: office.key, professionalTroops, pendingProfessionalTroops, levies, mercenaries })}</span>
-          </div>
-          <div class="army-controls">
-            ${office.mercenaryOnly ? `
-              <button class="btn-recruit ${canAffordMercenary ? '' : 'disabled'}" data-action="hire-mercenaries" data-office="${office.key}" ${canAffordMercenary ? '' : 'disabled'}>
-                ${hireLabel}
-              </button>
-            ` : `
-              <button class="btn-recruit ${canRecruit ? '' : 'disabled'}" data-action="recruit" data-office="${office.key}" ${canRecruit ? '' : 'disabled'}>
-                ${recruitLabel}
-              </button>
-              <div class="army-dismiss">
-                <input class="army-dismiss-count" type="number" min="1" max="${Math.max(1, professionalTroops)}" value="${professionalTroops > 0 ? 1 : 0}" ${professionalTroops > 0 ? '' : 'disabled'}>
-                <button class="btn-dismiss ${professionalTroops > 0 ? '' : 'disabled'}" data-action="dismiss" data-office="${office.key}" ${professionalTroops > 0 ? '' : 'disabled'}>
-                  Dismiss professional troops
-                </button>
-              </div>
-            `}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
+      `}
+      <div class="panel-actions">
+        <button type="button" class="btn-primary" data-action="confirm-court">Confirm Court</button>
+      </div>
+    </section>
   `;
+  bindSelectAction(container, '[data-action="appoint-court"]', () => {
+    callbacks['appoint-court']?.(
+      container.querySelector('[data-appoint-court-title]')?.value,
+      Number(container.querySelector('[data-appoint-court-player]')?.value),
+    );
+  });
+  bindSelectAction(container, '[data-action="appoint-strategos"]', () => {
+    const themeId = container.querySelector('[data-appoint-strategos-theme]')?.value;
+    callbacks['appoint-strategos']?.(
+      regionTitleFor(state.themes[themeId]),
+      themeId,
+      Number(container.querySelector('[data-appoint-strategos-player]')?.value),
+    );
+  });
+  bindSelectAction(container, '[data-action="appoint-bishop"]', () => {
+    callbacks['appoint-bishop']?.(
+      container.querySelector('[data-appoint-bishop-theme]')?.value,
+      Number(container.querySelector('[data-appoint-bishop-player]')?.value),
+    );
+  });
+  bindSelectAction(container, '[data-action="revoke"]', () => callbacks.revoke?.(container.querySelector('[data-revoke-target]')?.value));
+  bindSelectAction(container, '[data-action="gift"]', () => callbacks.gift?.(container.querySelector('[data-gift-theme]')?.value));
+  bindSelectAction(container, '[data-action="skip"]', () => callbacks.skip?.());
+  bindSelectAction(container, '[data-action="confirm-court"]', () => callbacks['confirm-court']?.());
 }
 
-// â”€â”€â”€ Orders Phase Panel (Secret, per-player) â”€â”€â”€
-export function renderOrdersPanel(container, state, playerId, callbacks, options = {}) {
-  const player = getPlayer(state, playerId);
-  const orderLocks = options.privateData?.orderLocks || null;
-  const offices = getPlayerOffices(state, playerId, {
-    includeMercenaryCompany: getPlayerMercenaryTroops(state, playerId) > 0,
+export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
+  const freeThemes = getFreeThemes(state);
+  container.innerHTML = `
+    <section class="phase-card estates-panel">
+      <h3>Estates</h3>
+      <div class="estate-grid">
+        ${freeThemes.map((theme) => {
+          const minimum = getMinimumLandBid(state, theme.id);
+          return `
+            <article class="estate-card">
+              ${renderProvinceBadge(state, theme, { showValues: true })}
+              <span>${formatGold(getThemeLandPrice(theme))} value</span>
+              <input type="number" min="${minimum}" value="${minimum}" data-estate-bid="${theme.id}">
+              <button type="button" class="btn-secondary" data-action="bid-estate" data-theme="${theme.id}">Bid</button>
+            </article>
+          `;
+        }).join('')}
+      </div>
+      <div class="panel-actions">
+        <button type="button" class="btn-primary" data-action="confirm-estates">Open Deployment</button>
+      </div>
+    </section>
+  `;
+  container.querySelectorAll('[data-action="bid-estate"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const themeId = button.dataset.theme;
+      callbacks.buy?.(themeId, { amount: Number(container.querySelector(`[data-estate-bid="${themeId}"]`)?.value) });
+    });
   });
-  const mercenaryAssignments = Object.fromEntries(
-    getPlayerMercenaryAssignments(state, playerId).map((entry) => [entry.officeKey, entry.count])
-  );
-  const uiSectionState = options.uiState || null;
-  const ordersDraft = getDraftBucket(uiSectionState, state, 'orders', playerId);
-  if (!ordersDraft.deployments || typeof ordersDraft.deployments !== 'object') ordersDraft.deployments = {};
+  bindSelectAction(container, '[data-action="confirm-estates"]', () => callbacks.confirmEstates?.());
+}
+
+function getPlayerArmyKeys(state, playerId) {
+  return Object.keys(state.currentTroops || {})
+    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export function renderOrdersPanel(container, state, playerId, callbacks = {}, options = {}) {
+  if (!container || !state) return;
+  const draft = getDraftBucket(options.uiState, state, 'deployment', playerId);
+  if (!draft.armies) draft.armies = {};
+  if (!draft.mercenaries) draft.mercenaries = { count: 0, destination: 'frontier' };
   const alreadyLocked = state.allOrders?.[playerId] != null;
-
-  let html = `<div class="orders-panel">
-    <div class="phase-header">
-      <h3>Secret Orders</h3>
-      <p class="section-hint">Send each office's troops to the Capital (vote in this round's coup) or the Frontier (fight the invader), then pick the candidate you back for the throne. Orders are locked in simultaneously and revealed at Resolution. The Empress, Patriarch and Chief of Eunuchs can only defend the Capital.</p>
-    </div>`;
-
-  if (orderLocks?.ok && (orderLocks.candidateId != null || orderLocks.officeSelections?.length)) {
-    html += renderFoldSection(
-      'orders:deal-locks',
-      'Deal Locks',
-      `<p class="section-hint">Accepted deals can force some deployments or your coup claimant. These locks will still be enforced even if you try to submit different orders.</p>${renderDealLocksSection(state, playerId, orderLocks)}`,
-      uiSectionState,
-      {
-        defaultOpen: true,
-      }
-    );
-  } else if (orderLocks && orderLocks.ok === false) {
-    html += renderFoldSection(
-      'orders:deal-locks',
-      'Deal Locks',
-      `<div class="deal-locks-error">${orderLocks.reason || 'Accepted deal commitments can no longer be fulfilled.'}</div>`,
-      uiSectionState,
-      {
-        defaultOpen: true,
-      }
-    );
-  }
-
-  if (!alreadyLocked) {
-    const deploymentRows = offices.map((office) => {
-      const proCount = office.mercenaryOnly ? 0 : (player.professionalArmies[office.key] || 0);
-      const pendingProCount = office.mercenaryOnly ? 0 : getPendingProfessionalCount(state, playerId, office.key);
-      const levyCount = office.mercenaryOnly ? 0 : (state.currentLevies?.[office.key] || 0);
-      const mercCount = mercenaryAssignments[office.key] || 0;
-      const total = proCount + levyCount + mercCount;
-      const capitalLocked = office.capitalLocked || isCapitalLockedOfficeKey(office.key);
-      const dealLockedDestination = orderLocks?.committedOfficeKeys?.[office.key] || null;
-      const troopLine = office.mercenaryOnly
-        ? `${formatMercenaries(mercCount)} | No levies | No professional troops`
-        : `Professional troops ${proCount} | ${formatLevies(levyCount)} | ${formatMercenaries(mercCount)}${pendingProCount > 0 ? ` | ${formatTroops(pendingProCount)} pending next round` : ''}`;
-
-      if (capitalLocked || dealLockedDestination) {
-        const lockedDestination = dealLockedDestination || 'capital';
-        ordersDraft.deployments[office.key] = lockedDestination;
-        const lockedLabel = capitalLocked && !dealLockedDestination
-          ? 'Capital (locked)'
-          : `${lockedDestination.charAt(0).toUpperCase()}${lockedDestination.slice(1)} (deal locked)`;
-        return `
-          <div class="deploy-row deploy-row-locked">
-            <span class="office-name">${office.label}</span>
-            <span class="troop-count">${formatTroops(total)}</span>
-            <span class="section-hint">${troopLine}</span>
-            <div class="deploy-toggle deploy-toggle-locked" data-office="${office.key}" data-locked="${lockedDestination}">
-              <button class="toggle-btn active" data-dest="${lockedDestination}" disabled>${lockedLabel}</button>
+  const armyKeys = getPlayerArmyKeys(state, playerId);
+  container.innerHTML = `
+    <section class="phase-card orders-panel">
+      <h3>Deployment</h3>
+      ${alreadyLocked ? '<div class="panel-empty">Deployment orders locked.</div>' : `
+        <div class="army-card-stack">
+          ${armyKeys.map((officeKey) => {
+            const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+            const max = entry.normal + entry.capitalLocked;
+            const current = draft.armies[officeKey] || { funded: max, destination: 'frontier' };
+            draft.armies[officeKey] = current;
+            return `
+              <article class="army-card" data-army-card="${officeKey}">
+                <header><strong>${escapeHtml(getOfficeDisplayName(state, officeKey))}</strong><span>${formatTroops(max)}</span></header>
+                ${entry.capitalLocked ? `<p class="section-hint">${formatTroops(entry.capitalLocked)} capital locked.</p>` : ''}
+                <label>Funding <input type="range" min="0" max="${max}" value="${current.funded}" data-army-funded="${officeKey}"><span data-funded-readout="${officeKey}">${current.funded}</span></label>
+                <div class="segmented-control">
+                  <button type="button" class="${current.destination === 'frontier' ? 'active' : ''}" data-army-destination="${officeKey}" data-destination="frontier">Frontier</button>
+                  <button type="button" class="${current.destination === 'capital' ? 'active' : ''}" data-army-destination="${officeKey}" data-destination="capital">Capital</button>
+                </div>
+              </article>
+            `;
+          }).join('')}
+          <article class="army-card mercenary-card">
+            <header><strong>Mercenaries</strong><span>${formatMercenaries(draft.mercenaries.count || 0)}</span></header>
+            <label>Recruit <input type="range" min="0" max="10" value="${draft.mercenaries.count || 0}" data-mercenary-count><span data-mercenary-cost>${formatGold(getMercenaryHireCost(0, draft.mercenaries.count || 0))}</span></label>
+            <div class="segmented-control">
+              <button type="button" class="${draft.mercenaries.destination !== 'capital' ? 'active' : ''}" data-mercenary-destination="frontier">Frontier</button>
+              <button type="button" class="${draft.mercenaries.destination === 'capital' ? 'active' : ''}" data-mercenary-destination="capital">Capital</button>
             </div>
-          </div>`;
-      }
-
-      return `
-        <div class="deploy-row">
-          <span class="office-name">${office.label}</span>
-          <span class="troop-count">${formatTroops(total)}</span>
-          <span class="section-hint">${troopLine}</span>
-          <div class="deploy-toggle" data-office="${office.key}">
-            <button class="toggle-btn ${(ordersDraft.deployments[office.key] || 'frontier') === 'frontier' ? 'active' : ''}" data-dest="frontier">Frontier</button>
-            <button class="toggle-btn ${(ordersDraft.deployments[office.key] || 'frontier') === 'capital' ? 'active' : ''}" data-dest="capital">Capital</button>
-          </div>
-        </div>`;
-    }).join('');
-
-    html += renderFoldSection(
-      'orders:deployments',
-      'Deploy Troops',
-      `<p class="section-hint">Each office decides where its troops go. Frontier troops fight the invader (you need more total than the invader's strength to win). Capital troops vote in the coup for whichever claimant you pick below.</p><div class="deploy-grid">${deploymentRows}</div>`,
-      uiSectionState,
-      {
-        defaultOpen: true,
-      }
-    );
-
-    html += renderFoldSection(
-      'orders:claimant',
-      'Choose Your Claimant',
-      `
-        <p class="section-hint">All your Capital troops back this candidate. Most votes wins the throne; ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles among the other players.${orderLocks?.candidateId != null ? ` Your claimant is locked to ${getDealCounterpartyLabel(state, orderLocks.candidateId)} by an accepted deal.` : ''}</p>
-        <div class="candidate-grid">
-          ${(() => {
-            const selectedCandidateId = orderLocks?.candidateId ?? (Number.isInteger(ordersDraft.candidateId) ? ordersDraft.candidateId : playerId);
-            return state.players.map((candidatePlayer) => `
-            <button class="candidate-btn ${candidatePlayer.id === state.basileusId ? 'current-bas' : ''} ${candidatePlayer.id === selectedCandidateId ? 'selected' : ''}" data-candidate="${candidatePlayer.id}" style="${getPlayerStyleAttr(state, candidatePlayer.id)}" ${orderLocks?.candidateId != null ? 'disabled' : ''}>
-              <span class="candidate-crest" style="background: ${candidatePlayer.color}">${candidatePlayer.dynasty.charAt(0)}</span>
-              <span>${renderPlayerRoleName(state, candidatePlayer)}</span>
-              ${candidatePlayer.id === state.basileusId ? '<span class="current-basileus-tag">Basileus</span>' : ''}
-            </button>
-          `).join('');
-          })()}
+          </article>
         </div>
-      `,
-      uiSectionState,
-      {
-        defaultOpen: true,
-      }
-    );
-  }
-
-  html += renderFoldSection(
-    'orders:confirm',
-    'Confirm',
-    alreadyLocked
-      ? `
-        <p class="section-hint">Your orders are locked. They will be revealed once every player has submitted.</p>
-        <div class="orders-actions">
-          <button class="btn-lock-orders disabled" data-action="lock-orders" disabled>Secret Orders Locked</button>
+        <div class="form-grid">
+          <label>Claimant <select data-order-candidate>${getPlayerOptions(state, draft.candidate ?? state.basileusId)}</select></label>
         </div>
-      `
-      : `
-        <p class="section-hint">Once locked, your orders cannot be changed this round.</p>
-        <div class="orders-actions">
-          <button class="btn-lock-orders" data-action="lock-orders">Lock Secret Orders</button>
+        <div class="panel-actions">
+          <button type="button" class="btn-primary" data-action="lock-orders">Lock Deployment</button>
         </div>
-    `,
-    uiSectionState,
-    {
-      defaultOpen: true,
-    }
-  );
-
-  html += `</div>`;
-  container.innerHTML = html;
-
-  if (alreadyLocked) return;
-
-  container.querySelectorAll('.toggle-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const row = btn.closest('.deploy-toggle');
-      row.querySelectorAll('.toggle-btn').forEach((other) => other.classList.remove('active'));
-      btn.classList.add('active');
-      ordersDraft.deployments[row.dataset.office] = btn.dataset.dest;
+      `}
+    </section>
+  `;
+  container.querySelectorAll('[data-army-funded]').forEach((input) => {
+    input.addEventListener('input', () => {
+      const officeKey = input.dataset.armyFunded;
+      if (!draft.armies[officeKey]) draft.armies[officeKey] = { funded: 0, destination: 'frontier' };
+      draft.armies[officeKey].funded = Number(input.value) || 0;
+      const readout = container.querySelector(`[data-funded-readout="${officeKey}"]`);
+      if (readout) readout.textContent = input.value;
     });
   });
-
-  container.querySelectorAll('.candidate-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      container.querySelectorAll('.candidate-btn').forEach((other) => other.classList.remove('selected'));
-      btn.classList.add('selected');
-      ordersDraft.candidateId = parseInt(btn.dataset.candidate, 10);
+  container.querySelectorAll('[data-army-destination]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const officeKey = button.dataset.armyDestination;
+      if (!draft.armies[officeKey]) draft.armies[officeKey] = { funded: 0, destination: 'frontier' };
+      draft.armies[officeKey].destination = button.dataset.destination;
+      renderOrdersPanel(container, state, playerId, callbacks, options);
     });
   });
-
-  container.querySelector('[data-action="lock-orders"]')?.addEventListener('click', () => {
-    const orders = collectOrders(container, offices, playerId);
-    callbacks.lockOrders?.(orders);
+  container.querySelector('[data-mercenary-count]')?.addEventListener('input', (event) => {
+    draft.mercenaries.count = Number(event.target.value) || 0;
+    const cost = container.querySelector('[data-mercenary-cost]');
+    if (cost) cost.textContent = formatGold(getMercenaryHireCost(0, draft.mercenaries.count));
+  });
+  container.querySelectorAll('[data-mercenary-destination]').forEach((button) => {
+    button.addEventListener('click', () => {
+      draft.mercenaries.destination = button.dataset.mercenaryDestination;
+      renderOrdersPanel(container, state, playerId, callbacks, options);
+    });
+  });
+  bindSelectAction(container, '[data-action="lock-orders"]', () => {
+    callbacks.lockOrders?.({
+      armies: draft.armies,
+      mercenaries: draft.mercenaries,
+      candidate: Number(container.querySelector('[data-order-candidate]')?.value),
+    });
   });
 }
 
-function collectOrders(container, offices, playerId) {
-  const deployments = {};
-  container.querySelectorAll('.deploy-toggle').forEach(row => {
-    const officeKey = row.dataset.office;
-    const active = row.querySelector('.toggle-btn.active');
-    deployments[officeKey] = active?.dataset.dest || 'frontier';
-  });
-
-  const candidateBtn = container.querySelector('.candidate-btn.selected');
-  // Default to self if no candidate selected
-  const candidate = candidateBtn ? parseInt(candidateBtn.dataset.candidate) : playerId;
-
-  return { deployments, candidate };
-}
-
-function renderMajorTitleReassignmentSection(state) {
-  const newBasileusId = state.nextBasileusId;
-  const newBasileus = getPlayer(state, newBasileusId);
-  const assignments = suggestMajorTitleAssignments(state, newBasileusId);
-  const eligiblePlayers = state.players.filter(player => player.id !== newBasileusId);
-
-  return `<div class="resolution-section title-reassignment">
-    <h4>Redistribute Major Titles</h4>
-    <p class="section-hint">The new Basileus assigns the four major titles to the other players. The Basileus cannot keep any major title. Distribution must follow the per-player-count quota for the game to proceed.</p>
-    <div class="title-reassignment-grid">
-      ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => `
-        <label class="title-reassignment-row">
-          <span>${title.name}</span>
-          <select class="appt-select major-title-select" data-title-assignment="${titleKey}">
-            ${eligiblePlayers.map(player => `
-              <option value="${player.id}" ${assignments[titleKey] === player.id ? 'selected' : ''} style="background-color: ${player.color}; color: #fff;">${formatPlayerLabel(player)}</option>
-            `).join('')}
-          </select>
-        </label>
-      `).join('')}
-    </div>
-    <div class="resolution-error" data-role="title-reassignment-error"></div>
-  </div>`;
-}
-
-function renderDefenderRewardSection(state, activePlayerId = null) {
-  const rewards = Array.isArray(state.pendingDefenderRewards)
-    ? state.pendingDefenderRewards
-    : (Array.isArray(state.lastWarResult?.defenderRewards) ? state.lastWarResult.defenderRewards : []);
-  if (!rewards.length) return '';
-  const pendingRewards = rewards.filter((reward) => !reward.resolved);
-  const farthestPendingReward = pendingRewards[pendingRewards.length - 1] || null;
-  const pendingGoldValue = farthestPendingReward?.goldValue || 0;
-
-  return `<div class="resolution-section defender-rewards">
-    <h4>Best Defender Rewards</h4>
-    <p class="section-hint">Top frontier contributors choose in rank order: restore land to the empire as free-citizen territory, or take 2&times;P gold and leave the farthest pending province occupied.</p>
-    <div class="dashboard-list compact">
-      ${rewards.map((reward) => {
-        const theme = state.themes[reward.themeId];
-        const isActor = activePlayerId === reward.defenderId;
-        const resolved = Boolean(reward.resolved);
-        const ownerLabel = reward.choice === 'empire' || reward.choice === 'land'
-          ? `${renderPlayerRoleNameById(state, reward.defenderId)} restored it to the empire`
-          : reward.choice === 'gold'
-            ? `${renderPlayerRoleNameById(state, reward.defenderId)} took ${formatGold(reward.gold || reward.goldValue || 0)}`
-            : `${renderPlayerRoleNameById(state, reward.defenderId)} chooses`;
-        return `<div class="dashboard-list-row reward-row ${resolved ? 'resolved' : ''}">
-          <div class="auction-main">
-            <span class="dashboard-list-title">${renderProvinceBadge(state, theme || reward.themeId, { compact: true, showValues: true })}</span>
-            <span class="dashboard-list-note">${ownerLabel} | Rank #${reward.rank || 1} with ${formatTroops(reward.troops || 0)}</span>
-          </div>
-          ${resolved ? '' : `<div class="auction-controls">
-            <button class="appt-btn" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire" ${isActor ? '' : 'disabled'}>Restore</button>
-            <button class="btn-recruit" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold" ${isActor ? '' : 'disabled'}>Take ${formatGold(pendingGoldValue)}</button>
-          </div>`}
-        </div>`;
-      }).join('')}
-    </div>
-  </div>`;
-}
-
-// â”€â”€â”€ Resolution Summary Panel â”€â”€â”€
 export function renderResolutionPanel(container, state, options = {}) {
-  const coup = state.lastCoupResult;
-  const war = state.lastWarResult;
-
-  let html = `<div class="resolution-panel">
-    <div class="phase-header">
-      <h3>Resolution</h3>
-      <p class="section-hint">Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.</p>
-    </div>`;
-
-  // Coup result
-  if (coup) {
-    const winner = getPlayer(state, coup.winner);
-    html += `<div class="resolution-section">
-      <h4>Coup</h4>
-      <p class="section-hint">Most Capital troops backing one candidate wins. Ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles.</p>
-      <div class="coup-result">
-        <span class="coup-winner">
-          ${renderPlayerRoleName(state, winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
-        </span>
-        <div class="vote-breakdown">
-          ${renderCoupContributionGroups(
-            state,
-            Object.entries(coup.votes).map(([candidateId, troops]) => ({
-              candidateId: Number(candidateId),
-              candidateName: renderPlayerRoleNameById(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
-              troops,
-            })),
-            (coup.contributions || []).map((entry) => ({
-              ...entry,
-              playerName: renderPlayerRoleNameById(state, entry.playerId, `Player ${entry.playerId + 1}`),
-              candidateName: renderPlayerRoleNameById(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
-            }))
-          )}
-        </div>
-      </div>
-    </div>`;
-  }
-
-  // War result
-  if (war) {
-    const inv = state.currentInvasion;
-    html += `<div class="resolution-section">
-      <p class="section-hint">Frontier troops &gt; invader = victory (reconquer along the route, cost 1, +1, +1...). Frontier troops &lt; invader = defeat (invader takes provinces along the route at the same cost). Equal = stalemate.</p>
-      <h4>âš” ${inv?.name || 'Invasion'}</h4>
-      <div class="war-result ${war.outcome}">
-        <div class="war-numbers">
-          <span class="empire-force">Empire: ${war.frontierTroops}</span>
-          <span class="vs">vs</span>
-          <span class="invader-force">Invader: ${war.invaderStrength}</span>
-        </div>
-        ${inv?.strength?.length === 2 ? `<div class="war-estimate">Estimate: ${inv.strength[0]}-${inv.strength[1]}</div>` : ''}
-        <div class="war-outcome">${
-          war.outcome === 'victory' ? 'Victory. Can reconquer: ' + renderProvinceBadgeList(state, war.themesRecovered) :
-          war.outcome === 'defeat' ? 'Defeat. Lost: ' + renderProvinceBadgeList(state, war.themesLost) :
-          'âš– Stalemate'
-        }</div>
-        ${war.reachedCPL ? '<div class="empire-falls">â˜  CONSTANTINOPLE HAS FALLEN</div>' : ''}
-      </div>
-    </div>`;
-  }
-
-  html += renderDefenderRewardSection(state, options.activePlayerId ?? null);
-
-  if (options.allowManualTitleReassignment !== false && state.nextBasileusId !== null && state.nextBasileusId !== state.basileusId) {
-    html += renderMajorTitleReassignmentSection(state);
-  }
-
-  html += `<div class="resolution-actions">
-    <button class="btn-continue" data-action="continue">Continue</button>
-  </div></div>`;
-
-  container.innerHTML = html;
+  return renderResolutionPanelDetailed(container, state, options);
 }
 
 export function renderResolutionPanelDetailed(container, state, options = {}) {
-  const coup = state.lastCoupResult;
-  const war = state.lastWarResult;
-
-  let html = `<div class="resolution-panel">
-    <div class="phase-header">
+  if (!container || !state) return;
+  const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards.filter((reward) => !reward.resolved) : [];
+  container.innerHTML = `
+    <section class="phase-card resolution-panel">
       <h3>Resolution</h3>
-      <p class="section-hint">Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.</p>
-    </div>`;
-
-  if (coup) {
-    const winner = getPlayer(state, coup.winner);
-    const voteRows = Object.entries(coup.votes).map(([candidateId, troops]) => ({
-      candidateId: Number(candidateId),
-      candidateName: renderPlayerRoleNameById(state, Number(candidateId), `Player ${Number(candidateId) + 1}`),
-      troops,
-    }));
-    const contributionRows = (coup.contributions || []).map((entry) => ({
-      ...entry,
-      playerName: renderPlayerRoleNameById(state, entry.playerId, `Player ${entry.playerId + 1}`),
-      candidateName: renderPlayerRoleNameById(state, entry.candidateId, `Player ${entry.candidateId + 1}`),
-    }));
-
-    html += `<div class="resolution-section">
-      <h4>Coup</h4>
-      <p class="section-hint">Most Capital troops backing one candidate wins. Ties favour the sitting Basileus. A new Basileus immediately redistributes the four major titles.</p>
-      <div class="coup-result">
-        <span class="coup-winner">
-          ${renderPlayerRoleName(state, winner)} ${coup.winner !== state.basileusId ? 'seizes the throne!' : 'remains Basileus.'}
-        </span>
-        <div class="vote-breakdown">
-          ${renderCoupContributionGroups(state, voteRows, contributionRows)}
+      ${state.lastCoupResult ? `
+        <article class="result-card">
+          <strong>Coup</strong>
+          <span>${renderPlayerRoleNameById(state, state.lastCoupResult.winner)} ${state.lastCoupResult.winner === state.basileusId ? 'holds the throne' : 'claims the throne'}.</span>
+        </article>
+      ` : ''}
+      ${state.lastWarResult ? `
+        <article class="result-card">
+          <strong>War</strong>
+          <span>${escapeHtml(state.lastWarResult.outcome)} against ${escapeHtml(state.currentInvasion?.name || 'the invader')}.</span>
+          ${state.lastWarResult.themesLost?.length ? `<span>Lost: ${renderProvinceBadgeList(state, state.lastWarResult.themesLost)}</span>` : ''}
+          ${state.lastWarResult.themesRecovered?.length ? `<span>Recovered: ${renderProvinceBadgeList(state, state.lastWarResult.themesRecovered)}</span>` : ''}
+        </article>
+      ` : ''}
+      ${rewards.length ? `
+        <div class="reward-list">
+          ${rewards.map((reward) => `
+            <article class="reward-card">
+              <strong>${escapeHtml(reward.themeName || reward.themeId)}</strong>
+              <span>${renderPlayerRoleNameById(state, reward.defenderId)} may restore it or take ${formatGold(reward.goldValue || 0)}.</span>
+              <button type="button" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire">Restore</button>
+              <button type="button" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold">Take Gold</button>
+            </article>
+          `).join('')}
         </div>
+      ` : ''}
+      <div class="panel-actions">
+        <button type="button" class="btn-primary" data-action="continue">Continue</button>
       </div>
-    </div>`;
-  }
-
-  if (war) {
-    const invasionName = state.currentInvasion?.name || 'Invasion';
-    const outcomeText = war.outcome === 'victory'
-      ? `Victory. Can reconquer: ${renderProvinceBadgeList(state, war.themesRecovered)}`
-      : war.outcome === 'defeat'
-        ? `Defeat. Lost: ${renderProvinceBadgeList(state, war.themesLost)}`
-        : 'Stalemate';
-
-    html += `<div class="resolution-section">
-      <h4>${invasionName}</h4>
-      <p class="section-hint">Frontier troops &gt; invader = victory (reconquer along the route, cost 1, +1, +1...). Frontier troops &lt; invader = defeat (invader takes provinces along the route at the same cost). Equal = stalemate.</p>
-      <div class="war-result ${war.outcome}">
-        <div class="war-numbers">
-          <span class="empire-force">Empire: ${war.frontierTroops}</span>
-          <span class="vs">vs</span>
-          <span class="invader-force">Invader: ${war.invaderStrength}</span>
-        </div>
-        ${state.currentInvasion?.strength?.length === 2 ? `<div class="war-estimate">Estimate: ${state.currentInvasion.strength[0]}-${state.currentInvasion.strength[1]}</div>` : ''}
-        <div class="war-outcome">${outcomeText}</div>
-        <div class="vote-breakdown">
-          ${renderWarContributionBreakdown(war.contributions || [])}
-        </div>
-        ${war.reachedCPL ? '<div class="empire-falls">CONSTANTINOPLE HAS FALLEN</div>' : ''}
-      </div>
-    </div>`;
-  }
-
-  html += renderDefenderRewardSection(state, options.activePlayerId ?? null);
-
-  if (options.allowManualTitleReassignment !== false && state.nextBasileusId !== null && state.nextBasileusId !== state.basileusId) {
-    html += renderMajorTitleReassignmentSection(state);
-  }
-
-  html += `<div class="resolution-actions">
-    <button class="btn-continue" data-action="continue">Continue</button>
-  </div></div>`;
-
-  container.innerHTML = html;
+    </section>
+  `;
 }

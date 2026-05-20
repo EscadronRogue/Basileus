@@ -3,9 +3,9 @@ function readThemeProfit(themeOrProfit) {
   return Math.max(0, Number(themeOrProfit?.P ?? themeOrProfit?.profit ?? themeOrProfit?.G ?? 0) || 0);
 }
 
-function readThemeTax(themeOrTax) {
-  if (typeof themeOrTax === 'number') return Math.max(0, Number(themeOrTax) || 0);
-  return Math.max(0, Number(themeOrTax?.T ?? themeOrTax?.tax ?? 0) || 0);
+function readThemeTroops(themeOrTroops) {
+  if (typeof themeOrTroops === 'number') return Math.max(0, Number(themeOrTroops) || 0);
+  return Math.max(0, Number(themeOrTroops?.T ?? themeOrTroops?.troops ?? 0) || 0);
 }
 
 function readThemeChurch(themeOrChurch) {
@@ -17,8 +17,8 @@ export function getThemeProfitValue(themeOrProfit) {
   return readThemeProfit(themeOrProfit);
 }
 
-export function getThemeTaxValue(themeOrTax) {
-  return readThemeTax(themeOrTax);
+export function getThemeTroopCount(themeOrTroops) {
+  return readThemeTroops(themeOrTroops);
 }
 
 export function getThemeChurchValue(theme) {
@@ -33,20 +33,10 @@ export function getNormalOwnerIncome(themeOrProfit) {
   return readThemeProfit(themeOrProfit);
 }
 
-export function getNormalTaxIncome(themeOrTax) {
-  return readThemeTax(themeOrTax);
-}
-
 export function getThemeOwnerIncome(theme) {
   return getNormalOwnerIncome(theme);
 }
 
-export function getThemeTaxIncome(theme) {
-  return getNormalTaxIncome(theme);
-}
-
-// The compensation handed to a best defender who leaves a reconquerable province
-// occupied instead of restoring it to the empire: 2× the theme's profit.
 export function getDefenderRewardGold(theme) {
   return readThemeProfit(theme) * 2;
 }
@@ -60,17 +50,6 @@ export function getMercenaryHireCost(alreadyHired, additionalCount) {
   const currentCount = Math.max(0, Number(alreadyHired) || 0);
   const extraCount = Math.max(0, Number(additionalCount) || 0);
   return getMercenaryCostForCount(currentCount + extraCount) - getMercenaryCostForCount(currentCount);
-}
-
-export function getMercenaryTotalCount(mercenaries = []) {
-  return (Array.isArray(mercenaries) ? mercenaries : []).reduce(
-    (total, entry) => total + Math.max(0, Number(entry?.count) || 0),
-    0,
-  );
-}
-
-export function getMercenaryOrderCost(mercenaries = [], alreadyHired = 0) {
-  return getMercenaryHireCost(alreadyHired, getMercenaryTotalCount(mercenaries));
 }
 
 export function getThreatenedThemeIds(state, options = {}) {

@@ -718,7 +718,7 @@ function parseFiniteNumber(value) {
 
 // Map labels are stacked SVG cartouches that mirror the HTML
 // .province-token grammar: outline = region color, fill = owner color,
-// gold inner hairline. Two lines per cartouche: name / current profit-tax-levy-church.
+// gold inner hairline. Two lines per cartouche: name / current profit-troop-church.
 const MAP_CART_PAD_X = 1.0;
 const MAP_CART_MIN_WIDTH = 7.8;
 const MAP_CART_HEIGHT = 4.7;
@@ -939,12 +939,23 @@ function updateBadges(state) {
   layer.replaceChildren();
 
   for (const [provinceId, theme] of Object.entries(state.themes)) {
-    if (theme.occupied) continue;
-
     const centroid = provinceCentroids[provinceId];
     if (!centroid) continue;
 
-    if (theme.strategos !== null) {
+    if (theme.occupied && theme.suspendedOwner !== null) {
+      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const x = centroid.cx;
+      const y = centroid.cy - 3.2;
+      badge.setAttribute('d', `M ${x.toFixed(2)} ${y.toFixed(2)} L ${(x + 1.0).toFixed(2)} ${(y + 1.5).toFixed(2)} L ${(x - 1.0).toFixed(2)} ${(y + 1.5).toFixed(2)} Z`);
+      badge.setAttribute('class', 'officer-badge suspended-owner-chevron');
+      const player = state.players.find((candidate) => candidate.id === theme.suspendedOwner);
+      if (player) badge.style.fill = player.color;
+      badge.style.stroke = '#000';
+      badge.style.strokeWidth = '0.15';
+      layer.appendChild(badge);
+    }
+
+    if (!theme.occupied && theme.strategos !== null) {
       const badge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       badge.setAttribute('cx', centroid.cx - 1.8);
       badge.setAttribute('cy', centroid.cy - 2.2);

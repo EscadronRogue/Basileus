@@ -1,5 +1,7 @@
-import { getPlayer, getPlayerMercenaryTroops, MERCENARY_COMPANY_KEY } from './state.js';
-import { normalizeOrdersWithDealLocks } from './deals.js';
+import { readTroopEntry } from './cascade.js';
+import { normalizeOrdersWithDealLocks, getSpendableGold } from './deals.js';
+import { getOfficeHolder, getPlayer } from './state.js';
+import { getMercenaryHireCost } from './rules.js';
 
 function toInt(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -10,69 +12,75 @@ function orderFailure(reason) {
   return { ok: false, reason };
 }
 
+function normalizeDestination(value) {
+  return value === 'capital' ? 'capital' : 'frontier';
+}
+
 export function isCapitalLockedOfficeKey(officeKey) {
-  return officeKey === 'PATRIARCH' || officeKey === 'EMPRESS' || officeKey === 'CHIEF_EUNUCHS';
+  void officeKey;
+  return false;
 }
 
 export function getPlayerOrderOfficeKeys(state, playerId) {
-  const player = getPlayer(state, playerId);
-  if (!player) return [];
-
-  const officeKeys = [];
-  if (playerId === state.basileusId) officeKeys.push('BASILEUS');
-  for (const titleKey of player.majorTitles || []) officeKeys.push(titleKey);
-  if (state.empress === playerId) officeKeys.push('EMPRESS');
-  if (state.chiefEunuchs === playerId) officeKeys.push('CHIEF_EUNUCHS');
-  for (const theme of Object.values(state.themes || {})) {
-    if (theme.strategos === playerId && !theme.occupied) {
-      officeKeys.push(`STRAT_${theme.id}`);
-    }
-  }
-  if (getPlayerMercenaryTroops(state, playerId) > 0) {
-    officeKeys.push(MERCENARY_COMPANY_KEY);
-  }
-  return [...new Set(officeKeys)];
+  return Object.keys(state.currentTroops || {})
+    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
+    .sort((left, right) => left.localeCompare(right));
 }
 
-export function normalizeMercenaryOrders(rawMercenaries = []) {
-  const totals = new Map();
-  for (const entry of Array.isArray(rawMercenaries) ? rawMercenaries : []) {
-    const officeKey = String(entry?.officeKey || '').trim();
-    const count = toInt(entry?.count, 0);
-    if (!officeKey || count <= 0) continue;
-    totals.set(officeKey, (totals.get(officeKey) || 0) + count);
+function getOfficeMaxTroops(state, officeKey) {
+  const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+  return entry.normal + entry.capitalLocked;
+}
+
+function normalizeArmyOrders(state, playerId, rawOrders = {}) {
+  const armies = {};
+  const oldDeployments = rawOrders?.deployments || {};
+  for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
+    const max = getOfficeMaxTroops(state, officeKey);
+    const rawArmy = rawOrders?.armies?.[officeKey] || {};
+    const rawFunded = rawArmy.funded ?? rawOrders?.funded?.[officeKey] ?? max;
+    const funded = Math.max(0, Math.min(max, toInt(rawFunded, max)));
+    armies[officeKey] = {
+      funded,
+      destination: normalizeDestination(rawArmy.destination ?? oldDeployments[officeKey]),
+    };
   }
-  return [...totals.entries()].map(([officeKey, count]) => ({ officeKey, count }));
+  return armies;
+}
+
+function normalizeMercenaryOrder(rawMercenaries = {}) {
+  if (Array.isArray(rawMercenaries)) {
+    const count = rawMercenaries.reduce((total, entry) => total + Math.max(0, toInt(entry?.count, 0)), 0);
+    return { count: Math.min(10, count), destination: normalizeDestination(rawMercenaries[0]?.destination) };
+  }
+  return {
+    count: Math.max(0, Math.min(10, toInt(rawMercenaries?.count, 0))),
+    destination: normalizeDestination(rawMercenaries?.destination),
+  };
+}
+
+function getUnfundedGold(state, armies) {
+  return Object.entries(armies).reduce((total, [officeKey, order]) => (
+    total + Math.max(0, getOfficeMaxTroops(state, officeKey) - (Number(order.funded) || 0))
+  ), 0);
 }
 
 export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = {}) {
   const player = getPlayer(state, playerId);
   if (!player) return orderFailure('Player not found.');
 
-  const officeKeys = getPlayerOrderOfficeKeys(state, playerId);
-  const deployments = {};
-
-  for (const officeKey of officeKeys) {
-    const rawDestination = rawOrders?.deployments?.[officeKey];
-    deployments[officeKey] = isCapitalLockedOfficeKey(officeKey)
-      ? 'capital'
-      : (rawDestination === 'capital' ? 'capital' : 'frontier');
-  }
-
-  const mercenaries = normalizeMercenaryOrders(rawOrders?.mercenaries);
-  if (mercenaries.length > 0) {
-    return orderFailure('Hire mercenaries in Court. Secret Orders only choose troop destinations and your claimant.');
-  }
-
+  const armies = normalizeArmyOrders(state, playerId, rawOrders);
+  const mercenaries = normalizeMercenaryOrder(rawOrders?.mercenaries);
   const candidate = toInt(rawOrders?.candidate, playerId);
-  if (candidate < 0 || candidate >= state.players.length) {
-    return orderFailure('Choose a valid Basileus candidate.');
+  if (candidate < 0 || candidate >= state.players.length) return orderFailure('Choose a valid Basileus candidate.');
+
+  const unfundedGold = getUnfundedGold(state, armies);
+  const mercenaryCost = getMercenaryHireCost(0, mercenaries.count);
+  if (getSpendableGold(state, playerId) + unfundedGold < mercenaryCost) {
+    return orderFailure(`Not enough gold for those mercenaries after unfunded troops are paid out.`);
   }
 
-  const normalizedOrders = {
-    deployments,
-    candidate,
-  };
+  const normalizedOrders = { armies, mercenaries, candidate };
   if (rawOrders?.debug) normalizedOrders.debug = rawOrders.debug;
 
   const dealLocks = normalizeOrdersWithDealLocks(state, playerId, normalizedOrders, {
@@ -83,6 +91,7 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
   return {
     ok: true,
     orders: dealLocks.orders,
-    totalCost: 0,
+    totalCost: mercenaryCost,
+    unfundedGold,
   };
 }

@@ -574,16 +574,13 @@ export class MultiplayerController {
     const state = this.state;
     if (!state) return;
 
-    const waitingForHumanReassignment = state.phase === 'resolution'
-      && state.nextBasileusId !== state.basileusId
-      && state.pendingTitleReassignment
+    const waitingForHumanReassignment = state.phase === 'title_redistribution'
       && controlledSeatId !== state.nextBasileusId
       && !this.privateSnapshot?.pendingAiTitleAssignment;
 
-    const canAssignTitles = state.phase === 'resolution'
+    const canAssignTitles = state.phase === 'title_redistribution'
       && controlledSeatId != null
-      && state.nextBasileusId !== state.basileusId
-      && controlledSeatId === state.nextBasileusId
+      && controlledSeatId === state.basileusId
       && !this.privateSnapshot?.pendingAiTitleAssignment;
     const seats = this.roomSnapshot?.seats || [];
     const pendingHumanDefenderReward = state.pendingDefenderRewards?.some((reward) => (
@@ -592,11 +589,7 @@ export class MultiplayerController {
     ));
 
     const resolution = {};
-    if (canAssignTitles) {
-      resolution.allowManualTitleReassignment = true;
-      resolution.submitText = 'Submit Titles';
-      resolution.submitTitleAssignments = (assignments) => this.send('reassign_major_titles', { assignments });
-    } else if (waitingForHumanReassignment) {
+    if (waitingForHumanReassignment) {
       resolution.disabledText = 'Waiting For New Basileus';
     } else if (pendingHumanDefenderReward) {
       resolution.disabledText = 'Resolve Rewards';
@@ -619,6 +612,11 @@ export class MultiplayerController {
       error: this.lastError,
       handlers: {
         court: this.createCourtHandlers(),
+        estates: this.createEstateHandlers(),
+        confirmEstates: () => this.send('confirm_estates'),
+        confirmTitleRedistribution: canAssignTitles
+          ? (assignments) => this.send('reassign_major_titles', { assignments })
+          : null,
         lockOrders: (orders) => this.send('submit_orders', { orders }),
       },
       resolution,
@@ -700,11 +698,8 @@ export class MultiplayerController {
 
   createCourtHandlers() {
     return {
-      buy: (themeId, data = {}) => this.send('court_action', { action: 'buy', themeId, amount: data.amount }),
       gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
-      recruit: (_, data) => this.send('court_action', { action: 'recruit', office: data.office }),
-      hireMercenaries: (_, data) => this.send('court_action', { action: 'hire-mercenaries', office: data.office, count: data.count }),
-      dismiss: (_, data) => this.send('court_action', { action: 'dismiss', office: data.office, count: data.count }),
+      skip: () => this.send('court_action', { action: 'skip' }),
       'deal-send': (payload) => this.send('court_action', { action: 'deal-send', ...payload }),
       'deal-counter': (payload) => this.send('court_action', { action: 'deal-counter', ...payload }),
       'deal-accept': (payload) => this.send('court_action', { action: 'deal-accept', ...payload }),
@@ -715,6 +710,11 @@ export class MultiplayerController {
         titleType,
         appointeeId,
         themeId,
+      }),
+      'appoint-court': (titleType, appointeeId) => this.send('court_action', {
+        action: 'appoint-court',
+        titleType,
+        appointeeId,
       }),
       'appoint-strategos': (titleKey, themeId, appointeeId) => this.send('court_action', {
         action: 'appoint-strategos',
@@ -731,6 +731,12 @@ export class MultiplayerController {
         action: 'revoke',
         value,
       }),
+    };
+  }
+
+  createEstateHandlers() {
+    return {
+      buy: (themeId, data = {}) => this.send('estate_action', { action: 'buy', themeId, amount: data.amount }),
     };
   }
 

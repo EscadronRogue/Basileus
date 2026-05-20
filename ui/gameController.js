@@ -7,9 +7,12 @@ import {
   handleDefenderRewardChoice,
   handleHumanCourtAction,
   handleHumanCourtConfirmation,
+  handleHumanEstateAction,
   handleHumanOrders,
+  handleEstatesConfirmation,
   resolvePendingTitleReassignment,
   startInteractiveRuntime,
+  handleManualTitleReassignment,
 } from '../engine/runtime.js';
 import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta, hydrateAiOpponent } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
@@ -171,7 +174,7 @@ export class GameController {
       autoResolveUnavailableHumanAppointments(state, this.activePlayer);
     }
 
-    const spectatorMessage = state.phase === 'orders'
+    const spectatorMessage = state.phase === 'deployment'
       ? 'Switch back to your dynasty to continue.'
       : 'This dynasty is AI-controlled.';
     const pendingHumanDefenderReward = state.pendingDefenderRewards?.some((reward) => (
@@ -189,6 +192,9 @@ export class GameController {
       spectatorMessage,
       handlers: {
         court: this.createCourtHandlers(this.activePlayer),
+        estates: this.createEstateHandlers(this.activePlayer),
+        confirmEstates: () => this.confirmEstates(),
+        confirmTitleRedistribution: (assignments) => this.confirmTitleRedistribution(assignments),
         lockOrders: (orders) => this.lockOrders(orders),
         includeNewGame: true,
       },
@@ -228,11 +234,8 @@ export class GameController {
     };
 
     return {
-      buy: (themeId, data = {}) => dispatch({ action: 'buy', themeId, amount: data.amount }),
       gift: (themeId) => dispatch({ action: 'gift', themeId }),
-      recruit: (_, data) => dispatch({ action: 'recruit', office: data.office }),
-      hireMercenaries: (_, data) => dispatch({ action: 'hire-mercenaries', office: data.office, count: data.count }),
-      dismiss: (_, data) => dispatch({ action: 'dismiss', office: data.office, count: data.count }),
+      skip: () => dispatch({ action: 'skip' }),
       'deal-send': (payload) => dispatch({ action: 'deal-send', ...payload }),
       'deal-counter': (payload) => dispatch({ action: 'deal-counter', ...payload }),
       'deal-accept': (payload) => dispatch({ action: 'deal-accept', ...payload }),
@@ -249,6 +252,9 @@ export class GameController {
       'basileus-appoint': (titleType, appointeeId, themeId) => dispatch({
         action: 'basileus-appoint', titleType, appointeeId, themeId,
       }),
+      'appoint-court': (titleType, appointeeId) => dispatch({
+        action: 'appoint-court', titleType, appointeeId,
+      }),
       'appoint-strategos': (titleKey, themeId, appointeeId) => dispatch({
         action: 'appoint-strategos', titleKey, themeId, appointeeId,
       }),
@@ -257,6 +263,42 @@ export class GameController {
       }),
       revoke: (value) => dispatch({ action: 'revoke', value }),
     };
+  }
+
+  createEstateHandlers(playerId) {
+    return {
+      buy: (themeId, data = {}) => {
+        const result = handleHumanEstateAction(this.state, this.aiMeta, this, playerId, {
+          action: 'buy',
+          themeId,
+          amount: data.amount,
+        });
+        if (!result.ok) {
+          this.render();
+          return;
+        }
+        this.render();
+      },
+    };
+  }
+
+  confirmEstates() {
+    const result = handleEstatesConfirmation(this.state, this.aiMeta, this);
+    if (!result.ok) {
+      this.render();
+      return;
+    }
+    this.render();
+  }
+
+  confirmTitleRedistribution(assignments) {
+    const result = handleManualTitleReassignment(this.state, this.aiMeta, this, this.activePlayer, assignments);
+    if (!result.ok) {
+      this.render();
+      return;
+    }
+    this.renderPlayerTabs();
+    this.render();
   }
 
   lockOrders(orders) {
