@@ -235,6 +235,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
                 ${renderTitleBadge(state, titleKey, { holderId: assignedPlayer?.id, compact: false, label: title.name })}
                 ${assignedPlayer ? `<span class="title-redist-arrow">→</span> ${renderPlayerRoleName(state, assignedPlayer)}` : '<span class="muted">vacant</span>'}
               </header>
+              <input type="hidden" data-title-assignment="${titleKey}" value="${assignedPlayer?.id ?? ''}">
               ${isBasileus ? renderPlayerChoiceGrid(state, {
                 attr: 'title-redist-pick',
                 selectedId: assignedPlayer?.id ?? null,
@@ -733,7 +734,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
                   <span class="army-card-title">${escapeHtml(getOfficeDisplayName(state, officeKey))}</span>
                   <span class="army-card-count">${formatTroopsHtml(max, { label: 'Troops' })}</span>
                 </header>
-                ${entry.capitalLocked ? `<p class="army-card-sub">${formatTroopsHtml(entry.capitalLocked)} capital-locked</p>` : ''}
+                ${entry.capitalLocked ? `<p class="army-card-sub">${formatTroopsHtml(entry.capitalLocked)} capital locked</p>` : ''}
                 <label class="army-card-slider">
                   <span class="army-slider-label">Fund</span>
                   <input type="range" min="0" max="${max}" value="${current.funded}" data-army-funded="${officeKey}">

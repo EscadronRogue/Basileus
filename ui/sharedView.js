@@ -252,19 +252,16 @@ export function getPlayerTabEconomy(player, administration, state = null) {
   return {
     reserve: formatCompactValue(player.gold),
     income: formatCompactValue(income, 'plus'),
-    expense: formatCompactValue(0, 'minus'),
   };
 }
 
 export function renderPlayerTabFinance(economy) {
   return `
-    <span class="tab-finance" aria-label="Reserve · income · upkeep" title="Gold reserve · next income · upkeep">
+    <span class="tab-finance" aria-label="Reserve and income" title="Gold reserve and next income">
       <span class="tab-finance-icon" aria-hidden="true">${renderIcon('gold')}</span>
       <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
       <span class="tab-finance-separator" aria-hidden="true">·</span>
       <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
-      <span class="tab-finance-separator" aria-hidden="true">/</span>
-      <span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span>
     </span>
   `;
 }
