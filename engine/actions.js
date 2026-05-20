@@ -693,14 +693,3 @@ export function computeFullWealth(state, playerId, projectedIncome) {
   void projectedIncome;
   return computeWealth(state, playerId);
 }
-  return { ok: true };
-}
-
-export function computeWealth(state, playerId) {
-  return getPlayerFinalScore(state, playerId)?.points ?? getPlayer(state, playerId)?.gold ?? 0;
-}
-
-export function computeFullWealth(state, playerId, projectedIncome) {
-  void projectedIncome;
-  return computeWealth(state, playerId);
-}
