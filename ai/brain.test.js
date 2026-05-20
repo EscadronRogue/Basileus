@@ -12,7 +12,6 @@ import {
 import {
   buildAIOrders,
   buildSimultaneousAIOrders,
-  chooseAIDefenderRewardChoice,
   createAIMeta,
   getRecentPublicLog,
   hydrateAiOpponent,
@@ -23,11 +22,6 @@ import {
   runAICourtAutomation,
 } from './brain.js';
 import {
-  handleContinueAfterResolution,
-  runAiRuntime,
-  startInteractiveRuntime,
-} from '../engine/runtime.js';
-import {
   AI_DEALS_ENABLED,
   applyLegalAction,
   listLegalCourtActions,
@@ -35,7 +29,6 @@ import {
   listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
-import { summarizeOrders } from './evaluation.js';
 import {
   PLACEHOLDER_AI_OPPONENTS,
   loadOpponentByIdSync,
@@ -66,11 +59,11 @@ function cloneState(state) {
   return clone;
 }
 
-test('AI metadata preserves human and strategic AI seat boundaries', () => {
+test('AI metadata preserves human and placeholder seat boundaries', () => {
   const state = createGameState({ playerCount: 4, deckSize: 1, seed: 11 });
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
 
-  assert.equal(meta.placeholderOnly, false);
+  assert.equal(meta.placeholderOnly, true);
   assert.equal(meta.humanPlayerIds.has(1), true);
   assert.equal(isAIPlayer(meta, 0), true);
   assert.equal(isAIPlayer(meta, 1), false);
@@ -105,39 +98,25 @@ test('browser opponent roster falls back to local placeholders', async () => {
   }
 });
 
-test('strategic court automation acts before confirming during finish mode', () => {
+test('placeholder court automation only passes during finish mode', () => {
   const state = prepareInteractiveState({ seed: 21 });
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
 
   const reactive = runAICourtAutomation(state, meta, { mode: 'react' });
-  assert.ok(reactive.actions > 0);
+  assert.equal(reactive.actions, 0);
   for (const player of state.players.filter((entry) => entry.id !== 1)) {
     assert.equal(state.courtActions.playerConfirmed.has(player.id), false);
   }
 
   const finishing = runAICourtAutomation(state, meta, { mode: 'finish' });
-  assert.ok(finishing.actions > 3);
+  assert.equal(finishing.actions, 3);
   for (const player of state.players.filter((entry) => entry.id !== 1)) {
     assert.equal(state.courtActions.playerConfirmed.has(player.id), true);
   }
   assert.equal(state.courtActions.playerConfirmed.has(1), false);
-  assert.ok(Object.keys(state.pendingProfessionalArmies || {}).length > 0);
-  assert.ok(Object.keys(state.landAuctions || {}).length > 0);
-  assert.ok(meta.decisionLog.lines.some((line) => line.includes(':ai:')));
 });
 
-test('strategic court automation is not stopped by the old small per-seat cap', () => {
-  const state = prepareInteractiveState({ playerCount: 3, seed: 21 });
-  const meta = createAIMeta(state, { humanPlayerIds: [] });
-
-  runAICourtAutomation(state, meta, { mode: 'finish' });
-  const realCourtActions = meta.decisionLog.lines
-    .filter((line) => line.includes(':ai:') && !line.endsWith(':confirm'));
-
-  assert.ok(realCourtActions.length > state.players.length * 4);
-});
-
-test('strategic AI orders submit legal scored orders', () => {
+test('placeholder AI orders submit legal fallback orders', () => {
   const state = prepareInteractiveState({ seed: 23 });
   phaseOrders(state);
 
@@ -150,38 +129,10 @@ test('strategic AI orders submit legal scored orders', () => {
 
   assert.equal(result.ok, true);
   assert.ok(state.allOrders[aiPlayerId]);
-  assert.equal(orders.debug.decision.factors[0].label, 'projected score');
-  assert.ok(orders.debug.decision.factors.some((factor) => factor.label === 'frontier'));
+  assert.equal(orders.debug.decision.factors[0].label, 'placeholder');
 });
 
-test('strategic AI commits movable troops to a threatened frontier', () => {
-  const state = prepareInteractiveState({ seed: 41 });
-  phaseOrders(state);
-
-  const aiPlayerId = 2;
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-  const orders = buildAIOrders(state, meta, aiPlayerId);
-  const summary = summarizeOrders(state, aiPlayerId, orders);
-
-  assert.equal(summary.offices.some((entry) => entry.officeKey === 'ADMIRAL'), true);
-  assert.ok(summary.frontierTroops > 0);
-});
-
-test('strategic AI does not always dump movable troops into the frontier', () => {
-  const state = prepareInteractiveState({ seed: 21 });
-  phaseOrders(state);
-
-  const aiPlayerId = 2;
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-  const orders = buildAIOrders(state, meta, aiPlayerId);
-  const summary = summarizeOrders(state, aiPlayerId, orders);
-
-  assert.equal(summary.offices.some((entry) => entry.officeKey === 'ADMIRAL'), true);
-  assert.ok(summary.capitalTroops > 0);
-  assert.ok(summary.frontierTroops < summary.totalTroops);
-});
-
-test('simultaneous strategic order planning ignores already submitted human orders', () => {
+test('simultaneous placeholder order planning ignores already submitted human orders', () => {
   const state = prepareInteractiveState({ seed: 24 });
   const cleanState = prepareInteractiveState({ seed: 24 });
   phaseOrders(state);
@@ -253,7 +204,7 @@ test('generated reward and title-assignment actions are legal', () => {
   }
 });
 
-test('strategic title assignment picks a legal assignment when needed', () => {
+test('placeholder title assignment picks a legal fallback when needed', () => {
   const state = prepareInteractiveState({ playerCount: 4, seed: 41 });
   state.phase = 'resolution';
   state.nextBasileusId = state.players.find((player) => player.id !== state.basileusId).id;
@@ -264,42 +215,11 @@ test('strategic title assignment picks a legal assignment when needed', () => {
   assert.equal(applyLegalAction(cloneState(state), action, meta).ok, true);
 });
 
-test('strategic title assignment denies Patriarch to the leading opponent', () => {
-  const state = prepareInteractiveState({ playerCount: 4, seed: 41 });
-  state.phase = 'resolution';
-  state.nextBasileusId = state.players.find((player) => player.id !== state.basileusId).id;
-  const leaderId = buildFinalScores(state).scores.find((score) => score.playerId !== state.nextBasileusId).playerId;
-  const meta = createAIMeta(state, { humanPlayerIds: [state.basileusId] });
-
-  const action = planMajorTitleAssignment(state, meta, state.nextBasileusId);
-
-  assert.equal(action?.kind, 'title-assignment');
-  assert.notEqual(action.assignments.PATRIARCH, leaderId);
-});
-
-test('strategic defender reward can choose gold when it improves self-interest', () => {
-  const state = prepareInteractiveState({ seed: 32 });
-  state.phase = 'resolution';
-  state.pendingDefenderRewards = [{
-    id: 'test-reward',
-    themeId: 'OPS',
-    originalThemeId: 'OPS',
-    defenderId: 0,
-    rank: 1,
-    troops: 4,
-    goldValue: 4,
-    resolved: false,
-  }];
-  const meta = createAIMeta(state, { humanPlayerIds: [1] });
-
-  assert.equal(chooseAIDefenderRewardChoice(state, meta, state.pendingDefenderRewards[0]), 'gold');
-});
-
 test('generic AI deal action expansion remains disabled', () => {
   assert.equal(AI_DEALS_ENABLED, false);
 });
 
-test('strategic metadata records observations without an opinion model', () => {
+test('placeholder metadata records observations without an opinion model', () => {
   const state = prepareInteractiveState({ seed: 51 });
   const meta = createAIMeta(state, { humanPlayerIds: [1] });
 
@@ -321,33 +241,4 @@ test('official final scoring remains category-share based', () => {
   const final = buildFinalScores(state);
   assert.equal(final.scores.length, 3);
   assert.equal(final.scores[0].categories.length, 4);
-});
-
-test('strategic AI smoke games complete for supported player counts', () => {
-  for (const playerCount of [3, 4, 5]) {
-    const state = createGameState({
-      playerCount,
-      deckSize: 1,
-      seed: 800 + playerCount,
-      historyEnabled: false,
-    });
-    setDealParticipantIds(state, state.players.map((player) => player.id));
-    const meta = createAIMeta(state, { humanPlayerIds: [] });
-    const context = { pendingAiTitleAssignment: null };
-    startInteractiveRuntime(state, meta, context);
-
-    let guard = 0;
-    while (!state.gameOver && state.phase !== 'scoring' && guard < 12) {
-      guard += 1;
-      if (state.phase === 'resolution') {
-        const result = handleContinueAfterResolution(state, meta, context);
-        assert.equal(result.ok, true, result.reason);
-      } else {
-        runAiRuntime(state, meta, context, { courtMode: 'finish' });
-      }
-    }
-
-    assert.ok(state.gameOver || state.phase === 'scoring');
-    assert.equal(buildFinalScores(state).scores.length, playerCount);
-  }
 });

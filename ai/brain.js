@@ -6,13 +6,6 @@ import {
   listLegalTitleAssignments,
 } from './legalActions.js';
 import { loadOpponentByIdSync, loadOpponentRosterSync } from './opponentRoster.js';
-import {
-  chooseAICourtActions,
-  chooseAIDefenderRewardChoice as choosePolicyDefenderRewardChoice,
-  chooseAIOrderAction,
-  chooseAITitleAssignment,
-  describeOrderDecision,
-} from './policy.js';
 
 export const AI_OPPONENT_MISSING_MESSAGE = 'AI placeholder opponent not found.';
 export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
@@ -93,7 +86,7 @@ export function createAIMeta(state, options = {}) {
     humanPlayerIds,
     players,
     opponentAvailable: true,
-    placeholderOnly: false,
+    placeholderOnly: true,
     publicLog: [],
     decisionLog: createDecisionLog(),
   };
@@ -138,35 +131,17 @@ function chooseCourtConfirmation(state, playerId) {
 
 export function runAICourtAutomation(state, meta, options = {}) {
   if (!state || state.phase !== 'court' || !meta) return { ok: true, actions: 0 };
-  const mode = options.mode || 'finish';
-  const shouldConfirm = mode !== 'react';
+  if ((options.mode || 'finish') === 'react') return { ok: true, actions: 0 };
 
   let applied = 0;
   for (const player of state.players || []) {
     if (!isAIPlayer(meta, player.id)) continue;
     if (state.courtActions?.playerConfirmed?.has(player.id)) continue;
-
-    const planningOptions = { depth: options.depth };
-    if (Number.isFinite(Number(options.maxActions))) {
-      planningOptions.maxActions = Number(options.maxActions);
-    } else if (!shouldConfirm) {
-      planningOptions.maxActions = 1;
-    }
-    const plannedActions = chooseAICourtActions(state, player.id, planningOptions);
-    for (const action of plannedActions) {
-      if (state.courtActions?.playerConfirmed?.has(player.id)) break;
-      const result = applyLegalAction(state, action, meta);
-      if (!result.ok) continue;
-      applied += 1;
-      meta?.decisionLog?.push?.(`court:${player.id}:ai:${action.label || action.kind}`);
-    }
-
-    if (!shouldConfirm) continue;
     const action = chooseCourtConfirmation(state, player.id);
     const result = applyLegalAction(state, action, meta);
     if (!result.ok) continue;
     applied += 1;
-    meta?.decisionLog?.push?.(`court:${player.id}:ai:confirm`);
+    meta?.decisionLog?.push?.(`court:${player.id}:placeholder:confirm`);
   }
 
   return { ok: true, actions: applied };
@@ -183,22 +158,26 @@ function choosePlaceholderOrderAction(state, playerId, actions) {
 
 export function buildAIOrders(state, meta, playerId) {
   const actions = listLegalOrderActions(state, playerId);
-  const chosen = chooseAIOrderAction(state, playerId);
-  const action = chosen?.action || choosePlaceholderOrderAction(state, playerId, actions);
-  if (!action) throw new Error(`No legal AI order available for AI player ${playerId}.`);
+  const action = choosePlaceholderOrderAction(state, playerId, actions);
+  if (!action) throw new Error(`No legal placeholder order available for AI player ${playerId}.`);
   const playerMeta = meta?.players?.[playerId];
   return {
     ...action.orders,
     debug: {
       decision: {
-        title: `${playerMeta?.displayName || 'AI'} strategic order`,
+        title: `${playerMeta?.displayName || 'AI'} placeholder order`,
         factors: [
-          ...describeOrderDecision(state, playerId, chosen || { action }),
+          {
+            label: 'placeholder',
+            value: 'no AI brain installed',
+            impact: 'neutral',
+            note: 'The former AI decision system has been removed. This seat only submits a legal fallback order.',
+          },
           {
             label: 'candidate actions',
             value: actions.length,
             impact: 'neutral',
-            note: 'Chosen from engine-legal orders without reading hidden human orders.',
+            note: 'Chosen from engine-legal orders.',
           },
         ],
       },
@@ -233,17 +212,14 @@ export function buildSimultaneousAIOrders(state, meta) {
   return plans;
 }
 
-export function chooseAIDefenderRewardChoice(state, meta, reward = null) {
-  void meta;
-  if (!reward) return 'empire';
-  return choosePolicyDefenderRewardChoice(state, reward.defenderId, reward);
+export function chooseAIDefenderRewardChoice() {
+  return 'empire';
 }
 
 export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nextBasileusId) {
   void meta;
-  return chooseAITitleAssignment(state, newBasileusId)
-    || listLegalTitleAssignments(state, newBasileusId)[0]
-    || null;
+  const actions = listLegalTitleAssignments(state, newBasileusId);
+  return actions[0] || null;
 }
 
 export function applyPlannedAiTitleAssignment(state, meta, pendingAssignment = null, newBasileusId = state?.nextBasileusId) {
