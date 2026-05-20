@@ -13,6 +13,7 @@ import {
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
+import { renderIcon } from './icons.js';
 
 export function createDefaultUiState() {
   return {
@@ -257,9 +258,10 @@ export function getPlayerTabEconomy(player, administration, state = null) {
 
 export function renderPlayerTabFinance(economy) {
   return `
-    <span class="tab-finance" aria-label="Reserve and income" title="Reserve | income">
+    <span class="tab-finance" aria-label="Reserve · income · upkeep" title="Gold reserve · next income · upkeep">
+      <span class="tab-finance-icon" aria-hidden="true">${renderIcon('gold')}</span>
       <span class="tab-finance-value" data-tab-finance="reserve">${economy.reserve}</span>
-      <span class="tab-finance-separator" aria-hidden="true">|</span>
+      <span class="tab-finance-separator" aria-hidden="true">·</span>
       <span class="tab-finance-value" data-tab-finance="income">${economy.income}</span>
       <span class="tab-finance-separator" aria-hidden="true">/</span>
       <span class="tab-finance-value" data-tab-finance="expense">${economy.expense}</span>
@@ -429,6 +431,8 @@ export function renderScoringHtml(state, options = {}) {
     : '';
   const actionButtons = [newGameButton].filter(Boolean).join('');
 
+  const CATEGORY_ICON = { church: 'church', estate: 'gold', gold: 'gold' };
+
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
@@ -436,11 +440,24 @@ export function renderScoringHtml(state, options = {}) {
       <div class="score-list">
         ${scores.map((score) => {
           const rank = scores.filter((other) => other.points > score.points).length + 1;
+          const isWinner = score.points === topScore && topScore > 0;
           return `
-          <div class="score-row ${score.points === topScore ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
-            <span class="score-rank">${rank}</span>
+          <div class="score-row ${isWinner ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
+            <span class="score-rank">${rank}${isWinner ? '★' : ''}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
-            <span class="score-breakdown">${score.categories.map((category) => `${category.label}: ${formatScoreShare(category.share)} -> ${category.points}`).join(' | ')}</span>
+            <span class="score-breakdown">
+              ${score.categories.map((category) => {
+                const iconKind = CATEGORY_ICON[category.key];
+                const iconHtml = iconKind ? renderIcon(iconKind) : '';
+                return `
+                  <span class="score-cat" title="${escapeHtml(category.label)} — ${formatScoreShare(category.share)} share, ${category.points} point${category.points === 1 ? '' : 's'}">
+                    ${iconHtml}
+                    <span class="score-cat-share">${formatScoreShare(category.share)}</span>
+                    <span class="score-cat-pts">${category.points} pt${category.points === 1 ? '' : 's'}</span>
+                  </span>
+                `;
+              }).join('')}
+            </span>
             <span class="score-total">${score.points}</span>
           </div>`;
         }).join('')}
@@ -448,6 +465,14 @@ export function renderScoringHtml(state, options = {}) {
       ${actionButtons ? `<div class="scoring-actions">${actionButtons}</div>` : ''}
     </div>
   `;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 export function renderHiddenGameOverOverlay() {

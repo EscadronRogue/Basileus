@@ -13,6 +13,7 @@
 
 import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyle } from '../engine/state.js';
+import { renderIcon, provinceValueEntries } from './icons.js';
 
 const FREE_FILL = '#6a4a8a';
 const CAPITAL_FILL = '#9a7010';
@@ -62,12 +63,26 @@ export function getProvinceStyleAttr(state, theme) {
   return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; --province-region-color: ${getRegionColor(theme?.region)};`;
 }
 
+// Plain-text variant — kept verbatim so history summaries, ARIA labels, and
+// the existing tests (ui/gameController.test.js asserts `P1 T1 C0`) still work.
 export function formatProvinceValuesText(theme) {
   if (theme?.id === 'CPL') return '';
   const profit = Math.max(0, Number(theme?.P) || 0);
   const troops = Math.max(0, Number(theme?.T) || 0);
   const church = Math.max(0, Number(theme?.C) || 0);
   return `P${profit} T${troops} C${church}`;
+}
+
+// HTML variant — three icon+number chips, with zero-value entries collapsed.
+// Use this anywhere the values render in a DOM (province token, dashboards,
+// tooltips). The map renderer has its own SVG version in icons.js.
+export function renderProvinceValuesHtml(theme) {
+  if (theme?.id === 'CPL') return '';
+  const entries = provinceValueEntries(theme).filter((entry) => entry.value > 0);
+  if (!entries.length) return '';
+  return entries
+    .map((entry) => `<span class="province-token-value">${renderIcon(entry.kind)}<span class="province-token-num">${entry.value}</span></span>`)
+    .join('');
 }
 
 
@@ -87,9 +102,9 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
   if (!theme) return options.fallback || '';
   const churchValue = Math.max(0, Number(theme.C) || 0);
-  const valuesText = formatProvinceValuesText(theme);
-  const values = options.showValues && valuesText
-    ? `<span class="province-token-values">${valuesText}</span>`
+  const valuesHtml = renderProvinceValuesHtml(theme);
+  const values = options.showValues && valuesHtml
+    ? `<span class="province-token-values">${valuesHtml}</span>`
     : '';
   const classes = [
     'province-token',
@@ -98,7 +113,12 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
     theme.occupied ? 'occupied' : '',
     theme.owner === 'church' ? 'church' : '',
   ].filter(Boolean).join(' ');
-  const tooltip = `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
+  // Keep the plain-text P/T/C in the tooltip so screen-readers + the
+  // text-only summary still convey the values.
+  const valuesText = formatProvinceValuesText(theme);
+  const tooltip = valuesText
+    ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
+    : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
   return `<span class="${classes}" style="${getProvinceStyleAttr(state, theme)}" title="${tooltip}">${theme.name}${values}</span>`;
 }
 

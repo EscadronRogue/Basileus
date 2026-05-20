@@ -1,5 +1,11 @@
 import { PROVINCES } from '../data/provinces.js';
-import { formatProvinceValuesText, getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
+import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
+import {
+  ensureSvgIconSymbols,
+  buildSvgValueGroup,
+  measureSvgValueGroupWidth,
+  provinceValueEntries,
+} from '../ui/icons.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
 import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_SVG } from './svgAssets.js';
 
@@ -161,6 +167,7 @@ export async function createMapSVG(containerId, options = {}) {
   invasionOrigins = parseInvasionOrigins(originSvg);
 
   container.replaceChildren(svg);
+  ensureSvgIconSymbols(svg);
   configureThreatHatchPatterns(svg);
 
   provinceCentroids = parseProvinceLabelAnchors(originSvg);
@@ -718,13 +725,30 @@ function parseFiniteNumber(value) {
 
 // Map labels are stacked SVG cartouches that mirror the HTML
 // .province-token grammar: outline = region color, fill = owner color,
-// gold inner hairline. Two lines per cartouche: name / current profit-troop-church.
+// gold inner hairline. Two lines per cartouche: name / current values.
+//
+// The values line replaces the legacy "P3 T2 C1" text with three icon+number
+// pairs (gold → sword → church). Zero-value entries collapse so church-only
+// land shows only the church glyph.
 const MAP_CART_PAD_X = 1.0;
 const MAP_CART_MIN_WIDTH = 7.8;
 const MAP_CART_HEIGHT = 4.7;
 const MAP_CART_INSET = 0.32;
 const MAP_CART_NAME_BASELINE_Y = -0.35;
-const MAP_CART_VALUES_BASELINE_Y = 1.35;
+const MAP_CART_VALUES_BASELINE_Y = 1.55;
+
+const MAP_CART_VALUE_OPTS = Object.freeze({
+  iconSize: 1.5,
+  iconGap: 0.18,
+  pairGap: 0.85,
+  digitWidth: 0.66,
+  baselineY: 0,
+  iconY: -1.18,
+});
+
+function valueEntriesSignature(entries) {
+  return entries.map((entry) => `${entry.kind[0]}${entry.value}`).join('|');
+}
 
 function addProvinceLabels(layer) {
   layer.replaceChildren();
@@ -759,7 +783,14 @@ function buildMapCartouche(province, centroid, theme = province) {
   g.appendChild(inner);
 
   appendCartLine(g, 'map-cart-name', theme.name || province.name);
-  appendCartLine(g, 'map-cart-values', formatProvinceValuesText(theme));
+
+  // Values line: icon + number pairs replacing the old "P? T? C?" run.
+  const entries = provinceValueEntries(theme);
+  const valuesGroup = buildSvgValueGroup(entries, MAP_CART_VALUE_OPTS);
+  valuesGroup.setAttribute('class', 'map-cart-values');
+  valuesGroup.setAttribute('transform', `translate(0 ${MAP_CART_VALUES_BASELINE_Y})`);
+  valuesGroup.setAttribute('data-values-sig', valueEntriesSignature(entries));
+  g.appendChild(valuesGroup);
 
   return g;
 }
@@ -778,18 +809,22 @@ function layoutMapCartouche(g) {
   const bg = g.querySelector('.map-cart-bg');
   const inner = g.querySelector('.map-cart-inner');
   const nameText = g.querySelector('.map-cart-name');
-  const valuesText = g.querySelector('.map-cart-values');
-  if (!bg || !inner || !nameText || !valuesText) return;
+  const valuesGroup = g.querySelector('.map-cart-values');
+  if (!bg || !inner || !nameText) return;
 
   // Use normal alphabetic baselines. Firefox handles SVG baseline keywords
   // differently, so fixed baseline coordinates keep the text stable.
   nameText.setAttribute('y', MAP_CART_NAME_BASELINE_Y);
-  valuesText.setAttribute('y', MAP_CART_VALUES_BASELINE_Y);
+
+  const provinceId = g.getAttribute('data-id');
+  const theme = latestMapState?.themes?.[provinceId];
+  const valuesEntries = theme ? provinceValueEntries(theme).filter((e) => e.value > 0) : [];
+  const valuesWidth = measureSvgValueGroupWidth(valuesEntries, MAP_CART_VALUE_OPTS);
 
   const width = Math.max(
     MAP_CART_MIN_WIDTH,
     measureMapTextWidth(nameText) + MAP_CART_PAD_X * 2,
-    measureMapTextWidth(valuesText) + MAP_CART_PAD_X * 2,
+    valuesWidth + MAP_CART_PAD_X * 2,
   );
   const height = MAP_CART_HEIGHT;
 
@@ -805,6 +840,12 @@ function layoutMapCartouche(g) {
   inner.setAttribute('width', (width - MAP_CART_INSET * 2).toFixed(3));
   inner.setAttribute('height', (height - MAP_CART_INSET * 2).toFixed(3));
   inner.setAttribute('rx', '0.25');
+
+  // Re-place the values group on its baseline (group is centered at x=0 by
+  // construction in buildSvgValueGroup).
+  if (valuesGroup) {
+    valuesGroup.setAttribute('transform', `translate(0 ${MAP_CART_VALUES_BASELINE_Y})`);
+  }
 }
 
 function measureMapTextWidth(textElement) {
@@ -846,7 +887,7 @@ function updateMapCartoucheValues(cart, theme) {
   if (!cart || !theme) return;
 
   const nameText = cart.querySelector('.map-cart-name');
-  const valuesText = cart.querySelector('.map-cart-values');
+  const valuesGroup = cart.querySelector('.map-cart-values');
   let changed = false;
 
   const nextName = theme.name || theme.id || '';
@@ -855,9 +896,16 @@ function updateMapCartoucheValues(cart, theme) {
     changed = true;
   }
 
-  const nextValues = formatProvinceValuesText(theme);
-  if (valuesText && valuesText.textContent !== nextValues) {
-    valuesText.textContent = nextValues;
+  const entries = provinceValueEntries(theme);
+  const nextSig = valueEntriesSignature(entries);
+  const prevSig = valuesGroup?.getAttribute('data-values-sig');
+  if (valuesGroup && nextSig !== prevSig) {
+    // Rebuild the icon+number group in place (cheap — at most 3 pairs).
+    const rebuilt = buildSvgValueGroup(entries, MAP_CART_VALUE_OPTS);
+    rebuilt.setAttribute('class', 'map-cart-values');
+    rebuilt.setAttribute('transform', `translate(0 ${MAP_CART_VALUES_BASELINE_Y})`);
+    rebuilt.setAttribute('data-values-sig', nextSig);
+    valuesGroup.replaceWith(rebuilt);
     changed = true;
   }
 

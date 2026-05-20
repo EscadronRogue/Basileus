@@ -9,6 +9,13 @@
 import { buildBalanceOfPower } from '../engine/scoring.js';
 import { getPlayerStyleAttr } from './labels.js';
 import { formatPlayerLabel, getPlayer } from '../engine/state.js';
+import { renderIcon } from './icons.js';
+
+const CATEGORY_ICON_KIND = {
+  church: 'church',
+  estate: 'gold',
+  gold: 'gold',
+};
 
 const FREE_CITIZENS_COLOR = '#6a4a8a';
 const FREE_CITIZENS_LABEL = 'Free citizens';
@@ -108,10 +115,12 @@ function renderLegend(state, category) {
 }
 
 function renderPieCard(state, category) {
+  const iconKind = CATEGORY_ICON_KIND[category.key];
+  const iconHtml = iconKind ? renderIcon(iconKind, 'balance-pie-icon') : '';
   return `
     <div class="balance-pie" title="${category.description}">
       <div class="balance-pie-head">
-        <span class="balance-pie-title">${category.label}</span>
+        <span class="balance-pie-title">${iconHtml}<span>${category.label}</span></span>
       </div>
       ${renderPieSvg(state, category)}
       ${renderLegend(state, category)}

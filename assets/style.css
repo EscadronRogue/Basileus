@@ -2587,18 +2587,33 @@ body::before {
 }
 .map-cart-id,
 .map-cart-name,
-.map-cart-values {
+.map-cart-glyph-num {
   fill: #ffffff;
   text-shadow: 0 0.05px 0 rgba(20,8,0,0.6);
   dominant-baseline: auto;
   alignment-baseline: baseline;
-  text-anchor: middle;
+  text-anchor: start;
   pointer-events: none;
   paint-order: stroke fill;
 }
+.map-cart-name { text-anchor: middle; }
+.map-cart-id   { text-anchor: middle; }
 .map-cart-id    { font-family: var(--font-display); font-weight: 700; font-size: 1.6px; letter-spacing: 0.18px; }
 .map-cart-name  { font-family: var(--font-display); font-weight: 600; font-size: 1.45px; letter-spacing: 0.06px; }
-.map-cart-values{ font-family: var(--font-body);    font-weight: 500; font-size: 1.15px; opacity: 0.92; }
+.map-cart-glyph-num{
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25px;
+  letter-spacing: 0.04px;
+}
+/* Map cartouche value group — icons + numbers, centered around x=0 */
+.map-cart-values { pointer-events: none; }
+.map-cart-glyph { color: #ffffff; opacity: 0.94; }
+.map-cart-glyph-gold   { color: #ffe8a8; }
+.map-cart-glyph-troop  { color: #ffffff; }
+.map-cart-glyph-church { color: #cfe1ff; }
+.map-cartouche.church   .map-cart-glyph-church { color: #ffffff; }
+.map-cartouche.occupied .map-cart-glyph { opacity: 0.7; }
 
 /* Capital cartouche: text leans into the imperial gold a touch more */
 .map-cartouche.is-capital .map-cart-id,
@@ -2792,16 +2807,148 @@ body::before {
 }
 
 .province-token-values {
-  font-family: var(--font-body);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
   font-size: 0.82em;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0;
-  opacity: 0.88;
-  padding-left: 5px;
-  margin-left: 1px;
-  border-left: 1px solid rgba(240,200,90,0.32);
+  opacity: 0.96;
+  padding-left: 7px;
+  margin-left: 3px;
+  border-left: 1px solid rgba(240,200,90,0.42);
   color: #ffffff;
 }
+.province-token-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.province-token-value .icon { font-size: 1.05em; }
+.province-token-num { font-variant-numeric: tabular-nums; }
+
+/* ─────────────────────────────────────────────────────────────────
+   ICON ATOMS — three resource glyphs (sword, nomisma, basilica).
+   All icons take currentColor, so they inherit from the surrounding
+   text. The default tints below apply only when an icon sits outside
+   any colored container (e.g. on parchment).
+   ───────────────────────────────────────────────────────────────── */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.16em;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+  pointer-events: none;
+}
+.icon-troop  { color: var(--umber-1); }
+.icon-gold   { color: var(--gold-1); }
+.icon-church { color: var(--church-1); }
+
+/* Inside any colored cartouche, all three icons take parchment-white
+   so they read against the dynasty fill. The text already inherits
+   #ffffff in these contexts via existing rules. */
+.player-tab .icon,
+.candidate-btn .icon,
+.player-dashboard .icon,
+.player-role-name .icon,
+.province-token .icon,
+.title-token .icon { color: #ffffff; }
+
+/* ─────────────────────────────────────────────────────────────────
+   VALUE ATOM — "[label] [icon] [number]" pill used everywhere a
+   gold / troop / church count appears in the DOM. The label is
+   optional; the icon + number always travel together.
+   ───────────────────────────────────────────────────────────────── */
+.value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.value .icon {
+  align-self: center;
+  font-size: 1em;
+}
+.value .value-num { font-variant-numeric: tabular-nums; }
+.value .value-noun {
+  font-family: var(--font-display);
+  font-size: 0.74em;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: inherit;
+  opacity: 0.75;
+  margin-right: 2px;
+}
+
+.value.troop  { color: var(--umber-1); }
+.value.gold   { color: var(--gold-1); }
+.value.church { color: var(--church-1); }
+.value.troop  .icon { color: inherit; }
+.value.gold   .icon { color: inherit; }
+.value.church .icon { color: inherit; }
+
+.value.income { color: var(--win); }
+.value.upkeep { color: var(--crimson-1); }
+.value.muted  { color: var(--umber-3); }
+
+/* Tab-finance run: one coin icon prefix + three tabular values. */
+.tab-finance-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 1px;
+}
+.tab-finance-icon .icon { font-size: 12px; color: #ffffff; opacity: 0.94; }
+
+/* Balance-of-power pie title takes the category icon */
+.balance-pie-icon { font-size: 13px; margin-right: 5px; }
+.balance-pie-title { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Dashboard "Gold" row gets a leading coin icon and reads as a label */
+.dashboard-stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: inherit;
+}
+.dashboard-stat-label .icon { font-size: 13px; }
+
+/* Army-card header count: icon + number + uppercase label */
+.army-card-count {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.army-card-count .value { font-size: 14px; }
+
+/* Estate card "Value: [coin] N" tag */
+.estate-card-value { display: inline-flex; align-items: center; gap: 6px; }
+.estate-card-value .value { font-size: 13px; }
+
+/* Selected province yield line — icon+number row */
+.selected-province-yield {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 6px;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+}
+.selected-province-yield .value { font-size: 13px; }
 
 /* State variants */
 .province-token.occupied { opacity: 0.78; filter: saturate(0.6); }
@@ -4053,4 +4200,987 @@ button.merc-button {
     grid-template-columns: minmax(0, 1fr);
   }
   .balance-pie-svg { max-width: 140px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   APPOINT · BID · DEPLOY — interaction surfaces
+   ───────────────────────────────────────────────────────────────
+   Every step takes the cartouche grammar: dynasty/region/owner color
+   on selectable buttons; gold outer ring on selected; clear picker
+   steps with numbered kicker; live preview line before the action.
+   ═══════════════════════════════════════════════════════════════ */
+
+.picker-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+.picker-step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: rgba(168,116,32,0.18);
+  border: 1px solid rgba(168,116,32,0.42);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold-2);
+}
+.picker-step-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--umber-2);
+  white-space: nowrap;
+}
+
+.choice-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 4px 0 8px;
+}
+.choice-grid-empty {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 12.5px;
+  color: var(--umber-3);
+  padding: 6px 0;
+}
+
+/* Choice button — a cartouche button. The wrapper is transparent;
+   the inner cartouche-token does the visual work. Selected state
+   adds a gold outer ring via the existing selector pattern. */
+.choice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.12s;
+}
+.choice-btn:hover { filter: brightness(1.06); }
+.choice-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+.choice-btn:focus-visible { outline: 2px solid var(--gold-1); outline-offset: 2px; }
+
+/* Player choice button — standalone cartouche (crest + name) since
+   my markup doesn't wrap a .player-role-name. */
+.player-choice-btn {
+  padding: 4px 10px 5px 4px;
+  gap: 7px;
+  border: 3px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-radius: 4px;
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22);
+}
+.player-choice-btn .choice-crest {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(20,8,0,0.30);
+  border: 1px solid rgba(240,200,90,0.55);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.player-choice-btn .choice-label { color: #ffffff; }
+.player-choice-btn.selected {
+  filter: brightness(1.06);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.85),
+    0 0 0 2px rgba(240,200,90,0.55),
+    0 0 0 4px var(--role-outline-color, var(--role-color, var(--gold-1))),
+    0 2px 8px rgba(30,16,0,0.22);
+}
+
+/* Title and province choice buttons reuse the existing token visuals;
+   we just need a clean selected ring around the inner cartouche. */
+.title-choice-btn { padding: 3px; }
+.title-choice-btn.selected .title-token,
+.revocation-choice-btn.selected .title-token,
+.revocation-choice-btn.selected .province-token {
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.85),
+    0 0 0 1.5px var(--gold-4),
+    0 0 0 4px var(--cart-border, var(--gold-1)),
+    0 1px 4px rgba(46,30,15,0.22);
+}
+
+/* Appointment section card — holds the two-step pickers + preview + button. */
+.appointment-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: 4px;
+}
+.appointment-section {
+  padding: 12px 14px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,252,242,0.94) 0%, rgba(245,233,200,0.72) 100%);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.appointment-section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.appointment-section-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+}
+.appointment-step { display: flex; flex-direction: column; }
+.appointment-preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(168,116,32,0.32);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.6);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--umber-1);
+  min-height: 36px;
+}
+.appointment-preview .muted { color: var(--umber-3); font-style: italic; }
+.appointment-preview .danger { color: var(--crimson-1); font-family: var(--font-display); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; }
+.appointment-actions { margin-top: 2px; }
+.appointment-actions .btn-primary:disabled { opacity: 0.42; cursor: not-allowed; }
+
+/* ── Estates panel: gold reserve + per-province bid cards ── */
+.estates-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.estates-head h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2.2px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+}
+.estates-reserve {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid rgba(200,146,30,0.4);
+  background: rgba(200,146,30,0.10);
+  border-radius: 999px;
+}
+.estates-reserve .reserve-label {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+.estate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 10px;
+}
+.estate-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(168,116,32,0.20);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.estate-card:hover { border-color: rgba(200,146,30,0.40); box-shadow: 0 4px 14px rgba(168,116,32,0.18); }
+.estate-card.disabled { opacity: 0.55; }
+.estate-card-province { display: flex; }
+.estate-card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+.estate-card-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.estate-card-stats dt {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+.estate-card-stats dd {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--umber-1);
+}
+.estate-card-bid {
+  display: flex;
+  gap: 6px;
+}
+.estate-card-bid input {
+  flex: 1 1 80px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--parch-3);
+  border-radius: var(--r-sm);
+  background: #fff;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--umber-0);
+  text-align: right;
+}
+.estate-card-bid input:focus { outline: 2px solid var(--gold-1); outline-offset: 1px; }
+.estate-bid-btn { flex: 0 0 auto; }
+.estate-card-warn {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--crimson-1);
+}
+
+/* ── Deployment / Orders: header + army cards + candidate rows ── */
+.orders-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.orders-head h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2.2px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+}
+.orders-budget {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid rgba(168,116,32,0.32);
+  border-radius: 999px;
+  background: rgba(255,252,240,0.78);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+}
+.orders-budget .orders-budget-of {
+  color: var(--umber-3);
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.orders-budget.over {
+  border-color: rgba(160,48,48,0.45);
+  background: rgba(160,48,48,0.10);
+}
+.orders-budget.over .orders-budget-spent .value,
+.orders-budget.over .orders-budget-spent .icon { color: var(--crimson-1); }
+
+.army-card-stack { display: flex; flex-direction: column; gap: 10px; }
+.army-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(168,116,32,0.20);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  box-shadow: var(--shadow-card);
+}
+.army-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.army-card-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--umber-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.army-card-sub {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--umber-2);
+}
+.army-card-slider {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.army-slider-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+.army-card-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--gold-1);
+}
+.army-slider-readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 86px;
+  justify-content: flex-end;
+}
+.army-slider-num {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--umber-0);
+  font-variant-numeric: tabular-nums;
+}
+.army-slider-cost .value,
+.army-slider-cost .icon { color: var(--crimson-1); }
+.army-slider-cost { font-size: 12.5px; }
+
+/* Candidate selector — cartouche rows like the player tabs, with
+   a clear gold ring on the selected entry. */
+.candidate-section { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.candidate-section-head { margin-bottom: 4px; }
+.candidate-grid { display: flex; flex-direction: column; gap: 7px; }
+.candidate-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 3px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-radius: var(--r-md);
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  font-family: var(--font-display);
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22),
+    0 2px 8px rgba(30,16,0,0.12);
+  transition: filter 0.12s, box-shadow 0.12s;
+}
+.candidate-row:hover { filter: brightness(1.06); }
+.candidate-row.selected {
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.85),
+    0 0 0 2px rgba(240,200,90,0.55),
+    0 0 0 4px var(--role-outline-color, var(--role-color, var(--gold-1))),
+    0 3px 12px rgba(30,16,0,0.22);
+}
+.candidate-crest {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(20,8,0,0.30);
+  border: 1px solid rgba(240,200,90,0.55);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.candidate-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.candidate-tag {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.32);
+  color: #fff;
+}
+.candidate-row.selected .candidate-tag {
+  background: rgba(240,200,90,0.30);
+  border-color: rgba(240,200,90,0.7);
+  color: var(--parch-0);
+}
+
+/* ── Action buttons — primary (gold) / danger (crimson) / secondary ──
+   Used by the appointment, bid, and deployment panels. Inherits the
+   illuminated-manuscript palette (Cinzel display, gold-leaf wash). */
+.btn-primary,
+.btn-danger,
+.btn-secondary {
+  min-height: var(--touch-target);
+  padding: 9px 18px;
+  border-radius: var(--r-md);
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: var(--shadow-inset), var(--shadow-card);
+  white-space: nowrap;
+}
+.btn-primary {
+  border: 1px solid rgba(168,116,32,0.55);
+  background: linear-gradient(180deg, rgba(200,146,30,0.22) 0%, rgba(168,116,32,0.12) 100%);
+  color: var(--gold-1);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(200,146,30,0.34) 0%, rgba(168,116,32,0.18) 100%);
+  border-color: var(--gold-1);
+  box-shadow: var(--shadow-inset), 0 4px 18px rgba(168,116,32,0.20);
+}
+.btn-danger {
+  border: 1px solid rgba(160,48,48,0.55);
+  background: linear-gradient(180deg, rgba(160,48,48,0.18) 0%, rgba(122,32,32,0.10) 100%);
+  color: var(--crimson-1);
+}
+.btn-danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(160,48,48,0.28) 0%, rgba(122,32,32,0.14) 100%);
+  border-color: var(--crimson-1);
+  box-shadow: var(--shadow-inset), 0 4px 18px rgba(160,48,48,0.18);
+}
+.btn-secondary {
+  border: 1px solid rgba(74,48,24,0.32);
+  background: rgba(255,252,240,0.78);
+  color: var(--umber-2);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: rgba(74,48,24,0.55);
+  background: rgba(255,252,240,0.95);
+  color: var(--umber-1);
+}
+.btn-primary:disabled,
+.btn-danger:disabled,
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: var(--shadow-card);
+}
+.btn-primary:focus-visible,
+.btn-danger:focus-visible,
+.btn-secondary:focus-visible {
+  outline: 2px solid var(--gold-1);
+  outline-offset: 2px;
+}
+
+/* The panel-actions row sits below pickers; full-width primary CTA. */
+.panel-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: 8px;
+}
+.panel-actions .btn-primary,
+.panel-actions .btn-danger,
+.panel-actions .btn-secondary { flex: 1 1 auto; }
+.appointment-actions { display: flex; gap: var(--sp-2); }
+.appointment-actions .btn-primary { flex: 1 1 auto; }
+
+/* Phase-card title styling — used by Court / Estates / Deployment heads */
+.phase-card { padding: var(--main-panel-pad); display: flex; flex-direction: column; gap: var(--sp-3); }
+.phase-card > h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2.2px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+}
+
+/* Action-fold (Appoint / Revoke / Gift Land) summary styling */
+.action-fold {
+  border: 1px solid rgba(168,116,32,0.16);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.5);
+  overflow: hidden;
+}
+.action-fold + .action-fold { margin-top: 8px; }
+.action-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 14px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+  background: linear-gradient(180deg, rgba(240,228,195,0.5), transparent);
+}
+.action-fold > summary::-webkit-details-marker { display: none; }
+.action-fold > summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 12px;
+  margin-right: 6px;
+  font-size: 10px;
+  color: var(--umber-3);
+  transition: transform 0.12s;
+}
+.action-fold[open] > summary::before { transform: rotate(90deg); }
+.action-fold > *:not(summary) { padding: 10px 14px 14px; }
+
+/* Segmented control — Frontier / Capital on army and mercenary cards */
+.segmented-control {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid rgba(168,116,32,0.32);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.6);
+  overflow: hidden;
+  align-self: flex-start;
+  padding: 0;
+}
+.segmented-control button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid rgba(168,116,32,0.18);
+  padding: 7px 14px;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.segmented-control button:last-child { border-right: 0; }
+.segmented-control button:hover { color: var(--umber-1); background: rgba(168,116,32,0.06); }
+.segmented-control button.active {
+  background: rgba(200,146,30,0.22);
+  color: var(--gold-2);
+  box-shadow: inset 0 1px 0 rgba(255,250,228,0.4);
+}
+
+/* Title redistribution panel — one row per office. */
+.title-redist-stack { display: flex; flex-direction: column; gap: 12px; }
+.title-redist-row {
+  padding: 12px 14px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.title-redist-row-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--umber-2);
+}
+.title-redist-arrow {
+  font-family: var(--font-display);
+  color: var(--gold-1);
+  font-size: 16px;
+  margin: 0 2px;
+}
+.title-redist-row .muted { color: var(--umber-3); font-style: italic; }
+
+/* ── Resolution panel ───────────────────────────────────────────────────────
+   War result, coup outcome, defender-reward cards. Same cartouche
+   vocabulary as the appointment panels, color-coded by outcome. */
+.resolution-panel { gap: 14px; }
+.result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 16px;
+  border: 1px solid rgba(168,116,32,0.22);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  box-shadow: var(--shadow-card);
+}
+.result-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.result-card-kicker {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+  padding: 2px 9px;
+  border: 1px solid rgba(168,116,32,0.32);
+  background: rgba(200,146,30,0.12);
+  border-radius: 999px;
+}
+.result-card-against {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--umber-2);
+  flex: 1;
+}
+.result-card-against strong { color: var(--umber-0); font-style: normal; font-weight: 600; }
+
+/* War outcome ribbon: green / crimson / umber */
+.war-outcome-badge {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+.war-victory .war-outcome-badge {
+  background: rgba(58,107,40,0.16);
+  border-color: rgba(58,107,40,0.42);
+  color: var(--win);
+}
+.war-defeat .war-outcome-badge {
+  background: rgba(160,48,48,0.14);
+  border-color: rgba(160,48,48,0.42);
+  color: var(--crimson-1);
+}
+.war-stalemate .war-outcome-badge {
+  background: rgba(108,72,32,0.14);
+  border-color: rgba(108,72,32,0.36);
+  color: var(--umber-2);
+}
+.war-result.empire-fell .war-outcome-badge {
+  background: rgba(160,48,48,0.22);
+  border-color: var(--crimson-1);
+  color: #e08888;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.war-tug {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 14px;
+  background: rgba(255,252,240,0.78);
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-md);
+}
+.war-tug-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.war-tug-side.empire { color: var(--win); }
+.war-tug-side.invader { color: var(--crimson-1); }
+.war-tug-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.war-tug-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+}
+.war-tug-value .icon { font-size: 20px; color: inherit; }
+.war-tug-num {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+.war-tug-vs {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+  align-self: center;
+}
+
+.war-result-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border-left: 4px solid;
+  background: rgba(255,252,240,0.6);
+}
+.war-result-row.lost {
+  border-left-color: var(--crimson-1);
+  background: rgba(160,48,48,0.06);
+}
+.war-result-row.recovered {
+  border-left-color: var(--win);
+  background: rgba(58,107,40,0.06);
+}
+.war-result-row-label {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.war-result-row.lost .war-result-row-label { color: var(--crimson-1); }
+.war-result-row.recovered .war-result-row-label { color: var(--win); }
+.war-result-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Coup outcome card */
+.coup-outcome-badge {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.coup-outcome-badge.held {
+  background: rgba(200,146,30,0.16);
+  border-color: rgba(200,146,30,0.42);
+  color: var(--gold-2);
+}
+.coup-outcome-badge.changed {
+  background: rgba(122,77,153,0.18);
+  border-color: rgba(122,77,153,0.42);
+  color: var(--purple-0);
+}
+.coup-winner-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--umber-1);
+}
+.coup-winner-line .muted { color: var(--umber-3); font-style: italic; }
+.vote-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(168,116,32,0.18);
+}
+.vote-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.vote-troops {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--umber-0);
+}
+.vote-troops .icon { font-size: 14px; color: var(--umber-1); }
+.vote-troops-num { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* Empire-fallen banner inside resolution panel */
+.empire-fall-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 2px solid var(--crimson-1);
+  background: rgba(160,48,48,0.12);
+  border-radius: var(--r-md);
+}
+.empire-fall-kicker {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--crimson-1);
+}
+.empire-fall-body {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--umber-1);
+}
+
+/* Reward section — best-defender choice cards */
+.reward-section { display: flex; flex-direction: column; gap: 8px; }
+.reward-list { display: flex; flex-direction: column; gap: 10px; }
+.reward-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px 14px;
+  border: 1px solid rgba(168,116,32,0.22);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.7) 100%);
+  box-shadow: var(--shadow-card);
+}
+.reward-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.reward-card-rank {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(200,146,30,0.12);
+  border: 1px solid rgba(200,146,30,0.32);
+  color: var(--gold-2);
+}
+.reward-card-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--umber-1);
+}
+.reward-card-body .muted { color: var(--umber-3); font-style: italic; }
+.reward-card-body .icon { font-size: 13px; color: var(--umber-1); margin: 0 2px; }
+
+.reward-card-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .reward-card-choice { grid-template-columns: 1fr; }
+}
+.reward-card-choice button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 11px 13px;
+  text-align: left;
+  white-space: normal;
+  min-height: auto;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.reward-choice-kicker {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  opacity: 0.95;
+}
+.reward-choice-desc {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+.reward-choice-desc .icon { font-size: 13px; }
+.reward-choice-restore { color: var(--win); border-color: rgba(58,107,40,0.45); background: linear-gradient(180deg, rgba(58,107,40,0.15) 0%, rgba(58,107,40,0.06) 100%); }
+.reward-choice-restore:hover:not(:disabled) { background: linear-gradient(180deg, rgba(58,107,40,0.24) 0%, rgba(58,107,40,0.10) 100%); border-color: var(--win); }
+.reward-choice-restore .reward-choice-kicker { color: var(--win); }
+.reward-choice-gold .reward-choice-kicker { color: var(--gold-2); }
+
+/* Scoring panel — iconize category breakdown. */
+.score-row .score-breakdown {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+.score-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255,252,240,0.55);
+  border: 1px solid rgba(168,116,32,0.18);
+  font-family: var(--font-display);
+  font-size: 11px;
+}
+.score-cat .icon { font-size: 12px; }
+.score-cat-share { color: var(--umber-2); }
+.score-cat-pts { color: var(--gold-2); font-weight: 700; }
+.score-row.winner .score-cat {
+  background: rgba(200,146,30,0.10);
+  border-color: rgba(200,146,30,0.42);
 }
