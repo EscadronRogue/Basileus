@@ -8,8 +8,8 @@ export const PLACEHOLDER_AI_OPPONENTS = Object.freeze(
   GREEK_FIRST_NAMES.slice(0, PLACEHOLDER_COUNT).map((firstName, index) => ({
     id: `placeholder-${index + 1}`,
     firstName,
-    label: 'AI Placeholder',
-    description: 'Named seat placeholder. No AI decision system is installed.',
+    label: 'Strategic AI',
+    description: 'Named strategic AI seat using the shared heuristic planner.',
     placeholder: true,
   })),
 );

@@ -11,7 +11,7 @@ import {
   describeOrderChoice,
 } from './strategy.js';
 
-export const AI_OPPONENT_MISSING_MESSAGE = 'AI placeholder opponent not found.';
+export const AI_OPPONENT_MISSING_MESSAGE = 'AI opponent not found.';
 export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
 
 function normalizeHumanPlayerIds(playerCount, humanPlayerIds = []) {
@@ -40,7 +40,7 @@ export function hydrateAiOpponent(rawOpponent, seatId = 0) {
   return normalizeOpponent(rawOpponent, seatId);
 }
 
-function opponentDisplayName(opponent, fallback = 'AI Placeholder') {
+function opponentDisplayName(opponent, fallback = 'AI Opponent') {
   return String(opponent?.firstName || opponent?.name || fallback).trim() || fallback;
 }
 
@@ -60,16 +60,17 @@ function createPlayerMeta(player, humanPlayerIds, aiPlayer = null) {
   };
 }
 
-export async function loadBrowserAiOpponentRoster(url = DEFAULT_BROWSER_OPPONENT_ROSTER_URL, options = {}) {
+export async function loadBrowserAiOpponentRoster(url = null, options = {}) {
   const required = Boolean(options.required);
-  if (typeof fetch === 'function') {
+  const remoteUrl = url || (options.remote ? DEFAULT_BROWSER_OPPONENT_ROSTER_URL : null);
+  if (remoteUrl && typeof fetch === 'function') {
     try {
-      const response = await fetch(url, { cache: 'no-store' });
+      const response = await fetch(remoteUrl, { cache: 'no-store' });
       if (response.ok) {
         const payload = await response.json();
         if (Array.isArray(payload?.opponents)) return payload.opponents;
       } else if (required) {
-        throw new Error(`Could not list AI placeholders: HTTP ${response.status}.`);
+        throw new Error(`Could not list AI opponents: HTTP ${response.status}.`);
       }
     } catch (error) {
       if (required) throw error;
@@ -90,7 +91,7 @@ export function createAIMeta(state, options = {}) {
     humanPlayerIds,
     players,
     opponentAvailable: true,
-    placeholderOnly: true,
+    placeholderOnly: false,
     publicLog: [],
     decisionLog: createDecisionLog(),
   };
@@ -233,7 +234,7 @@ export function applyPlannedAiTitleAssignment(state, meta, pendingAssignment = n
       : null;
   if (!action) return null;
   const result = applyLegalAction(state, action, meta);
-  if (!result.ok) throw new Error(result.reason || 'AI placeholder title assignment failed validation.');
+  if (!result.ok) throw new Error(result.reason || 'AI title assignment failed validation.');
   return null;
 }
 

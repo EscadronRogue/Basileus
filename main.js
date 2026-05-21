@@ -159,8 +159,8 @@ function renderAiRoster() {
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
   if (!aiOpponentRosterLoaded) {
-    setupAiRoster.innerHTML = '<div class="setup-ai-seat setup-ai-seat-empty"><strong>Loading AI placeholders...</strong><span>Preparing named seats</span></div>';
-    setupAiRosterHint.textContent = 'AI seats are placeholders until a new AI system is installed.';
+    setupAiRoster.innerHTML = '<div class="setup-ai-seat setup-ai-seat-empty"><strong>Loading AI opponents...</strong><span>Preparing named seats</span></div>';
+    setupAiRosterHint.textContent = 'AI seats use the strategic planner during play.';
     updateStartAvailability();
     return;
   }
@@ -169,10 +169,10 @@ function renderAiRoster() {
     setupAiRoster.innerHTML = `
       <div class="setup-ai-seat setup-ai-seat-empty">
         <strong>No AI opponents found</strong>
-        <span>${escapeHtml(aiOpponentRosterError || 'No AI placeholders are available.')}</span>
+        <span>${escapeHtml(aiOpponentRosterError || 'No AI opponents are available.')}</span>
       </div>
     `;
-    setupAiRosterHint.textContent = 'Single-player AI is unavailable until seat placeholders are available.';
+    setupAiRosterHint.textContent = 'Single-player AI is unavailable until named AI seats are available.';
     updateStartAvailability();
     return;
   }
@@ -181,7 +181,7 @@ function renderAiRoster() {
     setupAiRoster.innerHTML = `
       <div class="setup-ai-seat setup-ai-seat-empty">
         <strong>AI names assigned at start</strong>
-        <span>Random setup will resolve your seat first, then fill the remaining seats with Greek placeholders.</span>
+        <span>Random setup will resolve your seat first, then fill the remaining seats with Greek AI names.</span>
       </div>
     `;
     setupAiRosterHint.textContent = 'Choose a fixed player count and seat to customize individual AI names.';
@@ -229,7 +229,7 @@ function renderAiRoster() {
     });
   });
 
-  setupAiRosterHint.textContent = 'Choose a Greek name placeholder for each AI seat.';
+  setupAiRosterHint.textContent = 'Choose a Greek name for each strategic AI seat.';
   updateStartAvailability();
 }
 
@@ -360,7 +360,7 @@ btnStart.addEventListener('click', async () => {
       ? buildAiOpponentSelections(playerCount, seat)
       : [];
     if (mode === 'single' && aiOpponentSelections.length !== playerCount - 1) {
-      throw new Error('Choose an AI placeholder for every AI seat.');
+      throw new Error('Choose an AI opponent for every AI seat.');
     }
     setupDialog.style.display = 'none';
 

@@ -10,9 +10,11 @@ import {
   buildSimultaneousAIOrders,
   createAIMeta,
   isAIPlayer,
+  loadBrowserAiOpponentRoster,
   planMajorTitleAssignment,
   runAICourtAutomation,
 } from './brain.js';
+import { applyLegalAction, listLegalEstateActions } from './legalActions.js';
 
 function makeState() {
   const state = createGameState({ playerCount: 4, deckSize: 2, seed: 13, historyEnabled: true });
@@ -33,6 +35,22 @@ test('AI meta keeps declared human seats under human control', () => {
   assert.equal(isAIPlayer(meta, 1), true);
   assert.equal(isAIPlayer(meta, 2), false);
   assert.equal(isAIPlayer(meta, 3), true);
+});
+
+test('browser AI roster defaults to bundled opponents without probing API', async () => {
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return { ok: false, status: 404 };
+  };
+  try {
+    const roster = await loadBrowserAiOpponentRoster();
+    assert.equal(called, false);
+    assert.equal(roster.length > 0, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('strategic court automation only controls AI players', () => {
@@ -70,6 +88,18 @@ test('strategic orders use the deployment schema and include decision metadata',
   assert.equal(orders.armies.PATRIARCH.funded >= 0, true);
   assert.equal(orders.debug.decision.title.includes('strategic'), true);
   assert.equal(orders.debug.decision.factors[0].label, 'frontier');
+});
+
+test('legal estate actions dispatch through the shared AI action path', () => {
+  const state = makeState();
+  state.phase = 'estates';
+  state.players[1].gold = 4;
+
+  const action = listLegalEstateActions(state, 1)[0];
+  const result = applyLegalAction(state, action);
+
+  assert.equal(result.ok, true);
+  assert.equal(Boolean(state.landAuctions[action.payload.themeId]), true);
 });
 
 test('simultaneous AI planning ignores already submitted human deployment orders', () => {
