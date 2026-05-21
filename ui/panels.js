@@ -236,7 +236,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
   container.innerHTML = `
     <section class="phase-card title-redistribution-panel">
       <h3>Redistribute Major Titles</h3>
-      <p class="section-hint">${isBasileus ? 'Assign each major office to a vassal before the income phase.' : 'Waiting for the Basileus to assign the major titles.'}</p>
+      <p class="section-hint">${isBasileus ? 'Assign each major office to an eligible player before the income phase.' : 'Waiting for the Basileus to assign the major titles.'}</p>
       <div class="title-redist-stack">
         ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => {
           const assigned = Number(draft.assignments[titleKey]);
