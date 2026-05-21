@@ -1,19 +1,19 @@
-// ui/icons.js — Single source of truth for the three resource glyphs.
+// ui/icons.js - Single source of truth for the three resource glyphs.
 //
 // Three icons, one grammar:
-//   • TROOP  → sword       (replaces the letter "T" / "troops" in UI)
-//   • GOLD   → nomisma     (replaces the letter "g" / "gold" in UI)
-//   • CHURCH → basilica    (replaces the letter "C" / "church" in UI)
+//   - TROOP  -> crossed spears  (replaces the letter "T" / "troops" in UI)
+//   - GOLD   -> Chi-Rho coin    (replaces the letter "g" / "gold" in UI)
+//   - CHURCH -> Orthodox cross  (replaces the letter "C" / "church" in UI)
 //
 // All glyphs are stroke-driven with small filled accents, matching the
 // ruleset specimen. Color comes from currentColor, so each icon takes the
 // surrounding text color in HTML and in SVG <use> references.
 //
 // Two interfaces:
-//   renderIcon(kind)              — HTML <span> with inline <svg>
-//   renderValue(kind, n, opts)    — HTML "[label] [icon] [number]" pill
-//   ensureSvgIconSymbols(svgRoot) — install <symbol>s for the map renderer
-//   svgUseIcon(kind, attrs)       — build an SVGUseElement referencing them
+//   renderIcon(kind)              - HTML <span> with inline <svg>
+//   renderValue(kind, n, opts)    - HTML "[label] [icon] [number]" pill
+//   ensureSvgIconSymbols(svgRoot) - install <symbol>s for the map renderer
+//   svgUseIcon(kind, attrs)       - build an SVGUseElement referencing them
 
 const SVG_VIEWBOX = '0 0 24 24';
 
@@ -21,14 +21,15 @@ const SVG_VIEWBOX = '0 0 24 24';
 const ICON_PATHS = {
   troop: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="3.2" r="1.05" fill="currentColor" stroke="none"/>
-      <path d="M12 4.25 L12 6.5"/>
-      <path d="M8 6.5 L16 6.5"/>
-      <path d="M8 6.5 L8.9 7.4"/>
-      <path d="M16 6.5 L15.1 7.4"/>
-      <path d="M12 7 L12 19.4"/>
-      <path d="M10.2 7.6 L12 20.4 L13.8 7.6 Z" fill="currentColor" fill-opacity=".18"/>
-      <path d="M12 8.4 L12 17.8" stroke-opacity=".45" stroke-width=".9"/>
+      <path d="M7.1 18.8 L16.9 5.2"/>
+      <path d="M16.9 5.2 L15.2 5.8 L16.5 7.1 Z" fill="currentColor" fill-opacity=".18"/>
+      <path d="M16.9 5.2 L15 5.6 L16.2 7.3 Z"/>
+      <path d="M16.9 18.8 L7.1 5.2"/>
+      <path d="M7.1 5.2 L8.8 5.8 L7.5 7.1 Z" fill="currentColor" fill-opacity=".18"/>
+      <path d="M7.1 5.2 L9 5.6 L7.8 7.3 Z"/>
+      <path d="M8.1 17.5 L5.8 20.1"/>
+      <path d="M15.9 17.5 L18.2 20.1"/>
+      <circle cx="12" cy="12" r="1.15" fill="currentColor" fill-opacity=".16"/>
     </g>
   `,
   gold: `
@@ -36,22 +37,21 @@ const ICON_PATHS = {
       <circle cx="12" cy="12" r="8.4" fill="currentColor" fill-opacity=".10"/>
       <circle cx="12" cy="12" r="8.4"/>
       <circle cx="12" cy="12" r="6.4" stroke-opacity=".55" stroke-width=".7"/>
-      <path d="M12 7.6 L12 16.4"/>
-      <path d="M9 12 L15 12"/>
-      <path d="M12 7.6 Q13.4 8.2 13.4 9.4 Q13.4 10.6 12 11"/>
+      <path d="M12 6.9 L12 17.1"/>
+      <path d="M8.6 8.1 L15.4 15.9"/>
+      <path d="M15.4 8.1 L8.6 15.9"/>
+      <path d="M12 7.3 H13.7 Q15.4 7.3 15.4 9.2 Q15.4 11 13.7 11 H12"/>
+      <path d="M12 11 H14.2" stroke-opacity=".45" stroke-width=".9"/>
     </g>
   `,
   church: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3.2 20 L20.8 20"/>
-      <path d="M5.2 20 L5.2 12.6 L18.8 12.6 L18.8 20"/>
-      <path d="M7.5 12.6 Q12 6.2 16.5 12.6" fill="currentColor" fill-opacity=".12"/>
-      <path d="M12 4.1 L12 6.6"/>
-      <path d="M10.9 5.2 L13.1 5.2"/>
-      <path d="M5.2 12.6 Q3.7 10 5.2 8.8 Q6.7 10 5.2 12.6 Z" fill="currentColor" fill-opacity=".10"/>
-      <path d="M18.8 12.6 Q20.3 10 18.8 8.8 Q17.3 10 18.8 12.6 Z" fill="currentColor" fill-opacity=".10"/>
-      <path d="M8.6 20 L8.6 16.4 Q10 14.6 11.4 16.4 L11.4 20"/>
-      <path d="M12.6 20 L12.6 16.4 Q14 14.6 15.4 16.4 L15.4 20"/>
+      <path d="M12 3.2 L12 20.8"/>
+      <path d="M8.9 6.3 L15.1 6.3"/>
+      <path d="M7.1 10.5 L16.9 10.5"/>
+      <path d="M8.8 17.9 L15.2 15.3"/>
+      <path d="M12 3.2 L10.9 4.8 L13.1 4.8 Z" fill="currentColor" fill-opacity=".18"/>
+      <circle cx="12" cy="10.5" r="1.15" fill="currentColor" fill-opacity=".12"/>
     </g>
   `,
 };
