@@ -157,6 +157,7 @@ export async function createMapSVG(containerId, options = {}) {
   const regionStrokeLayer = createGroup(viewportLayer, 'layer-region-stroke');
   const threatLayer = createGroup(viewportLayer, 'layer-threats');
   const hitboxLayer = createGroup(viewportLayer, 'layer-hitboxes');
+  const invasionRouteLayer = createGroup(viewportLayer, 'layer-invasion-route');
   const labelLayer = createGroup(viewportLayer, 'layer-labels');
   const badgeLayer = createGroup(viewportLayer, 'layer-badges');
   const invasionLayer = createGroup(viewportLayer, 'layer-invasion');
@@ -1254,10 +1255,12 @@ function updateBadges(state) {
 }
 
 export function drawInvasionRoute(invasion) {
-  const layer = document.getElementById('layer-invasion');
-  if (!layer) return;
+  const routeLayer = document.getElementById('layer-invasion-route');
+  const cartoucheLayer = document.getElementById('layer-invasion');
+  if (!routeLayer || !cartoucheLayer) return;
 
-  layer.replaceChildren();
+  routeLayer.replaceChildren();
+  cartoucheLayer.replaceChildren();
   if (!invasion) return;
 
   const points = [];
@@ -1279,7 +1282,7 @@ export function drawInvasionRoute(invasion) {
   const path = document.createElementNS(SVG_NS, 'path');
   path.setAttribute('d', pathData);
   path.setAttribute('class', 'invasion-route');
-  layer.appendChild(path);
+  routeLayer.appendChild(path);
 
   for (let index = 1; index < points.length; index += 1) {
     const marker = document.createElementNS(SVG_NS, 'circle');
@@ -1287,10 +1290,10 @@ export function drawInvasionRoute(invasion) {
     marker.setAttribute('cy', points[index].cy);
     marker.setAttribute('r', 0.8);
     marker.setAttribute('class', 'invasion-marker');
-    layer.appendChild(marker);
+    routeLayer.appendChild(marker);
   }
 
-  appendInvasionCartouche(layer, invasion, points[0]);
+  appendInvasionCartouche(cartoucheLayer, invasion, points[0]);
 }
 
 

@@ -9,10 +9,10 @@ export const REGIONS = {
 };
 
 export const REGION_BORDER_COLORS = {
-  [REGIONS.EAST]: '#6a4a8a',
-  [REGIONS.WEST]: '#7a2020',
-  [REGIONS.SEA]: '#1e3a7a',
-  [REGIONS.CPL]: '#9a7010',
+  [REGIONS.EAST]: '#800080',
+  [REGIONS.WEST]: '#AA336A',
+  [REGIONS.SEA]: '#5D3FD3',
+  [REGIONS.CPL]: '#D4AF37',
 };
 
 export const PROVINCES = [

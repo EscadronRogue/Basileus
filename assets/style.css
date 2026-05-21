@@ -2225,7 +2225,7 @@ body::before {
    with an optional office/estate marker row below the values.
    Built and laid out by mapRenderer.js. */
 .map-cartouche {
-  --cart-bg: var(--province-cartouche-fill-color, color-mix(in srgb, var(--free-fill) 62%, var(--parch-0) 38%));
+  --cart-bg: var(--province-cartouche-fill-color, color-mix(in srgb, var(--free-fill) 72%, var(--umber-0) 28%));
   --cart-border: var(--province-outline-color, var(--empire-border));
   cursor: pointer;
   pointer-events: auto;
