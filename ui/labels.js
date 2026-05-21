@@ -20,15 +20,29 @@ const CHURCH_FILL = '#1a1a1a';
 const OCCUPIED_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
 const DARK_OUTLINE_MIX = '#1f1208';
-const LOST_FILL_PERCENT_BY_REGION = {
+const LOST_CART_FILL_PERCENT_BY_REGION = {
   east: 28,
   west: 14,
   sea: 28,
   cpl: 18,
 };
 
-const LOST_OUTLINE_PERCENT_BY_REGION = {
+const LOST_CART_OUTLINE_PERCENT_BY_REGION = {
   west: 42,
+};
+
+const LOST_LAND_FILL_PERCENT_BY_REGION = {
+  east: 18,
+  west: 8,
+  sea: 18,
+  cpl: 10,
+};
+
+const LOST_LAND_OUTLINE_PERCENT_BY_REGION = {
+  east: 36,
+  west: 28,
+  sea: 36,
+  cpl: 32,
 };
 
 // ── CSS variable plumbing ─────────────────────────────────────────────
@@ -66,19 +80,24 @@ function mixColor(color, colorPercent, otherColor) {
 export function getProvinceRegionPalette(themeOrRegion) {
   const region = typeof themeOrRegion === 'string' ? themeOrRegion : themeOrRegion?.region;
   const base = getRegionColor(region);
-  const lostFillPercent = LOST_FILL_PERCENT_BY_REGION[region] ?? 24;
-  const lostOutlinePercent = LOST_OUTLINE_PERCENT_BY_REGION[region] ?? 52;
+  const lostCartFillPercent = LOST_CART_FILL_PERCENT_BY_REGION[region] ?? 24;
+  const lostCartOutlinePercent = LOST_CART_OUTLINE_PERCENT_BY_REGION[region] ?? 52;
+  const lostLandFillPercent = LOST_LAND_FILL_PERCENT_BY_REGION[region] ?? 16;
+  const lostLandOutlinePercent = LOST_LAND_OUTLINE_PERCENT_BY_REGION[region] ?? 34;
   const fill = mixColor(base, 42, 'var(--parch-0)');
   const outline = mixColor(base, 76, DARK_OUTLINE_MIX);
-  const lostFill = mixColor(base, lostFillPercent, 'var(--parch-0)');
-  const lostOutline = mixColor(base, lostOutlinePercent, 'var(--parch-2)');
+  const lostFill = mixColor(base, lostLandFillPercent, 'var(--parch-0)');
+  const lostCartReferenceFill = mixColor(base, lostCartFillPercent, 'var(--parch-0)');
+  const lostMapOutline = mixColor(base, lostLandOutlinePercent, 'var(--parch-2)');
+  const lostOutline = mixColor(base, lostCartOutlinePercent, 'var(--parch-2)');
   return {
     base,
     fill,
     cartFill: mixColor(outline, 52, fill),
     outline,
     lostFill,
-    lostCartFill: mixColor(lostOutline, 62, lostFill),
+    lostCartFill: mixColor(lostOutline, 62, lostCartReferenceFill),
+    lostMapOutline,
     lostOutline,
   };
 }
@@ -92,6 +111,7 @@ export function getProvincePaletteStyleAttr(themeOrRegion) {
     `--province-outline-color: ${palette.outline}`,
     `--province-lost-fill-color: ${palette.lostFill}`,
     `--province-lost-cartouche-fill-color: ${palette.lostCartFill}`,
+    `--province-lost-map-outline-color: ${palette.lostMapOutline}`,
     `--province-lost-outline-color: ${palette.lostOutline}`,
   ].join('; ') + ';';
 }

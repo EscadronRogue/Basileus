@@ -351,6 +351,7 @@ function applyProvincePalette(element, region) {
   element.style.setProperty('--province-outline-color', palette.outline);
   element.style.setProperty('--province-lost-fill-color', palette.lostFill);
   element.style.setProperty('--province-lost-cartouche-fill-color', palette.lostCartFill);
+  element.style.setProperty('--province-lost-map-outline-color', palette.lostMapOutline);
   element.style.setProperty('--province-lost-outline-color', palette.lostOutline);
   element.style.setProperty('--region-border', palette.outline);
 }

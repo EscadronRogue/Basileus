@@ -2199,7 +2199,7 @@ body::before {
   transition: stroke-width 0.18s, stroke-opacity 0.18s, stroke 0.18s;
 }
 .region-stroke.occupied {
-  stroke: var(--province-lost-outline-color, var(--province-outline-color, var(--region-border, var(--empire-border))));
+  stroke: var(--province-lost-map-outline-color, var(--province-lost-outline-color, var(--province-outline-color, var(--region-border, var(--empire-border)))));
   stroke-opacity: 0.78;
 }
 .region-stroke.hovered  { stroke-width: 3.1; stroke-opacity: 1; }
