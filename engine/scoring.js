@@ -3,28 +3,57 @@ import { getPlayer } from './state.js';
 
 export const SCORE_CATEGORIES = [
   {
-    key: 'church',
-    label: 'Church Income',
-    description: 'Income from the Patriarch and Bishops.',
-  },
-  {
-    key: 'estate',
-    label: 'Estate Income',
-    description: 'Income from owned estates.',
-  },
-  {
     key: 'gold',
     label: 'Gold Reserves',
     description: 'Gold currently held in the treasury.',
+  },
+  {
+    key: 'estate',
+    label: 'Private Estates',
+    description: 'Current private land estates owned inside the empire.',
+  },
+  {
+    key: 'church',
+    label: 'Bishops',
+    description: 'Current bishops held by the dynasty, including sees in occupied provinces.',
+  },
+  {
+    key: 'strategos',
+    label: 'Strategoi',
+    description: 'Current strategos appointments held inside the empire.',
   },
 ];
 
 export const SCORE_SHARE_THRESHOLDS = [0.25, 0.5, 0.75];
 const SCORE_EPSILON = 1e-9;
 
-function readCategoryValue(state, administration, playerId, categoryKey) {
+function countPrivateEstates(state, playerId) {
+  return Object.values(state.themes || {}).reduce((total, theme) => {
+    if (!theme || theme.id === 'CPL' || theme.occupied) return total;
+    return theme.owner === playerId ? total + 1 : total;
+  }, 0);
+}
+
+function countBishops(state, playerId) {
+  return Object.values(state.themes || {}).reduce((total, theme) => {
+    if (!theme || theme.id === 'CPL') return total;
+    return theme.bishop === playerId ? total + 1 : total;
+  }, 0);
+}
+
+function countStrategoi(state, playerId) {
+  return Object.values(state.themes || {}).reduce((total, theme) => {
+    if (!theme || theme.id === 'CPL' || theme.occupied) return total;
+    return theme.strategos === playerId ? total + 1 : total;
+  }, 0);
+}
+
+function readCategoryValue(state, playerId, categoryKey) {
   if (categoryKey === 'gold') return Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
-  return Math.max(0, Number(administration.incomeBreakdown?.[categoryKey]?.[playerId]) || 0);
+  if (categoryKey === 'estate') return countPrivateEstates(state, playerId);
+  if (categoryKey === 'church') return countBishops(state, playerId);
+  if (categoryKey === 'strategos') return countStrategoi(state, playerId);
+  return 0;
 }
 
 export function getScorePointsForShare(share) {
@@ -35,14 +64,14 @@ export function getScorePointsForShare(share) {
   );
 }
 
-function scoreCategory(state, administration, category) {
+function scoreCategory(state, category) {
   const totalValue = state.players.reduce(
-    (total, player) => total + readCategoryValue(state, administration, player.id, category.key),
+    (total, player) => total + readCategoryValue(state, player.id, category.key),
     0,
   );
 
   return state.players.map((player) => {
-    const value = readCategoryValue(state, administration, player.id, category.key);
+    const value = readCategoryValue(state, player.id, category.key);
     const share = totalValue > 0 ? value / totalValue : 0;
     return {
       ...category,
@@ -60,7 +89,7 @@ export function buildFinalScores(state) {
   const categoryScores = new Map();
 
   for (const category of SCORE_CATEGORIES) {
-    for (const entry of scoreCategory(state, income, category)) {
+    for (const entry of scoreCategory(state, category)) {
       if (!categoryScores.has(entry.playerId)) categoryScores.set(entry.playerId, []);
       categoryScores.get(entry.playerId).push(entry);
     }
@@ -101,24 +130,9 @@ export function getPlayerFinalScore(state, playerId) {
   return buildFinalScores(state).scores.find((score) => score.playerId === playerId) || null;
 }
 
-// Value of each category sitting outside player hands ("free citizens" share).
-// Only estate income is meaningfully held by free citizens — unowned, unoccupied
-// land pays its profit to nobody, so it counts toward the citizens' slice in
-// the balance-of-power pie. Church revenue is extracted from citizens rather
-// than retained by them, and gold reserves are dynastic only.
-function getFreeCitizensCategoryValue(state, categoryKey) {
-  if (categoryKey !== 'estate') return 0;
-  return Object.values(state.themes).reduce((total, theme) => {
-    if (!theme || theme.id === 'CPL' || theme.occupied) return total;
-    if (theme.owner !== null) return total;
-    return total + Math.max(0, Number(theme.P) || 0);
-  }, 0);
-}
-
-// Per-category share breakdown used by the Balance of Power panel. Points
-// follow the official scoring rule (share of the player-only pool), so the
-// pie's denominator (player + free citizens) is purely informational — it
-// shows the dynasties how much of each category is still up for grabs.
+// Per-category share breakdown used by the Balance of Power panel. The pies
+// use the same player-held totals as scoring, so the visible share always
+// matches the points share.
 export function buildBalanceOfPower(state) {
   const final = buildFinalScores(state);
   const scoreByPlayer = new Map(final.scores.map((entry) => [entry.playerId, entry]));
@@ -128,9 +142,7 @@ export function buildBalanceOfPower(state) {
       scoreByPlayer.get(player.id)?.categories.find((c) => c.key === category.key) || null
     )).filter(Boolean);
 
-    const playerTotal = playerEntries[0]?.totalValue || 0;
-    const freeCitizens = getFreeCitizensCategoryValue(state, category.key);
-    const total = playerTotal + freeCitizens;
+    const total = playerEntries[0]?.totalValue || 0;
 
     const slices = playerEntries.map((entry) => ({
       kind: 'player',
@@ -141,21 +153,13 @@ export function buildBalanceOfPower(state) {
       points: entry.points,
     }));
 
-    if (freeCitizens > 0) {
-      slices.push({
-        kind: 'free',
-        value: freeCitizens,
-        share: total > 0 ? freeCitizens / total : 0,
-      });
-    }
-
     return {
       key: category.key,
       label: category.label,
       description: category.description,
       total,
-      playerTotal,
-      freeCitizens,
+      playerTotal: total,
+      freeCitizens: 0,
       slices,
     };
   });

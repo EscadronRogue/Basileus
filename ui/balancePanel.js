@@ -1,10 +1,8 @@
-// ui/balancePanel.js — Balance of Power sidebar panel.
+// ui/balancePanel.js - Balance of Power sidebar panel.
 //
-// Renders the scoring-category pies (Estate, Church, Gold) together
-// with a live ranking based on the official scoring rule (1 point per 25%
-// share of the player-only pool, capped at 3 per category). The pies show a
-// "free citizens" slice in any category where value isn't yet held by a
-// dynasty, so players can see how much of each pool is still up for grabs.
+// Renders scoring-category pies together with a live ranking based on the
+// official scoring rule: 1 point per 25% share of each player-held category,
+// capped at 3 points per category.
 
 import { buildBalanceOfPower } from '../engine/scoring.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
@@ -12,13 +10,11 @@ import { formatPlayerLabel, getPlayer } from '../engine/state.js';
 import { renderIcon } from './icons.js';
 
 const CATEGORY_ICON_KIND = {
-  church: 'church',
-  estate: 'gold',
   gold: 'gold',
+  estate: 'estate',
+  church: 'church',
+  strategos: 'troop',
 };
-
-const FREE_CITIZENS_COLOR = '#6a4a8a';
-const FREE_CITIZENS_LABEL = 'Free citizens';
 
 // Polar -> cartesian on a unit circle anchored at (0, 0). Angles are taken in
 // turns (0..1) so accumulating fractional shares stays numerically clean.
@@ -45,12 +41,10 @@ function formatShare(share) {
 }
 
 function getSliceColor(state, slice) {
-  if (slice.kind === 'free') return FREE_CITIZENS_COLOR;
   return getPlayer(state, slice.playerId)?.color || '#5a3810';
 }
 
 function getSliceLabel(state, slice) {
-  if (slice.kind === 'free') return FREE_CITIZENS_LABEL;
   return formatPlayerLabel(getPlayer(state, slice.playerId)) || `Player ${Number(slice.playerId) + 1}`;
 }
 
@@ -60,9 +54,9 @@ function renderPieSvg(state, category) {
 
   if (category.total <= 0) {
     return `
-      <svg class="balance-pie-svg" viewBox="${viewBox}" role="img" aria-label="${category.label} — no value yet">
+      <svg class="balance-pie-svg" viewBox="${viewBox}" role="img" aria-label="${category.label} - no value yet">
         <circle r="${radius}" cx="0" cy="0" fill="rgba(168,116,32,0.10)" stroke="rgba(168,116,32,0.25)" stroke-width="1"></circle>
-        <text x="0" y="4" text-anchor="middle" class="balance-pie-empty">—</text>
+        <text x="0" y="4" text-anchor="middle" class="balance-pie-empty">-</text>
       </svg>
     `;
   }
@@ -73,7 +67,7 @@ function renderPieSvg(state, category) {
     cursor += slice.share;
     const end = Math.min(cursor, 1);
     const color = getSliceColor(state, slice);
-    const title = `${getSliceLabel(state, slice)} — ${formatShare(slice.share)}${slice.kind === 'player' ? ` (${slice.points} pt${slice.points === 1 ? '' : 's'})` : ''}`;
+    const title = `${getSliceLabel(state, slice)} - ${formatShare(slice.share)} (${slice.points} pt${slice.points === 1 ? '' : 's'})`;
     return `<path d="${describeSlicePath(start, end, radius)}" fill="${color}" stroke="rgba(20,8,0,0.45)" stroke-width="0.6"><title>${title}</title></path>`;
   }).join('');
 
@@ -86,19 +80,10 @@ function renderPieSvg(state, category) {
 
 function renderLegend(state, category) {
   if (category.total <= 0) {
-    return '<div class="balance-pie-legend-empty">No value generated yet.</div>';
+    return '<div class="balance-pie-legend-empty">No value yet.</div>';
   }
 
   const rows = category.slices.map((slice) => {
-    if (slice.kind === 'free') {
-      return `
-        <div class="balance-legend-row free">
-          <span class="balance-legend-dot" style="background:${FREE_CITIZENS_COLOR}"></span>
-          <span class="balance-legend-name">${FREE_CITIZENS_LABEL}</span>
-          <span class="balance-legend-share">${formatShare(slice.share)}</span>
-        </div>
-      `;
-    }
     const player = getPlayer(state, slice.playerId);
     const name = formatPlayerLabel(player) || `Player ${Number(slice.playerId) + 1}`;
     return `
@@ -106,7 +91,7 @@ function renderLegend(state, category) {
         <span class="balance-legend-dot" style="background:var(--player-color)"></span>
         <span class="balance-legend-name">${name}</span>
         <span class="balance-legend-share">${formatShare(slice.share)}</span>
-        <span class="balance-legend-points" title="Each 25% of the player-only pool scores 1 point (max 3).">${slice.points}</span>
+        <span class="balance-legend-points" title="Each 25% of this category scores 1 point (max 3).">${slice.points}</span>
       </div>
     `;
   }).join('');
@@ -128,31 +113,24 @@ function renderPieCard(state, category) {
   `;
 }
 
-function renderRankingBreakdown(state, entry) {
+function renderRankingBreakdown(entry) {
   if (!Array.isArray(entry?.categories)) return '';
-  // Stable order so every row scans down the same columns. We dedupe by
-  // icon kind because two categories may share an icon (estate and gold
-  // both use the coin) — we sum their values in that case so the row
-  // never duplicates the same glyph.
-  const order = ['gold', 'estate', 'church'];
-  const byIcon = new Map();
+
+  const order = ['gold', 'estate', 'church', 'strategos'];
+  const parts = [];
   for (const key of order) {
     const cat = entry.categories.find((c) => c.key === key);
     if (!cat) continue;
     const iconKind = CATEGORY_ICON_KIND[key] || key;
     const value = Math.max(0, Math.round(Number(cat.value) || 0));
-    const prev = byIcon.get(iconKind) || 0;
-    byIcon.set(iconKind, prev + value);
-  }
-  const parts = [];
-  for (const [iconKind, value] of byIcon.entries()) {
-    parts.push(renderValueChip(iconKind, value));
+    parts.push(renderValueChip(iconKind, value, cat.label));
   }
   return parts.join('');
 }
 
-function renderValueChip(iconKind, value) {
-  return `<span class="value ${iconKind}">${renderIcon(iconKind)}<span class="value-num">${value}</span></span>`;
+function renderValueChip(iconKind, value, label) {
+  const title = label ? ` title="${label}"` : '';
+  return `<span class="value ${iconKind}"${title}>${renderIcon(iconKind)}<span class="value-num">${value}</span></span>`;
 }
 
 function renderRanking(state, scores) {
@@ -160,11 +138,11 @@ function renderRanking(state, scores) {
   const topScore = scores[0]?.points ?? 0;
   return `
     <ol class="balance-ranking">
-      ${scores.map((entry, index) => {
+      ${scores.map((entry) => {
         const rank = scores.filter((other) => other.points > entry.points).length + 1;
         const isLeader = entry.points === topScore && topScore > 0;
         const tied = scores.filter((other) => other.points === entry.points).length > 1;
-        const breakdown = renderRankingBreakdown(state, entry);
+        const breakdown = renderRankingBreakdown(entry);
         return `
           <li class="balance-rank-row ${isLeader ? 'leader' : ''}" style="${getPlayerStyleAttr(state, entry.playerId)}">
             <span class="balance-rank-no" aria-label="rank ${rank}">${rank}${tied && isLeader ? '*' : ''}</span>
@@ -183,7 +161,7 @@ function getHeaderBadge(state, scores, winners) {
   if (!scores.length) return '';
   const top = scores[0];
   if (!top || top.points === 0) return 'Tied';
-  if (winners.length > 1) return `${winners.length}-way tie · ${top.points} pt${top.points === 1 ? '' : 's'}`;
+  if (winners.length > 1) return `${winners.length}-way tie - ${top.points} pt${top.points === 1 ? '' : 's'}`;
   return `${renderPlayerRoleName(state, top.player)} <span class="balance-header-points">${top.points} pt${top.points === 1 ? '' : 's'}</span>`;
 }
 
@@ -212,7 +190,7 @@ export function renderBalancePanel(container, state, options = {}) {
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body">
-          <p class="section-hint">Each 25% share of a category scores 1 point (max 3). Free citizens are shown for context only; estate bids convert their slice into yours.</p>
+          <p class="section-hint">Each 25% share of a category scores 1 point (max 3).</p>
           ${renderRanking(state, balance.scores)}
           <div class="balance-pie-grid">
             ${balance.categories.map((category) => renderPieCard(state, category)).join('')}

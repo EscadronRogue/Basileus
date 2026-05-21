@@ -2500,7 +2500,7 @@ body::before {
 .province-token-num { font-variant-numeric: tabular-nums; }
 
 /* ─────────────────────────────────────────────────────────────────
-   ICON ATOMS — three resource glyphs (unit marker, coin, Orthodox cross).
+   ICON ATOMS — compact resource and office glyphs.
    All icons take currentColor, so they inherit from the surrounding
    text. The default tints below apply only when an icon sits outside
    any colored container (e.g. on parchment).
@@ -2523,9 +2523,10 @@ body::before {
 }
 .icon-troop  { color: var(--umber-1); }
 .icon-gold   { color: var(--gold-1); }
+.icon-estate { color: var(--purple-0); }
 .icon-church { color: var(--church-1); }
 
-/* Inside any colored cartouche, all three icons take parchment-white
+/* Inside any colored cartouche, icons take parchment-white
    so they read against the dynasty fill. The text already inherits
    #ffffff in these contexts via existing rules. */
 .player-tab .icon,
@@ -2538,7 +2539,7 @@ body::before {
 
 /* ─────────────────────────────────────────────────────────────────
    VALUE ATOM — "[label] [icon] [number]" pill used everywhere a
-   gold / troop / church count appears in the DOM. The label is
+   resource or office count appears in the DOM. The label is
    optional; the icon + number always travel together.
    ───────────────────────────────────────────────────────────────── */
 .value {
@@ -2566,9 +2567,11 @@ body::before {
 
 .value.troop  { color: var(--umber-1); }
 .value.gold   { color: var(--gold-1); }
+.value.estate { color: var(--purple-0); }
 .value.church { color: var(--church-1); }
 .value.troop  .icon { color: inherit; }
 .value.gold   .icon { color: inherit; }
+.value.estate .icon { color: inherit; }
 .value.church .icon { color: inherit; }
 
 .value.income { color: var(--win); }

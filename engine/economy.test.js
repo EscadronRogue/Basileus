@@ -5,6 +5,7 @@ import { PROVINCES } from '../data/provinces.js';
 import { createGameState, getPlayer, getOfficeHolder } from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
 import { applyInvasionResult } from './combat.js';
+import { buildBalanceOfPower, buildFinalScores } from './scoring.js';
 import {
   applyCourtAction,
   applyEstateAction,
@@ -186,4 +187,36 @@ test('invasion loss suspends owners and reconquest restores them while bishops r
   assert.equal(state.themes.SAM.owner, 2);
   assert.equal(state.themes.SAM.suspendedOwner, null);
   assert.equal(state.themes.SAM.bishop, 1);
+});
+
+test('final scoring counts current holdings and offices without free citizens', () => {
+  const state = makeState();
+  for (const player of state.players) player.gold = 0;
+
+  state.themes.OPS.owner = 0;
+  state.themes.SAM.owner = 0;
+  state.themes.KAP.bishop = 1;
+  state.themes.KAP.occupied = true;
+  state.themes.ANT.bishop = 1;
+  state.themes.MES.bishop = 2;
+  state.themes.AEG.strategos = 2;
+  state.themes.ITA.strategos = 2;
+
+  applyInvasionResult(state, { themesLost: ['SAM', 'ITA'], themesRecovered: [], reachedCPL: false });
+
+  const final = buildFinalScores(state);
+  const category = (playerId, key) => (
+    final.scores.find((score) => score.playerId === playerId)?.categories.find((entry) => entry.key === key)
+  );
+
+  assert.equal(category(0, 'estate').value, 1);
+  assert.equal(category(0, 'estate').totalValue, 1);
+  assert.equal(category(1, 'church').value, 2);
+  assert.equal(category(2, 'church').value, 1);
+  assert.equal(category(2, 'strategos').value, 1);
+  assert.equal(category(2, 'strategos').totalValue, 1);
+
+  const balance = buildBalanceOfPower(state);
+  assert.equal(balance.categories.some((entry) => entry.slices.some((slice) => slice.kind === 'free')), false);
+  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 1);
 });

@@ -1,8 +1,9 @@
-// ui/icons.js - Single source of truth for the three resource glyphs.
+// ui/icons.js - Single source of truth for compact resource and office glyphs.
 //
-// Three icons, one grammar:
+// One grammar:
 //   - TROOP  -> unit marker     (replaces the letter "T" / "troops" in UI)
 //   - GOLD   -> coin            (replaces the letter "g" / "gold" in UI)
+//   - ESTATE -> manor marker     (private estate count in scoring UI)
 //   - CHURCH -> Orthodox cross  (replaces the letter "C" / "church" in UI)
 //
 // All glyphs are stroke-driven with small filled accents, matching the
@@ -40,6 +41,16 @@ const ICON_PATHS = {
       <circle cx="12" cy="12" r="4.8" fill="currentColor" fill-opacity=".035" stroke-opacity=".78" stroke-width="1.15"/>
     </g>
   `,
+  estate: `
+    <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.8 18.6 H19.2"/>
+      <path d="M6.6 18.6 V10.8 L12 6.7 L17.4 10.8 V18.6"/>
+      <path d="M9.4 18.6 V14 H14.6 V18.6"/>
+      <path d="M5.4 11.4 L12 6.3 L18.6 11.4"/>
+      <path d="M7.7 12.4 H16.3" stroke-opacity=".72"/>
+      <path d="M6.6 10.8 L12 6.7 L17.4 10.8 V12.4 H6.6 Z" fill="currentColor" fill-opacity=".10"/>
+    </g>
+  `,
   church: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 3.2 L12 20.8"/>
@@ -55,6 +66,7 @@ const ICON_PATHS = {
 const LABEL_FORMS = {
   troop:  { singular: 'Troop',  plural: 'Troops' },
   gold:   { singular: 'Gold',   plural: 'Gold'   },
+  estate: { singular: 'Estate', plural: 'Estates' },
   church: { singular: 'Church', plural: 'Church' },
 };
 

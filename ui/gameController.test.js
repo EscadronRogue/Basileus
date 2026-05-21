@@ -197,11 +197,13 @@ test('final scoring view uses current scoring categories', () => {
   state.players[0].gold = 50;
   state.themes.OPS.owner = 1;
   state.themes.KAP.bishop = 2;
+  state.themes.SAM.strategos = 3;
 
   const html = renderScoringHtml(state);
 
   assert.match(html, /Final Reckoning/);
-  assert.match(html, /Estate/);
-  assert.match(html, /Church/);
+  assert.match(html, /Private estates/);
+  assert.match(html, /Bishops/);
+  assert.match(html, /Strategoi/);
   assert.doesNotMatch(html, new RegExp('T' + 'ax'));
 });

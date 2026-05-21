@@ -280,7 +280,7 @@ export const PHASE_TOOLTIPS = {
   deployment: 'Each player funds armies, hires mercenaries, chooses destinations, and backs a claimant.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
   cleanup: 'Per-turn state clears before the next invasion.',
-  scoring: 'Each 25% share of church income, estate income, and gold reserves scores 1 point, up to 3 per category.',
+  scoring: 'Each 25% share of gold reserves, private estates, bishops, and strategoi scores 1 point, up to 3 per category.',
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
@@ -556,12 +556,12 @@ export function renderScoringHtml(state, options = {}) {
     : '';
   const actionButtons = [newGameButton].filter(Boolean).join('');
 
-  const CATEGORY_ICON = { church: 'church', estate: 'gold', gold: 'gold' };
+  const CATEGORY_ICON = { gold: 'gold', estate: 'estate', church: 'church', strategos: 'troop' };
 
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Highest point total wins. Each 25% share of Church income, Estate income, and Gold reserves is worth 1 point, up to 3 per category.</p>
+      <p class="section-hint">Highest point total wins. Each 25% share of Gold reserves, Private estates, Bishops, and Strategoi is worth 1 point, up to 3 per category.</p>
       <div class="score-list">
         ${scores.map((score) => {
           const rank = scores.filter((other) => other.points > score.points).length + 1;
@@ -575,7 +575,7 @@ export function renderScoringHtml(state, options = {}) {
                 const iconKind = CATEGORY_ICON[category.key];
                 const iconHtml = iconKind ? renderIcon(iconKind) : '';
                 return `
-                  <span class="score-cat" title="${escapeHtml(category.label)} — ${formatScoreShare(category.share)} share, ${category.points} point${category.points === 1 ? '' : 's'}">
+                  <span class="score-cat" title="${escapeHtml(category.label)} - ${formatScoreShare(category.share)} share, ${category.points} point${category.points === 1 ? '' : 's'}">
                     ${iconHtml}
                     <span class="score-cat-share">${formatScoreShare(category.share)}</span>
                     <span class="score-cat-pts">${category.points} pt${category.points === 1 ? '' : 's'}</span>
