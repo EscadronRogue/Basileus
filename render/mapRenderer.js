@@ -772,14 +772,18 @@ function parseFiniteNumber(value) {
 const MAP_CART_PAD_X = 1.0;
 const MAP_CART_MIN_WIDTH = 7.8;
 const MAP_CART_HEIGHT = 4.7;
-const MAP_CART_HEIGHT_WITH_MARKERS = 6.0;
 const MAP_CART_INSET = 0.32;
 const MAP_CART_NAME_BASELINE_Y = -0.35;
 const MAP_CART_VALUES_BASELINE_Y = 1.55;
-const MAP_CART_MARKERS_Y = 2.46;
-const MAP_CART_MARKER_GAP = 1.25;
-const MAP_CART_MARKER_RADIUS = 0.42;
-const MAP_CART_MARKER_SIZE = 0.86;
+const MAP_CART_MARKERS_Y = MAP_CART_HEIGHT / 2;
+const MAP_CART_MARKER_RADIUS = 0.78;
+const MAP_CART_MARKER_SIZE = 1.56;
+
+const MAP_MARKER_VALUE_KIND = Object.freeze({
+  estate: 'gold',
+  strategos: 'troop',
+  bishop: 'church',
+});
 
 const MAP_CART_VALUE_OPTS = Object.freeze({
   iconSize: 1.5,
@@ -879,7 +883,7 @@ function layoutMapCartouche(g) {
     measureMapTextWidth(nameText) + MAP_CART_PAD_X * 2,
     valuesWidth + MAP_CART_PAD_X * 2,
   );
-  const height = markersGroup?.children.length ? MAP_CART_HEIGHT_WITH_MARKERS : MAP_CART_HEIGHT;
+  const height = MAP_CART_HEIGHT;
 
   bg.setAttribute('x', (-width / 2).toFixed(3));
   bg.setAttribute('y', (-height / 2).toFixed(3));
@@ -972,55 +976,85 @@ function updateMapCartoucheMarkers(cart, state, theme) {
   const markersGroup = cart?.querySelector?.('.map-cart-markers');
   if (!markersGroup || !state || !theme) return;
 
-  const markers = getMapCartoucheMarkers(state, theme);
-  const nextSig = markers.map((marker) => `${marker.kind}:${marker.ownerId}:${marker.color}`).join('|');
+  const valuePositions = getMapValuePairCenters(provinceValueEntries(theme));
+  const markers = getMapCartoucheMarkers(state, theme, valuePositions);
+  const nextSig = markers.map((marker) => `${marker.kind}:${marker.ownerId}:${marker.color}:${marker.x.toFixed(3)}`).join('|');
   if (markersGroup.getAttribute('data-marker-sig') === nextSig) return;
 
   markersGroup.replaceChildren();
   markersGroup.setAttribute('data-marker-sig', nextSig);
 
-  const startX = -((markers.length - 1) * MAP_CART_MARKER_GAP) / 2;
-  markers.forEach((marker, index) => {
-    markersGroup.appendChild(createMapCartoucheMarker(marker, startX + index * MAP_CART_MARKER_GAP));
+  markers.forEach((marker) => {
+    markersGroup.appendChild(createMapCartoucheMarker(marker));
   });
 
   layoutMapCartouche(cart);
 }
 
-function getMapCartoucheMarkers(state, theme) {
+function getMapValuePairCenters(entries) {
+  const iconSize = MAP_CART_VALUE_OPTS.iconSize;
+  const iconGap = MAP_CART_VALUE_OPTS.iconGap;
+  const pairGap = MAP_CART_VALUE_OPTS.pairGap;
+  const digitWidth = MAP_CART_VALUE_OPTS.digitWidth;
+
+  const pairs = entries
+    .filter((entry) => entry && entry.value > 0)
+    .map((entry) => {
+      const digits = Math.max(1, String(entry.value).length);
+      const width = iconSize + iconGap + digits * digitWidth;
+      return { kind: entry.kind, width };
+    });
+
+  const totalWidth = pairs.reduce((sum, pair) => sum + pair.width, 0)
+    + Math.max(0, pairs.length - 1) * pairGap;
+  const centers = new Map();
+  let cursor = -totalWidth / 2;
+
+  for (const pair of pairs) {
+    centers.set(pair.kind, cursor + pair.width / 2);
+    cursor += pair.width + pairGap;
+  }
+
+  return centers;
+}
+
+function getMapCartoucheMarkers(state, theme, valuePositions) {
   const markers = [];
 
   if (!theme.occupied && theme.owner !== null && theme.owner !== 'church') {
-    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, 'Private estate'));
+    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, 'Private estate', valuePositions));
   }
   if (!theme.occupied && theme.strategos !== null) {
-    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, 'Strategos'));
+    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, 'Strategos', valuePositions));
   }
   if (theme.bishop !== null) {
-    markers.push(createMapCartoucheMarkerData(state, 'bishop', theme.bishop, 'Bishop'));
+    markers.push(createMapCartoucheMarkerData(state, 'bishop', theme.bishop, 'Bishop', valuePositions));
   }
 
   return markers.filter(Boolean);
 }
 
-function createMapCartoucheMarkerData(state, kind, ownerId, label) {
+function createMapCartoucheMarkerData(state, kind, ownerId, label, valuePositions) {
   const player = state.players.find((candidate) => candidate.id === ownerId);
   if (!player) return null;
+  const x = valuePositions.get(MAP_MARKER_VALUE_KIND[kind]);
+  if (!Number.isFinite(x)) return null;
   const ownerName = formatPlayerLabel(player) || `Player ${Number(ownerId) + 1}`;
   return {
     kind,
     ownerId,
+    x,
     color: player.color || '#5a3810',
     title: `${label}: ${ownerName}`,
   };
 }
 
-function createMapCartoucheMarker(marker, x) {
+function createMapCartoucheMarker(marker) {
   const shape = marker.kind === 'estate'
-    ? createMapCartoucheCircleMarker(x)
+    ? createMapCartoucheCircleMarker(marker.x)
     : marker.kind === 'strategos'
-      ? createMapCartoucheSquareMarker(x)
-      : createMapCartoucheTriangleMarker(x);
+      ? createMapCartoucheSquareMarker(marker.x)
+      : createMapCartoucheTriangleMarker(marker.x);
 
   shape.setAttribute('class', `map-cart-marker map-cart-marker-${marker.kind}`);
   shape.style.fill = marker.color;
