@@ -1,9 +1,10 @@
 // ui/labels.js — Single source of truth for player and province cartouches.
 //
 // Visual contract (kept stable everywhere these helpers are used):
-//   - Province land/cartouche background = a light wash of the province region.
+//   - Province land background = a light wash of the province region.
+//   - Province cartouche background = a darker wash of the same region.
 //   - Province land/cartouche outline = the same region, darkened.
-//   - Occupied/lost provinces keep the hue with much lighter fill and outline.
+//   - Occupied/lost provinces keep the exact same outline with a lighter fill.
 //   - Player/title cartouches still use dynasty/role colors.
 //
 // All player+province name rendering goes through this module. Do NOT
@@ -19,6 +20,12 @@ const CHURCH_FILL = '#1a1a1a';
 const OCCUPIED_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
 const DARK_OUTLINE_MIX = '#1f1208';
+const LOST_FILL_PERCENT_BY_REGION = {
+  east: 27,
+  west: 18,
+  sea: 30,
+  cpl: 18,
+};
 
 // ── CSS variable plumbing ─────────────────────────────────────────────
 //
@@ -55,12 +62,15 @@ function mixColor(color, colorPercent, otherColor) {
 export function getProvinceRegionPalette(themeOrRegion) {
   const region = typeof themeOrRegion === 'string' ? themeOrRegion : themeOrRegion?.region;
   const base = getRegionColor(region);
+  const lostFillPercent = LOST_FILL_PERCENT_BY_REGION[region] ?? 24;
+  const outline = mixColor(base, 76, DARK_OUTLINE_MIX);
   return {
     base,
     fill: mixColor(base, 42, 'var(--parch-0)'),
-    outline: mixColor(base, 76, DARK_OUTLINE_MIX),
-    lostFill: mixColor(base, 14, 'var(--parch-0)'),
-    lostOutline: mixColor(base, 30, 'var(--parch-2)'),
+    cartFill: mixColor(base, 62, 'var(--parch-0)'),
+    outline,
+    lostFill: mixColor(base, lostFillPercent, 'var(--parch-0)'),
+    lostOutline: outline,
   };
 }
 
@@ -69,6 +79,7 @@ export function getProvincePaletteStyleAttr(themeOrRegion) {
   return [
     `--province-region-color: ${palette.base}`,
     `--province-fill-color: ${palette.fill}`,
+    `--province-cartouche-fill-color: ${palette.cartFill}`,
     `--province-outline-color: ${palette.outline}`,
     `--province-lost-fill-color: ${palette.lostFill}`,
     `--province-lost-outline-color: ${palette.lostOutline}`,

@@ -2220,14 +2220,13 @@ body::before {
 
 /* ── Map cartouches ──────────────────────────────────────────────────
    SVG counterpart of the HTML .province-token. Same visual grammar:
-   outline = darker region color (--cart-border), fill = light region color (--cart-bg),
+   outline = darker region color (--cart-border), fill = darker region wash (--cart-bg),
    gold-leaf inner hairline. Two stacked text lines: name / values,
    with an optional office/estate marker row below the values.
    Built and laid out by mapRenderer.js. */
 .map-cartouche {
-  --cart-bg: var(--province-fill-color, color-mix(in srgb, var(--free-fill) 42%, var(--parch-0) 58%));
+  --cart-bg: var(--province-cartouche-fill-color, color-mix(in srgb, var(--free-fill) 62%, var(--parch-0) 38%));
   --cart-border: var(--province-outline-color, var(--empire-border));
-  --cart-ink: var(--province-outline-color, var(--empire-border));
   cursor: pointer;
   pointer-events: auto;
 }
@@ -2253,8 +2252,8 @@ body::before {
 .map-cart-id,
 .map-cart-name,
 .map-cart-glyph-num {
-  fill: var(--cart-ink, var(--empire-border));
-  text-shadow: 0 0.05px 0 rgba(255,250,228,0.65);
+  fill: #ffffff;
+  text-shadow: none;
   dominant-baseline: auto;
   alignment-baseline: baseline;
   text-anchor: start;
@@ -2273,10 +2272,10 @@ body::before {
 }
 /* Map cartouche value group — icons + numbers, centered around x=0 */
 .map-cart-values { pointer-events: none; }
-.map-cart-glyph { color: var(--cart-ink, var(--empire-border)); opacity: 0.96; }
-.map-cart-glyph-gold   { color: var(--gold-2); }
-.map-cart-glyph-troop  { color: var(--cart-ink, var(--empire-border)); }
-.map-cart-glyph-church { color: var(--church-0); }
+.map-cart-glyph { color: #ffffff; opacity: 0.96; }
+.map-cart-glyph-gold,
+.map-cart-glyph-troop,
+.map-cart-glyph-church { color: #ffffff; }
 .map-cartouche.occupied .map-cart-glyph { opacity: 0.82; }
 
 .map-cart-markers { pointer-events: none; }
@@ -2288,7 +2287,7 @@ body::before {
 
 /* Capital cartouche: text leans into the imperial gold a touch more */
 .map-cartouche.is-capital .map-cart-id,
-.map-cartouche.is-capital .map-cart-name { fill: var(--cart-ink, var(--empire-border)); }
+.map-cartouche.is-capital .map-cart-name { fill: #ffffff; }
 
 /* Selected: stronger gold inner ring + slight scale-in via transform */
 .map-cartouche.selected .map-cart-inner {
@@ -2321,8 +2320,9 @@ body::before {
 
 .invasion-cartouche-bg {
   fill: var(--invasion-lost-fill);
-  fill-opacity: 0.92;
+  fill-opacity: 1;
   stroke: var(--invasion-lost-border);
+  stroke-opacity: 1;
   stroke-width: 0.7;
   paint-order: stroke fill;
 }
@@ -2382,7 +2382,7 @@ body::before {
 
 /* ── Player & Province Cartouches ─────────────────────────────────────
    Shared visual grammar: a small Byzantine-style nameplate.
-   • Province background = light region color (--cart-bg)
+   • Province cartouche background = darker region wash (--cart-bg)
    • Province outline    = darker region color (--cart-border)
    • Inner gold hairline (var(--gold-3)) suggests a leafed manuscript
      border; subtle parchment-linen overlay keeps the color feeling
@@ -2446,10 +2446,10 @@ body::before {
 }
 
 .province-token {
-  --cart-bg: var(--province-fill-color, var(--free-fill));
+  --cart-bg: var(--province-cartouche-fill-color, var(--free-fill));
   --cart-border: var(--province-outline-color, var(--province-region-color, var(--empire-border)));
-  color: var(--province-outline-color, var(--umber-1));
-  text-shadow: 0 1px 0 rgba(255,250,228,0.58);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.45);
 }
 
 .province-token.occupied {
@@ -2845,8 +2845,8 @@ body::before {
 /* State variants */
 .province-token.occupied { opacity: 0.92; filter: saturate(0.74); }
 .province-token.church {
-  color: var(--province-outline-color, var(--umber-1));
-  text-shadow: 0 1px 0 rgba(255,250,228,0.58);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.45);
 }
 
 .player-role-name *,
@@ -5152,9 +5152,7 @@ textarea {
 .cartouche .icon svg {
   filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
 }
-.province-token .icon svg {
-  filter: drop-shadow(0 1px 0 rgba(255,250,228,0.58));
-}
+.province-token .icon svg { filter: drop-shadow(0 1px 0 rgba(20,8,0,0.45)); }
 .province-token .value,
 .province-token .value.gold,
 .province-token .value.troop,
@@ -5242,23 +5240,23 @@ textarea {
 .map-cart-name,
 .map-cart-glyph-num {
   text-shadow: none;
-  stroke: rgba(255,250,228,0.72);
-  stroke-width: 0.18;
+  stroke: none;
+  stroke-width: 0;
   stroke-linejoin: round;
   paint-order: stroke fill;
-  fill: var(--cart-ink, var(--empire-border));
+  fill: #ffffff;
 }
-.map-cart-glyph-num { stroke-width: 0.3; font-weight: 800; }
+.map-cart-glyph-num { font-weight: 800; }
 /* Keep the warm-gold / cool-blue tint on gold and church numerals
    so the three-icon triplet stays scannable as a triplet — the
    shared light stroke unifies them and the hue distinguishes them. */
-.map-cartouche .map-cart-glyph-num-gold   { fill: var(--gold-2); }
-.map-cartouche .map-cart-glyph-num-troop  { fill: var(--cart-ink, var(--empire-border)); }
-.map-cartouche .map-cart-glyph-num-church { fill: var(--church-0); }
+.map-cartouche .map-cart-glyph-num-gold,
+.map-cartouche .map-cart-glyph-num-troop,
+.map-cartouche .map-cart-glyph-num-church { fill: #ffffff; }
 
 /* SVG icon strokes on the map: a tiny light drop-shadow keeps the
    unit marker / coin / Orthodox cross outlines visible on region fills. */
-.map-cart-glyph { filter: drop-shadow(0 0.08px 0 rgba(255,250,228,0.65)); }
+.map-cart-glyph { filter: none; }
 
 /* 9. Balance ranking row — values stay umber/gold/church on the
       parchment background (already correct), but the numerals were

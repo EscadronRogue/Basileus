@@ -153,13 +153,13 @@ export async function createMapSVG(containerId, options = {}) {
   applyMapTransform();
 
   const bgLayer = createGroup(viewportLayer, 'layer-bg-map');
-  const invasionLayer = createGroup(viewportLayer, 'layer-invasion');
   const provinceLayer = createGroup(viewportLayer, 'layer-hitzones');
   const regionStrokeLayer = createGroup(viewportLayer, 'layer-region-stroke');
   const threatLayer = createGroup(viewportLayer, 'layer-threats');
   const hitboxLayer = createGroup(viewportLayer, 'layer-hitboxes');
   const labelLayer = createGroup(viewportLayer, 'layer-labels');
   const badgeLayer = createGroup(viewportLayer, 'layer-badges');
+  const invasionLayer = createGroup(viewportLayer, 'layer-invasion');
 
   const [backgroundSvg, hitzonesSvg, originSvg] = await Promise.all([
     loadSvgAsset(SVG_ASSET_PATHS.background, MAP_BACKGROUND_SVG),
@@ -346,6 +346,7 @@ function applyProvincePalette(element, region) {
   const palette = getProvinceRegionPalette(region);
   element.style.setProperty('--province-region-color', palette.base);
   element.style.setProperty('--province-fill-color', palette.fill);
+  element.style.setProperty('--province-cartouche-fill-color', palette.cartFill);
   element.style.setProperty('--province-outline-color', palette.outline);
   element.style.setProperty('--province-lost-fill-color', palette.lostFill);
   element.style.setProperty('--province-lost-outline-color', palette.lostOutline);
