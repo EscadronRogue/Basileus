@@ -1,7 +1,7 @@
 {
   "name": "basileus-game",
   "version": "0.1.0",
-  "description": "A 3-5 player browser strategy game of dynastic profiteering inside the Byzantine Empire, with WebSocket multiplayer and AI seat placeholders.",
+  "description": "A 3-5 player browser strategy game of dynastic profiteering inside the Byzantine Empire, with WebSocket multiplayer and strategic AI seats.",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",

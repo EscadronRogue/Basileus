@@ -3,27 +3,20 @@
 Living document. Captures work that's been deferred or scoped out so it
 isn't lost.
 
-## AI brain
+## AI brain follow-ups
 
-`ai/brain.js` is a placeholder. AI seats currently:
+`ai/strategy.js` now provides a phase-aware heuristic planner. It scores
+legal moves by projected scoring shares, threshold pressure, late throne
+control, estate value, frontier risk, coup pressure, and reward choices.
 
-- Confirm in court without taking any action.
-- Pick the first legal deployment plan, preferring the incumbent in coup
-  scenarios.
-- Auto-resolve defender rewards as `'empire'`.
+Worth improving next:
 
-Reinstating a real AI involves at minimum:
-
-1. A planning component that scores legal moves rather than picking the
-   first one (`ai/legalActions.js` already generates the move set).
-2. A court-phase strategy that uses the action budget instead of skipping
-   straight to confirm.
-3. Test coverage that asserts the AI plays plausibly (wins against the
-   placeholder by a healthy margin in seeded games), not just that it
-   submits a legal move.
-
-The old RL experiment was removed because it was too brittle to maintain
-alongside rule changes. A heuristic agent is a safer next step.
+1. Add seeded head-to-head balance tests that measure win rates and average
+   point margins across full games.
+2. Teach AI seats to negotiate formal deals once the deal UI and AI timing
+   expectations are both stable enough.
+3. Tune deployment assumptions against observed human play, especially how
+   much capital support opponents reserve during high-threat invasions.
 
 ## File splits
 

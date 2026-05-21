@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createGameState } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
 import { submitHumanOrders } from '../engine/commands.js';
-import { suggestMajorTitleAssignments } from '../engine/actions.js';
+import { validateMajorTitleAssignments } from '../engine/actions.js';
 import {
   buildAIOrders,
   buildSimultaneousAIOrders,
@@ -35,7 +35,7 @@ test('AI meta keeps declared human seats under human control', () => {
   assert.equal(isAIPlayer(meta, 3), true);
 });
 
-test('placeholder court automation only confirms AI players', () => {
+test('strategic court automation only controls AI players', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
   state.phase = 'income';
@@ -44,13 +44,14 @@ test('placeholder court automation only confirms AI players', () => {
   const result = runAICourtAutomation(state, meta, { mode: 'finish' });
 
   assert.equal(result.ok, true);
+  assert.equal(result.actions >= 3, true);
   assert.equal(state.courtActions.playerConfirmed.has(0), false);
   assert.equal(state.courtActions.playerConfirmed.has(1), true);
   assert.equal(state.courtActions.playerConfirmed.has(2), true);
   assert.equal(state.courtActions.playerConfirmed.has(3), true);
 });
 
-test('placeholder orders use the deployment schema and prefer the incumbent', () => {
+test('strategic orders use the deployment schema and include decision metadata', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
   state.phase = 'deployment';
@@ -60,12 +61,15 @@ test('placeholder orders use the deployment schema and prefer the incumbent', ()
   };
 
   const orders = buildAIOrders(state, meta, 1);
+  const validation = submitHumanOrders(state, 1, orders);
 
-  assert.equal(orders.candidate, state.basileusId);
-  assert.equal(orders.mercenaries.count, 0);
-  assert.equal(orders.armies.DOM_EAST.funded, 2);
-  assert.equal(orders.armies.PATRIARCH.funded, 1);
-  assert.equal(orders.debug.decision.factors[0].label, 'placeholder');
+  assert.equal(validation.ok, true);
+  assert.equal(Number.isInteger(orders.candidate), true);
+  assert.equal(orders.mercenaries.count >= 0, true);
+  assert.equal(orders.armies.DOM_EAST.funded >= 0, true);
+  assert.equal(orders.armies.PATRIARCH.funded >= 0, true);
+  assert.equal(orders.debug.decision.title.includes('strategic'), true);
+  assert.equal(orders.debug.decision.factors[0].label, 'frontier');
 });
 
 test('simultaneous AI planning ignores already submitted human deployment orders', () => {
@@ -100,5 +104,5 @@ test('AI title planning returns a legal title redistribution action', () => {
   const action = planMajorTitleAssignment(state, meta, state.basileusId);
 
   assert.equal(action.kind, 'title-assignment');
-  assert.deepEqual(action.assignments, suggestMajorTitleAssignments(state, state.basileusId));
+  assert.equal(validateMajorTitleAssignments(state, state.basileusId, action.assignments).ok, true);
 });

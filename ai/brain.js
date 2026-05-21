@@ -1,11 +1,15 @@
 import {
   applyLegalAction,
-  listLegalCourtActions,
-  listLegalOrderActions,
-  listLegalRewardActions,
-  listLegalTitleAssignments,
 } from './legalActions.js';
 import { loadOpponentByIdSync, loadOpponentRosterSync } from './opponentRoster.js';
+import {
+  applyStrategicEstateActions,
+  chooseStrategicCourtAction,
+  chooseStrategicOrderAction,
+  chooseStrategicRewardChoice,
+  chooseStrategicTitleAssignment,
+  describeOrderChoice,
+} from './strategy.js';
 
 export const AI_OPPONENT_MISSING_MESSAGE = 'AI placeholder opponent not found.';
 export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
@@ -124,11 +128,6 @@ export function observeCourtAction(state, meta, observation = null) {
   if (meta.publicLog.length > 80) meta.publicLog.splice(0, meta.publicLog.length - 80);
 }
 
-function chooseCourtConfirmation(state, playerId) {
-  return listLegalCourtActions(state, playerId, { includeDeals: false })
-    .find((action) => action.kind === 'court-confirm') || null;
-}
-
 export function runAICourtAutomation(state, meta, options = {}) {
   if (!state || state.phase !== 'court' || !meta) return { ok: true, actions: 0 };
   if ((options.mode || 'finish') === 'react') return { ok: true, actions: 0 };
@@ -136,50 +135,32 @@ export function runAICourtAutomation(state, meta, options = {}) {
   let applied = 0;
   for (const player of state.players || []) {
     if (!isAIPlayer(meta, player.id)) continue;
-    if (state.courtActions?.playerConfirmed?.has(player.id)) continue;
-    const action = chooseCourtConfirmation(state, player.id);
-    const result = applyLegalAction(state, action, meta);
-    if (!result.ok) continue;
-    applied += 1;
-    meta?.decisionLog?.push?.(`court:${player.id}:placeholder:confirm`);
+    let safety = 0;
+    while (!state.courtActions?.playerConfirmed?.has(player.id) && safety < 8) {
+      safety += 1;
+      const action = chooseStrategicCourtAction(state, meta, player.id);
+      if (!action) break;
+      const result = applyLegalAction(state, action, meta);
+      if (!result.ok) break;
+      applied += 1;
+      meta?.decisionLog?.push?.(`court:${player.id}:strategic:${action.label || action.kind}`);
+      if (action.kind === 'court-confirm' || action.payload?.action === 'skip') break;
+    }
   }
 
   return { ok: true, actions: applied };
 }
 
-function choosePlaceholderOrderAction(state, playerId, actions) {
-  if (!actions.length) return null;
-  if (state.basileusId != null) {
-    const incumbent = actions.find((action) => action.orders?.candidate === state.basileusId);
-    if (incumbent) return incumbent;
-  }
-  return actions[0];
-}
-
 export function buildAIOrders(state, meta, playerId) {
-  const actions = listLegalOrderActions(state, playerId);
-  const action = choosePlaceholderOrderAction(state, playerId, actions);
-  if (!action) throw new Error(`No legal placeholder order available for AI player ${playerId}.`);
+  const action = chooseStrategicOrderAction(state, meta, playerId);
+  if (!action) throw new Error(`No legal strategic order available for AI player ${playerId}.`);
   const playerMeta = meta?.players?.[playerId];
   return {
     ...action.orders,
     debug: {
       decision: {
-        title: `${playerMeta?.displayName || 'AI'} placeholder order`,
-        factors: [
-          {
-            label: 'placeholder',
-            value: 'no AI brain installed',
-            impact: 'neutral',
-            note: 'The former AI decision system has been removed. This seat only submits a legal fallback order.',
-          },
-          {
-            label: 'candidate actions',
-            value: actions.length,
-            impact: 'neutral',
-            note: 'Chosen from engine-legal orders.',
-          },
-        ],
+        ...describeOrderChoice(state, playerId, action),
+        title: `${playerMeta?.displayName || 'AI'} strategic order`,
       },
     },
   };
@@ -220,14 +201,21 @@ export function buildSimultaneousAIOrders(state, meta) {
   return plans;
 }
 
-export function chooseAIDefenderRewardChoice() {
-  return 'empire';
+export function chooseAIDefenderRewardChoice(state, meta, reward) {
+  return chooseStrategicRewardChoice(state, meta, reward);
 }
 
 export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nextBasileusId) {
-  void meta;
-  const actions = listLegalTitleAssignments(state, newBasileusId);
-  return actions[0] || null;
+  return chooseStrategicTitleAssignment(state, meta, newBasileusId);
+}
+
+export function runAIEstateAutomation(state, meta, playerId) {
+  if (!state || state.phase !== 'estates' || !meta || !isAIPlayer(meta, playerId)) return [];
+  const actions = applyStrategicEstateActions(state, meta, playerId);
+  for (const action of actions) {
+    meta?.decisionLog?.push?.(`estates:${playerId}:strategic:${action.payload?.themeId || 'bid'}`);
+  }
+  return actions;
 }
 
 export function applyPlannedAiTitleAssignment(state, meta, pendingAssignment = null, newBasileusId = state?.nextBasileusId) {

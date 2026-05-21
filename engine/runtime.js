@@ -35,6 +35,7 @@ import {
   isAIPlayer,
   observeCourtAction,
   planMajorTitleAssignment,
+  runAIEstateAutomation,
   runAICourtAutomation,
 } from '../ai/brain.js';
 
@@ -158,20 +159,23 @@ export function processAiFlow(state, aiMeta, options = {}) {
 
     if (state.phase === 'estates') {
       const hasHumanSeats = (aiMeta?.humanPlayerIds?.size || 0) > 0;
-      if (!hasHumanSeats) {
-        phaseDeployment(state);
-        invalidateRoundContext(aiMeta);
-        continue;
-      }
       if (hasAiSeats) {
         for (const player of state.players || []) {
-          if (isAIPlayer(aiMeta, player.id)) setEstatesReady(state, player.id, true);
+          if (!isAIPlayer(aiMeta, player.id)) continue;
+          if (state.estatesReady?.[player.id]) continue;
+          runAIEstateAutomation(state, aiMeta, player.id);
+          setEstatesReady(state, player.id, true);
         }
         if (state.players.every((player) => Boolean(state.estatesReady?.[player.id]))) {
           phaseDeployment(state);
           invalidateRoundContext(aiMeta);
           continue;
         }
+      }
+      if (!hasHumanSeats) {
+        phaseDeployment(state);
+        invalidateRoundContext(aiMeta);
+        continue;
       }
       break;
     }

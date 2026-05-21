@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes named AI seat placeholders, and includes a pure Node WebSocket multiplayer server.
+Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes named strategic AI seats, and includes a pure Node WebSocket multiplayer server.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **AI seat placeholders.** AI slots can be reserved, named, and will play a legal fallback move every turn (confirm in court, take the first legal deployment plan). There is no strategic decision system today — the previous one was removed and single-player against the placeholder is intentionally easy. See `docs/roadmap.md` for what a real AI would need.
+- **Strategic AI seats.** AI slots can be reserved and named. They use a phase-aware heuristic planner for titles, court powers, estate bids, deployment, and defender rewards while routing every move through the same legal command layer as humans.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -61,7 +61,7 @@ npm run serve:multiplayer
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
 | `npm run test:economy` | Engine/economy rules tests. |
-| `npm run test:ai` | AI placeholder and legal-action smoke tests. |
+| `npm run test:ai` | Strategic AI and legal-action smoke tests. |
 | `npm run test:ui` | Browser controller and panel tests. |
 | `npm run test:multiplayer` | End-to-end multiplayer protocol verifier. |
 | `npm test` | Runs the full local test suite. |
@@ -90,7 +90,7 @@ Render notes:
 .
 ├── index.html              # Live game entry point
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
-├── ai/                     # AI placeholders, Greek names, and legal action generation
+├── ai/                     # Strategic AI planner, Greek names, and legal action generation
 ├── assets/                 # SVG map, hitzones, stylesheets
 ├── data/                   # Static game data (provinces, titles, invasion decks)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
@@ -113,14 +113,14 @@ Useful entry points:
 
 - `engine/state.js` - game state shape and reducers
 - `engine/turnflow.js` - round/phase orchestration
-- `ai/brain.js` - placeholder AI runtime integration
+- `ai/brain.js` - strategic AI runtime integration
 - `multiplayer/wsServer.js` - handcoded WebSocket framing
 
-## AI Placeholder Layer
+## AI Layer
 
-The previous AI decision code has been removed. The remaining layer only keeps evergreen plumbing: named AI seats, the Greek name list, metadata needed by local and multiplayer setup, legal action generation for future AI work, and deterministic fallback actions so placeholder seats do not crash the runtime.
+AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 25%/50%/75% thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, title redistribution, and defender rewards.
 
-Current placeholders are named `placeholder-1`, `placeholder-2`, etc. They do not model opinions, diplomacy, goals, or play styles.
+The named opponent catalog is intentionally lightweight: names identify seats, while the shared strategic planner makes the decisions.
 
 ## License
 

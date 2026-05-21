@@ -11,9 +11,11 @@ import {
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
 import { getSpendableGold } from '../engine/deals.js';
+import { getMercenaryHireCost } from '../engine/rules.js';
 import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/turnflow.js';
 import { getFreeThemes, getPlayer } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
+import { readTroopEntry } from '../engine/cascade.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
 export const AI_DEALS_ENABLED = false;
@@ -203,8 +205,8 @@ export function listLegalEstateActions(state, playerId) {
 function fullFundingArmies(state, playerId, destination = 'frontier') {
   const armies = {};
   for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
-    const entry = state.currentTroops?.[officeKey];
-    const max = Math.max(0, Number(entry?.normal) || 0) + Math.max(0, Number(entry?.capitalLocked) || 0);
+    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+    const max = entry.normal + entry.capitalLocked;
     armies[officeKey] = { funded: max, destination };
   }
   return armies;
@@ -213,11 +215,91 @@ function fullFundingArmies(state, playerId, destination = 'frontier') {
 function leanFundingArmies(state, playerId) {
   const armies = {};
   for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
-    const entry = state.currentTroops?.[officeKey];
-    const max = Math.max(0, Number(entry?.normal) || 0) + Math.max(0, Number(entry?.capitalLocked) || 0);
+    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+    const max = entry.normal + entry.capitalLocked;
     armies[officeKey] = { funded: Math.ceil(max / 2), destination: 'frontier' };
   }
   return armies;
+}
+
+function idleArmies(state, playerId) {
+  const armies = {};
+  for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
+    armies[officeKey] = { funded: 0, destination: 'frontier' };
+  }
+  return armies;
+}
+
+function mixedFundingArmies(state, playerId, pivotOfficeKey, pivotDestination, otherDestination) {
+  const armies = {};
+  for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
+    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+    const max = entry.normal + entry.capitalLocked;
+    armies[officeKey] = {
+      funded: max,
+      destination: officeKey === pivotOfficeKey ? pivotDestination : otherDestination,
+    };
+  }
+  return armies;
+}
+
+function sparseFundingArmies(state, playerId, activeOfficeKey, destination) {
+  const armies = {};
+  for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
+    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+    const max = entry.normal + entry.capitalLocked;
+    armies[officeKey] = {
+      funded: officeKey === activeOfficeKey ? max : 0,
+      destination,
+    };
+  }
+  return armies;
+}
+
+function getUnfundedGoldFromArmies(state, armies) {
+  return Object.entries(armies || {}).reduce((total, [officeKey, order]) => {
+    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
+    const max = entry.normal + entry.capitalLocked;
+    return total + Math.max(0, max - (Number(order?.funded) || 0));
+  }, 0);
+}
+
+function getMaxMercenariesForBudget(budget) {
+  let count = 0;
+  while (count < 10 && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  return count;
+}
+
+function buildMercenaryPlans(state, playerId, armies) {
+  const spendable = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
+  const budget = spendable + getUnfundedGoldFromArmies(state, armies);
+  const maxAffordable = getMaxMercenariesForBudget(budget);
+  const counts = [...new Set([0, Math.min(2, maxAffordable), Math.floor(maxAffordable / 2), maxAffordable])]
+    .filter((count) => count >= 0 && count <= maxAffordable)
+    .sort((left, right) => left - right);
+  const plans = [];
+  for (const count of counts) {
+    plans.push({ count, destination: 'frontier' });
+    if (count > 0) plans.push({ count, destination: 'capital' });
+  }
+  return plans;
+}
+
+function buildArmyPlans(state, playerId) {
+  const officeKeys = getPlayerOrderOfficeKeys(state, playerId);
+  const plans = [
+    fullFundingArmies(state, playerId, 'frontier'),
+    fullFundingArmies(state, playerId, 'capital'),
+    leanFundingArmies(state, playerId),
+    idleArmies(state, playerId),
+  ];
+  for (const officeKey of officeKeys) {
+    plans.push(mixedFundingArmies(state, playerId, officeKey, 'capital', 'frontier'));
+    plans.push(mixedFundingArmies(state, playerId, officeKey, 'frontier', 'capital'));
+    plans.push(sparseFundingArmies(state, playerId, officeKey, 'frontier'));
+    plans.push(sparseFundingArmies(state, playerId, officeKey, 'capital'));
+  }
+  return uniqueActions(plans.map((armies) => ({ id: actionId('army-plan', armies), armies }))).map((entry) => entry.armies);
 }
 
 export function listLegalOrderActions(state, playerId) {
@@ -225,17 +307,20 @@ export function listLegalOrderActions(state, playerId) {
   if (state.allOrders?.[playerId]) return [];
   const actions = [];
   const seen = new Set();
-  const armyPlans = [fullFundingArmies(state, playerId, 'frontier'), fullFundingArmies(state, playerId, 'capital'), leanFundingArmies(state, playerId)];
+  const armyPlans = buildArmyPlans(state, playerId);
   for (const armies of armyPlans) {
-    for (const candidate of state.players.map((player) => player.id)) {
-      const orders = { armies, mercenaries: { count: 0, destination: 'frontier' }, candidate };
-      const trial = cloneForValidation(state);
-      const result = submitHumanOrders(trial, playerId, orders);
-      if (!result.ok) continue;
-      const key = stablePayload(result.orders);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      actions.push({ id: actionId('orders', result.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: result.orders });
+    for (const mercenaries of buildMercenaryPlans(state, playerId, armies)) {
+      for (const candidate of state.players.map((player) => player.id)) {
+        const orders = { armies, mercenaries, candidate };
+        const trial = cloneForValidation(state);
+        const result = submitHumanOrders(trial, playerId, orders);
+        if (!result.ok) continue;
+        const key = stablePayload(result.orders);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        actions.push({ id: actionId('orders', result.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: result.orders });
+        if (actions.length >= 260) return actions;
+      }
     }
   }
   return actions;
@@ -307,6 +392,7 @@ export function applyLegalAction(state, action, aiMeta = null) {
   if (!action) return { ok: false, reason: 'No action selected.' };
   if (action.kind === 'court') return applyCourtAction(state, action.playerId, action.payload);
   if (action.kind === 'court-confirm') return confirmCourt(state, action.playerId);
+  if (action.kind === 'estate') return applyEstateAction(state, action.playerId, action.payload);
   if (action.kind === 'orders') return submitHumanOrders(state, action.playerId, action.orders);
   if (action.kind === 'reward') return applyDefenderRewardChoice(state, action.rewardId, action.playerId, action.choice);
   if (action.kind === 'title-assignment') {
