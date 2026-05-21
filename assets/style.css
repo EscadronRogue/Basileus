@@ -4974,3 +4974,236 @@ textarea {
   background: rgba(200,146,30,0.10);
   border-color: rgba(200,146,30,0.42);
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   VALUE READABILITY — Resource values (gold / troops / church) must
+   stay crisp on every background: parchment, dynasty fills (lighter
+   ones like Doukas amber and capital gold are the worst offenders),
+   and the translucent dark veils used by finance / stat cards on
+   top of those colors.
+
+   Pulled from the Icon & Cartouche System spec:
+     • On parchment      → kind-tint ink (umber / gold / church-blue),
+                           no shadow.
+     • On a colored cart → solid white ink + 2-layer dark text-shadow
+                           (sharp drop + soft halo). Numerals bump to
+                           700 weight, labels keep a higher opacity
+                           so the noun stays legible.
+     • SVG cartouches    → swap text-shadow (renders unreliably on
+                           SVG <text>) for paint-order stroke+fill,
+                           which yields a crisp dark outline on every
+                           owner fill.
+   ───────────────────────────────────────────────────────────────── */
+
+/* 1. Globally bolder numerals + tabular spacing so every readout
+      lines up vertically and pops off the parchment / dynasty fill. */
+.value .value-num,
+.dashboard-cartouche .dc-reserve,
+.finance-card .finance-value,
+.dashboard-stat-row strong,
+.balance-row .pts,
+.province-token-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.value .value-noun { opacity: 0.88; }
+
+/* 2. The label / number duo turns white inside any colored cartouche.
+      The chained-class selectors (e.g. .value.gold) outrank the base
+      .value.gold { color: var(--gold-1); } rule that ships earlier
+      in this stylesheet, so the muted gold tint no longer fights the
+      dynasty fill behind it. */
+.player-tab .value,
+.player-tab .value.gold,
+.player-tab .value.troop,
+.player-tab .value.church,
+.player-tab .value.income,
+.player-tab .value.upkeep,
+.player-dashboard .value,
+.player-dashboard .value.gold,
+.player-dashboard .value.troop,
+.player-dashboard .value.church,
+.dashboard-cartouche .value,
+.dashboard-cartouche .value.gold,
+.dashboard-cartouche .value.troop,
+.dashboard-cartouche .value.church,
+.candidate-row .value,
+.candidate-row .value.gold,
+.candidate-row .value.troop,
+.candidate-row .value.church,
+.player-choice-btn .value,
+.player-choice-btn .value.gold,
+.player-choice-btn .value.troop,
+.player-choice-btn .value.church,
+.player-chip .value,
+.player-chip .value.gold,
+.player-chip .value.troop,
+.player-chip .value.church,
+.player-role-name .value,
+.player-role-name .value.gold,
+.player-role-name .value.troop,
+.player-role-name .value.church,
+.province-token .value,
+.province-token .value.gold,
+.province-token .value.troop,
+.province-token .value.church,
+.title-token .value,
+.title-token .value.gold,
+.title-token .value.troop,
+.title-token .value.church,
+.cartouche .value,
+.cartouche .value.gold,
+.cartouche .value.troop,
+.cartouche .value.church {
+  color: #ffffff;
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.78),
+    0 0 5px rgba(20,8,0,0.45);
+}
+
+/* Heavier numeral weight inside colored cartouches. */
+.player-tab .value .value-num,
+.player-tab .tab-finance .value-num,
+.player-dashboard .value .value-num,
+.dashboard-cartouche .value .value-num,
+.candidate-row .value .value-num,
+.player-choice-btn .value .value-num,
+.player-chip .value .value-num,
+.cartouche .value .value-num,
+.province-token .value .value-num,
+.province-token-num,
+.title-token .value .value-num {
+  font-weight: 700;
+}
+
+/* Labels stay readable too. */
+.player-tab .value .value-noun,
+.player-tab .tab-finance .value-noun,
+.player-dashboard .value .value-noun,
+.dashboard-cartouche .value .value-noun,
+.candidate-row .value .value-noun,
+.cartouche .value .value-noun {
+  opacity: 0.95;
+}
+
+/* Icons inside colored cartouches: drop a small dark halo onto the
+   stroke-driven SVGs so the sword / nomisma / basilica outlines
+   read against the dynasty fill instead of merging into it. */
+.player-tab .icon svg,
+.player-dashboard .icon svg,
+.dashboard-cartouche .icon svg,
+.candidate-row .icon svg,
+.player-choice-btn .icon svg,
+.player-chip .icon svg,
+.player-role-name .icon svg,
+.province-token .icon svg,
+.title-token .icon svg,
+.cartouche .icon svg {
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
+}
+
+/* 3. Dashboard cartouche head — the big gold reserve and the
+      income / upkeep delta were unshadowed white on dynasty fill.
+      Anchor them with the same shadow stack and tighten the
+      delta colors so they survive the lighter dynasty fills. */
+.dashboard-cartouche .dc-reserve,
+.dashboard-cartouche .dc-delta .value {
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.78),
+    0 0 5px rgba(20,8,0,0.45);
+}
+.dashboard-cartouche .dc-reserve { font-weight: 700; }
+.dashboard-cartouche .dc-reserve .icon {
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
+}
+.dashboard-cartouche .dc-delta .value.income,
+.dashboard-cartouche .dc-delta .value.income .icon { color: #dcf2bc; }
+.dashboard-cartouche .dc-delta .value.upkeep,
+.dashboard-cartouche .dc-delta .value.upkeep .icon { color: #ffc6b6; }
+
+/* 4. Finance cards inside the dashboard sit on a dynasty fill, so
+      the 22 %-opacity dark veil from the base rule is too faint on
+      the lighter dynasty colors (Doukas amber and the capital gold
+      come out essentially the same as the card). Deepen the veil
+      and the inner gold hairline, bolden the numerals. */
+.player-dashboard .finance-card {
+  background: rgba(20,8,0,0.46);
+  border-color: rgba(240,200,90,0.45);
+  box-shadow: inset 0 0 0 1px rgba(255,250,225,0.07);
+}
+.player-dashboard .finance-card .finance-label {
+  color: #fceec3;
+  opacity: 0.95;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+}
+.player-dashboard .finance-card .finance-value {
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.78),
+    0 0 5px rgba(20,8,0,0.4);
+}
+.player-dashboard .finance-card .finance-value .icon {
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
+}
+.player-dashboard .finance-card.income .finance-value,
+.player-dashboard .finance-card.income .finance-value .icon { color: #dcf2bc; }
+.player-dashboard .finance-card.upkeep .finance-value,
+.player-dashboard .finance-card.upkeep .finance-value .icon { color: #ffc6b6; }
+
+/* 5. Dashboard stat row gets the same heavier veil + shadow stack. */
+.player-dashboard .dashboard-stat-row {
+  background: rgba(20,8,0,0.42);
+  border-color: rgba(240,200,90,0.4);
+}
+.player-dashboard .dashboard-stat-row,
+.player-dashboard .dashboard-stat-row strong,
+.player-dashboard .dashboard-stat-label {
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.6);
+}
+.player-dashboard .dashboard-stat-row strong { font-weight: 700; }
+
+/* 6. Player-tab finance run — numerals were faint on Doukas amber.
+      Apply the bolder + halo treatment from the cartouche spec. */
+.player-tab .tab-finance .value-num { font-weight: 700; }
+.player-tab .tab-finance .value-noun { opacity: 0.95; }
+
+/* 7. Province-token values column — bolden numerals; the column
+      separator already provides the visual break from the name. */
+.province-token-values { opacity: 1; }
+.province-token-num { font-weight: 700; }
+
+/* 8. SVG map cartouche text: swap text-shadow (renders unreliably
+      across browsers on SVG <text>) for true paint-order stroke +
+      fill, which draws a crisp dark outline on every owner fill
+      color — including light fills like Doukas amber and the
+      capital gold where the previous shadow was invisible. */
+.map-cart-id,
+.map-cart-name,
+.map-cart-glyph-num {
+  text-shadow: none;
+  stroke: rgba(20,8,0,0.85);
+  stroke-width: 0.32;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+  fill: #ffffff;
+}
+.map-cart-glyph-num { stroke-width: 0.3; font-weight: 800; }
+/* Keep the warm-gold / cool-blue tint on gold and church numerals
+   so the three-icon triplet stays scannable as a triplet — the
+   shared dark stroke unifies them and the hue distinguishes them. */
+.map-cartouche .map-cart-glyph-num-gold   { fill: #ffe8a8; }
+.map-cartouche .map-cart-glyph-num-troop  { fill: #ffffff; }
+.map-cartouche .map-cart-glyph-num-church { fill: #cfe1ff; }
+.map-cartouche.church .map-cart-glyph-num-church { fill: #ffffff; }
+
+/* SVG icon strokes on the map: a tiny dark drop-shadow keeps the
+   sword / nomisma / basilica outlines visible on every owner fill. */
+.map-cart-glyph { filter: drop-shadow(0 0.08px 0 rgba(20,8,0,0.7)); }
+
+/* 9. Balance ranking row — values stay umber/gold/church on the
+      parchment background (already correct), but the numerals were
+      under-weighted. Bolden them so the column reads vertically. */
+.balance-row .breakdown .value .value-num { font-weight: 700; }
+.balance-row .pts { font-weight: 700; }
