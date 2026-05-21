@@ -1315,16 +1315,14 @@ body::before {
 .revocation { border-left: 3px solid var(--crimson-1); }
 .revocation-cost { color: var(--umber-1); font-style: normal; }
 
-/* ── Market / Gift items ─────────────────────────────────────────── */
-.theme-market,
-.gift-options {
+/* ── Market items ────────────────────────────────────────────────── */
+.theme-market {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr));
   gap: var(--sp-2);
 }
 
-.market-item,
-.gift-item {
+.market-item {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1346,15 +1344,13 @@ body::before {
 }
 .market-name { min-width: 0; flex: 1 1 auto; }
 
-.market-item:hover:not(.disabled),
-.gift-item:hover {
+.market-item:hover:not(.disabled) {
   border-color: var(--parch-3);
   background: var(--parch-0);
   box-shadow: 0 3px 12px rgba(168,116,32,0.15);
 }
 
-.market-item.selected,
-.gift-item.selected {
+.market-item.selected {
   border-color: var(--gold-1);
   background: rgba(200,146,30,0.08);
   box-shadow: 0 0 0 1px rgba(168,116,32,0.2);
@@ -3592,13 +3588,11 @@ textarea {
   }
 
   .theme-market,
-  .gift-options,
   .appt-grid {
     grid-template-columns: 1fr;
   }
 
   .market-item,
-  .gift-item,
   .deploy-row,
   .merc-row {
     padding: 10px 12px;
@@ -4575,7 +4569,7 @@ textarea {
   color: var(--gold-1);
 }
 
-/* Action-fold (Appoint / Revoke / Gift Land) summary styling */
+/* Action-fold (Appoint / Revoke) summary styling */
 .action-fold {
   border: 1px solid rgba(168,116,32,0.16);
   border-radius: var(--r-md);

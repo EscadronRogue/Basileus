@@ -729,7 +729,6 @@ export class MultiplayerController {
 
   createCourtHandlers() {
     return {
-      gift: (themeId) => this.send('court_action', { action: 'gift', themeId }),
       'deal-send': (payload) => this.send('court_action', { action: 'deal-send', ...payload }),
       'deal-counter': (payload) => this.send('court_action', { action: 'deal-counter', ...payload }),
       'deal-accept': (payload) => this.send('court_action', { action: 'deal-accept', ...payload }),

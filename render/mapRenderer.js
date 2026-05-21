@@ -977,7 +977,7 @@ function updateMapCartoucheMarkers(cart, state, theme) {
   const markersGroup = cart?.querySelector?.('.map-cart-markers');
   if (!markersGroup || !state || !theme) return;
 
-  const valuePositions = getMapValuePairCenters(provinceValueEntries(theme));
+  const valuePositions = getMapValuePairCenters(cart, provinceValueEntries(theme));
   const markers = getMapCartoucheMarkers(state, theme, valuePositions);
   const nextSig = markers.map((marker) => `${marker.kind}:${marker.ownerId}:${marker.color}:${marker.x.toFixed(3)}`).join('|');
   if (markersGroup.getAttribute('data-marker-sig') === nextSig) return;
@@ -992,7 +992,48 @@ function updateMapCartoucheMarkers(cart, state, theme) {
   layoutMapCartouche(cart);
 }
 
-function getMapValuePairCenters(entries) {
+function getRenderedMapValuePairCenters(cart) {
+  const valuesGroup = cart?.querySelector?.('.map-cart-values');
+  const centers = new Map();
+  if (!valuesGroup) return centers;
+
+  for (const kind of Object.values(MAP_MARKER_VALUE_KIND)) {
+    const icon = valuesGroup.querySelector(`.map-cart-glyph-${kind}`);
+    const num = valuesGroup.querySelector(`.map-cart-glyph-num-${kind}`);
+    if (!icon || !num) continue;
+
+    const left = Number(icon.getAttribute('x'));
+    const iconWidth = Number(icon.getAttribute('width'));
+    const numX = Number(num.getAttribute('x'));
+    if (!Number.isFinite(left) || !Number.isFinite(iconWidth) || !Number.isFinite(numX)) continue;
+
+    let numWidth = 0;
+    try {
+      const measured = num.getComputedTextLength?.();
+      if (Number.isFinite(measured) && measured > 0) numWidth = measured;
+    } catch {
+      // Fall back to deterministic sizing below.
+    }
+    if (numWidth <= 0) {
+      try {
+        const bboxWidth = num.getBBox?.().width;
+        if (Number.isFinite(bboxWidth) && bboxWidth > 0) numWidth = bboxWidth;
+      } catch {
+        // Fall back to deterministic sizing below.
+      }
+    }
+    if (numWidth <= 0) {
+      const digits = Math.max(1, String(num.textContent || '').length);
+      numWidth = digits * MAP_CART_VALUE_OPTS.digitWidth;
+    }
+
+    centers.set(kind, (left + Math.max(left + iconWidth, numX + numWidth)) / 2);
+  }
+
+  return centers;
+}
+
+function estimateMapValuePairCenters(entries) {
   const iconSize = MAP_CART_VALUE_OPTS.iconSize;
   const iconGap = MAP_CART_VALUE_OPTS.iconGap;
   const pairGap = MAP_CART_VALUE_OPTS.pairGap;
@@ -1017,6 +1058,15 @@ function getMapValuePairCenters(entries) {
   }
 
   return centers;
+}
+
+function getMapValuePairCenters(cart, entries) {
+  const rendered = getRenderedMapValuePairCenters(cart);
+  const estimated = estimateMapValuePairCenters(entries);
+  for (const [kind, x] of estimated) {
+    if (!rendered.has(kind)) rendered.set(kind, x);
+  }
+  return rendered;
 }
 
 function getMapCartoucheMarkers(state, theme, valuePositions) {

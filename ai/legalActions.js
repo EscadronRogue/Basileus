@@ -12,7 +12,7 @@ import {
 } from '../engine/actions.js';
 import { getSpendableGold } from '../engine/deals.js';
 import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/turnflow.js';
-import { getFreeThemes, getPlayer, getPlayerThemes } from '../engine/state.js';
+import { getFreeThemes, getPlayer } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
@@ -140,14 +140,6 @@ function appendAppointmentActions(actions, state, playerId) {
   }
 }
 
-function appendGiftActions(actions, state, playerId) {
-  for (const theme of getPlayerThemes(state, playerId)) {
-    if (!theme.occupied && (Number(theme.origin?.C) || 0) >= 1) {
-      pushCourt(actions, state, playerId, { action: 'gift', themeId: theme.id }, 'gift estate');
-    }
-  }
-}
-
 function appendRevocationActions(actions, state, playerId) {
   const player = getPlayer(state, playerId);
   if (!player) return;
@@ -182,7 +174,6 @@ export function listLegalCourtActions(state, playerId) {
   if (state.courtActions?.playerConfirmed?.has(playerId)) return [];
   const actions = [];
   appendAppointmentActions(actions, state, playerId);
-  appendGiftActions(actions, state, playerId);
   appendRevocationActions(actions, state, playerId);
   pushCourt(actions, state, playerId, { action: 'skip' }, 'skip court action');
   pushConfirmation(actions, state, playerId);

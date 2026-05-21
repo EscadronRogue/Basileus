@@ -293,7 +293,6 @@ export class GameController {
     };
 
     return {
-      gift: (themeId) => dispatch({ action: 'gift', themeId }),
       'deal-send': (payload) => dispatch({ action: 'deal-send', ...payload }),
       'deal-counter': (payload) => dispatch({ action: 'deal-counter', ...payload }),
       'deal-accept': (payload) => dispatch({ action: 'deal-accept', ...payload }),

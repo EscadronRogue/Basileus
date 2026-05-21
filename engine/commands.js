@@ -24,7 +24,6 @@ import {
   canPlayerRevokeBishop,
   canPlayerRevokeStrategos,
   checkRevocationCurrentTurnAppointment,
-  giftToChurch,
   hasCourtActionUsed,
   markCourtActionUsed,
   revokeChurchLand,
@@ -59,13 +58,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
 
   if (action === 'skip') {
     return confirmCourt(state, playerId);
-  }
-
-  if (action === 'gift') {
-    const result = giftToChurch(state, playerId, payload.themeId);
-    if (!result?.ok) return fail(result?.reason || 'Could not gift that estate.');
-    autoConfirmFinishedCourtPlayer(state, playerId);
-    return { ok: true, observation: { type: 'gift', actorId: playerId, themeId: payload.themeId } };
   }
 
   if (action === 'appoint-court') {

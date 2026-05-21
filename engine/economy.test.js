@@ -123,24 +123,21 @@ test('patriarch may appoint bishops in occupied original church provinces', () =
   assert.equal(state.themes.KAP.bishop, 2);
 });
 
-test('church gifts inflate church value and consume the donor gift action', () => {
+test('court no longer allows gifting private land to the church', () => {
   const state = makeState();
   enterCourt(state);
   state.themes.SAM.owner = 2;
 
   const result = applyCourtAction(state, 2, { action: 'gift', themeId: 'SAM' });
 
-  assert.equal(result.ok, true);
-  assert.equal(state.themes.SAM.owner, 'church');
-  assert.equal(state.themes.SAM.bishop, 2);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /Unknown court action/);
+  assert.equal(state.themes.SAM.owner, 2);
+  assert.equal(state.themes.SAM.bishop, null);
   assert.deepEqual(
     { P: state.themes.SAM.P, T: state.themes.SAM.T, C: state.themes.SAM.C },
-    { P: 0, T: 0, C: 3 },
+    { P: 1, T: 1, C: 1 },
   );
-  state.themes.KYP.owner = 2;
-  const secondGift = applyCourtAction(state, 2, { action: 'gift', themeId: 'KYP' });
-  assert.equal(secondGift.ok, false);
-  assert.match(secondGift.reason, /Church gift already/);
 });
 
 test('estates phase stores bids and settles them when deployment opens', () => {

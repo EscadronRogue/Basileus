@@ -85,6 +85,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(patriarchPanel.innerHTML, /Appoint Strategos/);
   assert.match(patriarchPanel.innerHTML, /Appoint Bishop/);
   assert.match(patriarchPanel.innerHTML, /Revoke/);
+  assert.doesNotMatch(patriarchPanel.innerHTML, /Gift/);
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
 });
 

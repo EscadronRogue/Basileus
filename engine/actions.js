@@ -14,7 +14,6 @@ import {
   autoRefuseAwaitingDeals,
   consumeAppointmentPromise,
   getSpendableGold,
-  isThemeReservedByDeal,
   validateAppointmentPromiseChoice,
 } from './deals.js';
 import { getThemeLandPrice } from './rules.js';
@@ -26,8 +25,6 @@ const STRATEGOS_TITLE_BY_REGION = {
   west: 'DOM_WEST',
   sea: 'ADMIRAL',
 };
-
-export const GIFT_COURT_POWER = 'GIFT';
 
 function playerName(state, playerId) {
   const player = getPlayer(state, playerId);
@@ -47,7 +44,6 @@ function courtTitleName(titleType) {
 
 function courtPowerName(powerKey) {
   if (powerKey === 'BASILEUS') return 'Basileus';
-  if (powerKey === GIFT_COURT_POWER) return 'Church gift';
   return MAJOR_TITLES[powerKey]?.name || powerKey || 'This office';
 }
 
@@ -296,81 +292,6 @@ export function settleLandAuctions(state) {
     });
     delete auctions[themeId];
   }
-}
-
-function relocateDisplacedBishop(state, themeId, playerId) {
-  const candidates = Object.values(state.themes || {}).filter((theme) => (
-    theme.id !== 'CPL'
-    && theme.id !== themeId
-    && !theme.occupied
-    && theme.owner !== 'church'
-    && theme.bishop == null
-    && (Number(theme.origin?.C) || 0) >= 1
-  ));
-  if (candidates.length === 0) {
-    recordHistoryEvent(state, {
-      category: 'court',
-      type: 'bishop_displaced',
-      actorId: playerId,
-      summary: `${playerName(state, playerId)} is displaced from the bishopric of ${themeName(state, themeId)} and finds no vacant see.`,
-      details: { fromThemeId: themeId, displacedPlayerId: playerId, toThemeId: null },
-    });
-    return null;
-  }
-  if (typeof state.rng !== 'function') {
-    // The engine guarantees a seeded RNG (see README "Deterministic core").
-    // Falling back to Math.random would silently break reproducibility, so
-    // surface the missing RNG as a hard error instead.
-    throw new Error('engine/actions.js: state.rng is required (deterministic core).');
-  }
-  const nextTheme = candidates[Math.floor(state.rng() * candidates.length)];
-  nextTheme.bishop = playerId;
-  nextTheme.bishopIsDonor = false;
-  markTitleAppointedThisTurn(state, getMinorTitleSlotKey(nextTheme.id, 'bishop'));
-  recordHistoryEvent(state, {
-    category: 'court',
-    type: 'bishop_displaced',
-    actorId: playerId,
-    summary: `${playerName(state, playerId)} is displaced from ${themeName(state, themeId)} to ${themeName(state, nextTheme.id)}.`,
-    details: { fromThemeId: themeId, displacedPlayerId: playerId, toThemeId: nextTheme.id },
-  });
-  return nextTheme.id;
-}
-
-export function giftToChurch(state, playerId, themeId) {
-  const actionCheck = checkCourtActionAvailable(state, playerId, GIFT_COURT_POWER, 'gift');
-  if (!actionCheck.ok) return actionCheck;
-  const theme = state.themes[themeId];
-  if (!theme || theme.owner !== playerId) return fail('You can only gift your own private estate.');
-  if (theme.occupied) return fail('Occupied estates cannot be gifted.');
-  if ((Number(theme.origin?.C) || 0) < 1) return fail('Only provinces with original church value can be gifted.');
-  if (isThemeReservedByDeal(state, themeId)) return fail(`${themeName(state, themeId)} is reserved by an accepted deal and cannot be gifted away.`);
-
-  const displacedBishop = theme.bishop;
-  theme.owner = 'church';
-  theme.suspendedOwner = null;
-  theme.strategos = null;
-  theme.bishop = playerId;
-  theme.bishopIsDonor = true;
-  theme.C = (Number(theme.origin.P) || 0) + (Number(theme.origin.T) || 0) + (Number(theme.origin.C) || 0);
-  theme.P = 0;
-  theme.T = 0;
-
-  if (displacedBishop != null && displacedBishop !== playerId) {
-    relocateDisplacedBishop(state, themeId, displacedBishop);
-  }
-
-  markTitleAppointedThisTurn(state, getMinorTitleSlotKey(themeId, 'bishop'));
-  markCourtActionUsed(state, playerId, GIFT_COURT_POWER, 'gift');
-  state.log.push({ type: 'gift_church', player: playerId, theme: themeId, round: state.round });
-  recordHistoryEvent(state, {
-    category: 'court',
-    type: 'gift_theme_to_church',
-    actorId: playerId,
-    summary: `${playerName(state, playerId)} gifts ${themeName(state, themeId)} to the church and becomes its bishop.`,
-    details: { themeId, themeName: themeName(state, themeId), churchValue: theme.C },
-  });
-  return { ok: true };
 }
 
 // Appointments
@@ -670,24 +591,12 @@ function hasBishopRevocationTarget(state) {
   ));
 }
 
-function hasGiftTarget(state, playerId) {
-  return Object.values(state.themes || {}).some((theme) => (
-    theme.id !== 'CPL'
-    && theme.owner === playerId
-    && !theme.occupied
-    && (Number(theme.origin?.C) || 0) >= 1
-  ));
-}
-
 export function getCourtPowerKeys(state, playerId) {
   const player = getPlayer(state, playerId);
   if (!player) return [];
   return unique([
     playerId === state.basileusId ? 'BASILEUS' : null,
     ...(player.majorTitles || []),
-    hasGiftTarget(state, playerId) || isCourtPowerUsed(state, playerId, GIFT_COURT_POWER)
-      ? GIFT_COURT_POWER
-      : null,
     ...getUsedCourtPowers(state, playerId),
   ]);
 }
@@ -703,9 +612,6 @@ export function hasCourtPowerOptions(state, playerId, powerKey) {
   if (powerKey === 'PATRIARCH') {
     return getPlayer(state, playerId)?.majorTitles?.includes('PATRIARCH')
       && (hasBishopAppointmentTarget(state) || hasBishopRevocationTarget(state));
-  }
-  if (powerKey === GIFT_COURT_POWER) {
-    return hasGiftTarget(state, playerId);
   }
   if (powerKey === 'DOM_EAST' || powerKey === 'DOM_WEST' || powerKey === 'ADMIRAL') {
     return getPlayer(state, playerId)?.majorTitles?.includes(powerKey)
