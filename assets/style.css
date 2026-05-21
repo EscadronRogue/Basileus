@@ -2523,8 +2523,7 @@ body::before {
 .province-token-num { font-variant-numeric: tabular-nums; }
 
 /* ─────────────────────────────────────────────────────────────────
-   ICON ATOMS — three resource glyphs (crossed spears, Chi-Rho coin,
-   Orthodox cross).
+   ICON ATOMS — three resource glyphs (spearman, coin, Orthodox cross).
    All icons take currentColor, so they inherit from the surrounding
    text. The default tints below apply only when an icon sits outside
    any colored container (e.g. on parchment).
@@ -5088,8 +5087,7 @@ textarea {
 }
 
 /* Icons inside colored cartouches: drop a small dark halo onto the
-   stroke-driven SVGs so the crossed spears / Chi-Rho coin / Orthodox
-   cross outlines
+   stroke-driven SVGs so the spearman / coin / Orthodox cross outlines
    read against the dynasty fill instead of merging into it. */
 .player-tab .icon svg,
 .player-dashboard .icon svg,
@@ -5201,7 +5199,7 @@ textarea {
 .map-cartouche.church .map-cart-glyph-num-church { fill: #ffffff; }
 
 /* SVG icon strokes on the map: a tiny dark drop-shadow keeps the
-   crossed spears / Chi-Rho coin / Orthodox cross outlines visible on every owner fill. */
+   spearman / coin / Orthodox cross outlines visible on every owner fill. */
 .map-cart-glyph { filter: drop-shadow(0 0.08px 0 rgba(20,8,0,0.7)); }
 
 /* 9. Balance ranking row — values stay umber/gold/church on the

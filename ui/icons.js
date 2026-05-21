@@ -1,8 +1,8 @@
 // ui/icons.js - Single source of truth for the three resource glyphs.
 //
 // Three icons, one grammar:
-//   - TROOP  -> crossed spears  (replaces the letter "T" / "troops" in UI)
-//   - GOLD   -> Chi-Rho coin    (replaces the letter "g" / "gold" in UI)
+//   - TROOP  -> spearman        (replaces the letter "T" / "troops" in UI)
+//   - GOLD   -> coin            (replaces the letter "g" / "gold" in UI)
 //   - CHURCH -> Orthodox cross  (replaces the letter "C" / "church" in UI)
 //
 // All glyphs are stroke-driven with small filled accents, matching the
@@ -21,27 +21,24 @@ const SVG_VIEWBOX = '0 0 24 24';
 const ICON_PATHS = {
   troop: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M7.1 18.8 L16.9 5.2"/>
-      <path d="M16.9 5.2 L15.2 5.8 L16.5 7.1 Z" fill="currentColor" fill-opacity=".18"/>
-      <path d="M16.9 5.2 L15 5.6 L16.2 7.3 Z"/>
-      <path d="M16.9 18.8 L7.1 5.2"/>
-      <path d="M7.1 5.2 L8.8 5.8 L7.5 7.1 Z" fill="currentColor" fill-opacity=".18"/>
-      <path d="M7.1 5.2 L9 5.6 L7.8 7.3 Z"/>
-      <path d="M8.1 17.5 L5.8 20.1"/>
-      <path d="M15.9 17.5 L18.2 20.1"/>
-      <circle cx="12" cy="12" r="1.15" fill="currentColor" fill-opacity=".16"/>
+      <path d="M16 3.7 L16 20.3"/>
+      <path d="M16 3.7 L14.7 5.9 L17.3 5.9 Z" fill="currentColor" fill-opacity=".18"/>
+      <path d="M16 3.7 L14.7 5.9 L17.3 5.9 Z"/>
+      <circle cx="8.5" cy="5.4" r="1.25" fill="currentColor" fill-opacity=".16"/>
+      <path d="M8.8 6.8 L9.3 12.7"/>
+      <path d="M8.9 8.8 L6.7 11.2"/>
+      <path d="M9 8.9 L15.9 10.6"/>
+      <path d="M9.3 12.7 L7.2 19"/>
+      <path d="M9.3 12.7 L12 18.8"/>
+      <circle cx="15.9" cy="10.6" r=".55" fill="currentColor" stroke="none"/>
     </g>
   `,
   gold: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="8.4" fill="currentColor" fill-opacity=".10"/>
       <circle cx="12" cy="12" r="8.4"/>
-      <circle cx="12" cy="12" r="6.4" stroke-opacity=".55" stroke-width=".7"/>
-      <path d="M12 6.9 L12 17.1"/>
-      <path d="M8.6 8.1 L15.4 15.9"/>
-      <path d="M15.4 8.1 L8.6 15.9"/>
-      <path d="M12 7.3 H13.7 Q15.4 7.3 15.4 9.2 Q15.4 11 13.7 11 H12"/>
-      <path d="M12 11 H14.2" stroke-opacity=".45" stroke-width=".9"/>
+      <circle cx="12" cy="12" r="4.1" fill="currentColor" fill-opacity=".08"/>
+      <circle cx="12" cy="12" r="4.1"/>
     </g>
   `,
   church: `
