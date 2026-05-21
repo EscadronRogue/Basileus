@@ -15,13 +15,13 @@ import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyle } from '../engine/
 import { renderIcon, provinceValueEntries } from './icons.js';
 
 const FREE_FILL = '#6a4a8a';
-const CAPITAL_FILL = '#9a7010';
+const CAPITAL_FILL = '#FFD700';
 const CHURCH_FILL = '#1a1a1a';
 const OCCUPIED_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
 const DARK_OUTLINE_MIX = '#1f1208';
 const CARTOUCHE_FILL_BY_REGION = {
-  cpl: '#D4AF37',
+  cpl: '#FFD700',
 };
 const LOST_CART_FILL_PERCENT_BY_REGION = {
   east: 28,
