@@ -2,7 +2,7 @@
 //
 // Visual contract (kept stable everywhere these helpers are used):
 //   - Province land background = a light wash of the province region.
-//   - Province cartouche background = a darker wash of the same region.
+//   - Province cartouche background = midway between the outline and land fill.
 //   - Province land/cartouche outline = the same region, darkened.
 //   - Occupied/lost provinces keep the hue with lighter fill and outline.
 //   - Player/title cartouches still use dynasty/role colors.
@@ -63,11 +63,12 @@ export function getProvinceRegionPalette(themeOrRegion) {
   const region = typeof themeOrRegion === 'string' ? themeOrRegion : themeOrRegion?.region;
   const base = getRegionColor(region);
   const lostFillPercent = LOST_FILL_PERCENT_BY_REGION[region] ?? 24;
+  const fill = mixColor(base, 42, 'var(--parch-0)');
   const outline = mixColor(base, 76, DARK_OUTLINE_MIX);
   return {
     base,
-    fill: mixColor(base, 42, 'var(--parch-0)'),
-    cartFill: mixColor(base, 72, DARK_OUTLINE_MIX),
+    fill,
+    cartFill: mixColor(outline, 52, fill),
     outline,
     lostFill: mixColor(base, lostFillPercent, 'var(--parch-0)'),
     lostOutline: mixColor(base, 52, 'var(--parch-2)'),

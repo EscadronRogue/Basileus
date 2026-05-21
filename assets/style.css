@@ -2220,7 +2220,7 @@ body::before {
 
 /* ── Map cartouches ──────────────────────────────────────────────────
    SVG counterpart of the HTML .province-token. Same visual grammar:
-   outline = darker region color (--cart-border), fill = darker region wash (--cart-bg),
+   outline = darker region color (--cart-border), fill = mid region wash (--cart-bg),
    gold-leaf inner hairline. Two stacked text lines: name / values,
    with an optional office/estate marker row below the values.
    Built and laid out by mapRenderer.js. */
@@ -2382,7 +2382,7 @@ body::before {
 
 /* ── Player & Province Cartouches ─────────────────────────────────────
    Shared visual grammar: a small Byzantine-style nameplate.
-   • Province cartouche background = darker region wash (--cart-bg)
+   • Province cartouche background = mid region wash (--cart-bg)
    • Province outline    = darker region color (--cart-border)
    • Inner gold hairline (var(--gold-3)) suggests a leafed manuscript
      border; subtle parchment-linen overlay keeps the color feeling
