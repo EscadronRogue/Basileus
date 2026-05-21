@@ -1,7 +1,7 @@
 // ui/icons.js - Single source of truth for the three resource glyphs.
 //
 // Three icons, one grammar:
-//   - TROOP  -> spearman        (replaces the letter "T" / "troops" in UI)
+//   - TROOP  -> unit marker     (replaces the letter "T" / "troops" in UI)
 //   - GOLD   -> coin            (replaces the letter "g" / "gold" in UI)
 //   - CHURCH -> Orthodox cross  (replaces the letter "C" / "church" in UI)
 //
@@ -21,40 +21,27 @@ const SVG_VIEWBOX = '0 0 24 24';
 const ICON_PATHS = {
   troop: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M16.9 3.5 L16.9 20.4"/>
-      <path d="M16.9 3.5 L15.4 5.9 L18.4 5.9 Z" fill="currentColor" fill-opacity=".18"/>
-      <path d="M16.9 3.5 L15.4 5.9 L18.4 5.9 Z"/>
-      <path d="M8.1 4.6 Q9.5 3.4 11 4.7"/>
-      <circle cx="9.6" cy="5.6" r="1.25" fill="currentColor" fill-opacity=".16"/>
-      <path d="M8.8 7.1 L7.8 13.2 L11.7 13.2 L10.5 7.1 Z" fill="currentColor" fill-opacity=".12"/>
-      <path d="M8.8 7.1 L7.8 13.2 L11.7 13.2 L10.5 7.1 Z"/>
-      <path d="M10.3 8.3 L16.7 9.6"/>
-      <path d="M7.8 8.4 L6.2 10.5"/>
-      <path d="M6.2 10.5 Q4.7 12.1 5.4 14.5 Q7.1 14.3 7.9 12.8 Q7.7 11.3 6.2 10.5 Z" fill="currentColor" fill-opacity=".10"/>
-      <path d="M6.2 10.5 Q4.7 12.1 5.4 14.5 Q7.1 14.3 7.9 12.8 Q7.7 11.3 6.2 10.5 Z"/>
-      <path d="M8.1 13.2 L6.8 19.1"/>
-      <path d="M11.4 13.2 L13.6 18.8"/>
-      <path d="M7.4 19.1 L5.9 20.2"/>
-      <path d="M13 18.9 L14.7 19.7"/>
-      <circle cx="16.7" cy="9.6" r=".48" fill="currentColor" stroke="none"/>
+      <path d="M5 8.2 H19 V18.7 H5 Z" fill="currentColor" fill-opacity=".10"/>
+      <path d="M5 8.2 H19 V18.7 H5 Z"/>
+      <path d="M5.7 9 L18.3 17.9"/>
+      <path d="M18.3 9 L5.7 17.9"/>
+      <path d="M9.5 4.4 H14.5 V8.2 H9.5 Z" fill="currentColor" fill-opacity=".12"/>
+      <path d="M9.5 4.4 H14.5 V8.2 H9.5 Z"/>
+      <path d="M11.2 4.4 V2.9 H12.8 V4.4"/>
+      <path d="M8.1 20.3 H15.9"/>
     </g>
   `,
   gold: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="8.4" fill="currentColor" fill-opacity=".10"/>
-      <circle cx="12" cy="12" r="8.4"/>
-      <circle cx="12" cy="12" r="6.4" stroke-opacity=".42" stroke-width=".8"/>
-      <circle cx="12" cy="12" r="3.7" fill="currentColor" fill-opacity=".08"/>
-      <circle cx="12" cy="12" r="3.7"/>
-      <path d="M8.1 8.5 Q10 7.1 12.5 7.1" stroke-opacity=".38" stroke-width=".8"/>
-      <circle cx="12" cy="4.8" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
-      <circle cx="16.3" cy="6.1" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
-      <circle cx="19.2" cy="12" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
-      <circle cx="16.3" cy="17.9" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
-      <circle cx="12" cy="19.2" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
-      <circle cx="7.7" cy="17.9" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
-      <circle cx="4.8" cy="12" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
-      <circle cx="7.7" cy="6.1" r=".42" fill="currentColor" fill-opacity=".42" stroke="none"/>
+      <path d="M11.6 3.8 Q15.6 3.7 18.2 6.5 Q20.7 9.2 20 13.1 Q19.4 17.1 16 19.1 Q12.7 21.1 8.9 19.5 Q5.1 17.8 4.1 14 Q3.1 10 5.3 6.9 Q7.6 3.9 11.6 3.8 Z" fill="currentColor" fill-opacity=".12"/>
+      <path d="M11.6 3.8 Q15.6 3.7 18.2 6.5 Q20.7 9.2 20 13.1 Q19.4 17.1 16 19.1 Q12.7 21.1 8.9 19.5 Q5.1 17.8 4.1 14 Q3.1 10 5.3 6.9 Q7.6 3.9 11.6 3.8 Z"/>
+      <path d="M7.3 8 Q9.2 6.2 12.1 5.9 Q14.8 5.7 16.9 7.3" stroke-opacity=".45" stroke-width=".8"/>
+      <path d="M17.7 9.2 Q18.8 12.3 17.2 15.3 Q15.6 18 12.5 18.3" stroke-opacity=".32" stroke-width=".8"/>
+      <path d="M7.2 14.9 Q8.5 17.2 11.1 17.7" stroke-opacity=".25" stroke-width=".8"/>
+      <circle cx="9.1" cy="10.2" r=".55" fill="currentColor" fill-opacity=".34" stroke="none"/>
+      <circle cx="13.8" cy="8.7" r=".45" fill="currentColor" fill-opacity=".28" stroke="none"/>
+      <circle cx="14.8" cy="13.3" r=".58" fill="currentColor" fill-opacity=".22" stroke="none"/>
+      <circle cx="10.6" cy="15" r=".38" fill="currentColor" fill-opacity=".24" stroke="none"/>
     </g>
   `,
   church: `
