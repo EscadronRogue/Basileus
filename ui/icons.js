@@ -29,15 +29,15 @@ const ICON_PATHS = {
   `,
   gold: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="8.2" fill="currentColor" fill-opacity=".08"/>
-      <circle cx="12" cy="12" r="8.2" stroke-opacity=".95" stroke-width="1.8"/>
+      <circle cx="12" cy="12" r="8.2" fill="currentColor" fill-opacity=".06"/>
+      <circle cx="12" cy="12" r="8.2" stroke-opacity="1" stroke-width="2.4"/>
       <path d="M12 4.7
         A7.3 7.3 0 1 1 12 19.3
         A7.3 7.3 0 1 1 12 4.7
-        M12 7
-        A5 5 0 1 0 12 17
-        A5 5 0 1 0 12 7 Z" fill="currentColor" fill-opacity=".16" fill-rule="evenodd" stroke="none"/>
-      <circle cx="12" cy="12" r="5" fill="currentColor" fill-opacity=".04" stroke-opacity=".34" stroke-width=".8"/>
+        M12 7.2
+        A4.8 4.8 0 1 0 12 16.8
+        A4.8 4.8 0 1 0 12 7.2 Z" fill="currentColor" fill-opacity=".34" fill-rule="evenodd" stroke="none"/>
+      <circle cx="12" cy="12" r="4.8" fill="currentColor" fill-opacity=".035" stroke-opacity=".78" stroke-width="1.15"/>
     </g>
   `,
   church: `
