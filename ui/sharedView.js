@@ -1,7 +1,7 @@
 import { buildFinalScores } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
-import { getOfficeHolder, getPlayer } from '../engine/state.js';
+import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey } from '../engine/state.js';
 import { formatGoldHtml, formatTroopsHtml } from '../engine/presentation.js';
 import {
   renderCourtPanel,
@@ -299,11 +299,23 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
     const basileusBadge = player.id === state.basileusId
       ? renderTitleBadge(state, 'BASILEUS', { holderId: player.id, compact: true })
       : '';
+    const roleKey = getPlayerPrimaryRoleKey(state, player.id);
+    // Skip the role line for the Basileus — the crown badge already says it,
+    // and the cartouche outline is the empire gold. Otherwise show the
+    // primary office in italic, or a muted "Vassal" when there's no major
+    // title to keep the row's vertical rhythm stable.
+    const roleLabel = (roleKey && roleKey !== 'BASILEUS')
+      ? getOfficeDisplayName(state, roleKey)
+      : '';
+    const roleHtml = roleLabel
+      ? `<span class="tab-role">${escapeHtml(roleLabel)}</span>`
+      : '<span class="tab-role muted">Vassal</span>';
     return `
       <button class="player-tab ${player.id === activePlayerId ? 'active' : ''}"
         data-player="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
         <span class="tab-body">
           <span class="tab-name">${player.dynasty}</span>
+          ${roleHtml}
           ${renderPlayerTabFinance(economy)}
         </span>
         <span class="tab-flags">${badgeHtml}${basileusBadge}</span>
@@ -651,7 +663,6 @@ export function renderGameFrame({
   renderTopBar(state);
   renderConnectionBadge?.();
   updateMapState(state);
-  setSelectedProvince(selectedProvinceId);
   drawInvasionRoute(state.currentInvasion);
   renderPlayerDashboard(
     document.getElementById('playerDashboard'),

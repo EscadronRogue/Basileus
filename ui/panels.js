@@ -1,9 +1,9 @@
 // ui/panels.js - compact phase panels for the updated ruleset.
 import { MAJOR_TITLES } from '../data/titles.js';
-import { readTroopEntry } from '../engine/cascade.js';
+import { readTroopEntry, runIncome } from '../engine/cascade.js';
 import { getMinimumLandBid, suggestMajorTitleAssignments } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
-import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerThemes } from '../engine/state.js';
+import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey, getPlayerThemes, getBishopThemes } from '../engine/state.js';
 import {
   formatGoldHtml,
   formatTroopsHtml,
@@ -311,6 +311,41 @@ export function renderHistoryPanel(container, state, options = {}) {
   `;
 }
 
+function getDashboardEconomy(state, playerId) {
+  const player = getPlayer(state, playerId);
+  if (!player) return { reserve: 0, income: 0, churchYield: 0, troops: 0 };
+  let income = 0;
+  let churchYield = 0;
+  let troops = 0;
+  try {
+    const admin = runIncome(state);
+    income = Number(admin?.income?.[playerId]) || 0;
+  } catch (err) {
+    income = 0;
+  }
+  try {
+    const bishopThemes = getBishopThemes(state, playerId);
+    churchYield = bishopThemes.reduce((sum, theme) => sum + Math.max(0, Number(theme?.C) || 0), 0);
+  } catch (err) { churchYield = 0; }
+  for (const officeKey of Object.keys(state.currentTroops || {})) {
+    if (getOfficeHolder(state, officeKey) !== playerId) continue;
+    const entry = readTroopEntry(state.currentTroops[officeKey]);
+    troops += entry.normal + entry.capitalLocked;
+  }
+  return {
+    reserve: Math.max(0, Number(player.gold) || 0),
+    income,
+    churchYield,
+    troops,
+  };
+}
+
+function getPlayerPrimaryRoleLabel(state, playerId) {
+  const roleKey = getPlayerPrimaryRoleKey(state, playerId);
+  if (!roleKey) return '';
+  return getOfficeDisplayName(state, roleKey);
+}
+
 export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null, options = {}) {
   if (!container || !state) return;
   const player = getPlayer(state, playerId);
@@ -320,21 +355,54 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
     playerId === state.basileusId ? renderTitleBadge(state, 'BASILEUS', { holderId: playerId, compact: true }) : '',
     ...(player?.majorTitles || []).map((titleKey) => renderTitleBadge(state, titleKey, { holderId: playerId, compact: true })),
   ].filter(Boolean).join(' ');
+  const economy = player ? getDashboardEconomy(state, playerId) : null;
+  const roleLabel = player ? getPlayerPrimaryRoleLabel(state, playerId) : '';
+  const crestLetter = player ? playerInitial(player) : '?';
+  const dynastyName = player ? escapeHtml(player.dynasty || 'Dynasty') : 'No dynasty';
+
   container.classList?.toggle?.('panel-collapsed', !isOpen);
   container.innerHTML = `
     <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="${player ? getPlayerStyleAttr(state, player.id) : ''}">
-      <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
-        <span class="sidebar-panel-head-copy">
-          <span class="sidebar-panel-kicker">Dynasty</span>
-          <span class="sidebar-panel-title">${player ? renderPlayerRoleName(state, player) : 'No dynasty'}</span>
+      <button class="sidebar-panel-head dashboard-cartouche-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
+        <span class="dashboard-cartouche" role="presentation">
+          <span class="dc-crest" aria-hidden="true">${crestLetter}</span>
+          <span class="dc-identity">
+            <span class="dc-name">${dynastyName}</span>
+            <span class="dc-role${roleLabel ? '' : ' muted'}">${roleLabel || 'No major office'}</span>
+          </span>
+          ${economy ? `
+            <span class="dc-finance">
+              <span class="dc-reserve">${formatGoldHtml(economy.reserve)}</span>
+              <span class="dc-delta">
+                ${formatGoldHtml(economy.income, { signed: true, tone: economy.income < 0 ? 'upkeep' : 'income' })}
+                ${formatTroopsHtml(economy.troops)}
+              </span>
+            </span>
+          ` : ''}
         </span>
       </button>
       ${isOpen ? `
       <div class="sidebar-panel-body">
-        <div class="dashboard-stat-row">
-          <span class="dashboard-stat-label">${renderIcon('gold')} Gold</span>
-          <strong>${formatGoldHtml(player?.gold || 0)}</strong>
-        </div>
+        ${economy ? `
+          <div class="finance-grid" aria-label="Next-round projection">
+            <div class="finance-card">
+              <span class="finance-label">${renderIcon('gold')}Reserve</span>
+              <span class="finance-value">${formatGoldHtml(economy.reserve)}</span>
+            </div>
+            <div class="finance-card ${economy.income < 0 ? 'upkeep' : 'income'}">
+              <span class="finance-label">${renderIcon('gold')}Next Income</span>
+              <span class="finance-value">${formatGoldHtml(economy.income, { signed: true })}</span>
+            </div>
+            <div class="finance-card">
+              <span class="finance-label">${renderIcon('troop')}Troops</span>
+              <span class="finance-value">${formatTroopsHtml(economy.troops)}</span>
+            </div>
+            <div class="finance-card">
+              <span class="finance-label">${renderIcon('church')}Church Yield</span>
+              <span class="finance-value">${formatChurchHtml(economy.churchYield)}</span>
+            </div>
+          </div>
+        ` : ''}
         <div class="dashboard-token-row">${titles || '<span class="muted">No major office</span>'}</div>
         ${selected ? `
           <div class="selected-province">
@@ -986,6 +1054,128 @@ function renderCoupResultCard(state, coup) {
   return `
     <article class="result-card coup-result">
       <header class="result-card-head">
+        <span class="result-card-kicker">Coup</span>
+        <span class="coup-outcome-badge ${heldThrone ? 'held' : 'changed'}">${heldThrone ? 'Throne held' : 'New Basileus'}</span>
+      </header>
+      <div class="coup-winner-line">
+        ${winner ? renderPlayerRoleName(state, winner) : 'Vacant'}
+        <span class="muted">${heldThrone ? 'holds the throne' : 'claims the throne'}</span>
+      </div>
+      ${voteRows.length ? `
+        <div class="vote-breakdown">
+          ${voteRows.map((row) => `
+            <div class="vote-row">
+              ${renderPlayerRoleName(state, getPlayer(state, row.candidateId), `Player ${row.candidateId + 1}`)}
+              <span class="vote-troops">${formatTroopsHtml(row.troops)}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : '<p class="muted">No capital troops were committed.</p>'}
+    </article>
+  `;
+}
+
+function renderDefenderRewardSection(state, rewards) {
+  return `
+    <div class="reward-section">
+      ${renderPickerStep('⚑', `${rewards.length} defender reward${rewards.length === 1 ? '' : 's'} to settle`)}
+      <div class="reward-list">
+        ${rewards.map((reward) => renderDefenderRewardCard(state, reward)).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderDefenderRewardCard(state, reward) {
+  const theme = state.themes[reward.themeId] || { id: reward.themeId, name: reward.themeName || reward.themeId };
+  const defender = getPlayer(state, reward.defenderId);
+  const gold = Math.max(0, Number(reward.goldValue) || 0);
+  const rank = Number(reward.rank) || 1;
+  const rankSuffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
+  return `
+    <article class="reward-card" data-reward-id="${reward.id}">
+      <header class="reward-card-head">
+        ${renderProvinceBadge(state, theme, { showValues: true })}
+        <span class="reward-card-rank">${rank}${rankSuffix} defender</span>
+      </header>
+      <div class="reward-card-body">
+        ${defender ? renderPlayerRoleName(state, defender) : 'Defender'}
+        <span class="muted">contributed ${formatTroopsHtml(reward.troops || 0)} to the frontier.</span>
+      </div>
+      <div class="reward-card-choice">
+        <button type="button" class="btn-primary reward-choice-restore" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire">
+          <span class="reward-choice-kicker">Restore</span>
+          <span class="reward-choice-desc">Return ${renderProvinceBadge(state, theme, { compact: true })} to the empire</span>
+        </button>
+        <button type="button" class="btn-secondary reward-choice-gold" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold">
+          <span class="reward-choice-kicker">Take</span>
+          <span class="reward-choice-desc">${formatGoldHtml(gold)} into your reserve (province stays occupied)</span>
+        </button>
+      </div>
+    </article>
+  `;
+}
+        <span class="result-card-kicker">Coup</span>
+        <span class="coup-outcome-badge ${heldThrone ? 'held' : 'changed'}">${heldThrone ? 'Throne held' : 'New Basileus'}</span>
+      </header>
+      <div class="coup-winner-line">
+        ${winner ? renderPlayerRoleName(state, winner) : 'Vacant'}
+        <span class="muted">${heldThrone ? 'holds the throne' : 'claims the throne'}</span>
+      </div>
+      ${voteRows.length ? `
+        <div class="vote-breakdown">
+          ${voteRows.map((row) => `
+            <div class="vote-row">
+              ${renderPlayerRoleName(state, getPlayer(state, row.candidateId), `Player ${row.candidateId + 1}`)}
+              <span class="vote-troops">${formatTroopsHtml(row.troops)}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : '<p class="muted">No capital troops were committed.</p>'}
+    </article>
+  `;
+}
+
+function renderDefenderRewardSection(state, rewards) {
+  return `
+    <div class="reward-section">
+      ${renderPickerStep('⚑', `${rewards.length} defender reward${rewards.length === 1 ? '' : 's'} to settle`)}
+      <div class="reward-list">
+        ${rewards.map((reward) => renderDefenderRewardCard(state, reward)).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderDefenderRewardCard(state, reward) {
+  const theme = state.themes[reward.themeId] || { id: reward.themeId, name: reward.themeName || reward.themeId };
+  const defender = getPlayer(state, reward.defenderId);
+  const gold = Math.max(0, Number(reward.goldValue) || 0);
+  const rank = Number(reward.rank) || 1;
+  const rankSuffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
+  return `
+    <article class="reward-card" data-reward-id="${reward.id}">
+      <header class="reward-card-head">
+        ${renderProvinceBadge(state, theme, { showValues: true })}
+        <span class="reward-card-rank">${rank}${rankSuffix} defender</span>
+      </header>
+      <div class="reward-card-body">
+        ${defender ? renderPlayerRoleName(state, defender) : 'Defender'}
+        <span class="muted">contributed ${formatTroopsHtml(reward.troops || 0)} to the frontier.</span>
+      </div>
+      <div class="reward-card-choice">
+        <button type="button" class="btn-primary reward-choice-restore" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire">
+          <span class="reward-choice-kicker">Restore</span>
+          <span class="reward-choice-desc">Return ${renderProvinceBadge(state, theme, { compact: true })} to the empire</span>
+        </button>
+        <button type="button" class="btn-secondary reward-choice-gold" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold">
+          <span class="reward-choice-kicker">Take</span>
+          <span class="reward-choice-desc">${formatGoldHtml(gold)} into your reserve (province stays occupied)</span>
+        </button>
+      </div>
+    </article>
+  `;
+}
         <span class="result-card-kicker">Coup</span>
         <span class="coup-outcome-badge ${heldThrone ? 'held' : 'changed'}">${heldThrone ? 'Throne held' : 'New Basileus'}</span>
       </header>

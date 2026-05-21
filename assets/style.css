@@ -468,6 +468,22 @@ body::before {
   line-height: 1.12;
 }
 
+.tab-role {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 10.5px;
+  letter-spacing: 0.2px;
+  line-height: 1.15;
+  opacity: 0.85;
+  color: inherit;
+}
+.tab-role.muted { opacity: 0.55; }
+
 .tab-finance {
   display: inline-flex;
   align-items: baseline;
@@ -2621,6 +2637,232 @@ body::before {
 }
 .selected-province-yield .value { font-size: 13px; }
 
+/* ─────────────────────────────────────────────────────────────────
+   PLAYER CHIP — inline cartouche with a circular initial crest.
+   Used in running body text (history entries, notification toasts,
+   deal threads). Same outline/fill ratio as the player-tab cartouche,
+   shrunk to flow inline with prose.
+   ───────────────────────────────────────────────────────────────── */
+.player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 4px;
+  border: 2px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-radius: var(--r-sm);
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.5),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22);
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.player-chip .chip-initial {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(20,8,0,0.32);
+  border: 1px solid rgba(240,200,90,0.55);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.player-chip .icon { color: #fff; }
+
+/* ─────────────────────────────────────────────────────────────────
+   FINANCE GRID — used by the dashboard, by deployment readouts, and
+   anywhere a small grid of resource cards is appropriate. Each card
+   is a parchment-on-dark tile with a small uppercase label and a
+   large icon+number readout.
+   ───────────────────────────────────────────────────────────────── */
+.finance-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  margin-top: 10px;
+}
+.finance-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid rgba(240,200,90,0.32);
+  background: rgba(20,8,0,0.22);
+  border-radius: var(--r-sm);
+  color: inherit;
+  min-width: 0;
+}
+.finance-card .finance-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: inherit;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.finance-card .finance-label .icon { font-size: 11px; }
+.finance-card .finance-value {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: inherit;
+}
+.finance-card .finance-value .value { font-size: inherit; color: inherit; }
+.finance-card .finance-value .icon { font-size: 15px; }
+.finance-card.income .finance-value { color: #cfe9b0; }
+.finance-card.income .finance-value .icon { color: #cfe9b0; }
+.finance-card.upkeep .finance-value { color: #ffb8a8; }
+.finance-card.upkeep .finance-value .icon { color: #ffb8a8; }
+
+/* When a finance-grid sits inside a parchment panel (not the dashboard),
+   it inverts to dark-on-parchment for legibility. */
+.balance-panel .finance-card,
+.sidebar-panel:not(.player-dashboard) .finance-card {
+  background: rgba(255,252,240,0.85);
+  border-color: rgba(168,116,32,0.28);
+  color: var(--umber-1);
+}
+.balance-panel .finance-card .finance-label,
+.sidebar-panel:not(.player-dashboard) .finance-card .finance-label {
+  color: var(--umber-2);
+}
+.balance-panel .finance-card .finance-value,
+.sidebar-panel:not(.player-dashboard) .finance-card .finance-value {
+  color: var(--umber-0);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   DASHBOARD CARTOUCHE HEAD — turns the dashboard panel head into a
+   single horizontal cartouche row: [crest] [name + role] [big gold
+   reserve + small income / upkeep stack]. This replaces the bare
+   "Dynasty / Player name" kicker + title pair from earlier.
+   ───────────────────────────────────────────────────────────────── */
+.dashboard-cartouche {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.dashboard-cartouche .dc-crest {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(20,8,0,0.32);
+  border: 2px solid rgba(240,200,90,0.65);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.dashboard-cartouche .dc-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dashboard-cartouche .dc-name {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  line-height: 1.15;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dashboard-cartouche .dc-role {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.2;
+  opacity: 0.92;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dashboard-cartouche .dc-role.muted { opacity: 0.6; font-style: italic; }
+.dashboard-cartouche .dc-finance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.dashboard-cartouche .dc-reserve {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: #fff;
+}
+.dashboard-cartouche .dc-reserve .value { font-size: inherit; color: inherit; }
+.dashboard-cartouche .dc-reserve .icon { font-size: 18px; color: inherit; }
+.dashboard-cartouche .dc-delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+}
+.dashboard-cartouche .dc-delta .value { font-size: inherit; }
+.dashboard-cartouche .dc-delta .value.income { color: #cfe9b0; }
+.dashboard-cartouche .dc-delta .value.income .icon { color: #cfe9b0; }
+.dashboard-cartouche .dc-delta .value.upkeep { color: #ffb8a8; }
+.dashboard-cartouche .dc-delta .value.upkeep .icon { color: #ffb8a8; }
+
+.player-dashboard .dashboard-cartouche,
+.player-dashboard .dashboard-cartouche .dc-name,
+.player-dashboard .dashboard-cartouche .dc-role,
+.player-dashboard .dashboard-cartouche .dc-reserve {
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+}
+
+/* When the dashboard head holds the cartouche layout, drop the kicker
+   and title styling — the cartouche owns the whole row. */
+.player-dashboard .sidebar-panel-head.dashboard-cartouche-head {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  align-items: center;
+}
+.player-dashboard .sidebar-panel-head.dashboard-cartouche-head .sidebar-panel-head-copy {
+  flex: 1;
+  min-width: 0;
+}
+
 /* State variants */
 .province-token.occupied { opacity: 0.78; filter: saturate(0.6); }
 .province-token.church {
@@ -3536,40 +3778,73 @@ textarea {
   gap: 4px;
 }
 
+/* Balance ranking row — single grammar shared with the spec.
+   Dynasty colour rides the left rail; rank number, dot, name, then a
+   right-aligned breakdown of the three resource icons, and finally a
+   pill for the points score. Leaders get a brighter pill. */
 .balance-rank-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px 14px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid rgba(168,116,32,0.22);
+  border-left: 6px solid var(--player-color, var(--parch-3));
   border-radius: var(--r-md);
-  background: rgba(255,252,240,0.85);
-  border: 1px solid rgba(168,116,32,0.18);
-  font-size: 12px;
+  background: rgba(255,252,240,0.92);
+  box-shadow: var(--shadow-card);
+  font-family: var(--font-display);
+  font-size: 12.5px;
   color: var(--umber-1);
 }
 
 .balance-rank-row.leader {
-  border-color: var(--gold-1);
-  box-shadow: inset 0 0 0 1px rgba(168,116,32,0.35);
+  border-color: rgba(168,116,32,0.45);
+  border-left-color: var(--player-color, var(--parch-3));
+  box-shadow:
+    inset 0 0 0 1px rgba(168,116,32,0.18),
+    var(--shadow-card);
 }
 
 .balance-rank-no {
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.5px;
-  color: var(--gold-2);
-  min-width: 14px;
+  color: var(--umber-3);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.balance-rank-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--player-color, var(--parch-3));
+  border: 2px solid rgba(20,8,0,0.32);
+  box-shadow: inset 0 1px 0 rgba(255,250,228,0.18);
 }
 
 .balance-rank-name {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--umber-0);
+  font-weight: 600;
+  letter-spacing: 0.4px;
 }
 .balance-rank-name .player-role-name {
   max-width: 100%;
+}
+
+.balance-rank-breakdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.balance-rank-breakdown .value {
+  font-size: 11.5px;
 }
 
 .balance-header-points {
@@ -3580,10 +3855,21 @@ textarea {
 
 .balance-rank-points {
   font-family: var(--font-display);
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  color: var(--gold-1);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--umber-0);
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: rgba(200,146,30,0.16);
+  border: 1px solid rgba(200,146,30,0.4);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.balance-rank-row.leader .balance-rank-points {
+  background: rgba(200,146,30,0.32);
+  border-color: rgba(200,146,30,0.6);
+  color: var(--gold-2);
 }
 
 .balance-pie-grid {

@@ -128,6 +128,33 @@ function renderPieCard(state, category) {
   `;
 }
 
+function renderRankingBreakdown(state, entry) {
+  if (!Array.isArray(entry?.categories)) return '';
+  // Stable order so every row scans down the same columns. We dedupe by
+  // icon kind because two categories may share an icon (estate and gold
+  // both use the coin) — we sum their values in that case so the row
+  // never duplicates the same glyph.
+  const order = ['gold', 'estate', 'church'];
+  const byIcon = new Map();
+  for (const key of order) {
+    const cat = entry.categories.find((c) => c.key === key);
+    if (!cat) continue;
+    const iconKind = CATEGORY_ICON_KIND[key] || key;
+    const value = Math.max(0, Math.round(Number(cat.value) || 0));
+    const prev = byIcon.get(iconKind) || 0;
+    byIcon.set(iconKind, prev + value);
+  }
+  const parts = [];
+  for (const [iconKind, value] of byIcon.entries()) {
+    parts.push(renderValueChip(iconKind, value));
+  }
+  return parts.join('');
+}
+
+function renderValueChip(iconKind, value) {
+  return `<span class="value ${iconKind}">${renderIcon(iconKind)}<span class="value-num">${value}</span></span>`;
+}
+
 function renderRanking(state, scores) {
   if (!scores.length) return '';
   const topScore = scores[0]?.points ?? 0;
@@ -137,11 +164,14 @@ function renderRanking(state, scores) {
         const rank = scores.filter((other) => other.points > entry.points).length + 1;
         const isLeader = entry.points === topScore && topScore > 0;
         const tied = scores.filter((other) => other.points === entry.points).length > 1;
+        const breakdown = renderRankingBreakdown(state, entry);
         return `
           <li class="balance-rank-row ${isLeader ? 'leader' : ''}" style="${getPlayerStyleAttr(state, entry.playerId)}">
-            <span class="balance-rank-no">${rank}${tied && isLeader ? '*' : ''}</span>
+            <span class="balance-rank-no" aria-label="rank ${rank}">${rank}${tied && isLeader ? '*' : ''}</span>
+            <span class="balance-rank-dot" aria-hidden="true"></span>
             <span class="balance-rank-name">${renderPlayerRoleName(state, entry.player)}</span>
-            <span class="balance-rank-points">${entry.points} pt${entry.points === 1 ? '' : 's'}</span>
+            <span class="balance-rank-breakdown" aria-hidden="${breakdown ? 'false' : 'true'}">${breakdown}</span>
+            <span class="balance-rank-points" aria-label="${entry.points} point${entry.points === 1 ? '' : 's'}">${entry.points}</span>
           </li>
         `;
       }).join('')}
