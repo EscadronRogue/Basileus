@@ -3,6 +3,7 @@ import { getProvinceRegionPalette, getRegionColor } from '../ui/labels.js';
 import { formatPlayerLabel } from '../engine/state.js';
 import {
   ensureSvgIconSymbols,
+  svgUseIcon,
   buildSvgValueGroup,
   measureSvgValueGroupWidth,
   provinceValueEntries,
@@ -1419,11 +1420,11 @@ function applyTransform(point, type, args) {
 function appendInvasionCartouche(layer, invasion, point) {
   if (!point) return;
 
-  const strengthText = Array.isArray(invasion.strength) && invasion.strength.length === 2
-    ? `Strength ${invasion.strength[0]}-${invasion.strength[1]}`
-    : 'Strength ?';
+  const strengthValue = Array.isArray(invasion.strength) && invasion.strength.length === 2
+    ? `${invasion.strength[0]}-${invasion.strength[1]}`
+    : '?';
   const nameText = invasion.name || 'Invasion';
-  const width = Math.max(26, Math.min(44, Math.max(nameText.length, strengthText.length) * 1.45 + 7));
+  const width = Math.max(26, Math.min(44, Math.max(nameText.length, strengthValue.length + 3) * 1.45 + 7));
   const height = 9.6;
   const x = clampValue(point.cx, (width / 2) + 1.2, MAP_WIDTH - (width / 2) - 1.2);
   const y = clampValue(point.cy - 7.3, 1.2, MAP_HEIGHT - height - 1.2);
@@ -1457,12 +1458,31 @@ function appendInvasionCartouche(layer, invasion, point) {
   name.textContent = nameText;
   group.appendChild(name);
 
+  const strengthGroup = document.createElementNS(SVG_NS, 'g');
+  strengthGroup.setAttribute('class', 'invasion-cartouche-strength');
+  strengthGroup.setAttribute('transform', `translate(${(width / 2).toFixed(2)} 7.15)`);
+  const iconSize = 1.72;
+  const iconGap = 0.45;
+  const valueWidth = Math.max(1.4, strengthValue.length * 0.82);
+  const totalWidth = iconSize + iconGap + valueWidth;
+  const iconX = -(totalWidth / 2);
+  const strengthIcon = svgUseIcon('troop', {
+    x: iconX.toFixed(2),
+    y: (-(iconSize / 2)).toFixed(2),
+    width: iconSize.toFixed(2),
+    height: iconSize.toFixed(2),
+    className: 'invasion-cartouche-strength-icon',
+  });
+  if (strengthIcon) strengthGroup.appendChild(strengthIcon);
+
   const strength = document.createElementNS(SVG_NS, 'text');
-  strength.setAttribute('class', 'invasion-cartouche-strength');
-  strength.setAttribute('x', (width / 2).toFixed(2));
-  strength.setAttribute('y', '7.15');
-  strength.textContent = strengthText;
-  group.appendChild(strength);
+  strength.setAttribute('class', 'invasion-cartouche-strength-value');
+  strength.setAttribute('x', (iconX + iconSize + iconGap).toFixed(2));
+  strength.setAttribute('y', '0');
+  strength.setAttribute('text-anchor', 'start');
+  strength.textContent = strengthValue;
+  strengthGroup.appendChild(strength);
+  group.appendChild(strengthGroup);
 
   layer.appendChild(group);
 }

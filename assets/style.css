@@ -113,8 +113,8 @@
   --text-gold:     var(--gold-1);
   --occupied:      var(--occupied-fill);
   --occupied-border: #9a8060;
-  --invasion-lost-fill: rgba(210, 200, 178, 0.88);
-  --invasion-lost-border: var(--occupied-border);
+  --invasion-lost-fill: #000000;
+  --invasion-lost-border: #000000;
   --region-border: var(--empire-border);
 }
 
@@ -2242,7 +2242,7 @@ body::before {
   stroke-width: 0.55;
   paint-order: stroke fill;
 }
-.map-cartouche.occupied .map-cart-bg { opacity: 0.95; }
+.map-cartouche.occupied .map-cart-bg { opacity: 1; }
 
 .map-cart-inner {
   fill: none;
@@ -2272,11 +2272,11 @@ body::before {
 }
 /* Map cartouche value group — icons + numbers, centered around x=0 */
 .map-cart-values { pointer-events: none; }
-.map-cart-glyph { color: #ffffff; opacity: 0.96; }
+.map-cart-glyph { color: #ffffff; opacity: 1; }
 .map-cart-glyph-gold,
 .map-cart-glyph-troop,
 .map-cart-glyph-church { color: #ffffff; }
-.map-cartouche.occupied .map-cart-glyph { opacity: 0.82; }
+.map-cartouche.occupied .map-cart-glyph { opacity: 1; }
 
 .map-cart-markers { pointer-events: none; }
 .map-cart-marker {
@@ -2304,14 +2304,14 @@ body::before {
   stroke: var(--invasion-lost-border);
   stroke-width: 0.95;
   stroke-dasharray: 1.8 1.2;
-  opacity: 0.96;
+  opacity: 1;
   animation: marchingAnts 1s linear infinite;
 }
 @keyframes marchingAnts { to { stroke-dashoffset: -3; } }
 
 .invasion-marker {
   fill: var(--invasion-lost-border);
-  opacity: 0.96;
+  opacity: 1;
 }
 
 .invasion-cartouche {
@@ -2337,10 +2337,11 @@ body::before {
 .invasion-cartouche-strength {
   text-anchor: middle;
   dominant-baseline: middle;
-  fill: var(--invasion-lost-border);
-  paint-order: stroke fill;
-  stroke: rgba(255,250,228,0.46);
-  stroke-width: 0.08;
+  color: #ffffff;
+  fill: #ffffff;
+  paint-order: fill;
+  stroke: none;
+  stroke-width: 0;
   pointer-events: none;
 }
 
@@ -2355,6 +2356,16 @@ body::before {
   font-family: var(--font-body);
   font-size: 1.72px;
   font-weight: 600;
+}
+
+.invasion-cartouche-strength-icon {
+  color: #ffffff;
+}
+
+.invasion-cartouche-strength-value {
+  fill: #ffffff;
+  stroke: none;
+  stroke-width: 0;
 }
 
 .province-threat-overlay {
@@ -2843,7 +2854,7 @@ body::before {
 }
 
 /* State variants */
-.province-token.occupied { opacity: 0.92; filter: saturate(0.74); }
+.province-token.occupied { opacity: 1; filter: saturate(0.74); }
 .province-token.church {
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.45);
