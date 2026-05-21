@@ -3970,6 +3970,8 @@ textarea {
   gap: 9px;
   margin-top: 2px;
   padding: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
   border: 1px solid rgba(168,116,32,0.24);
   border-radius: var(--r-md);
   background:
@@ -4011,6 +4013,7 @@ textarea {
 .income-flow-sankey {
   display: block;
   width: 100%;
+  min-width: 820px;
   height: auto;
   min-height: 250px;
   border-radius: var(--r-sm);
@@ -4030,52 +4033,92 @@ textarea {
   stroke-opacity: 0.72;
 }
 
-.income-sankey-node rect {
-  vector-effect: non-scaling-stroke;
-  stroke-width: 0.9;
-  filter: drop-shadow(0 1px 1px rgba(46,30,15,0.16));
+.income-sankey-node-foreign {
+  overflow: visible;
+  pointer-events: none;
 }
 
-.income-sankey-node-player rect,
-.income-sankey-node-office rect {
-  stroke-width: 1.15;
+.income-sankey-node-html {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
 }
 
-.income-sankey-node.is-unclaimed rect {
-  stroke-dasharray: 3 2;
-  fill: rgba(216,200,168,0.86);
+.income-sankey-node-html .title-token,
+.income-sankey-player-cartouche {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  justify-content: center;
+  text-align: center;
+  filter: drop-shadow(0 2px 2px rgba(46,30,15,0.14));
 }
 
-.income-sankey-node-label {
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1px;
-  fill: #ffffff;
-  paint-order: stroke fill;
-  stroke: rgba(20,8,0,0.62);
-  stroke-width: 2.6px;
-  stroke-linejoin: round;
+.income-sankey-node-html .title-token {
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 13px;
+  line-height: 1.1;
+  white-space: normal;
 }
 
-.income-sankey-node-meta {
-  font-family: var(--font-body);
-  font-size: 10.5px;
-  font-weight: 700;
-  fill: #ffffff;
-  paint-order: stroke fill;
-  stroke: rgba(20,8,0,0.60);
-  stroke-width: 2.5px;
-  stroke-linejoin: round;
+.income-sankey-generic-token {
+  min-width: 0;
 }
 
-.income-sankey-node-source .income-sankey-node-label,
-.income-sankey-node-route .income-sankey-node-label {
-  fill: #ffffff;
+.income-sankey-player-cartouche {
+  flex: none;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  padding: 8px 10px;
+  cursor: default;
+  transform: none;
 }
 
-.income-sankey-node-player .income-sankey-node-meta {
-  fill: #ffffff;
+.income-sankey-player-cartouche:hover {
+  filter: drop-shadow(0 2px 2px rgba(46,30,15,0.14));
+}
+
+.income-sankey-player-cartouche .tab-body {
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.income-sankey-player-cartouche .tab-name {
+  width: 100%;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.income-sankey-player-values {
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+}
+
+.income-sankey-player-values .value {
+  font-size: 13.5px;
+}
+
+.income-sankey-source-value .value {
+  font-size: 15px;
+}
+
+.income-sankey-source-value .icon {
+  font-size: 16px;
+}
+
+.income-sankey-unclaimed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
 }
 
 .income-sankey-foreign {
@@ -4161,23 +4204,23 @@ textarea {
 
 .income-sankey-band-value {
   justify-content: center;
-  min-width: 34px;
-  padding: 2px 5px 3px;
-  border: 1px solid rgba(20,8,0,0.24);
+  min-width: 48px;
+  padding: 4px 8px 5px;
+  border: 1px solid rgba(20,8,0,0.28);
   border-radius: 999px;
-  background: rgba(255,252,240,0.78);
+  background: rgba(255,252,240,0.88);
   box-shadow:
-    0 1px 2px rgba(46,30,15,0.18),
+    0 2px 4px rgba(46,30,15,0.22),
     inset 0 0 0 1px rgba(255,255,255,0.30);
 }
 
 .income-sankey-band-value .value {
-  font-size: 10.5px;
+  font-size: 15px;
   line-height: 1;
 }
 
 .income-sankey-band-value .icon {
-  font-size: 12px;
+  font-size: 16px;
 }
 
 @media (max-width: 720px) {
