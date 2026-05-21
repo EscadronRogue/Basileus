@@ -31,14 +31,17 @@ const FLOW_SOURCE_LABEL = {
 };
 
 const SANKEY_WIDTH = 900;
-const SANKEY_HEIGHT = 620;
+const SANKEY_HEIGHT = 780;
 const SANKEY_SIDE_PAD = 24;
 const SANKEY_GAP = 18;
-const SANKEY_COLUMNS = {
-  source: 24,
-  route: 150,
-  office: 325,
-  player: 505,
+const SANKEY_ROWS = {
+  troopSource: 24,
+  troopRoute: 140,
+  troopOffice: 260,
+  player: 354,
+  lowerOffice: 470,
+  lowerRoute: 590,
+  lowerSource: 704,
 };
 const SANKEY_NODE_WIDTHS = {
   source: 100,
@@ -90,10 +93,10 @@ const SANKEY_OFFICE_LABELS = {
 const SANKEY_ROUTE_ORDER = ['estates', 'strategoi', 'east_pool', 'west_pool', 'sea_pool', 'bishops', 'patriarch'];
 const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool', 'patriarch']);
 const SANKEY_OFFICE_ORDER = ['DOM_EAST', 'BASILEUS', 'DOM_WEST', 'ADMIRAL', 'PATRIARCH'];
-const INCOME_FLOW_MIN_ZOOM = 1;
+const INCOME_FLOW_MIN_ZOOM = 0.25;
 const INCOME_FLOW_MAX_ZOOM = 4;
 const INCOME_FLOW_ZOOM_STEP = 1.2;
-const INCOME_FLOW_DRAG_THRESHOLD_PX = 4;
+const INCOME_FLOW_DRAG_THRESHOLD_PX = 1;
 const INCOME_FLOW_MIN_PINCH_DISTANCE_PX = 8;
 const incomeFlowViews = new WeakMap();
 
@@ -293,6 +296,7 @@ function createSankeyNode(nodes, key, attrs = {}) {
       isUnclaimed: Boolean(attrs.isUnclaimed),
       iconResource: attrs.iconResource || attrs.resource || null,
       officeKey: attrs.officeKey || null,
+      rowKey: attrs.rowKey || null,
       width: attrs.width || null,
       order: attrs.order ?? 0,
       linksIn: [],
@@ -322,6 +326,7 @@ function addSankeyLink(nodes, links, sourceKey, targetKey, value, resource, labe
 function ensureUnclaimedNode(nodes, resource) {
   return createSankeyNode(nodes, `unclaimed:${resource}`, {
     layer: 'player',
+    rowKey: 'player',
     label: 'Unclaimed',
     resource,
     addValue: 0,
@@ -341,6 +346,7 @@ function buildIncomeSankeyModel(state, flow) {
     const section = getFlowSection(flow, resource);
     createSankeyNode(nodes, `source:${resource}`, {
       layer: 'source',
+      rowKey: resource === 'troop' ? 'troopSource' : 'lowerSource',
       label: FLOW_SOURCE_LABEL[resource] || resource,
       resource,
       iconResource: resource,
@@ -355,6 +361,7 @@ function buildIncomeSankeyModel(state, flow) {
     const totals = getPlayerFlowTotal(flow, player.id);
     createSankeyNode(nodes, `player:${player.id}`, {
       layer: 'player',
+      rowKey: 'player',
       label: formatPlayerLabel(player) || `Player ${Number(player.id) + 1}`,
       value: totals.profit + totals.troop + totals.church,
       fill: player.color || '#8c6840',
@@ -370,6 +377,7 @@ function buildIncomeSankeyModel(state, flow) {
       const routeColor = getRouteColor(route);
       createSankeyNode(nodes, routeKey, {
         layer: 'route',
+        rowKey: route.resource === 'troop' ? 'troopRoute' : 'lowerRoute',
         label: getRouteLabel(route),
         rule: getRouteMeta(route),
         resource: route.resource,
@@ -396,6 +404,7 @@ function buildIncomeSankeyModel(state, flow) {
           const holderColor = office.playerId == null ? getResourceColor(route.resource) : getPlayerColor(state, office.playerId);
           createSankeyNode(nodes, officeKey, {
             layer: 'office',
+            rowKey: route.resource === 'troop' ? 'troopOffice' : 'lowerOffice',
             label: getOfficeShortLabel(state, office.officeKey),
             resource: route.resource,
             iconResource: route.resource,
@@ -482,8 +491,26 @@ function getNodeWidth(node) {
   return node.width || SANKEY_NODE_WIDTHS[node.layer] || 88;
 }
 
-function getOrderedSankeyNodes(nodes, layer) {
-  const list = [...nodes.values()].filter((node) => node.layer === layer);
+function getNodeRowKey(node) {
+  if (node.rowKey) return node.rowKey;
+  if (node.layer === 'player') return 'player';
+  if (node.resource === 'troop') {
+    if (node.layer === 'source') return 'troopSource';
+    if (node.layer === 'route') return 'troopRoute';
+    return 'troopOffice';
+  }
+  if (node.layer === 'source') return 'lowerSource';
+  if (node.layer === 'route') return 'lowerRoute';
+  if (node.layer === 'office') return 'lowerOffice';
+  return 'player';
+}
+
+function getNodeRowY(node) {
+  return SANKEY_ROWS[getNodeRowKey(node)] ?? SANKEY_ROWS.player;
+}
+
+function getOrderedSankeyNodes(nodes, rowKey) {
+  const list = [...nodes.values()].filter((node) => getNodeRowKey(node) === rowKey);
   return list.sort((left, right) => {
     const leftOrder = left.order < 0 ? 999 : left.order;
     const rightOrder = right.order < 0 ? 999 : right.order;
@@ -502,8 +529,32 @@ function layoutSankeyRow(list) {
   let x = SANKEY_SIDE_PAD + Math.max(0, (availableWidth - usedWidth) / 2);
   for (const node of list) {
     node.x = x;
-    node.y = SANKEY_COLUMNS[node.layer];
+    node.y = getNodeRowY(node);
     x += node.width + gap;
+  }
+}
+
+function getLinksWidth(links) {
+  return links.reduce((sum, link) => sum + link.width, 0);
+}
+
+function assignSankeyEdgePoints(links, edge, assign) {
+  if (!links.length) return;
+  const firstNode = assign === 'source' ? links[0].source : links[0].target;
+  const totalWidth = getLinksWidth(links);
+  let cursor = (firstNode.width - totalWidth) / 2;
+  for (const link of links) {
+    const node = assign === 'source' ? link.source : link.target;
+    const x = node.x + cursor + link.width / 2;
+    const y = edge === 'top' ? node.y : node.y + node.height;
+    if (assign === 'source') {
+      link.sx = x;
+      link.sy = y;
+    } else {
+      link.tx = x;
+      link.ty = y;
+    }
+    cursor += link.width;
   }
 }
 
@@ -513,13 +564,22 @@ function layoutIncomeSankey(nodes, links) {
     link.target = nodes.get(link.targetKey);
   }
 
-  const sourceNodes = getOrderedSankeyNodes(nodes, 'source');
-  const routeNodes = getOrderedSankeyNodes(nodes, 'route');
-  const officeNodes = getOrderedSankeyNodes(nodes, 'office');
-  const playerNodes = getOrderedSankeyNodes(nodes, 'player');
-  const columns = [sourceNodes, routeNodes, officeNodes, playerNodes];
+  const rows = [
+    getOrderedSankeyNodes(nodes, 'troopSource'),
+    getOrderedSankeyNodes(nodes, 'troopRoute'),
+    getOrderedSankeyNodes(nodes, 'troopOffice'),
+    getOrderedSankeyNodes(nodes, 'player'),
+    getOrderedSankeyNodes(nodes, 'lowerOffice'),
+    getOrderedSankeyNodes(nodes, 'lowerRoute'),
+    getOrderedSankeyNodes(nodes, 'lowerSource'),
+  ];
   const maxNodeValue = Math.max(...[...nodes.values()].map((node) => Math.max(0, Number(node.value) || 0)), 1);
   const scale = Math.max(3.2, Math.min(8, 96 / maxNodeValue));
+
+  for (const node of nodes.values()) {
+    node.height = getNodeMinHeight(node);
+    node.y = getNodeRowY(node);
+  }
 
   for (const link of links) {
     link.width = Math.max(4, link.value * scale);
@@ -528,29 +588,44 @@ function layoutIncomeSankey(nodes, links) {
   }
 
   for (const node of nodes.values()) {
-    const outWidth = node.linksOut.reduce((sum, link) => sum + link.width, 0);
-    const inWidth = node.linksIn.reduce((sum, link) => sum + link.width, 0);
-    node.height = getNodeMinHeight(node);
-    node.width = Math.max(getNodeWidth(node), outWidth + 18, inWidth + 18);
+    const outgoingUp = node.linksOut.filter((link) => getNodeRowY(link.target) < getNodeRowY(node));
+    const outgoingDown = node.linksOut.filter((link) => getNodeRowY(link.target) >= getNodeRowY(node));
+    const incomingFromAbove = node.linksIn.filter((link) => getNodeRowY(link.source) < getNodeRowY(node));
+    const incomingFromBelow = node.linksIn.filter((link) => getNodeRowY(link.source) >= getNodeRowY(node));
+    const maxEdgeWidth = Math.max(
+      getLinksWidth(outgoingUp),
+      getLinksWidth(outgoingDown),
+      getLinksWidth(incomingFromAbove),
+      getLinksWidth(incomingFromBelow),
+    );
+    node.width = Math.max(getNodeWidth(node), maxEdgeWidth + 18);
   }
 
-  columns.forEach(layoutSankeyRow);
+  rows.forEach(layoutSankeyRow);
 
   for (const node of nodes.values()) {
     const outgoing = node.linksOut.slice().sort((left, right) => (left.target.x - right.target.x) || (left.target.y - right.target.y));
     const incoming = node.linksIn.slice().sort((left, right) => (left.source.x - right.source.x) || (left.source.y - right.source.y));
-    let outCursor = (node.width - outgoing.reduce((sum, link) => sum + link.width, 0)) / 2;
-    for (const link of outgoing) {
-      link.sx = node.x + outCursor + link.width / 2;
-      link.sy = node.y + node.height;
-      outCursor += link.width;
-    }
-    let inCursor = (node.width - incoming.reduce((sum, link) => sum + link.width, 0)) / 2;
-    for (const link of incoming) {
-      link.tx = node.x + inCursor + link.width / 2;
-      link.ty = node.y;
-      inCursor += link.width;
-    }
+    assignSankeyEdgePoints(
+      outgoing.filter((link) => link.target.y < node.y),
+      'top',
+      'source',
+    );
+    assignSankeyEdgePoints(
+      outgoing.filter((link) => link.target.y >= node.y),
+      'bottom',
+      'source',
+    );
+    assignSankeyEdgePoints(
+      incoming.filter((link) => link.source.y < node.y),
+      'top',
+      'target',
+    );
+    assignSankeyEdgePoints(
+      incoming.filter((link) => link.source.y >= node.y),
+      'bottom',
+      'target',
+    );
   }
 
   return {
@@ -562,14 +637,15 @@ function layoutIncomeSankey(nodes, links) {
 function getSankeyLinkGeometry(link) {
   const sourceY = link.sy;
   const targetY = link.ty;
-  const curve = Math.max(44, (targetY - sourceY) * 0.48);
+  const direction = targetY >= sourceY ? 1 : -1;
+  const curve = Math.max(44, Math.abs(targetY - sourceY) * 0.48);
   return {
     x0: link.sx,
     y0: sourceY,
     x1: link.sx,
-    y1: sourceY + curve,
+    y1: sourceY + direction * curve,
     x2: link.tx,
-    y2: targetY - curve,
+    y2: targetY - direction * curve,
     x3: link.tx,
     y3: targetY,
   };
@@ -695,6 +771,7 @@ function renderSankeyNode(state, flow, node) {
   const classes = [
     'income-sankey-node',
     `income-sankey-node-${node.layer}`,
+    `income-sankey-row-${getNodeRowKey(node)}`,
     node.resource ? `income-sankey-node-${node.resource}` : '',
     node.isUnclaimed ? 'is-unclaimed' : '',
   ].filter(Boolean).join(' ');
@@ -805,15 +882,15 @@ function bindIncomeFlowInteractions(container) {
       'transform',
       `translate(${view.panX.toFixed(3)} ${view.panY.toFixed(3)}) scale(${view.zoom.toFixed(3)})`,
     );
-    svg.classList.toggle('is-zoomed', view.zoom > 1.001);
+    svg.classList.toggle('is-zoomed', isIncomeFlowZoomed(view));
   };
 
   const updateCursor = () => {
-    if ((gesture.mode === 'pinch' || gesture.mode === 'pan') && view.zoom > 1.001) {
+    if ((gesture.mode === 'pinch' || gesture.mode === 'pan') && isIncomeFlowZoomed(view)) {
       svg.style.cursor = 'grabbing';
       return;
     }
-    svg.style.cursor = view.zoom > 1.001 ? 'grab' : '';
+    svg.style.cursor = isIncomeFlowZoomed(view) ? 'grab' : '';
   };
 
   const zoomAtClientPoint = (clientX, clientY, factor) => {
@@ -897,7 +974,7 @@ function bindIncomeFlowInteractions(container) {
 
     const dragDistance = Math.hypot(event.clientX - gesture.startClientX, event.clientY - gesture.startClientY);
     if (dragDistance > INCOME_FLOW_DRAG_THRESHOLD_PX) gesture.moved = true;
-    if (view.zoom <= 1.001) {
+    if (!isIncomeFlowZoomed(view)) {
       updateCursor();
       return;
     }
@@ -919,6 +996,7 @@ function bindIncomeFlowInteractions(container) {
 
   svg.addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
     gesture.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
     svg.setPointerCapture?.(event.pointerId);
     if (gesture.pointers.size >= 2) beginPinch();
@@ -928,6 +1006,7 @@ function bindIncomeFlowInteractions(container) {
 
   svg.addEventListener('pointermove', (event) => {
     if (!gesture.pointers.has(event.pointerId)) return;
+    event.preventDefault();
     gesture.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
     if (gesture.pointers.size >= 2) updatePinch();
     else updatePan(event);
@@ -986,18 +1065,27 @@ function bindIncomeFlowInteractions(container) {
 }
 
 function clampIncomeFlowView(view) {
-  if (view.zoom <= INCOME_FLOW_MIN_ZOOM + 0.001) {
+  view.zoom = clampValue(view.zoom, INCOME_FLOW_MIN_ZOOM, INCOME_FLOW_MAX_ZOOM);
+
+  if (!isIncomeFlowZoomed(view)) {
     view.zoom = 1;
     view.panX = 0;
     view.panY = 0;
     return;
   }
 
-  view.zoom = clampValue(view.zoom, INCOME_FLOW_MIN_ZOOM, INCOME_FLOW_MAX_ZOOM);
-  const minPanX = SANKEY_WIDTH * (1 - view.zoom);
-  const minPanY = SANKEY_HEIGHT * (1 - view.zoom);
-  view.panX = clampValue(view.panX, minPanX, 0);
-  view.panY = clampValue(view.panY, minPanY, 0);
+  const scaledWidth = SANKEY_WIDTH * view.zoom;
+  const scaledHeight = SANKEY_HEIGHT * view.zoom;
+  const minPanX = scaledWidth > SANKEY_WIDTH ? SANKEY_WIDTH - scaledWidth : 0;
+  const maxPanX = scaledWidth > SANKEY_WIDTH ? 0 : SANKEY_WIDTH - scaledWidth;
+  const minPanY = scaledHeight > SANKEY_HEIGHT ? SANKEY_HEIGHT - scaledHeight : 0;
+  const maxPanY = scaledHeight > SANKEY_HEIGHT ? 0 : SANKEY_HEIGHT - scaledHeight;
+  view.panX = clampValue(view.panX, minPanX, maxPanX);
+  view.panY = clampValue(view.panY, minPanY, maxPanY);
+}
+
+function isIncomeFlowZoomed(view) {
+  return Math.abs((Number(view?.zoom) || 1) - 1) > 0.001;
 }
 
 function clientPointToIncomeFlowSvg(svg, clientX, clientY) {
