@@ -30,18 +30,18 @@ const FLOW_SOURCE_LABEL = {
   church: 'Church',
 };
 
-const SANKEY_WIDTH = 900;
-const SANKEY_HEIGHT = 780;
-const SANKEY_SIDE_PAD = 24;
-const SANKEY_GAP = 18;
+const SANKEY_WIDTH = 1100;
+const SANKEY_HEIGHT = 860;
+const SANKEY_SIDE_PAD = 64;
+const SANKEY_GAP = 34;
 const SANKEY_ROWS = {
-  troopSource: 24,
-  troopRoute: 140,
-  troopOffice: 260,
-  player: 354,
-  lowerOffice: 470,
-  lowerRoute: 590,
-  lowerSource: 704,
+  troopSource: 30,
+  troopRoute: 165,
+  troopOffice: 300,
+  player: 415,
+  lowerOffice: 545,
+  lowerRoute: 680,
+  lowerSource: 775,
 };
 const SANKEY_NODE_WIDTHS = {
   source: 100,
@@ -95,6 +95,7 @@ const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool',
 const SANKEY_OFFICE_ORDER = ['DOM_EAST', 'BASILEUS', 'DOM_WEST', 'ADMIRAL', 'PATRIARCH'];
 const INCOME_FLOW_MIN_ZOOM = 0.25;
 const INCOME_FLOW_MAX_ZOOM = 4;
+const INCOME_FLOW_HOME_ZOOM = 0.78;
 const INCOME_FLOW_ZOOM_STEP = 1.2;
 const INCOME_FLOW_DRAG_THRESHOLD_PX = 1;
 const INCOME_FLOW_MIN_PINCH_DISTANCE_PX = 8;
@@ -860,10 +861,20 @@ function createIncomeFlowGestureState() {
   };
 }
 
+function createIncomeFlowHomeView() {
+  const zoom = INCOME_FLOW_HOME_ZOOM;
+  return {
+    zoom,
+    panX: (SANKEY_WIDTH - SANKEY_WIDTH * zoom) / 2,
+    panY: (SANKEY_HEIGHT - SANKEY_HEIGHT * zoom) / 2,
+    didCenterScroll: false,
+  };
+}
+
 function getIncomeFlowView(container) {
   const existing = incomeFlowViews.get(container);
   if (existing) return existing;
-  const view = { zoom: 1, panX: 0, panY: 0 };
+  const view = createIncomeFlowHomeView();
   incomeFlowViews.set(container, view);
   return view;
 }
@@ -873,6 +884,7 @@ function bindIncomeFlowInteractions(container) {
   const viewport = svg?.querySelector?.('.income-sankey-viewport');
   if (!svg || !viewport) return;
 
+  const scrollFrame = container.querySelector?.('.income-flow-scroll');
   const view = getIncomeFlowView(container);
   const gesture = createIncomeFlowGestureState();
 
@@ -1061,6 +1073,10 @@ function bindIncomeFlowInteractions(container) {
   });
 
   applyTransform();
+  if (scrollFrame && !view.didCenterScroll) {
+    scrollFrame.scrollLeft = Math.max(0, (scrollFrame.scrollWidth - scrollFrame.clientWidth) / 2);
+    view.didCenterScroll = true;
+  }
   updateCursor();
 }
 
