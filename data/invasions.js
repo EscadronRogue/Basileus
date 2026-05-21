@@ -46,7 +46,7 @@ export const INVASIONS = [
     origin: 'BUL',
     originLabel: 'Bulgaria',
     originMarker: 'BBUULL',
-    route: ['BUL', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
+    route: ['PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#7a4988'
   },
   {
