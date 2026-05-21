@@ -1,12 +1,10 @@
 // ui/labels.js — Single source of truth for player and province cartouches.
 //
 // Visual contract (kept stable everywhere these helpers are used):
-//   • Outline color = the *region* of the map / the *major role* tied to
-//     that region (forest green East, crimson West, cobalt Sea, gold CPL,
-//     black Patriarch).
-//   • Background color = the *owner* (dynasty color for player-held themes,
-//     church black, occupied grey, free amethyst, capital gold). For player
-//     names the background is the dynasty color.
+//   - Province land/cartouche background = a light wash of the province region.
+//   - Province land/cartouche outline = the same region, darkened.
+//   - Occupied/lost provinces keep the hue with much lighter fill and outline.
+//   - Player/title cartouches still use dynasty/role colors.
 //
 // All player+province name rendering goes through this module. Do NOT
 // duplicate these helpers in controllers or panels — import from here.
@@ -20,6 +18,7 @@ const CAPITAL_FILL = '#9a7010';
 const CHURCH_FILL = '#1a1a1a';
 const OCCUPIED_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
+const DARK_OUTLINE_MIX = '#1f1208';
 
 // ── CSS variable plumbing ─────────────────────────────────────────────
 //
@@ -48,6 +47,34 @@ export function getRegionColor(region) {
   return REGION_BORDER_COLORS[region] || '#2e1e0f';
 }
 
+function mixColor(color, colorPercent, otherColor) {
+  const otherPercent = 100 - colorPercent;
+  return `color-mix(in srgb, ${color} ${colorPercent}%, ${otherColor} ${otherPercent}%)`;
+}
+
+export function getProvinceRegionPalette(themeOrRegion) {
+  const region = typeof themeOrRegion === 'string' ? themeOrRegion : themeOrRegion?.region;
+  const base = getRegionColor(region);
+  return {
+    base,
+    fill: mixColor(base, 42, 'var(--parch-0)'),
+    outline: mixColor(base, 76, DARK_OUTLINE_MIX),
+    lostFill: mixColor(base, 14, 'var(--parch-0)'),
+    lostOutline: mixColor(base, 30, 'var(--parch-2)'),
+  };
+}
+
+export function getProvincePaletteStyleAttr(themeOrRegion) {
+  const palette = getProvinceRegionPalette(themeOrRegion);
+  return [
+    `--province-region-color: ${palette.base}`,
+    `--province-fill-color: ${palette.fill}`,
+    `--province-outline-color: ${palette.outline}`,
+    `--province-lost-fill-color: ${palette.lostFill}`,
+    `--province-lost-outline-color: ${palette.lostOutline}`,
+  ].join('; ') + ';';
+}
+
 // ── Province color resolution ─────────────────────────────────────────
 
 export function getProvinceOwnerColor(state, theme) {
@@ -60,7 +87,7 @@ export function getProvinceOwnerColor(state, theme) {
 }
 
 export function getProvinceStyleAttr(state, theme) {
-  return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; --province-region-color: ${getRegionColor(theme?.region)};`;
+  return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; ${getProvincePaletteStyleAttr(theme)}`;
 }
 
 // Plain-text value codes stay available for history summaries, ARIA labels,

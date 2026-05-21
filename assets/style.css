@@ -2133,7 +2133,7 @@ body::before {
 }
 
 .province-shape {
-  fill: rgba(230,218,190,0.25);
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
   fill-opacity: 1;
   stroke: none;
   cursor: pointer;
@@ -2144,30 +2144,27 @@ body::before {
 .province-shape.imperial { stroke: none; }
 .province-shape:hover, .province-shape.hovered { filter: brightness(1.04) saturate(0.95); }
 .province-shape.occupied {
-  fill: rgba(210,200,178,0.18);
+  fill: var(--province-lost-fill-color, rgba(230,218,190,0.30));
   fill-opacity: 1;
 }
 .province-shape.church {
-  /* Black — church land, unmistakable */
-  fill: rgba(20, 20, 20, 0.82);
+  /* Church ownership is shown by markers; land keeps its region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
   fill-opacity: 1;
 }
 .province-shape.owned {
-  /* Dynasty color mixed with warm parchment — saturated enough to read ownership clearly */
-  fill: var(--owner-color, #888);
-  fill: color-mix(in srgb, var(--owner-color, #888) 52%, rgba(240,228,195,0.48) 48%);
+  /* Player ownership is shown by markers; land keeps its region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
   fill-opacity: 1;
 }
 .province-shape.capital {
-  /* Deep gold for Constantinople */
-  fill: var(--capital-fill);
-  fill: color-mix(in srgb, var(--capital-fill) 48%, rgba(255,245,210,0.52) 52%);
+  /* Constantinople uses the capital region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
   fill-opacity: 1;
 }
 .province-shape.free {
-  /* Muted amethyst — unowned themes, readable but not dominant */
-  fill: var(--free-fill);
-  fill: color-mix(in srgb, var(--free-fill) 45%, rgba(235,220,190,0.55) 55%);
+  /* Free themes use their region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
   fill-opacity: 1;
 }
 .province-shape.selected,
@@ -2192,7 +2189,7 @@ body::before {
 
 .region-stroke {
   fill: none;
-  stroke: var(--region-border, var(--empire-border));
+  stroke: var(--province-outline-color, var(--region-border, var(--empire-border)));
   stroke-width: 2.6;
   stroke-opacity: 0.88;
   stroke-linejoin: round;
@@ -2200,6 +2197,10 @@ body::before {
   vector-effect: non-scaling-stroke;
   pointer-events: none;
   transition: stroke-width 0.18s, stroke-opacity 0.18s, stroke 0.18s;
+}
+.region-stroke.occupied {
+  stroke: var(--province-lost-outline-color, var(--province-outline-color, var(--region-border, var(--empire-border))));
+  stroke-opacity: 0.78;
 }
 .region-stroke.hovered  { stroke-width: 3.1; stroke-opacity: 1; }
 .region-stroke.selected,
@@ -2219,11 +2220,21 @@ body::before {
 
 /* ── Map cartouches ──────────────────────────────────────────────────
    SVG counterpart of the HTML .province-token. Same visual grammar:
-   outline = region color (--cart-border), fill = owner color (--cart-bg),
+   outline = darker region color (--cart-border), fill = light region color (--cart-bg),
    gold-leaf inner hairline. Two stacked text lines: name / values,
    with an optional office/estate marker row below the values.
    Built and laid out by mapRenderer.js. */
-.map-cartouche { cursor: pointer; pointer-events: auto; }
+.map-cartouche {
+  --cart-bg: var(--province-fill-color, color-mix(in srgb, var(--free-fill) 42%, var(--parch-0) 58%));
+  --cart-border: var(--province-outline-color, var(--empire-border));
+  --cart-ink: var(--province-outline-color, var(--empire-border));
+  cursor: pointer;
+  pointer-events: auto;
+}
+.map-cartouche.occupied {
+  --cart-bg: var(--province-lost-fill-color, color-mix(in srgb, var(--free-fill) 14%, var(--parch-0) 86%));
+  --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
+}
 
 .map-cart-bg {
   pointer-events: visiblePainted;
@@ -2232,10 +2243,7 @@ body::before {
   stroke-width: 0.55;
   paint-order: stroke fill;
 }
-.map-cartouche.church .map-cart-bg { fill: #1a1a1a; }
-.map-cartouche.occupied .map-cart-bg { fill: #625c52; opacity: 0.85; }
-.map-cartouche.free .map-cart-bg { fill: var(--free-fill); }
-.map-cartouche.capital .map-cart-bg { fill: var(--capital-fill); }
+.map-cartouche.occupied .map-cart-bg { opacity: 0.95; }
 
 .map-cart-inner {
   fill: none;
@@ -2245,8 +2253,8 @@ body::before {
 .map-cart-id,
 .map-cart-name,
 .map-cart-glyph-num {
-  fill: #ffffff;
-  text-shadow: 0 0.05px 0 rgba(20,8,0,0.6);
+  fill: var(--cart-ink, var(--empire-border));
+  text-shadow: 0 0.05px 0 rgba(255,250,228,0.65);
   dominant-baseline: auto;
   alignment-baseline: baseline;
   text-anchor: start;
@@ -2265,12 +2273,11 @@ body::before {
 }
 /* Map cartouche value group — icons + numbers, centered around x=0 */
 .map-cart-values { pointer-events: none; }
-.map-cart-glyph { color: #ffffff; opacity: 0.94; }
-.map-cart-glyph-gold   { color: #ffe8a8; }
-.map-cart-glyph-troop  { color: #ffffff; }
-.map-cart-glyph-church { color: #cfe1ff; }
-.map-cartouche.church   .map-cart-glyph-church { color: #ffffff; }
-.map-cartouche.occupied .map-cart-glyph { opacity: 0.7; }
+.map-cart-glyph { color: var(--cart-ink, var(--empire-border)); opacity: 0.96; }
+.map-cart-glyph-gold   { color: var(--gold-2); }
+.map-cart-glyph-troop  { color: var(--cart-ink, var(--empire-border)); }
+.map-cart-glyph-church { color: var(--church-0); }
+.map-cartouche.occupied .map-cart-glyph { opacity: 0.82; }
 
 .map-cart-markers { pointer-events: none; }
 .map-cart-marker {
@@ -2281,7 +2288,7 @@ body::before {
 
 /* Capital cartouche: text leans into the imperial gold a touch more */
 .map-cartouche.is-capital .map-cart-id,
-.map-cartouche.is-capital .map-cart-name { fill: #ffffff; }
+.map-cartouche.is-capital .map-cart-name { fill: var(--cart-ink, var(--empire-border)); }
 
 /* Selected: stronger gold inner ring + slight scale-in via transform */
 .map-cartouche.selected .map-cart-inner {
@@ -2375,11 +2382,11 @@ body::before {
 
 /* ── Player & Province Cartouches ─────────────────────────────────────
    Shared visual grammar: a small Byzantine-style nameplate.
-   • Background = owner / dynasty color  (--cart-bg)
-   • Outline   = region / role color    (--cart-border)
+   • Province background = light region color (--cart-bg)
+   • Province outline    = darker region color (--cart-border)
    • Inner gold hairline (var(--gold-3)) suggests a leafed manuscript
-     border; subtle parchment-linen overlay tones the dynasty color
-     down to feel "painted onto vellum" rather than flat web-coloured.
+     border; subtle parchment-linen overlay keeps the color feeling
+     painted onto vellum rather than flat web-coloured.
    ────────────────────────────────────────────────────────────────── */
 .player-role-name,
 .province-token,
@@ -2439,8 +2446,15 @@ body::before {
 }
 
 .province-token {
-  --cart-bg: var(--province-owner-color, var(--free-fill));
-  --cart-border: var(--province-region-color, var(--empire-border));
+  --cart-bg: var(--province-fill-color, var(--free-fill));
+  --cart-border: var(--province-outline-color, var(--province-region-color, var(--empire-border)));
+  color: var(--province-outline-color, var(--umber-1));
+  text-shadow: 0 1px 0 rgba(255,250,228,0.58);
+}
+
+.province-token.occupied {
+  --cart-bg: var(--province-lost-fill-color, var(--province-fill-color, var(--free-fill)));
+  --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
 }
 
 /* Title cartouches (Basileus, Strategos of X, Bishop of Y, …).
@@ -2484,7 +2498,7 @@ body::before {
   padding-left: 7px;
   margin-left: 3px;
   border-left: 1px solid rgba(240,200,90,0.42);
-  color: #ffffff;
+  color: inherit;
 }
 .province-token-value {
   display: inline-flex;
@@ -2829,18 +2843,17 @@ body::before {
 }
 
 /* State variants */
-.province-token.occupied { opacity: 0.78; filter: saturate(0.6); }
+.province-token.occupied { opacity: 0.92; filter: saturate(0.74); }
 .province-token.church {
-  /* church land is black-on-black; lean on the gold hairline for legibility */
-  color: #ffffff;
-  text-shadow: 0 1px 0 rgba(0,0,0,0.85);
+  color: var(--province-outline-color, var(--umber-1));
+  text-shadow: 0 1px 0 rgba(255,250,228,0.58);
 }
 
 .player-role-name *,
-.province-token *,
 .title-token * {
   color: #ffffff;
 }
+.province-token * { color: inherit; }
 
 /* ── Choice grids (player picker / province picker) ─────────────────── */
 /* Revocation choice grid — same cartouche pattern as player/province
@@ -5139,6 +5152,16 @@ textarea {
 .cartouche .icon svg {
   filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
 }
+.province-token .icon svg {
+  filter: drop-shadow(0 1px 0 rgba(255,250,228,0.58));
+}
+.province-token .value,
+.province-token .value.gold,
+.province-token .value.troop,
+.province-token .value.church {
+  color: inherit;
+  text-shadow: inherit;
+}
 
 /* 3. Dashboard cartouche head — the big gold reserve and the
       income / upkeep delta were unshadowed white on dynasty fill.
@@ -5214,31 +5237,28 @@ textarea {
 
 /* 8. SVG map cartouche text: swap text-shadow (renders unreliably
       across browsers on SVG <text>) for true paint-order stroke +
-      fill, which draws a crisp dark outline on every owner fill
-      color — including light fills like Doukas amber and the
-      capital gold where the previous shadow was invisible. */
+      fill, keeping text crisp on the light region fills. */
 .map-cart-id,
 .map-cart-name,
 .map-cart-glyph-num {
   text-shadow: none;
-  stroke: rgba(20,8,0,0.85);
-  stroke-width: 0.32;
+  stroke: rgba(255,250,228,0.72);
+  stroke-width: 0.18;
   stroke-linejoin: round;
   paint-order: stroke fill;
-  fill: #ffffff;
+  fill: var(--cart-ink, var(--empire-border));
 }
 .map-cart-glyph-num { stroke-width: 0.3; font-weight: 800; }
 /* Keep the warm-gold / cool-blue tint on gold and church numerals
    so the three-icon triplet stays scannable as a triplet — the
-   shared dark stroke unifies them and the hue distinguishes them. */
-.map-cartouche .map-cart-glyph-num-gold   { fill: #ffe8a8; }
-.map-cartouche .map-cart-glyph-num-troop  { fill: #ffffff; }
-.map-cartouche .map-cart-glyph-num-church { fill: #cfe1ff; }
-.map-cartouche.church .map-cart-glyph-num-church { fill: #ffffff; }
+   shared light stroke unifies them and the hue distinguishes them. */
+.map-cartouche .map-cart-glyph-num-gold   { fill: var(--gold-2); }
+.map-cartouche .map-cart-glyph-num-troop  { fill: var(--cart-ink, var(--empire-border)); }
+.map-cartouche .map-cart-glyph-num-church { fill: var(--church-0); }
 
-/* SVG icon strokes on the map: a tiny dark drop-shadow keeps the
-   unit marker / coin / Orthodox cross outlines visible on every owner fill. */
-.map-cart-glyph { filter: drop-shadow(0 0.08px 0 rgba(20,8,0,0.7)); }
+/* SVG icon strokes on the map: a tiny light drop-shadow keeps the
+   unit marker / coin / Orthodox cross outlines visible on region fills. */
+.map-cart-glyph { filter: drop-shadow(0 0.08px 0 rgba(255,250,228,0.65)); }
 
 /* 9. Balance ranking row — values stay umber/gold/church on the
       parchment background (already correct), but the numerals were

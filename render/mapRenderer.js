@@ -1,5 +1,5 @@
 import { PROVINCES } from '../data/provinces.js';
-import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
+import { getProvinceRegionPalette, getRegionColor } from '../ui/labels.js';
 import { formatPlayerLabel } from '../engine/state.js';
 import {
   ensureSvgIconSymbols,
@@ -283,6 +283,8 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
     if (!isProvinceId(provinceId)) continue;
 
     configureProvincePath(path, provinceId, `province-shape province-${provinceId}`, 'province');
+    const province = PROVINCES.find((entry) => entry.id === provinceId);
+    if (province) applyProvincePalette(path, province.region);
   }
 
   const regionStrokeImported = document.importNode(provinceGroup, true);
@@ -320,12 +322,9 @@ function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, threatLay
     path.style.fill = 'url(#threat-hatch)';
     path.style.fillOpacity = '1';
 
-    // Apply region border color so the overlay stroke matches the province outline
+    // Apply region color variables so the overlay stroke matches the province outline
     const province = PROVINCES.find((p) => p.id === provinceId);
-    if (province) {
-      const regionColor = getRegionColor(province.region);
-      if (regionColor) path.style.setProperty('--region-border', regionColor);
-    }
+    if (province) applyProvincePalette(path, province.region);
   }
 
   visualLayer.appendChild(visualImported);
@@ -341,6 +340,16 @@ function configureProvincePath(path, provinceId, className, idPrefix) {
   path.setAttribute('data-id', provinceId);
   path.setAttribute('fill-rule', 'evenodd');
   path.setAttribute('clip-rule', 'evenodd');
+}
+
+function applyProvincePalette(element, region) {
+  const palette = getProvinceRegionPalette(region);
+  element.style.setProperty('--province-region-color', palette.base);
+  element.style.setProperty('--province-fill-color', palette.fill);
+  element.style.setProperty('--province-outline-color', palette.outline);
+  element.style.setProperty('--province-lost-fill-color', palette.lostFill);
+  element.style.setProperty('--province-lost-outline-color', palette.lostOutline);
+  element.style.setProperty('--region-border', palette.outline);
 }
 
 function applyInsetRegionBorder(rootSvg, path, provinceId) {
@@ -360,7 +369,7 @@ function applyInsetRegionBorder(rootSvg, path, provinceId) {
   if (clipId) path.setAttribute('clip-path', `url(#${clipId})`);
 
   path.setAttribute('data-region', province.region);
-  path.style.setProperty('--region-border', regionColor);
+  applyProvincePalette(path, province.region);
 }
 
 function ensureRegionStrokeClipPath(rootSvg, provinceId, sourcePath) {
@@ -762,7 +771,7 @@ function parseFiniteNumber(value) {
 }
 
 // Map labels are stacked SVG cartouches that mirror the HTML
-// .province-token grammar: outline = region color, fill = owner color,
+// .province-token grammar: outline = darker region color, fill = light region color,
 // gold inner hairline. Two lines per cartouche: name / current values,
 // with an optional marker row below the values.
 //
@@ -810,6 +819,7 @@ function addProvinceLabels(layer) {
     const g = buildMapCartouche(province, centroid, theme);
     layer.appendChild(g);
     layoutMapCartouche(g);
+    if (latestMapState) updateMapCartoucheMarkers(g, latestMapState, theme);
   }
 
   applyProvinceInteractionState();
@@ -817,13 +827,14 @@ function addProvinceLabels(layer) {
 
 function buildMapCartouche(province, centroid, theme = province) {
   const isCapital = province.id === 'CPL';
+  const ownership = resolveProvinceOwnership(province.id, theme);
   const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('class', `map-cartouche${isCapital ? ' is-capital' : ''}`);
+  const baseClasses = `map-cartouche${isCapital ? ' is-capital' : ''}`;
+  g.setAttribute('class', `${baseClasses} ${ownership.classes.join(' ')}`.trim());
   g.setAttribute('data-id', province.id);
   g.setAttribute('transform', `translate(${centroid.cx} ${centroid.cy})`);
 
-  const regionColor = getRegionColor(province.region) || '#2e1e0f';
-  g.style.setProperty('--cart-border', regionColor);
+  applyProvincePalette(g, province.region);
 
   const bg = document.createElementNS(SVG_NS, 'rect');
   bg.setAttribute('class', 'map-cart-bg');
@@ -1155,31 +1166,26 @@ export function updateMapState(state) {
   latestMapState = state;
   for (const [provinceId, theme] of Object.entries(state.themes)) {
     const shape = document.querySelector(`.province-shape[data-id="${provinceId}"]`);
+    const regionStroke = document.querySelector(`.region-stroke[data-id="${provinceId}"]`);
     const cart = document.querySelector(`.map-cartouche[data-id="${provinceId}"]`);
 
-    const ownership = resolveProvinceOwnership(state, provinceId, theme);
+    const ownership = resolveProvinceOwnership(provinceId, theme);
 
-    // Province shape: low-saturation parchment-tinted fill via class.
+    // Province shape and outline use the province's region palette; ownership
+    // is carried by the cartouche markers.
     if (shape) {
       shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')}`.trim();
-      if (ownership.ownerColor) {
-        shape.style.setProperty('--owner-color', ownership.ownerColor);
-      } else {
-        shape.style.removeProperty('--owner-color');
-      }
+    }
+    if (regionStroke) {
+      regionStroke.className.baseVal = `region-stroke province-${provinceId} ${ownership.classes.join(' ')}`.trim();
     }
 
-    // Map cartouche: same class set drives full-saturation owner color.
+    // Map cartouche follows the same region palette as the province.
     if (cart) {
       updateMapCartoucheValues(cart, theme);
       updateMapCartoucheMarkers(cart, state, theme);
       const baseClasses = `map-cartouche${provinceId === 'CPL' ? ' is-capital' : ''}`;
       cart.className.baseVal = `${baseClasses} ${ownership.classes.join(' ')}`.trim();
-      if (ownership.ownerColor) {
-        cart.style.setProperty('--cart-bg', ownership.ownerColor);
-      } else {
-        cart.style.removeProperty('--cart-bg');
-      }
     }
   }
 
@@ -1191,24 +1197,23 @@ export function updateMapState(state) {
 // Single source of truth for the ownership-derived state class set used by
 // both the province shape and the map cartouche (and shared with the HTML
 // .province-token via data/style conventions).
-function resolveProvinceOwnership(state, provinceId, theme) {
-  const ownerColor = getProvinceOwnerColor(state, theme);
+function resolveProvinceOwnership(provinceId, theme) {
   const withChurchMarker = (classes) => (
     (Number(theme.C) || 0) > 0 ? [...classes, 'has-church'] : classes
   );
   if (theme.occupied) {
-    return { classes: withChurchMarker(['occupied']), ownerColor };
+    return { classes: withChurchMarker(['occupied']) };
   }
   if (theme.owner === 'church') {
-    return { classes: withChurchMarker(['imperial', 'church']), ownerColor };
+    return { classes: withChurchMarker(['imperial', 'church']) };
   }
   if (theme.owner !== null) {
-    return { classes: withChurchMarker(['imperial', 'owned']), ownerColor };
+    return { classes: withChurchMarker(['imperial', 'owned']) };
   }
   if (provinceId === 'CPL') {
-    return { classes: withChurchMarker(['imperial', 'capital']), ownerColor };
+    return { classes: withChurchMarker(['imperial', 'capital']) };
   }
-  return { classes: withChurchMarker(['imperial', 'free']), ownerColor };
+  return { classes: withChurchMarker(['imperial', 'free']) };
 }
 
 function updateThreatOverlay(state) {
