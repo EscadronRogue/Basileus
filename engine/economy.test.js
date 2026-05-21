@@ -73,6 +73,25 @@ test('income routes estates, bishops, strategos troops, and occupied bishop valu
   assert.equal(result.income[2], 1);
   assert.equal(result.incomeBreakdown.church[1] >= 2, true);
   assert.deepEqual(readTroopEntry(result.troops.STRAT_KAP), { normal: 1, capitalLocked: 0 });
+
+  const profitRoute = result.flow.sections.find((section) => section.key === 'profit').routes[0];
+  assert.equal(profitRoute.total, 1);
+  assert.deepEqual(profitRoute.recipients, [{ playerId: 2, value: 1 }]);
+
+  const troopRoutes = result.flow.sections.find((section) => section.key === 'troop').routes;
+  const strategoiRoute = troopRoutes.find((route) => route.key === 'strategoi');
+  assert.equal(strategoiRoute.total, 1);
+  assert.deepEqual(strategoiRoute.recipients, [{ playerId: 3, value: 1 }]);
+  const eastPool = troopRoutes.find((route) => route.key === 'east_pool');
+  assert.equal(eastPool.total, 9);
+  assert.deepEqual(eastPool.offices.map((office) => [office.officeKey, office.playerId, office.value]), [
+    ['DOM_EAST', 1, 6],
+    ['BASILEUS', 0, 3],
+  ]);
+
+  const bishopRoute = result.flow.sections.find((section) => section.key === 'church').routes.find((route) => route.key === 'bishops');
+  assert.equal(bishopRoute.total, 2);
+  assert.deepEqual(bishopRoute.recipients, [{ playerId: 1, value: 2 }]);
 });
 
 test('title redistribution precedes starting income and court', () => {
