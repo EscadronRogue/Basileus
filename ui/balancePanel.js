@@ -1,7 +1,7 @@
 // ui/balancePanel.js - Balance of Power sidebar panel.
 //
 // Renders scoring-category pies together with a live ranking based on the
-// official scoring rule: 1 point per 25% share of each player-held category,
+// official scoring rule: 1 point per 25% share of each scoring category,
 // capped at 3 points per category.
 
 import { buildBalanceOfPower } from '../engine/scoring.js';
@@ -1129,7 +1129,7 @@ export function renderBalancePanel(container, state, options = {}) {
   const uiState = options.uiState || null;
   const isOpen = panelOpen(uiState);
   const balance = buildBalanceOfPower(state);
-  const incomeFlow = buildIncomeFlow(state);
+  const incomeFlow = balance.income?.flow || buildIncomeFlow(state);
   const badge = getHeaderBadge(state, balance.scores, balance.winners);
 
   container.classList.toggle('panel-collapsed', !isOpen);
@@ -1144,7 +1144,7 @@ export function renderBalancePanel(container, state, options = {}) {
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body">
-          <p class="section-hint">Each 25% share of a category scores 1 point (max 3).</p>
+          <p class="section-hint">Gold reserves score alongside shares of the last income flow.</p>
           ${renderRanking(state, balance.scores)}
           <div class="balance-pie-grid">
             ${balance.categories.map((category) => renderPieCard(state, category)).join('')}

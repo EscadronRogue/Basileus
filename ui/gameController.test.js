@@ -197,7 +197,7 @@ test('player finance renders compact icon values without retired upkeep copy', (
   assert.doesNotMatch(html, new RegExp('upkeep|prof' + 'essional', 'i'));
 });
 
-test('final scoring view uses current scoring categories', () => {
+test('final scoring view uses income-share scoring categories', () => {
   const state = makeState();
   state.players[0].gold = 50;
   state.themes.OPS.owner = 1;
@@ -207,8 +207,8 @@ test('final scoring view uses current scoring categories', () => {
   const html = renderScoringHtml(state);
 
   assert.match(html, /Final Reckoning/);
-  assert.match(html, /Private estates/);
-  assert.match(html, /Bishops/);
-  assert.match(html, /Strategoi/);
+  assert.match(html, /Profit income/);
+  assert.match(html, /Church income/);
+  assert.match(html, /Troop income/);
   assert.doesNotMatch(html, new RegExp('T' + 'ax'));
 });

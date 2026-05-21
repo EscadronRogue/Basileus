@@ -99,7 +99,8 @@ export function phaseInvasion(state) {
   state.round += 1;
   state.phase = 'invasion';
   if (state.invasionDeck.length === 0) {
-    state.phase = 'scoring';
+    state.finalScoringPending = true;
+    phaseTitleRedistribution(state);
     return;
   }
   state.currentInvasion = state.invasionDeck.shift();
@@ -132,6 +133,11 @@ export function confirmTitleRedistribution(state, playerId, assignments) {
   const result = applyTitleRedistribution(state, state.basileusId, assignments);
   if (!result.ok) return result;
   phaseIncome(state);
+  if (state.finalScoringPending) {
+    state.finalScoringPending = false;
+    state.phase = 'scoring';
+    return { ok: true };
+  }
   phaseCourt(state);
   return { ok: true };
 }
@@ -150,6 +156,13 @@ export function phaseIncome(state) {
   }
   state.startingIncomeResolved = state.startingIncomeResolved || state.round === 1;
   state.currentTroops = result.troops;
+  state.lastIncome = {
+    round: state.round,
+    income: result.income,
+    incomeBreakdown: result.incomeBreakdown,
+    troops: result.troops,
+    flow: result.flow,
+  };
 
   state.log.push({
     type: 'income_complete',
@@ -575,10 +588,7 @@ export function phaseCleanup(state) {
   }
 
   if (state.gameOver) return;
-  if (state.invasionDeck.length === 0 && state.round >= state.maxRounds) {
-    state.phase = 'scoring';
-    return;
-  }
+  const shouldRunFinalIncome = state.invasionDeck.length === 0 && state.round >= state.maxRounds;
 
   state.allOrders = {};
   state.mercenaryOrders = {};
@@ -589,6 +599,11 @@ export function phaseCleanup(state) {
   state.lastWarResult = null;
   state.pendingDefenderRewards = [];
   state.courtActions = null;
+
+  if (shouldRunFinalIncome) {
+    state.finalScoringPending = true;
+    phaseTitleRedistribution(state);
+  }
 }
 
 export function advanceToNextInteractivePhase(state) {

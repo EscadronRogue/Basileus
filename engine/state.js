@@ -127,6 +127,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
     round: 0,
     maxRounds: deck.length,
     startingIncomeResolved: false,
+    finalScoringPending: false,
     phase: 'setup',
 
     basileusId: basileusIdx,
@@ -143,6 +144,7 @@ export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEn
 
     allOrders: {},
     currentTroops: {},
+    lastIncome: null,
     mercenaryOrders: {},
 
     dealThreads: [],

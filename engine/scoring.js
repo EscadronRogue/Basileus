@@ -9,51 +9,45 @@ export const SCORE_CATEGORIES = [
   },
   {
     key: 'estate',
-    label: 'Private Estates',
-    description: 'Current private land estates owned inside the empire.',
+    label: 'Profit Income',
+    description: 'Profit income received during the last income phase.',
   },
   {
     key: 'church',
-    label: 'Bishops',
-    description: 'Current bishops held by the dynasty, including sees in occupied provinces.',
+    label: 'Church Income',
+    description: 'Church income received during the last income phase.',
   },
   {
     key: 'strategos',
-    label: 'Strategoi',
-    description: 'Current strategos appointments held inside the empire.',
+    label: 'Troop Income',
+    description: 'Troop income raised during the last income phase.',
   },
 ];
 
 export const SCORE_SHARE_THRESHOLDS = [0.25, 0.5, 0.75];
 const SCORE_EPSILON = 1e-9;
 
-function countPrivateEstates(state, playerId) {
-  return Object.values(state.themes || {}).reduce((total, theme) => {
-    if (!theme || theme.id === 'CPL' || theme.occupied) return total;
-    return theme.owner === playerId ? total + 1 : total;
-  }, 0);
+const SCORE_INCOME_RESOURCE_BY_CATEGORY = {
+  estate: 'profit',
+  church: 'church',
+  strategos: 'troop',
+};
+
+function getScoringIncome(state) {
+  return Array.isArray(state?.lastIncome?.flow?.playerTotals) ? state.lastIncome : runIncome(state);
 }
 
-function countBishops(state, playerId) {
-  return Object.values(state.themes || {}).reduce((total, theme) => {
-    if (!theme || theme.id === 'CPL') return total;
-    return theme.bishop === playerId ? total + 1 : total;
-  }, 0);
+function readIncomeResource(income, playerId, resource) {
+  if (!resource) return 0;
+  const playerTotals = Array.isArray(income?.flow?.playerTotals) ? income.flow.playerTotals : [];
+  const entry = playerTotals
+    .find((row) => Number(row.playerId) === Number(playerId));
+  return Math.max(0, Number(entry?.[resource]) || 0);
 }
 
-function countStrategoi(state, playerId) {
-  return Object.values(state.themes || {}).reduce((total, theme) => {
-    if (!theme || theme.id === 'CPL' || theme.occupied) return total;
-    return theme.strategos === playerId ? total + 1 : total;
-  }, 0);
-}
-
-function readCategoryValue(state, playerId, categoryKey) {
+function readCategoryValue(state, playerId, categoryKey, income) {
   if (categoryKey === 'gold') return Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
-  if (categoryKey === 'estate') return countPrivateEstates(state, playerId);
-  if (categoryKey === 'church') return countBishops(state, playerId);
-  if (categoryKey === 'strategos') return countStrategoi(state, playerId);
-  return 0;
+  return readIncomeResource(income, playerId, SCORE_INCOME_RESOURCE_BY_CATEGORY[categoryKey]);
 }
 
 export function getScorePointsForShare(share) {
@@ -64,14 +58,14 @@ export function getScorePointsForShare(share) {
   );
 }
 
-function scoreCategory(state, category) {
+function scoreCategory(state, category, income) {
   const totalValue = state.players.reduce(
-    (total, player) => total + readCategoryValue(state, player.id, category.key),
+    (total, player) => total + readCategoryValue(state, player.id, category.key, income),
     0,
   );
 
   return state.players.map((player) => {
-    const value = readCategoryValue(state, player.id, category.key);
+    const value = readCategoryValue(state, player.id, category.key, income);
     const share = totalValue > 0 ? value / totalValue : 0;
     return {
       ...category,
@@ -85,11 +79,11 @@ function scoreCategory(state, category) {
 }
 
 export function buildFinalScores(state) {
-  const income = runIncome(state);
+  const income = getScoringIncome(state);
   const categoryScores = new Map();
 
   for (const category of SCORE_CATEGORIES) {
-    for (const entry of scoreCategory(state, category)) {
+    for (const entry of scoreCategory(state, category, income)) {
       if (!categoryScores.has(entry.playerId)) categoryScores.set(entry.playerId, []);
       categoryScores.get(entry.playerId).push(entry);
     }
@@ -131,7 +125,7 @@ export function getPlayerFinalScore(state, playerId) {
 }
 
 // Per-category share breakdown used by the Balance of Power panel. The pies
-// use the same player-held totals as scoring, so the visible share always
+// use the same last-income totals as scoring, so the visible share always
 // matches the points share.
 export function buildBalanceOfPower(state) {
   const final = buildFinalScores(state);
@@ -169,5 +163,6 @@ export function buildBalanceOfPower(state) {
     scores: final.scores,
     winners: final.winners,
     topScore: final.topScore,
+    income: final.income,
   };
 }

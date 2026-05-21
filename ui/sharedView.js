@@ -280,7 +280,7 @@ export const PHASE_TOOLTIPS = {
   deployment: 'Each player funds armies, hires mercenaries, chooses destinations, and backs a claimant.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
   cleanup: 'Per-turn state clears before the next invasion.',
-  scoring: 'Each 25% share of gold reserves, private estates, bishops, and strategoi scores 1 point, up to 3 per category.',
+  scoring: 'Each 25% share of gold reserves, profit income, church income, and troop income scores 1 point, up to 3 per category.',
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
@@ -314,7 +314,7 @@ export function renderTopBar(state) {
 
   if (roundEl) {
     roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
-    roundEl.title = `Game ends after ${state.maxRounds} invasions, or sooner if Constantinople falls. Each 25% category share scores 1 point, up to 3; highest total wins.`;
+    roundEl.title = `Game ends after ${state.maxRounds} invasions, then one final title redistribution and income phase. Each 25% category share scores 1 point, up to 3; highest total wins.`;
   }
   if (phaseEl) {
     if (state.gameOver?.type === 'fall') {
@@ -561,7 +561,7 @@ export function renderScoringHtml(state, options = {}) {
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Highest point total wins. Each 25% share of Gold reserves, Private estates, Bishops, and Strategoi is worth 1 point, up to 3 per category.</p>
+      <p class="section-hint">Highest point total wins. Each 25% share of Gold reserves, Profit income, Church income, and Troop income is worth 1 point, up to 3 per category.</p>
       <div class="score-list">
         ${scores.map((score) => {
           const rank = scores.filter((other) => other.points > score.points).length + 1;

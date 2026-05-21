@@ -14,6 +14,7 @@ import {
 } from './commands.js';
 import {
   confirmTitleRedistribution,
+  phaseCleanup,
   phaseCourt,
 } from './turnflow.js';
 import { suggestMajorTitleAssignments } from './actions.js';
@@ -221,34 +222,77 @@ test('invasion loss suspends owners and reconquest restores them while bishops r
   assert.equal(state.themes.SAM.bishop, 1);
 });
 
-test('final scoring counts current holdings and offices without free citizens', () => {
+test('final scoring uses last income phase shares without free citizens', () => {
   const state = makeState();
   for (const player of state.players) player.gold = 0;
 
-  state.themes.OPS.owner = 0;
-  state.themes.SAM.owner = 0;
-  state.themes.KAP.bishop = 1;
-  state.themes.KAP.occupied = true;
-  state.themes.ANT.bishop = 1;
-  state.themes.MES.bishop = 2;
-  state.themes.AEG.strategos = 2;
-  state.themes.ITA.strategos = 2;
+  for (const theme of Object.values(state.themes)) {
+    if (!theme || theme.id === 'CPL') continue;
+    theme.P = 0;
+    theme.T = 0;
+    theme.C = 0;
+    theme.owner = null;
+    theme.bishop = null;
+    theme.strategos = null;
+    theme.occupied = false;
+  }
 
-  applyInvasionResult(state, { themesLost: ['SAM', 'ITA'], themesRecovered: [], reachedCPL: false });
+  state.themes.OPS.P = 3;
+  state.themes.OPS.owner = 0;
+  state.themes.SAM.P = 1;
+  state.themes.SAM.owner = 1;
+  state.themes.KAP.C = 2;
+  state.themes.KAP.bishop = 1;
+  state.themes.ANT.C = 6;
+  state.themes.ANT.bishop = 2;
+  state.themes.MES.C = 4;
+  state.themes.AEG.T = 5;
+  state.themes.AEG.strategos = 2;
+  state.themes.ITA.T = 3;
+
+  state.lastIncome = runIncome(state);
+  state.themes.OPS.P = 30;
+  state.themes.OPS.owner = 3;
 
   const final = buildFinalScores(state);
   const category = (playerId, key) => (
     final.scores.find((score) => score.playerId === playerId)?.categories.find((entry) => entry.key === key)
   );
 
-  assert.equal(category(0, 'estate').value, 1);
-  assert.equal(category(0, 'estate').totalValue, 1);
-  assert.equal(category(1, 'church').value, 2);
-  assert.equal(category(2, 'church').value, 1);
-  assert.equal(category(2, 'strategos').value, 1);
-  assert.equal(category(2, 'strategos').totalValue, 1);
+  assert.equal(category(0, 'estate').value, 3);
+  assert.equal(category(1, 'estate').value, 1);
+  assert.equal(category(0, 'estate').totalValue, 4);
+  assert.equal(category(1, 'church').value, 6);
+  assert.equal(category(2, 'church').value, 6);
+  assert.equal(category(2, 'strategos').value, 5);
+  assert.equal(category(3, 'strategos').value, 2);
+  assert.equal(category(0, 'strategos').value, 1);
+  assert.equal(category(2, 'strategos').totalValue, 8);
 
   const balance = buildBalanceOfPower(state);
   assert.equal(balance.categories.some((entry) => entry.slices.some((slice) => slice.kind === 'free')), false);
-  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 1);
+  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 4);
+});
+
+test('final title redistribution triggers one last income phase before scoring', () => {
+  const state = makeState();
+  state.round = state.maxRounds;
+  state.invasionDeck = [];
+  state.phase = 'cleanup';
+  state.nextBasileusId = 2;
+
+  phaseCleanup(state);
+
+  assert.equal(state.basileusId, 2);
+  assert.equal(state.phase, 'title_redistribution');
+  assert.equal(state.finalScoringPending, true);
+
+  const assignments = suggestMajorTitleAssignments(state, state.basileusId);
+  const result = confirmTitleRedistribution(state, state.basileusId, assignments);
+
+  assert.equal(result.ok, true);
+  assert.equal(state.phase, 'scoring');
+  assert.equal(state.finalScoringPending, false);
+  assert.equal(state.lastIncome.round, state.round);
+  assert.ok(state.lastIncome.flow.totals.troop > 0);
 });
