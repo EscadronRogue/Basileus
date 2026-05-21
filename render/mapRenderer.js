@@ -1,5 +1,6 @@
 import { PROVINCES } from '../data/provinces.js';
 import { getProvinceOwnerColor, getRegionColor } from '../ui/labels.js';
+import { formatPlayerLabel } from '../engine/state.js';
 import {
   ensureSvgIconSymbols,
   buildSvgValueGroup,
@@ -762,7 +763,8 @@ function parseFiniteNumber(value) {
 
 // Map labels are stacked SVG cartouches that mirror the HTML
 // .province-token grammar: outline = region color, fill = owner color,
-// gold inner hairline. Two lines per cartouche: name / current values.
+// gold inner hairline. Two lines per cartouche: name / current values,
+// with an optional marker row below the values.
 //
 // The values line replaces the legacy "P3 T2 C1" text with three icon+number
 // pairs (gold → sword → church). Zero-value entries collapse so church-only
@@ -770,9 +772,14 @@ function parseFiniteNumber(value) {
 const MAP_CART_PAD_X = 1.0;
 const MAP_CART_MIN_WIDTH = 7.8;
 const MAP_CART_HEIGHT = 4.7;
+const MAP_CART_HEIGHT_WITH_MARKERS = 6.0;
 const MAP_CART_INSET = 0.32;
 const MAP_CART_NAME_BASELINE_Y = -0.35;
 const MAP_CART_VALUES_BASELINE_Y = 1.55;
+const MAP_CART_MARKERS_Y = 2.46;
+const MAP_CART_MARKER_GAP = 1.25;
+const MAP_CART_MARKER_RADIUS = 0.42;
+const MAP_CART_MARKER_SIZE = 0.86;
 
 const MAP_CART_VALUE_OPTS = Object.freeze({
   iconSize: 1.5,
@@ -831,6 +838,12 @@ function buildMapCartouche(province, centroid, theme = province) {
   valuesGroup.setAttribute('data-values-sig', valueEntriesSignature(entries));
   g.appendChild(valuesGroup);
 
+  const markersGroup = document.createElementNS(SVG_NS, 'g');
+  markersGroup.setAttribute('class', 'map-cart-markers');
+  markersGroup.setAttribute('transform', `translate(0 ${MAP_CART_MARKERS_Y})`);
+  markersGroup.setAttribute('data-marker-sig', '');
+  g.appendChild(markersGroup);
+
   return g;
 }
 
@@ -849,6 +862,7 @@ function layoutMapCartouche(g) {
   const inner = g.querySelector('.map-cart-inner');
   const nameText = g.querySelector('.map-cart-name');
   const valuesGroup = g.querySelector('.map-cart-values');
+  const markersGroup = g.querySelector('.map-cart-markers');
   if (!bg || !inner || !nameText) return;
 
   // Use normal alphabetic baselines. Firefox handles SVG baseline keywords
@@ -865,7 +879,7 @@ function layoutMapCartouche(g) {
     measureMapTextWidth(nameText) + MAP_CART_PAD_X * 2,
     valuesWidth + MAP_CART_PAD_X * 2,
   );
-  const height = MAP_CART_HEIGHT;
+  const height = markersGroup?.children.length ? MAP_CART_HEIGHT_WITH_MARKERS : MAP_CART_HEIGHT;
 
   bg.setAttribute('x', (-width / 2).toFixed(3));
   bg.setAttribute('y', (-height / 2).toFixed(3));
@@ -884,6 +898,9 @@ function layoutMapCartouche(g) {
   // construction in buildSvgValueGroup).
   if (valuesGroup) {
     valuesGroup.setAttribute('transform', `translate(0 ${MAP_CART_VALUES_BASELINE_Y})`);
+  }
+  if (markersGroup) {
+    markersGroup.setAttribute('transform', `translate(0 ${MAP_CART_MARKERS_Y})`);
   }
 }
 
@@ -951,6 +968,104 @@ function updateMapCartoucheValues(cart, theme) {
   if (changed) layoutMapCartouche(cart);
 }
 
+function updateMapCartoucheMarkers(cart, state, theme) {
+  const markersGroup = cart?.querySelector?.('.map-cart-markers');
+  if (!markersGroup || !state || !theme) return;
+
+  const markers = getMapCartoucheMarkers(state, theme);
+  const nextSig = markers.map((marker) => `${marker.kind}:${marker.ownerId}:${marker.color}`).join('|');
+  if (markersGroup.getAttribute('data-marker-sig') === nextSig) return;
+
+  markersGroup.replaceChildren();
+  markersGroup.setAttribute('data-marker-sig', nextSig);
+
+  const startX = -((markers.length - 1) * MAP_CART_MARKER_GAP) / 2;
+  markers.forEach((marker, index) => {
+    markersGroup.appendChild(createMapCartoucheMarker(marker, startX + index * MAP_CART_MARKER_GAP));
+  });
+
+  layoutMapCartouche(cart);
+}
+
+function getMapCartoucheMarkers(state, theme) {
+  const markers = [];
+
+  if (!theme.occupied && theme.owner !== null && theme.owner !== 'church') {
+    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, 'Private estate'));
+  }
+  if (!theme.occupied && theme.strategos !== null) {
+    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, 'Strategos'));
+  }
+  if (theme.bishop !== null) {
+    markers.push(createMapCartoucheMarkerData(state, 'bishop', theme.bishop, 'Bishop'));
+  }
+
+  return markers.filter(Boolean);
+}
+
+function createMapCartoucheMarkerData(state, kind, ownerId, label) {
+  const player = state.players.find((candidate) => candidate.id === ownerId);
+  if (!player) return null;
+  const ownerName = formatPlayerLabel(player) || `Player ${Number(ownerId) + 1}`;
+  return {
+    kind,
+    ownerId,
+    color: player.color || '#5a3810',
+    title: `${label}: ${ownerName}`,
+  };
+}
+
+function createMapCartoucheMarker(marker, x) {
+  const shape = marker.kind === 'estate'
+    ? createMapCartoucheCircleMarker(x)
+    : marker.kind === 'strategos'
+      ? createMapCartoucheSquareMarker(x)
+      : createMapCartoucheTriangleMarker(x);
+
+  shape.setAttribute('class', `map-cart-marker map-cart-marker-${marker.kind}`);
+  shape.style.fill = marker.color;
+
+  const title = document.createElementNS(SVG_NS, 'title');
+  title.textContent = marker.title;
+  shape.appendChild(title);
+  return shape;
+}
+
+function createMapCartoucheCircleMarker(x) {
+  const shape = document.createElementNS(SVG_NS, 'circle');
+  shape.setAttribute('cx', x.toFixed(3));
+  shape.setAttribute('cy', '0');
+  shape.setAttribute('r', String(MAP_CART_MARKER_RADIUS));
+  return shape;
+}
+
+function createMapCartoucheSquareMarker(x) {
+  const shape = document.createElementNS(SVG_NS, 'rect');
+  shape.setAttribute('x', (x - MAP_CART_MARKER_SIZE / 2).toFixed(3));
+  shape.setAttribute('y', (-MAP_CART_MARKER_SIZE / 2).toFixed(3));
+  shape.setAttribute('width', String(MAP_CART_MARKER_SIZE));
+  shape.setAttribute('height', String(MAP_CART_MARKER_SIZE));
+  shape.setAttribute('rx', '0.04');
+  return shape;
+}
+
+function createMapCartoucheTriangleMarker(x) {
+  const half = MAP_CART_MARKER_SIZE / 2;
+  const top = -half;
+  const bottom = half;
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute(
+    'd',
+    [
+      `M ${x.toFixed(3)} ${top.toFixed(3)}`,
+      `L ${(x + half).toFixed(3)} ${bottom.toFixed(3)}`,
+      `L ${(x - half).toFixed(3)} ${bottom.toFixed(3)}`,
+      'Z',
+    ].join(' '),
+  );
+  return path;
+}
+
 export function updateMapState(state) {
   latestMapState = state;
   for (const [provinceId, theme] of Object.entries(state.themes)) {
@@ -972,6 +1087,7 @@ export function updateMapState(state) {
     // Map cartouche: same class set drives full-saturation owner color.
     if (cart) {
       updateMapCartoucheValues(cart, theme);
+      updateMapCartoucheMarkers(cart, state, theme);
       const baseClasses = `map-cartouche${provinceId === 'CPL' ? ' is-capital' : ''}`;
       cart.className.baseVal = `${baseClasses} ${ownership.classes.join(' ')}`.trim();
       if (ownership.ownerColor) {
@@ -1043,31 +1159,6 @@ function updateBadges(state) {
       layer.appendChild(badge);
     }
 
-    if (!theme.occupied && theme.strategos !== null) {
-      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      badge.setAttribute('cx', centroid.cx - 1.8);
-      badge.setAttribute('cy', centroid.cy - 2.2);
-      badge.setAttribute('r', 0.8);
-      badge.setAttribute('class', 'officer-badge');
-      const player = state.players.find((candidate) => candidate.id === theme.strategos);
-      if (player) badge.style.fill = player.color;
-      badge.style.stroke = '#000';
-      badge.style.strokeWidth = '0.15';
-      layer.appendChild(badge);
-    }
-
-    if (theme.bishop !== null) {
-      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      badge.setAttribute('cx', centroid.cx + 1.8);
-      badge.setAttribute('cy', centroid.cy - 2.2);
-      badge.setAttribute('r', 0.8);
-      badge.setAttribute('class', 'officer-badge bishop-dot');
-      const player = state.players.find((candidate) => candidate.id === theme.bishop);
-      if (player) badge.style.fill = player.color;
-      badge.style.stroke = '#000';
-      badge.style.strokeWidth = '0.15';
-      layer.appendChild(badge);
-    }
   }
 }
 

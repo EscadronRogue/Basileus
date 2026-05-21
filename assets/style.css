@@ -2224,7 +2224,8 @@ body::before {
 /* ── Map cartouches ──────────────────────────────────────────────────
    SVG counterpart of the HTML .province-token. Same visual grammar:
    outline = region color (--cart-border), fill = owner color (--cart-bg),
-   gold-leaf inner hairline. Two stacked text lines: name / P-T-L.
+   gold-leaf inner hairline. Two stacked text lines: name / values,
+   with an optional office/estate marker row below the values.
    Built and laid out by mapRenderer.js. */
 .map-cartouche { cursor: pointer; pointer-events: auto; }
 
@@ -2274,6 +2275,13 @@ body::before {
 .map-cart-glyph-church { color: #cfe1ff; }
 .map-cartouche.church   .map-cart-glyph-church { color: #ffffff; }
 .map-cartouche.occupied .map-cart-glyph { opacity: 0.7; }
+
+.map-cart-markers { pointer-events: none; }
+.map-cart-marker {
+  stroke: rgba(20,8,0,0.92);
+  stroke-width: 0.16;
+  filter: drop-shadow(0 0.08px 0 rgba(255,250,220,0.6));
+}
 
 /* Capital cartouche: text leans into the imperial gold a touch more */
 .map-cartouche.is-capital .map-cart-id,
