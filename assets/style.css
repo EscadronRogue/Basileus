@@ -904,16 +904,6 @@ body::before {
   margin-top: 10px;
 }
 
-.selected-province {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(240,200,90,0.28);
-}
-
 .action-error {
   margin-bottom: var(--sp-3);
   padding: 10px 12px;
@@ -2604,17 +2594,6 @@ body::before {
 /* Estate card "Value: [coin] N" tag */
 .estate-card-value { display: inline-flex; align-items: center; gap: 6px; }
 .estate-card-value .value { font-size: 13px; }
-
-/* Selected province yield line — icon+number row */
-.selected-province-yield {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  margin-top: 6px;
-  font-family: var(--font-display);
-  font-size: 12.5px;
-}
-.selected-province-yield .value { font-size: 13px; }
 
 /* ─────────────────────────────────────────────────────────────────
    PLAYER CHIP — inline cartouche with a circular initial crest.

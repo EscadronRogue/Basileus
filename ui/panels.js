@@ -353,9 +353,9 @@ function getPlayerPrimaryRoleLabel(state, playerId) {
 
 export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null, options = {}) {
   if (!container || !state) return;
+  void selectedProvinceId;
   const player = getPlayer(state, playerId);
   const isOpen = options.uiState?.panels?.dashboard ?? true;
-  const selected = selectedProvinceId ? state.themes[selectedProvinceId] : null;
   const titles = [
     playerId === state.basileusId ? renderTitleBadge(state, 'BASILEUS', { holderId: playerId, compact: true }) : '',
     ...(player?.majorTitles || []).map((titleKey) => renderTitleBadge(state, titleKey, { holderId: playerId, compact: true })),
@@ -409,16 +409,6 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           </div>
         ` : ''}
         <div class="dashboard-token-row">${titles || '<span class="muted">No major office</span>'}</div>
-        ${selected ? `
-          <div class="selected-province">
-            ${renderProvinceBadge(state, selected, { showValues: true })}
-            ${selected.id !== 'CPL' ? `<div class="selected-province-yield">
-              ${formatGoldHtml(Math.max(0, Number(selected.P) || 0), { label: 'Profit' })}
-              ${formatTroopsHtml(Math.max(0, Number(selected.T) || 0), { label: 'Troops' })}
-              ${formatChurchHtml(Math.max(0, Number(selected.C) || 0), { label: 'Church' })}
-            </div>` : ''}
-          </div>
-        ` : ''}
       </div>
       ` : ''}
     </div>
