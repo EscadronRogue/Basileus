@@ -11,6 +11,7 @@ import {
 import { recordHistoryEvent } from './history.js';
 import { getPlayerFinalScore } from './scoring.js';
 import {
+  autoRefuseAwaitingDeals,
   consumeAppointmentPromise,
   getSpendableGold,
   isThemeReservedByDeal,
@@ -26,6 +27,8 @@ const STRATEGOS_TITLE_BY_REGION = {
   sea: 'ADMIRAL',
 };
 
+export const GIFT_COURT_POWER = 'GIFT';
+
 function playerName(state, playerId) {
   const player = getPlayer(state, playerId);
   return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
@@ -40,6 +43,12 @@ function courtTitleName(titleType) {
     EMPRESS: 'Empress',
     CHIEF_EUNUCHS: 'Chief of Eunuchs',
   }[titleType] || titleType;
+}
+
+function courtPowerName(powerKey) {
+  if (powerKey === 'BASILEUS') return 'Basileus';
+  if (powerKey === GIFT_COURT_POWER) return 'Church gift';
+  return MAJOR_TITLES[powerKey]?.name || powerKey || 'This office';
 }
 
 function isValidPlayerId(state, playerId) {
@@ -65,6 +74,7 @@ export function getThemeOwnershipSlotKey(themeId) {
 function ensureCourtActionState(state) {
   if (!state.courtActions) state.courtActions = {};
   if (!state.courtActions.actionUsed) state.courtActions.actionUsed = {};
+  if (!state.courtActions.powerUsed) state.courtActions.powerUsed = {};
   if (!state.courtActions.appointedThisTurn) state.courtActions.appointedThisTurn = {};
   if (!state.courtActions.revokedThisTurn) state.courtActions.revokedThisTurn = {};
   if (!state.courtActions.playerConfirmed) state.courtActions.playerConfirmed = new Set();
@@ -75,13 +85,49 @@ export function hasCourtActionUsed(state, playerId) {
   return Boolean(state?.courtActions?.actionUsed?.[playerId]);
 }
 
-export function markCourtActionUsed(state, playerId) {
-  ensureCourtActionState(state).actionUsed[playerId] = true;
+function getPlayerPowerUseMap(state, playerId) {
+  const courtActions = ensureCourtActionState(state);
+  if (!courtActions.powerUsed[playerId] || typeof courtActions.powerUsed[playerId] !== 'object') {
+    courtActions.powerUsed[playerId] = {};
+  }
+  return courtActions.powerUsed[playerId];
 }
 
-function checkCourtActionAvailable(state, playerId) {
+export function getCourtPowerActionKind(state, playerId, powerKey) {
+  return getPlayerPowerUseMap(state, playerId)[powerKey] || null;
+}
+
+export function isCourtPowerUsed(state, playerId, powerKey) {
+  return Boolean(getCourtPowerActionKind(state, playerId, powerKey));
+}
+
+export function getUsedCourtPowers(state, playerId) {
+  return Object.keys(getPlayerPowerUseMap(state, playerId));
+}
+
+export function markCourtActionUsed(state, playerId, powerKey = 'PLAYER', actionKind = 'action') {
+  const courtActions = ensureCourtActionState(state);
+  courtActions.actionUsed[playerId] = true;
+  getPlayerPowerUseMap(state, playerId)[powerKey] = actionKind;
+}
+
+function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
   if (state.phase !== 'court') return fail('Court actions are only available during Court.');
-  if (hasCourtActionUsed(state, playerId)) return fail('This player has already used their court action this turn.');
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  if (isCourtPowerUsed(state, playerId, powerKey)) {
+    const usedKind = getCourtPowerActionKind(state, playerId, powerKey);
+    const verb = usedKind === 'appoint'
+      ? 'appointed'
+      : usedKind === 'revoke'
+        ? 'revoked'
+        : 'acted';
+    const attempted = actionKind === 'appoint'
+      ? 'appoint'
+      : actionKind === 'revoke'
+        ? 'revoke'
+        : 'act';
+    return fail(`${courtPowerName(powerKey)} already ${verb} this turn and cannot ${attempted} again until next turn.`);
+  }
   return { ok: true };
 }
 
@@ -150,17 +196,17 @@ function canAppointWithPromise(state, appointerId, appointeeId) {
   return validateAppointmentPromiseChoice(state, appointerId, appointeeId);
 }
 
-function recordAppointment(state, appointerId, appointeeId, slotKey) {
+function recordAppointment(state, appointerId, appointeeId, slotKey, powerKey) {
   markTitleAppointedThisTurn(state, slotKey);
   consumeAppointmentPromise(state, appointerId, appointeeId);
   recordAppointmentChoice(state, appointerId, appointeeId);
-  markCourtActionUsed(state, appointerId);
+  markCourtActionUsed(state, appointerId, powerKey, 'appoint');
 }
 
-function recordRevocation(state, revokerId, targetPlayerId, slotKeys) {
+function recordRevocation(state, revokerId, targetPlayerId, slotKeys, powerKey) {
   for (const slotKey of slotKeys.filter(Boolean)) markTitleRevokedThisTurn(state, slotKey);
   recordRevocationChoice(state, revokerId, targetPlayerId);
-  markCourtActionUsed(state, revokerId);
+  markCourtActionUsed(state, revokerId, powerKey, 'revoke');
 }
 
 function restoreOriginEconomy(theme) {
@@ -292,7 +338,7 @@ function relocateDisplacedBishop(state, themeId, playerId) {
 }
 
 export function giftToChurch(state, playerId, themeId) {
-  const actionCheck = checkCourtActionAvailable(state, playerId);
+  const actionCheck = checkCourtActionAvailable(state, playerId, GIFT_COURT_POWER, 'gift');
   if (!actionCheck.ok) return actionCheck;
   const theme = state.themes[themeId];
   if (!theme || theme.owner !== playerId) return fail('You can only gift your own private estate.');
@@ -315,7 +361,7 @@ export function giftToChurch(state, playerId, themeId) {
   }
 
   markTitleAppointedThisTurn(state, getMinorTitleSlotKey(themeId, 'bishop'));
-  markCourtActionUsed(state, playerId);
+  markCourtActionUsed(state, playerId, GIFT_COURT_POWER, 'gift');
   state.log.push({ type: 'gift_church', player: playerId, theme: themeId, round: state.round });
   recordHistoryEvent(state, {
     category: 'court',
@@ -329,8 +375,6 @@ export function giftToChurch(state, playerId, themeId) {
 
 // Appointments
 export function appointStrategos(state, appointerId, themeId, appointeeId) {
-  const actionCheck = checkCourtActionAvailable(state, appointerId);
-  if (!actionCheck.ok) return actionCheck;
   const theme = state.themes[themeId];
   if (!theme || theme.occupied || theme.id === 'CPL') return fail('Invalid theme.');
   if (!isValidPlayerId(state, appointeeId)) return fail('Choose an appointee.');
@@ -340,6 +384,8 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
   if (!requiredTitle || !getPlayer(state, appointerId)?.majorTitles.includes(requiredTitle)) {
     return fail('Only the regional Domestic or Admiral can appoint this strategos.');
   }
+  const actionCheck = checkCourtActionAvailable(state, appointerId, requiredTitle, 'appoint');
+  if (!actionCheck.ok) return actionCheck;
   const slotKey = getMinorTitleSlotKey(themeId, 'strategos');
   const sameTurn = currentTurnRevokedBlock(state, slotKey, `The strategos of ${themeName(state, themeId)}`);
   if (!sameTurn.ok) return sameTurn;
@@ -347,7 +393,7 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
   if (!appointmentCheck.ok) return appointmentCheck;
 
   theme.strategos = appointeeId;
-  recordAppointment(state, appointerId, appointeeId, slotKey);
+  recordAppointment(state, appointerId, appointeeId, slotKey, requiredTitle);
   state.log.push({ type: 'appoint_strategos', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   recordHistoryEvent(state, {
     category: 'court',
@@ -360,14 +406,14 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
 }
 
 export function appointBishop(state, appointerId, themeId, appointeeId) {
-  const actionCheck = checkCourtActionAvailable(state, appointerId);
-  if (!actionCheck.ok) return actionCheck;
   const theme = state.themes[themeId];
   if (!theme || theme.id === 'CPL') return fail('Invalid theme.');
   if (!isValidPlayerId(state, appointeeId)) return fail('Choose an appointee.');
   if (theme.bishop !== null) return fail('This bishop title is already appointed.');
   if ((Number(theme.origin?.C) || 0) < 1) return fail('A bishop can only be appointed in a province with original church value.');
   if (!getPlayer(state, appointerId)?.majorTitles.includes('PATRIARCH')) return fail('Only the Patriarch can appoint bishops.');
+  const actionCheck = checkCourtActionAvailable(state, appointerId, 'PATRIARCH', 'appoint');
+  if (!actionCheck.ok) return actionCheck;
   const slotKey = getMinorTitleSlotKey(themeId, 'bishop');
   const sameTurn = currentTurnRevokedBlock(state, slotKey, `The bishop of ${themeName(state, themeId)}`);
   if (!sameTurn.ok) return sameTurn;
@@ -376,7 +422,7 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
 
   theme.bishop = appointeeId;
   theme.bishopIsDonor = false;
-  recordAppointment(state, appointerId, appointeeId, slotKey);
+  recordAppointment(state, appointerId, appointeeId, slotKey, 'PATRIARCH');
   state.log.push({ type: 'appoint_bishop', appointer: appointerId, appointee: appointeeId, theme: themeId, round: state.round });
   recordHistoryEvent(state, {
     category: 'court',
@@ -389,8 +435,6 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
 }
 
 export function appointCourtTitle(state, titleType, appointeeId, appointerId = state.basileusId) {
-  const actionCheck = checkCourtActionAvailable(state, appointerId);
-  if (!actionCheck.ok) return actionCheck;
   if (appointerId !== state.basileusId) return fail('Only the Basileus can appoint court titles.');
   if (!isValidPlayerId(state, appointeeId)) return fail('Choose an appointee.');
   if (titleType === 'EMPRESS') {
@@ -400,6 +444,8 @@ export function appointCourtTitle(state, titleType, appointeeId, appointerId = s
   } else {
     return fail('Invalid court title.');
   }
+  const actionCheck = checkCourtActionAvailable(state, appointerId, 'BASILEUS', 'appoint');
+  if (!actionCheck.ok) return actionCheck;
   const slotKey = getCourtTitleSlotKey(titleType);
   const sameTurn = currentTurnRevokedBlock(state, slotKey, `The ${courtTitleName(titleType)}`);
   if (!sameTurn.ok) return sameTurn;
@@ -408,7 +454,7 @@ export function appointCourtTitle(state, titleType, appointeeId, appointerId = s
 
   if (titleType === 'EMPRESS') state.empress = appointeeId;
   else state.chiefEunuchs = appointeeId;
-  recordAppointment(state, appointerId, appointeeId, slotKey);
+  recordAppointment(state, appointerId, appointeeId, slotKey, 'BASILEUS');
   state.log.push({ type: 'appoint_court', title: titleType, appointee: appointeeId, round: state.round });
   recordHistoryEvent(state, {
     category: 'court',
@@ -437,8 +483,6 @@ export function revokeMajorTitle() {
 }
 
 export function revokeMinorTitle(state, themeId, titleType, revokerId = state.basileusId) {
-  const actionCheck = checkCourtActionAvailable(state, revokerId);
-  if (!actionCheck.ok) return actionCheck;
   const theme = state.themes[themeId];
   if (!theme) return fail('Theme not found.');
   if (titleType !== 'strategos' && titleType !== 'bishop') return fail('Invalid minor title.');
@@ -447,12 +491,15 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   const slotKey = getMinorTitleSlotKey(themeId, titleType);
   const sameTurn = currentTurnTitleBlock(state, slotKey, `The ${titleType} of ${themeName(state, themeId)}`);
   if (!sameTurn.ok) return sameTurn;
+  const powerKey = titleType === 'strategos' ? STRATEGOS_TITLE_BY_REGION[theme.region] : 'PATRIARCH';
   if (titleType === 'strategos' && !canPlayerRevokeStrategos(state, revokerId, themeId)) {
     return fail('Only the regional Domestic or Admiral can revoke this strategos.');
   }
   if (titleType === 'bishop' && !canPlayerRevokeBishop(state, revokerId)) {
     return fail('Only the Patriarch can revoke bishops.');
   }
+  const actionCheck = checkCourtActionAvailable(state, revokerId, powerKey, 'revoke');
+  if (!actionCheck.ok) return actionCheck;
   const targetPlayerId = titleType === 'strategos' ? theme.strategos : theme.bishop;
   const targetCheck = checkRevocationTargetCooldown(state, revokerId, targetPlayerId);
   if (!targetCheck.ok) return targetCheck;
@@ -462,7 +509,7 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
     theme.bishop = null;
     theme.bishopIsDonor = false;
   }
-  recordRevocation(state, revokerId, targetPlayerId, [slotKey]);
+  recordRevocation(state, revokerId, targetPlayerId, [slotKey], powerKey);
   state.log.push({ type: 'revoke_minor', theme: themeId, titleType, round: state.round, revokerId });
   recordHistoryEvent(state, {
     category: 'court',
@@ -475,12 +522,12 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
 }
 
 export function revokeCourtTitle(state, courtTitleType, revokerId = state.basileusId) {
-  const actionCheck = checkCourtActionAvailable(state, revokerId);
-  if (!actionCheck.ok) return actionCheck;
   if (revokerId !== state.basileusId) return fail('Only the Basileus can revoke court titles.');
   if (courtTitleType !== 'EMPRESS' && courtTitleType !== 'CHIEF_EUNUCHS') return fail('Invalid court title.');
   const holderId = courtTitleType === 'EMPRESS' ? state.empress : state.chiefEunuchs;
   if (holderId == null) return fail('Title is vacant.');
+  const actionCheck = checkCourtActionAvailable(state, revokerId, 'BASILEUS', 'revoke');
+  if (!actionCheck.ok) return actionCheck;
   const slotKey = getCourtTitleSlotKey(courtTitleType);
   const sameTurn = currentTurnTitleBlock(state, slotKey, `The ${courtTitleName(courtTitleType)}`);
   if (!sameTurn.ok) return sameTurn;
@@ -489,7 +536,7 @@ export function revokeCourtTitle(state, courtTitleType, revokerId = state.basile
 
   if (courtTitleType === 'EMPRESS') state.empress = null;
   else state.chiefEunuchs = null;
-  recordRevocation(state, revokerId, holderId, [slotKey]);
+  recordRevocation(state, revokerId, holderId, [slotKey], 'BASILEUS');
   state.log.push({ type: 'revoke_court', title: courtTitleType, holder: holderId, round: state.round, revokerId });
   recordHistoryEvent(state, {
     category: 'court',
@@ -502,11 +549,11 @@ export function revokeCourtTitle(state, courtTitleType, revokerId = state.basile
 }
 
 export function revokeTheme(state, themeId, revokerId = state.basileusId) {
-  const actionCheck = checkCourtActionAvailable(state, revokerId);
-  if (!actionCheck.ok) return actionCheck;
   const theme = state.themes[themeId];
   if (!theme || theme.owner == null || theme.owner === 'church') return fail('No private estate to revoke.');
   if (revokerId !== state.basileusId) return fail('Only the Basileus can revoke private estates.');
+  const actionCheck = checkCourtActionAvailable(state, revokerId, 'BASILEUS', 'revoke');
+  if (!actionCheck.ok) return actionCheck;
   const sameTurn = checkRevocationCurrentTurnAppointment(state, `theme:${themeId}`);
   if (!sameTurn.ok) return sameTurn;
   const targetPlayerId = theme.owner;
@@ -520,7 +567,7 @@ export function revokeTheme(state, themeId, revokerId = state.basileusId) {
   theme.strategos = null;
   theme.bishop = null;
   theme.bishopIsDonor = false;
-  recordRevocation(state, revokerId, targetPlayerId, revokedSlots);
+  recordRevocation(state, revokerId, targetPlayerId, revokedSlots, 'BASILEUS');
   state.log.push({ type: 'revoke_theme', theme: themeId, round: state.round, revokerId });
   recordHistoryEvent(state, {
     category: 'court',
@@ -533,11 +580,11 @@ export function revokeTheme(state, themeId, revokerId = state.basileusId) {
 }
 
 export function revokeChurchLand(state, themeId, revokerId = state.basileusId) {
-  const actionCheck = checkCourtActionAvailable(state, revokerId);
-  if (!actionCheck.ok) return actionCheck;
   const theme = state.themes[themeId];
   if (!theme || theme.owner !== 'church') return fail('No church land to revoke.');
   if (revokerId !== state.basileusId) return fail('Only the Basileus can revoke church land.');
+  const actionCheck = checkCourtActionAvailable(state, revokerId, 'BASILEUS', 'revoke');
+  if (!actionCheck.ok) return actionCheck;
   const sameTurn = checkRevocationCurrentTurnAppointment(state, `theme:${themeId}`);
   if (!sameTurn.ok) return sameTurn;
   const formerBishop = theme.bishop;
@@ -548,7 +595,7 @@ export function revokeChurchLand(state, themeId, revokerId = state.basileusId) {
   recordRevocation(state, revokerId, Number.isInteger(formerBishop) ? formerBishop : revokerId, [
     getThemeOwnershipSlotKey(themeId),
     getMinorTitleSlotKey(themeId, 'bishop'),
-  ]);
+  ], 'BASILEUS');
   state.log.push({ type: 'revoke_church_land', theme: themeId, round: state.round, revokerId });
   recordHistoryEvent(state, {
     category: 'court',
@@ -558,6 +605,144 @@ export function revokeChurchLand(state, themeId, revokerId = state.basileusId) {
     details: { themeId, themeName: themeName(state, themeId), formerBishopId: formerBishop },
   });
   return { ok: true };
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function hasBasileusAppointmentTarget(state) {
+  return (
+    (state.empress == null && !isTitleRevokedThisTurn(state, getCourtTitleSlotKey('EMPRESS')))
+    || (state.chiefEunuchs == null && !isTitleRevokedThisTurn(state, getCourtTitleSlotKey('CHIEF_EUNUCHS')))
+  );
+}
+
+function hasBasileusRevocationTarget(state) {
+  if (state.empress != null && !isTitleAppointedThisTurn(state, getCourtTitleSlotKey('EMPRESS'))) return true;
+  if (state.chiefEunuchs != null && !isTitleAppointedThisTurn(state, getCourtTitleSlotKey('CHIEF_EUNUCHS'))) return true;
+  return Object.values(state.themes || {}).some((theme) => (
+    theme.id !== 'CPL'
+    && theme.owner != null
+    && !theme.occupied
+    && checkRevocationCurrentTurnAppointment(state, `theme:${theme.id}`).ok
+  ));
+}
+
+function hasStrategosAppointmentTarget(state, powerKey) {
+  const region = MAJOR_TITLES[powerKey]?.region;
+  if (!region) return false;
+  return Object.values(state.themes || {}).some((theme) => (
+    theme.id !== 'CPL'
+    && !theme.occupied
+    && theme.owner !== 'church'
+    && theme.strategos == null
+    && theme.region === region
+    && !isTitleRevokedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
+  ));
+}
+
+function hasStrategosRevocationTarget(state, powerKey) {
+  const region = MAJOR_TITLES[powerKey]?.region;
+  if (!region) return false;
+  return Object.values(state.themes || {}).some((theme) => (
+    theme.id !== 'CPL'
+    && theme.region === region
+    && theme.strategos != null
+    && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
+  ));
+}
+
+function hasBishopAppointmentTarget(state) {
+  return Object.values(state.themes || {}).some((theme) => (
+    theme.id !== 'CPL'
+    && theme.bishop == null
+    && (Number(theme.origin?.C) || 0) >= 1
+    && !isTitleRevokedThisTurn(state, getMinorTitleSlotKey(theme.id, 'bishop'))
+  ));
+}
+
+function hasBishopRevocationTarget(state) {
+  return Object.values(state.themes || {}).some((theme) => (
+    theme.id !== 'CPL'
+    && theme.bishop != null
+    && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'bishop'))
+  ));
+}
+
+function hasGiftTarget(state, playerId) {
+  return Object.values(state.themes || {}).some((theme) => (
+    theme.id !== 'CPL'
+    && theme.owner === playerId
+    && !theme.occupied
+    && (Number(theme.origin?.C) || 0) >= 1
+  ));
+}
+
+export function getCourtPowerKeys(state, playerId) {
+  const player = getPlayer(state, playerId);
+  if (!player) return [];
+  return unique([
+    playerId === state.basileusId ? 'BASILEUS' : null,
+    ...(player.majorTitles || []),
+    hasGiftTarget(state, playerId) || isCourtPowerUsed(state, playerId, GIFT_COURT_POWER)
+      ? GIFT_COURT_POWER
+      : null,
+    ...getUsedCourtPowers(state, playerId),
+  ]);
+}
+
+export function hasCourtPowerOptions(state, playerId, powerKey) {
+  if (state.phase !== 'court') return false;
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return false;
+  if (isCourtPowerUsed(state, playerId, powerKey)) return false;
+  if (powerKey === 'BASILEUS') {
+    return playerId === state.basileusId
+      && (hasBasileusAppointmentTarget(state) || hasBasileusRevocationTarget(state));
+  }
+  if (powerKey === 'PATRIARCH') {
+    return getPlayer(state, playerId)?.majorTitles?.includes('PATRIARCH')
+      && (hasBishopAppointmentTarget(state) || hasBishopRevocationTarget(state));
+  }
+  if (powerKey === GIFT_COURT_POWER) {
+    return hasGiftTarget(state, playerId);
+  }
+  if (powerKey === 'DOM_EAST' || powerKey === 'DOM_WEST' || powerKey === 'ADMIRAL') {
+    return getPlayer(state, playerId)?.majorTitles?.includes(powerKey)
+      && (hasStrategosAppointmentTarget(state, powerKey) || hasStrategosRevocationTarget(state, powerKey));
+  }
+  return false;
+}
+
+export function getAvailableCourtPowers(state, playerId) {
+  return getCourtPowerKeys(state, playerId).filter((powerKey) => (
+    hasCourtPowerOptions(state, playerId, powerKey)
+  ));
+}
+
+export function isCourtPlayerFinished(state, playerId) {
+  if (state.phase !== 'court') return false;
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return true;
+  return getAvailableCourtPowers(state, playerId).length === 0;
+}
+
+export function autoConfirmFinishedCourtPlayer(state, playerId) {
+  if (!state || state.phase !== 'court') return false;
+  const courtActions = ensureCourtActionState(state);
+  if (courtActions.playerConfirmed.has(playerId)) return false;
+  if (!isCourtPlayerFinished(state, playerId)) return false;
+  courtActions.playerConfirmed.add(playerId);
+  autoRefuseAwaitingDeals(state, playerId);
+  return true;
+}
+
+export function autoConfirmFinishedCourtPlayers(state) {
+  if (!state || state.phase !== 'court') return 0;
+  let confirmed = 0;
+  for (const player of state.players || []) {
+    if (autoConfirmFinishedCourtPlayer(state, player.id)) confirmed += 1;
+  }
+  return confirmed;
 }
 
 export function resolveCoup(state, allOrders, capitalTroops) {

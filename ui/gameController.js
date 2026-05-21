@@ -220,7 +220,7 @@ export class GameController {
     const canControl = !(this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer));
 
     if (state.phase === 'court' && canControl) {
-      autoResolveUnavailableHumanAppointments(state, this.activePlayer);
+      autoResolveUnavailableHumanAppointments(state, this.activePlayer, this.aiMeta);
     }
 
     const spectatorMessage = state.phase === 'deployment'
@@ -345,7 +345,7 @@ export class GameController {
   }
 
   confirmEstates() {
-    const result = handleEstatesConfirmation(this.state, this.aiMeta, this);
+    const result = handleEstatesConfirmation(this.state, this.aiMeta, this, this.activePlayer);
     if (!result.ok) {
       this.setActionError(result.reason);
       this.render();

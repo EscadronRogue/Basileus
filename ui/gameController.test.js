@@ -72,16 +72,19 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   const basileusPanel = makePanelContainer();
   renderCourtPanel(basileusPanel, state, state.basileusId, {}, { uiState: createDefaultUiState() });
   assert.match(basileusPanel.innerHTML, /Empress/);
-  assert.match(basileusPanel.innerHTML, /End Court/);
+  assert.match(basileusPanel.innerHTML, /Appoint or revoke/);
+  assert.doesNotMatch(basileusPanel.innerHTML, /End Court/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Skip Action/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Confirm Court/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Appoint Strategos/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Appoint Bishop/);
 
+  state.themes.KAP.bishop = 2;
   const patriarchPanel = makePanelContainer();
   renderCourtPanel(patriarchPanel, state, 1, {}, { uiState: createDefaultUiState() });
   assert.match(patriarchPanel.innerHTML, /Appoint Strategos/);
   assert.match(patriarchPanel.innerHTML, /Appoint Bishop/);
+  assert.match(patriarchPanel.innerHTML, /Revoke/);
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
 });
 
@@ -94,7 +97,8 @@ test('estates panel lists free land bids before deployment', () => {
 
   assert.match(container.innerHTML, /Estates/);
   assert.match(container.innerHTML, /data-estate-bid="OPS"/);
-  assert.match(container.innerHTML, /Open Deployment/);
+  assert.match(container.innerHTML, /0\/4 ready/);
+  assert.match(container.innerHTML, /Ready for Deployment/);
 });
 
 test('estates panel marks the active high bid', () => {

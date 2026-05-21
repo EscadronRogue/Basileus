@@ -46,6 +46,11 @@ test('multiplayer room follows title, court, estates, deployment, resolution flo
 
   send(room, 1, { type: 'estate_action', action: 'buy', themeId: 'OPS', amount: 2 });
   send(room, 1, { type: 'confirm_estates' });
+  assert.equal(room.gameState.phase, 'estates');
+  assert.equal(room.gameState.estatesReady[1], true);
+  for (const player of room.gameState.players) {
+    if (player.id !== 1) send(room, player.id, { type: 'confirm_estates' });
+  }
   assert.equal(room.gameState.phase, 'deployment');
   assert.equal(room.gameState.themes.OPS.owner, 1);
 

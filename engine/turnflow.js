@@ -1,7 +1,7 @@
 // engine/turnflow.js - turn controller for the updated ruleset.
 import { readTroopEntry, runIncome } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
-import { applyTitleRedistribution, resolveCoup, settleLandAuctions } from './actions.js';
+import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
 import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
@@ -187,10 +187,13 @@ export function phaseCourt(state) {
   if (!dealRound.ok) throw new Error(dealRound.reason || 'Failed to prepare the court deal state.');
   state.courtActions = {
     actionUsed: {},
+    powerUsed: {},
     appointedThisTurn: {},
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
+  autoConfirmFinishedCourtPlayers(state);
+  if (isCourtComplete(state)) phaseEstates(state);
 }
 
 export function isCourtComplete(state) {
@@ -200,6 +203,7 @@ export function isCourtComplete(state) {
 export function phaseEstates(state) {
   state.phase = 'estates';
   state.landAuctions = {};
+  state.estatesReady = {};
 }
 
 export function phaseDeployment(state) {
@@ -207,6 +211,29 @@ export function phaseDeployment(state) {
   state.phase = 'deployment';
   state.allOrders = {};
   state.mercenaryOrders = {};
+  state.estatesReady = {};
+}
+
+export function setEstatesReady(state, playerId, ready) {
+  if (state.phase !== 'estates') return { ok: false, reason: 'Estates are not active.' };
+  if (!getPlayer(state, playerId)) return { ok: false, reason: 'Player not found.' };
+  if (!state.estatesReady || typeof state.estatesReady !== 'object') state.estatesReady = {};
+  if (ready) state.estatesReady[playerId] = true;
+  else delete state.estatesReady[playerId];
+  return { ok: true, ready: Boolean(state.estatesReady[playerId]) };
+}
+
+export function areEstatesReady(state) {
+  if (state.phase !== 'estates') return false;
+  return state.players.every((player) => Boolean(state.estatesReady?.[player.id]));
+}
+
+export function toggleEstatesReady(state, playerId) {
+  const ready = !Boolean(state.estatesReady?.[playerId]);
+  const result = setEstatesReady(state, playerId, ready);
+  if (!result.ok) return result;
+  if (areEstatesReady(state)) phaseDeployment(state);
+  return { ...result, advanced: state.phase === 'deployment' };
 }
 
 export function submitOrders(state, playerId, orders) {
@@ -555,6 +582,7 @@ export function phaseCleanup(state) {
 
   state.allOrders = {};
   state.mercenaryOrders = {};
+  state.estatesReady = {};
   state.currentTroops = {};
   state.currentInvasion = null;
   state.lastCoupResult = null;

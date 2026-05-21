@@ -15,6 +15,7 @@ import {
   phaseDeployment,
   phaseEstates,
   phaseResolution,
+  setEstatesReady,
 } from './turnflow.js';
 import {
   applyCourtAction,
@@ -24,6 +25,7 @@ import {
   confirmCourt,
   submitHumanOrders,
 } from './commands.js';
+import { autoConfirmFinishedCourtPlayer } from './actions.js';
 import {
   applyPlannedAiTitleAssignment,
   buildSimultaneousAIOrders,
@@ -103,9 +105,9 @@ function autoResolveAiDefenderRewards(state, meta) {
   return resolved;
 }
 
-export function autoResolveUnavailableHumanAppointments(state, playerId) {
-  void state;
-  void playerId;
+export function autoResolveUnavailableHumanAppointments(state, playerId, aiMeta = null) {
+  const changed = autoConfirmFinishedCourtPlayer(state, playerId);
+  if (changed) maybeAdvanceCourt(state, aiMeta);
 }
 
 export function maybeAdvanceCourt(state, aiMeta = null) {
@@ -160,6 +162,16 @@ export function processAiFlow(state, aiMeta, options = {}) {
         phaseDeployment(state);
         invalidateRoundContext(aiMeta);
         continue;
+      }
+      if (hasAiSeats) {
+        for (const player of state.players || []) {
+          if (isAIPlayer(aiMeta, player.id)) setEstatesReady(state, player.id, true);
+        }
+        if (state.players.every((player) => Boolean(state.estatesReady?.[player.id]))) {
+          phaseDeployment(state);
+          invalidateRoundContext(aiMeta);
+          continue;
+        }
       }
       break;
     }
@@ -245,14 +257,15 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
   if (!state || state.phase !== 'court') return fail('Court actions are not available right now.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already confirmed court actions this round.');
 
-  autoResolveUnavailableHumanAppointments(state, playerId);
+  autoResolveUnavailableHumanAppointments(state, playerId, aiMeta);
   const result = applyCourtAction(state, playerId, payload);
   if (!result.ok) return result;
+  const playerFinished = Boolean(state.courtActions?.playerConfirmed?.has(playerId));
 
   writePending(context, processPostHumanAction(state, aiMeta, {
     ...options,
     observation: result.observation || null,
-    courtMode: options.finalize ? 'finish' : (options.courtMode || 'react'),
+    courtMode: options.finalize || playerFinished ? 'finish' : (options.courtMode || 'react'),
     pendingAiTitleAssignment: context.pendingAiTitleAssignment,
   }));
   if (!aiMeta) maybeAdvanceCourt(state, aiMeta);
@@ -274,7 +287,7 @@ export function handleHumanEstateAction(state, aiMeta, context = {}, playerId, p
 
 export function handleHumanCourtConfirmation(state, aiMeta, context = {}, playerId, options = {}) {
   ensureRuntimeContext(context);
-  autoResolveUnavailableHumanAppointments(state, playerId);
+  autoResolveUnavailableHumanAppointments(state, playerId, aiMeta);
   const result = confirmCourt(state, playerId);
   if (!result.ok) return result;
 
@@ -288,9 +301,9 @@ export function handleHumanCourtConfirmation(state, aiMeta, context = {}, player
   return { ...result, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 
-export function handleEstatesConfirmation(state, aiMeta, context = {}, options = {}) {
+export function handleEstatesConfirmation(state, aiMeta, context = {}, playerId, options = {}) {
   ensureRuntimeContext(context);
-  const result = confirmEstates(state);
+  const result = confirmEstates(state, playerId);
   if (!result.ok) return result;
   writePending(context, processAiFlow(state, aiMeta, {
     ...options,

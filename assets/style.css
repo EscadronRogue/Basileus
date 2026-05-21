@@ -4131,6 +4131,62 @@ textarea {
 .appointment-actions { margin-top: 2px; }
 .appointment-actions .btn-primary:disabled { opacity: 0.42; cursor: not-allowed; }
 
+.court-power-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.court-power-card {
+  padding: 12px 14px;
+  border: 1px solid rgba(168,116,32,0.20);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.55);
+  box-shadow: var(--shadow-card);
+}
+.court-power-card.used {
+  background: rgba(245,233,200,0.55);
+}
+.court-power-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: 6px;
+}
+.court-power-text {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+}
+.court-power-state {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+.court-choice-lane {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: var(--sp-3);
+}
+.court-choice-lane > .choice-grid-empty {
+  min-height: 72px;
+  padding: 12px;
+  border: 1px dashed rgba(168,116,32,0.22);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.42);
+}
+.court-power-done {
+  border: 1px solid rgba(168,116,32,0.16);
+  background: rgba(255,252,240,0.55);
+}
+
 /* ── Estates panel: gold reserve + per-province bid cards ── */
 .estates-head {
   display: flex;
@@ -4146,6 +4202,21 @@ textarea {
   letter-spacing: 2.2px;
   text-transform: uppercase;
   color: var(--gold-1);
+}
+.estates-head-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.estates-ready-count {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--umber-3);
 }
 .estates-reserve {
   display: inline-flex;

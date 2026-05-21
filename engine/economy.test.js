@@ -90,7 +90,7 @@ test('title redistribution precedes starting income and court', () => {
   assert.equal(getOfficeHolder(state, 'BASILEUS'), state.basileusId);
 });
 
-test('court actions are role-filtered and one action per player', () => {
+test('court actions are role-filtered and one action per major title', () => {
   const state = makeState();
   enterCourt(state);
 
@@ -102,9 +102,14 @@ test('court actions are role-filtered and one action per player', () => {
   assert.equal(goodStrategos.ok, true);
   assert.equal(state.themes.OPS.strategos, 2);
 
+  const sameTitleAction = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
+  assert.equal(sameTitleAction.ok, false);
+  assert.match(sameTitleAction.reason, /Domestic of the East already appointed/);
+
   const secondAction = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'KAP', appointeeId: 3 });
-  assert.equal(secondAction.ok, false);
-  assert.match(secondAction.reason, /already used/);
+  assert.equal(secondAction.ok, true);
+  assert.equal(state.themes.KAP.bishop, 3);
+  assert.equal(state.courtActions.playerConfirmed.has(1), true);
 });
 
 test('patriarch may appoint bishops in occupied original church provinces', () => {
@@ -118,7 +123,7 @@ test('patriarch may appoint bishops in occupied original church provinces', () =
   assert.equal(state.themes.KAP.bishop, 2);
 });
 
-test('church gifts inflate church value and consume the donor court action', () => {
+test('church gifts inflate church value and consume the donor gift action', () => {
   const state = makeState();
   enterCourt(state);
   state.themes.SAM.owner = 2;
@@ -132,7 +137,10 @@ test('church gifts inflate church value and consume the donor court action', () 
     { P: state.themes.SAM.P, T: state.themes.SAM.T, C: state.themes.SAM.C },
     { P: 0, T: 0, C: 3 },
   );
-  assert.equal(applyCourtAction(state, 2, { action: 'skip' }).ok, false);
+  state.themes.KYP.owner = 2;
+  const secondGift = applyCourtAction(state, 2, { action: 'gift', themeId: 'KYP' });
+  assert.equal(secondGift.ok, false);
+  assert.match(secondGift.reason, /Church gift already/);
 });
 
 test('estates phase stores bids and settles them when deployment opens', () => {
@@ -145,8 +153,16 @@ test('estates phase stores bids and settles them when deployment opens', () => {
   assert.equal(getPlayer(state, 2).gold, 3);
   assert.equal(state.landAuctions.OPS.bidderId, 2);
 
-  const result = confirmEstates(state);
-  assert.equal(result.ok, true);
+  const ready = confirmEstates(state, 2);
+  assert.equal(ready.ok, true);
+  assert.equal(state.phase, 'estates');
+  const unready = confirmEstates(state, 2);
+  assert.equal(unready.ok, true);
+  assert.equal(state.estatesReady[2], undefined);
+  for (const player of state.players) {
+    const result = confirmEstates(state, player.id);
+    assert.equal(result.ok, true);
+  }
   assert.equal(state.phase, 'deployment');
   assert.equal(state.themes.OPS.owner, 2);
 });

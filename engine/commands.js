@@ -3,9 +3,9 @@ import { recordHistoryEvent } from './history.js';
 import { formatPlayerLabel, getPlayer } from './state.js';
 import {
   confirmTitleRedistribution,
-  phaseDeployment,
   phaseEstates,
   submitOrders,
+  toggleEstatesReady,
 } from './turnflow.js';
 import {
   acceptDealOffer,
@@ -19,6 +19,7 @@ import {
   appointBishop,
   appointCourtTitle,
   appointStrategos,
+  autoConfirmFinishedCourtPlayer,
   buyTheme,
   canPlayerRevokeBishop,
   canPlayerRevokeStrategos,
@@ -57,14 +58,13 @@ export function applyCourtAction(state, playerId, payload = {}) {
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
 
   if (action === 'skip') {
-    if (hasCourtActionUsed(state, playerId)) return fail('This player has already used their court action this turn.');
-    markCourtActionUsed(state, playerId);
-    return { ok: true };
+    return confirmCourt(state, playerId);
   }
 
   if (action === 'gift') {
     const result = giftToChurch(state, playerId, payload.themeId);
     if (!result?.ok) return fail(result?.reason || 'Could not gift that estate.');
+    autoConfirmFinishedCourtPlayer(state, playerId);
     return { ok: true, observation: { type: 'gift', actorId: playerId, themeId: payload.themeId } };
   }
 
@@ -72,6 +72,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const appointeeId = Number(payload.appointeeId);
     const result = appointCourtTitle(state, payload.titleType, appointeeId, playerId);
     if (!result?.ok) return fail(result?.reason || 'Could not appoint that court title.');
+    autoConfirmFinishedCourtPlayer(state, playerId);
     return {
       ok: true,
       observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId: null, value: 1.1 },
@@ -86,6 +87,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     }
     const result = appointCourtTitle(state, titleType, appointeeId, playerId);
     if (!result?.ok) return fail(result?.reason || 'Could not complete that appointment.');
+    autoConfirmFinishedCourtPlayer(state, playerId);
     return {
       ok: true,
       observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId: null, value: 1.1 },
@@ -96,6 +98,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const appointeeId = Number(payload.appointeeId);
     const result = appointStrategos(state, playerId, String(payload.themeId || '').trim(), appointeeId);
     if (!result?.ok) return fail(result?.reason || 'Could not appoint that strategos.');
+    autoConfirmFinishedCourtPlayer(state, playerId);
     return {
       ok: true,
       observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId: null, value: 0.95 },
@@ -106,6 +109,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const appointeeId = Number(payload.appointeeId);
     const result = appointBishop(state, playerId, String(payload.themeId || '').trim(), appointeeId);
     if (!result?.ok) return fail(result?.reason || 'Could not appoint that bishop.');
+    autoConfirmFinishedCourtPlayer(state, playerId);
     return {
       ok: true,
       observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId: null, value: 1.0 },
@@ -155,6 +159,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     } else {
       return fail('Choose a valid revocation target.');
     }
+    autoConfirmFinishedCourtPlayer(state, playerId);
     return { ok: true, observation: { type: 'revocation', actorId: playerId, targetPlayerId } };
   }
 
@@ -167,6 +172,7 @@ export function applyEstateAction(state, playerId, payload = {}) {
   if (action === 'buy') {
     const result = buyTheme(state, playerId, payload.themeId, payload.amount);
     if (!result?.ok) return fail(result?.reason || 'Could not bid on that estate.');
+    if (state.estatesReady?.[playerId]) delete state.estatesReady[playerId];
     return { ok: true };
   }
   return fail('Unknown estate action.');
@@ -188,10 +194,9 @@ export function confirmCourt(state, playerId) {
   return { ok: true };
 }
 
-export function confirmEstates(state) {
+export function confirmEstates(state, playerId) {
   if (state.phase !== 'estates') return fail('Estates are not active.');
-  phaseDeployment(state);
-  return { ok: true };
+  return toggleEstatesReady(state, playerId);
 }
 
 export function submitHumanOrders(state, playerId, orders, options = {}) {

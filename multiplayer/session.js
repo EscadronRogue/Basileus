@@ -681,8 +681,8 @@ export class MultiplayerRoom {
       }
 
       if (message.type === 'confirm_estates') {
-        this.requireHumanSeatForSession(sessionId);
-        const result = handleEstatesConfirmation(this.gameState, this.aiMeta, this);
+        const seat = this.requireHumanSeatForSession(sessionId);
+        const result = handleEstatesConfirmation(this.gameState, this.aiMeta, this, seat.seatId);
         assert(result.ok, result.reason);
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;
