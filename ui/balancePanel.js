@@ -9,6 +9,7 @@ import { buildIncomeFlow } from '../engine/cascade.js';
 import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
 import { formatPlayerLabel, getOfficeDisplayName, getPlayer } from '../engine/state.js';
 import { renderIcon } from './icons.js';
+import { REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 
 const CATEGORY_ICON_KIND = {
   gold: 'gold',
@@ -45,6 +46,36 @@ const SANKEY_RESOURCE_COLORS = {
   profit: '#c8921e',
   troop: '#6b4a28',
   church: '#2e5490',
+};
+const SANKEY_ROUTE_COLORS = {
+  east_pool: REGION_BORDER_COLORS[REGIONS.EAST],
+  west_pool: REGION_BORDER_COLORS[REGIONS.WEST],
+  sea_pool: REGION_BORDER_COLORS[REGIONS.SEA],
+};
+const SANKEY_ROUTE_LABELS = {
+  estates: 'Estates',
+  strategoi: 'Strategoi',
+  east_pool: 'East',
+  west_pool: 'West',
+  sea_pool: 'Sea',
+  bishops: 'Bishops',
+  patriarch: 'Patriarch',
+};
+const SANKEY_ROUTE_META = {
+  estates: '',
+  strategoi: '',
+  east_pool: '2 Dom | 1 Bas',
+  west_pool: '2 Dom | 1 Bas',
+  sea_pool: '2 Adm | 1 Bas',
+  bishops: '',
+  patriarch: '',
+};
+const SANKEY_OFFICE_LABELS = {
+  BASILEUS: 'Basileus',
+  DOM_EAST: 'Dom. East',
+  DOM_WEST: 'Dom. West',
+  ADMIRAL: 'Admiral',
+  PATRIARCH: 'Patriarch',
 };
 const SANKEY_ROUTE_ORDER = ['estates', 'strategoi', 'east_pool', 'west_pool', 'sea_pool', 'bishops', 'patriarch'];
 const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool', 'patriarch']);
@@ -203,6 +234,22 @@ function getResourceColor(resource) {
   return SANKEY_RESOURCE_COLORS[resource] || '#8c6840';
 }
 
+function getRouteColor(route) {
+  return SANKEY_ROUTE_COLORS[route?.key] || getResourceColor(route?.resource);
+}
+
+function getRouteLabel(route) {
+  return SANKEY_ROUTE_LABELS[route?.key] || route?.label || '';
+}
+
+function getRouteMeta(route) {
+  return SANKEY_ROUTE_META[route?.key] ?? route?.rule ?? '';
+}
+
+function getOfficeShortLabel(state, officeKey) {
+  return SANKEY_OFFICE_LABELS[officeKey] || getOfficeDisplayName(state, officeKey);
+}
+
 function getPlayerColor(state, playerId) {
   return getPlayer(state, playerId)?.color || '#8c6840';
 }
@@ -238,6 +285,7 @@ function createSankeyNode(nodes, key, attrs = {}) {
       stroke: attrs.stroke || 'rgba(20,8,0,0.35)',
       playerId: attrs.playerId ?? null,
       isUnclaimed: Boolean(attrs.isUnclaimed),
+      iconResource: attrs.iconResource || attrs.resource || null,
       order: attrs.order ?? 0,
       linksIn: [],
       linksOut: [],
@@ -249,7 +297,7 @@ function createSankeyNode(nodes, key, attrs = {}) {
   return node;
 }
 
-function addSankeyLink(nodes, links, sourceKey, targetKey, value, resource, label) {
+function addSankeyLink(nodes, links, sourceKey, targetKey, value, resource, label, color = null) {
   const amount = Math.max(0, Number(value) || 0);
   if (amount <= 0 || !nodes.has(sourceKey) || !nodes.has(targetKey)) return;
   const link = {
@@ -258,7 +306,7 @@ function addSankeyLink(nodes, links, sourceKey, targetKey, value, resource, labe
     value: amount,
     resource,
     label,
-    color: getResourceColor(resource),
+    color: color || getResourceColor(resource),
   };
   links.push(link);
 }
@@ -287,6 +335,7 @@ function buildIncomeSankeyModel(state, flow) {
       layer: 'source',
       label: FLOW_SOURCE_LABEL[resource] || resource,
       resource,
+      iconResource: resource,
       value: section?.total || 0,
       fill: getResourceColor(resource),
       stroke: 'rgba(20,8,0,0.46)',
@@ -310,14 +359,16 @@ function buildIncomeSankeyModel(state, flow) {
   for (const section of flow.sections || []) {
     for (const route of section.routes || []) {
       const routeKey = `route:${route.key}`;
+      const routeColor = getRouteColor(route);
       createSankeyNode(nodes, routeKey, {
         layer: 'route',
-        label: route.label,
-        rule: route.rule,
+        label: getRouteLabel(route),
+        rule: getRouteMeta(route),
         resource: route.resource,
+        iconResource: route.resource,
         value: route.total,
-        fill: getResourceColor(route.resource),
-        stroke: 'rgba(20,8,0,0.42)',
+        fill: routeColor,
+        stroke: routeColor,
         order: SANKEY_ROUTE_ORDER.indexOf(route.key),
       });
       addSankeyLink(
@@ -328,6 +379,7 @@ function buildIncomeSankeyModel(state, flow) {
         route.total,
         route.resource,
         `${FLOW_SOURCE_LABEL[section.key] || section.label} to ${route.label}`,
+        routeColor,
       );
 
       if (SANKEY_CASCADE_ROUTE_KEYS.has(route.key)) {
@@ -336,11 +388,12 @@ function buildIncomeSankeyModel(state, flow) {
           const holderColor = office.playerId == null ? getResourceColor(route.resource) : getPlayerColor(state, office.playerId);
           createSankeyNode(nodes, officeKey, {
             layer: 'office',
-            label: getOfficeDisplayName(state, office.officeKey),
+            label: getOfficeShortLabel(state, office.officeKey),
             resource: route.resource,
+            iconResource: route.resource,
             addValue: office.value,
             fill: holderColor,
-            stroke: getResourceColor(route.resource),
+            stroke: routeColor,
             playerId: office.playerId,
             order: SANKEY_OFFICE_ORDER.indexOf(office.officeKey),
           });
@@ -352,6 +405,7 @@ function buildIncomeSankeyModel(state, flow) {
             office.value,
             route.resource,
             `${route.label} to ${getOfficeDisplayName(state, office.officeKey)}`,
+            routeColor,
           );
 
           const terminalKey = `${officeKey}:${office.playerId ?? 'unclaimed'}:${route.resource}`;
@@ -359,6 +413,7 @@ function buildIncomeSankeyModel(state, flow) {
             sourceKey: officeKey,
             playerId: office.playerId,
             resource: route.resource,
+            color: routeColor,
             value: 0,
             label: getOfficeDisplayName(state, office.officeKey),
           };
@@ -375,6 +430,7 @@ function buildIncomeSankeyModel(state, flow) {
             recipient.value,
             route.resource,
             `${route.label} to ${getFlowRecipientName(state, recipient.playerId)}`,
+            routeColor,
           );
         }
       }
@@ -382,7 +438,7 @@ function buildIncomeSankeyModel(state, flow) {
       if (route.unclaimed > 0) {
         const unclaimed = ensureUnclaimedNode(nodes, route.resource);
         unclaimed.value += route.unclaimed;
-        addSankeyLink(nodes, links, routeKey, unclaimed.key, route.unclaimed, route.resource, `${route.label} unclaimed`);
+        addSankeyLink(nodes, links, routeKey, unclaimed.key, route.unclaimed, route.resource, `${route.label} unclaimed`, routeColor);
       }
     }
   }
@@ -391,7 +447,7 @@ function buildIncomeSankeyModel(state, flow) {
     if (terminal.playerId == null) {
       const unclaimed = ensureUnclaimedNode(nodes, terminal.resource);
       unclaimed.value += terminal.value;
-      addSankeyLink(nodes, links, terminal.sourceKey, unclaimed.key, terminal.value, terminal.resource, `${terminal.label} unclaimed`);
+      addSankeyLink(nodes, links, terminal.sourceKey, unclaimed.key, terminal.value, terminal.resource, `${terminal.label} unclaimed`, terminal.color);
     } else {
       addSankeyLink(
         nodes,
@@ -401,6 +457,7 @@ function buildIncomeSankeyModel(state, flow) {
         terminal.value,
         terminal.resource,
         `${terminal.label} to ${getFlowRecipientName(state, terminal.playerId)}`,
+        terminal.color,
       );
     }
   }
@@ -505,6 +562,29 @@ function renderSankeyLink(link) {
   return `<path class="income-sankey-link income-sankey-${link.resource}" d="${path}" stroke="${link.color}" stroke-width="${link.width.toFixed(2)}"><title>${escapeHtml(title)}</title></path>`;
 }
 
+function renderSankeyIconValue(resource, value, x, y, width = 72) {
+  return `
+    <foreignObject class="income-sankey-foreign" x="${x}" y="${y}" width="${width}" height="24">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="income-sankey-icon-value income-sankey-icon-${resource}">
+        ${renderFlowValue(resource, value)}
+      </div>
+    </foreignObject>
+  `;
+}
+
+function renderSankeyPlayerReceipt(flow, node, x, y) {
+  const totals = getPlayerFlowTotal(flow, node.playerId);
+  return `
+    <foreignObject class="income-sankey-foreign" x="${x}" y="${y}" width="112" height="24">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="income-sankey-icon-trio">
+        ${renderFlowValue('profit', totals.profit)}
+        ${renderFlowValue('troop', totals.troop)}
+        ${renderFlowValue('church', totals.church)}
+      </div>
+    </foreignObject>
+  `;
+}
+
 function renderSankeyNodeText(node, flow) {
   const labelX = node.x + SANKEY_NODE_WIDTH + 8;
   const midY = node.y + node.height / 2;
@@ -513,22 +593,29 @@ function renderSankeyNodeText(node, flow) {
   let maxLabel = 19;
 
   if (node.layer === 'source') {
-    meta = `${roundFlowValue(node.value)} ${node.resource === 'troop' ? 'troops' : node.resource}`;
+    return renderSankeyIconValue(node.iconResource, node.value, labelX, midY - 12, 74);
   } else if (node.layer === 'route') {
     meta = node.rule || `${roundFlowValue(node.value)}`;
-    maxLabel = 18;
+    maxLabel = 13;
   } else if (node.layer === 'office') {
     meta = `${roundFlowValue(node.value)}`;
-    maxLabel = 18;
+    maxLabel = 12;
   } else if (node.layer === 'player') {
-    meta = node.isUnclaimed ? `${roundFlowValue(node.value)} unclaimed` : formatPlayerFlowReceipt(flow, node.playerId);
-    maxLabel = 21;
+    meta = node.isUnclaimed ? `${roundFlowValue(node.value)}` : '';
+    maxLabel = 15;
   }
 
   label = truncateSvgLabel(label, maxLabel);
   const hasRoomForMeta = node.height >= 24;
   const labelY = hasRoomForMeta ? midY - 3 : midY + 4;
   const metaY = midY + 10;
+
+  if (node.layer === 'player' && !node.isUnclaimed) {
+    return `
+      <text class="income-sankey-node-label" x="${labelX}" y="${labelY.toFixed(2)}">${escapeHtml(label)}</text>
+      ${renderSankeyPlayerReceipt(flow, node, labelX - 2, metaY - 11)}
+    `;
+  }
 
   return `
     <text class="income-sankey-node-label" x="${labelX}" y="${labelY.toFixed(2)}">${escapeHtml(label)}</text>
