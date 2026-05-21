@@ -13,7 +13,7 @@ import {
   renderTitleRedistributionPanel,
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
-import { getPlayerStyleAttr, renderPlayerRoleName, renderProvinceBadge, renderTitleBadge } from './labels.js';
+import { getPlayerStyleAttr, renderPlayerRoleName, renderTitleBadge } from './labels.js';
 import { renderIcon } from './icons.js';
 
 export function createDefaultUiState() {
@@ -349,17 +349,6 @@ export function renderActionShell(panel, state, uiState) {
   return isOpen ? panel.querySelector('[data-role="action-panel-body"]') : null;
 }
 
-function renderSelectedProvinceCue(state, selectedProvinceId) {
-  const selected = selectedProvinceId ? state?.themes?.[selectedProvinceId] : null;
-  if (!selected) return '';
-  return `
-    <div class="selected-province-cue" aria-live="polite">
-      <span class="selected-province-cue-label">Selected</span>
-      ${renderProvinceBadge(state, selected, { showValues: true })}
-    </div>
-  `;
-}
-
 function getNotificationActionLabel(action) {
   return {
     open_deals: 'Deals',
@@ -557,9 +546,6 @@ export function renderGameActionPanel({
   if (error) {
     body.innerHTML = `<div class="action-error" role="alert">${escapeHtml(error)}</div>`;
   }
-
-  const selectedProvinceCue = renderSelectedProvinceCue(state, selectedProvinceId);
-  if (selectedProvinceCue) body.insertAdjacentHTML('beforeend', selectedProvinceCue);
 
   const shell = document.createElement('div');
   body.appendChild(shell);

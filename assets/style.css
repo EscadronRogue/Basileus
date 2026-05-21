@@ -914,27 +914,6 @@ body::before {
   border-top: 1px solid rgba(240,200,90,0.28);
 }
 
-.selected-province-cue {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: var(--sp-3);
-  padding: 9px 12px;
-  border: 1px solid rgba(168,116,32,0.24);
-  border-radius: var(--r-md);
-  background: rgba(255,252,240,0.76);
-}
-
-.selected-province-cue-label {
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--umber-3);
-}
-
 .action-error {
   margin-bottom: var(--sp-3);
   padding: 10px 12px;

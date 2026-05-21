@@ -621,7 +621,6 @@ function renderCourtGifts(state, playerId, draft) {
 
 export function renderCourtPanel(container, state, activePlayerId, callbacks = {}, options = {}) {
   if (!container || !state) return;
-  const player = getPlayer(state, activePlayerId);
   const draft = getDraftBucket(options.uiState, state, 'court', activePlayerId);
   if (!draft.appointCourt) draft.appointCourt = {};
   if (!draft.appointStrategos) draft.appointStrategos = {};
@@ -632,8 +631,6 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
   const rerender = () => renderCourtPanel(container, state, activePlayerId, callbacks, options);
   container.innerHTML = `
     <section class="phase-card court-panel">
-      <h3>${player ? renderPlayerRoleName(state, player) : 'Court'}</h3>
-      <div class="dashboard-token-row">${roleKeysForCourt(state, activePlayerId).map((role) => renderTitleBadge(state, role, { holderId: activePlayerId, compact: true })).join(' ')}</div>
       ${used ? '<div class="panel-empty">Court action recorded.</div>' : `
         ${renderCourtAppointments(state, activePlayerId, draft)}
         ${renderCourtRevocations(state, activePlayerId, draft)}
