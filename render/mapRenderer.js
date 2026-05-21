@@ -103,6 +103,13 @@ export async function createMapSVG(containerId, options = {}) {
         <feGaussianBlur stdDeviation="1.5" result="blur"/>
         <feComposite in="SourceGraphic" in2="blur" operator="over"/>
       </filter>
+      <linearGradient id="basileus-cartouche-ink-wash" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fff8dc" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="#140800" stop-opacity="0.18"/>
+      </linearGradient>
+      <pattern id="basileus-cartouche-linen-pattern" width="0.92" height="0.92" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="0.92" stroke="#fffae1" stroke-opacity="0.10" stroke-width="0.08"/>
+      </pattern>
       <clipPath id="map-frame-clip">
         <rect width="${MAP_WIDTH}" height="${MAP_HEIGHT}" rx="5" ry="5"/>
       </clipPath>
@@ -845,6 +852,16 @@ function buildMapCartouche(province, centroid, theme = province) {
   bg.setAttribute('class', 'map-cart-bg');
   g.appendChild(bg);
 
+  const wash = document.createElementNS(SVG_NS, 'rect');
+  wash.setAttribute('class', 'map-cart-wash');
+  wash.setAttribute('fill', 'url(#basileus-cartouche-ink-wash)');
+  g.appendChild(wash);
+
+  const linen = document.createElementNS(SVG_NS, 'rect');
+  linen.setAttribute('class', 'map-cart-linen');
+  linen.setAttribute('fill', 'url(#basileus-cartouche-linen-pattern)');
+  g.appendChild(linen);
+
   const inner = document.createElementNS(SVG_NS, 'rect');
   inner.setAttribute('class', 'map-cart-inner');
   g.appendChild(inner);
@@ -881,6 +898,8 @@ function appendCartLine(parent, className, text) {
 function layoutMapCartouche(g) {
   const bg = g.querySelector('.map-cart-bg');
   const inner = g.querySelector('.map-cart-inner');
+  const wash = g.querySelector('.map-cart-wash');
+  const linen = g.querySelector('.map-cart-linen');
   const nameText = g.querySelector('.map-cart-name');
   const valuesGroup = g.querySelector('.map-cart-values');
   const markersGroup = g.querySelector('.map-cart-markers');
@@ -907,6 +926,15 @@ function layoutMapCartouche(g) {
   bg.setAttribute('width', width.toFixed(3));
   bg.setAttribute('height', height.toFixed(3));
   bg.setAttribute('rx', '0.45');
+
+  for (const layer of [wash, linen]) {
+    if (!layer) continue;
+    layer.setAttribute('x', (-width / 2).toFixed(3));
+    layer.setAttribute('y', (-height / 2).toFixed(3));
+    layer.setAttribute('width', width.toFixed(3));
+    layer.setAttribute('height', height.toFixed(3));
+    layer.setAttribute('rx', '0.45');
+  }
 
   // Gold-leaf inner hairline, inset slightly inside the role outline.
   inner.setAttribute('x', (-width / 2 + MAP_CART_INSET).toFixed(3));
@@ -1440,6 +1468,24 @@ function appendInvasionCartouche(layer, invasion, point) {
   bg.setAttribute('rx', '1.6');
   bg.setAttribute('ry', '1.6');
   group.appendChild(bg);
+
+  const wash = document.createElementNS(SVG_NS, 'rect');
+  wash.setAttribute('class', 'invasion-cartouche-wash');
+  wash.setAttribute('fill', 'url(#basileus-cartouche-ink-wash)');
+  wash.setAttribute('width', width.toFixed(2));
+  wash.setAttribute('height', height.toFixed(2));
+  wash.setAttribute('rx', '1.6');
+  wash.setAttribute('ry', '1.6');
+  group.appendChild(wash);
+
+  const linen = document.createElementNS(SVG_NS, 'rect');
+  linen.setAttribute('class', 'invasion-cartouche-linen');
+  linen.setAttribute('fill', 'url(#basileus-cartouche-linen-pattern)');
+  linen.setAttribute('width', width.toFixed(2));
+  linen.setAttribute('height', height.toFixed(2));
+  linen.setAttribute('rx', '1.6');
+  linen.setAttribute('ry', '1.6');
+  group.appendChild(linen);
 
   const inner = document.createElementNS(SVG_NS, 'rect');
   inner.setAttribute('class', 'invasion-cartouche-inner');

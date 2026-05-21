@@ -81,6 +81,24 @@
   --shadow-panel: 0 4px 20px rgba(46,30,15,0.12);
   --shadow-inset: inset 0 1px 0 rgba(255,250,230,0.55);
 
+  /* Shared cartouche texture layers */
+  --cartouche-linen: repeating-linear-gradient(
+    45deg,
+    rgba(255,250,225,0.07) 0 1px,
+    transparent 1px 5px
+  );
+  --cartouche-ink-wash: linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  --cartouche-colored-texture: var(--cartouche-linen), var(--cartouche-ink-wash);
+  --cartouche-paper-linen: repeating-linear-gradient(
+    45deg,
+    rgba(139,100,40,0.07) 0 1px,
+    transparent 1px 5px
+  );
+  --cartouche-paper-wash: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  --cartouche-paper-texture: var(--cartouche-paper-linen), var(--cartouche-paper-wash);
+  --cartouche-paper-soft-wash: linear-gradient(180deg, rgba(255,252,242,0.74) 0%, rgba(245,233,200,0.54) 100%);
+  --cartouche-paper-soft-texture: var(--cartouche-paper-linen), var(--cartouche-paper-soft-wash);
+
   /* Responsive shell */
   --topbar-height: 52px;
   --sidebar-width: clamp(500px, 43vw, 760px);
@@ -230,7 +248,9 @@ body::before {
   transition: background 0.15s;
   border-radius: var(--r-sm);
   border: 1px solid rgba(200,146,30,0.5);
-  background: rgba(200,146,30,0.14);
+  background:
+    var(--cartouche-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.18) 0%, rgba(90,52,20,0.10) 100%);
   color: var(--gold-3);
   font-family: var(--font-display);
   font-size: 11px;
@@ -239,11 +259,27 @@ body::before {
   text-transform: uppercase;
 }
 
-.phase-court    { border-color: rgba(200,146,30,0.5);  background: rgba(200,146,30,0.16); }
-.phase-orders   { border-color: rgba(160,48,48,0.6);   background: rgba(160,48,48,0.18); }
-.phase-resolution { border-color: rgba(130,52,160,0.5); background: rgba(130,52,160,0.15); }
-.phase-scoring  { border-color: rgba(200,146,30,0.7);  background: rgba(200,146,30,0.22); }
-.phase-empire-fallen { border-color: rgba(160,48,48,0.7); background: rgba(160,48,48,0.22); color: #e08888; }
+.phase-court {
+  border-color: rgba(200,146,30,0.5);
+  background: var(--cartouche-linen), linear-gradient(180deg, rgba(200,146,30,0.19) 0%, rgba(90,52,20,0.11) 100%);
+}
+.phase-orders {
+  border-color: rgba(160,48,48,0.6);
+  background: var(--cartouche-linen), linear-gradient(180deg, rgba(160,48,48,0.22) 0%, rgba(90,20,20,0.12) 100%);
+}
+.phase-resolution {
+  border-color: rgba(130,52,160,0.5);
+  background: var(--cartouche-linen), linear-gradient(180deg, rgba(130,52,160,0.18) 0%, rgba(50,24,70,0.10) 100%);
+}
+.phase-scoring {
+  border-color: rgba(200,146,30,0.7);
+  background: var(--cartouche-linen), linear-gradient(180deg, rgba(200,146,30,0.25) 0%, rgba(90,52,20,0.13) 100%);
+}
+.phase-empire-fallen {
+  border-color: rgba(160,48,48,0.7);
+  background: var(--cartouche-linen), linear-gradient(180deg, rgba(160,48,48,0.26) 0%, rgba(90,20,20,0.15) 100%);
+  color: #e08888;
+}
 
 #invasionDisplay {
   margin-left: auto;
@@ -269,7 +305,9 @@ body::before {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   border: 1px solid rgba(200,146,30,0.3);
-  background: rgba(200,146,30,0.1);
+  background:
+    var(--cartouche-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.13) 0%, rgba(90,52,20,0.08) 100%);
   color: rgba(240,220,170,0.8);
 }
 .connection-badge.connected  { color: #a0c880; border-color: rgba(100,180,80,0.35); }
@@ -348,7 +386,7 @@ body::before {
   height: 32px;
   border: 1px solid rgba(168,116,32,0.28);
   border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.92);
+  background: var(--cartouche-paper-texture);
   color: var(--umber-1);
   font-family: var(--font-display);
   font-size: 14px;
@@ -357,7 +395,9 @@ body::before {
 }
 .map-control-btn:hover {
   border-color: var(--gold-1);
-  background: rgba(240,228,198,0.96);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(255,250,235,0.96) 0%, rgba(240,228,198,0.84) 100%);
 }
 
 .game-map {
@@ -411,13 +451,7 @@ body::before {
   border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
   border-radius: var(--r-md);
   background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(
-      45deg,
-      rgba(255,250,225,0.07) 0 1px,
-      transparent 1px 5px
-    ),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  background-image: var(--cartouche-colored-texture);
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   cursor: pointer;
@@ -587,7 +621,7 @@ body::before {
 .sidebar-panel {
   display: flex;
   flex-direction: column;
-  background: rgba(255,252,240,0.54);
+  background: var(--cartouche-paper-soft-texture);
   overflow: visible;
   border: 1px solid rgba(168,116,32,0.16);
   border-radius: var(--r-lg);
@@ -596,7 +630,7 @@ body::before {
 
 #actionPanel .action-shell {
   border-color: rgba(168,116,32,0.30);
-  background: rgba(255,252,240,0.70);
+  background: var(--cartouche-paper-soft-texture);
 }
 
 .sidebar-panel-head {
@@ -608,7 +642,9 @@ body::before {
   padding: clamp(10px, 1.6vw, 14px) var(--main-panel-pad);
   border: 0;
   border-bottom: 1px solid var(--parch-2);
-  background: linear-gradient(180deg, rgba(255,250,235,0.8) 0%, rgba(240,228,198,0.6) 100%);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(255,250,235,0.8) 0%, rgba(240,228,198,0.6) 100%);
   cursor: pointer;
   text-align: left;
   transition: background 0.15s;
@@ -621,7 +657,9 @@ body::before {
   white-space: normal;
 }
 .sidebar-panel-head:hover {
-  background: linear-gradient(180deg, rgba(255,252,240,0.95) 0%, rgba(245,234,210,0.85) 100%);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(255,252,240,0.95) 0%, rgba(245,234,210,0.85) 100%);
 }
 
 .sidebar-panel-head-copy {
@@ -661,7 +699,9 @@ body::before {
   flex-shrink: 0;
   padding: 3px 9px;
   border-radius: 999px;
-  background: rgba(168,116,32,0.12);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.14) 0%, rgba(168,116,32,0.08) 100%);
   border: 1px solid rgba(168,116,32,0.22);
   font-family: var(--font-display);
   font-size: 10px;
@@ -671,7 +711,9 @@ body::before {
 }
 
 .sidebar-panel-badge.urgent {
-  background: rgba(146,46,28,0.14);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(146,46,28,0.16) 0%, rgba(122,32,32,0.08) 100%);
   border-color: rgba(146,46,28,0.28);
   color: #7f291c;
 }
@@ -712,12 +754,14 @@ body::before {
   padding: 10px;
   border: 1px solid rgba(82,63,36,0.14);
   border-radius: 7px;
-  background: rgba(255,253,246,0.72);
+  background: var(--cartouche-paper-soft-texture);
 }
 
 .notification-card.urgent {
   border-color: rgba(146,46,28,0.28);
-  background: rgba(255,246,239,0.86);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(255,246,239,0.92) 0%, rgba(246,224,207,0.72) 100%);
 }
 
 .notification-card.read {
@@ -824,13 +868,7 @@ body::before {
 
 .player-dashboard.sidebar-panel {
   background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(
-      45deg,
-      rgba(255,250,225,0.07) 0 1px,
-      transparent 1px 5px
-    ),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  background-image: var(--cartouche-colored-texture);
   border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
   border-radius: var(--r-lg);
   box-shadow:
@@ -872,7 +910,9 @@ body::before {
 .player-dashboard .sidebar-panel-kicker { font-family: var(--font-display); letter-spacing: 0.4px; }
 
 .player-dashboard .sidebar-panel-badge {
-  background: rgba(20,8,0,0.28);
+  background:
+    var(--cartouche-linen),
+    linear-gradient(180deg, rgba(20,8,0,0.34) 0%, rgba(20,8,0,0.22) 100%);
   color: inherit;
   text-shadow: inherit;
   border: 1px solid rgba(240,200,90,0.32);
@@ -888,7 +928,9 @@ body::before {
   padding: 10px 12px;
   border: 1px solid rgba(240,200,90,0.32);
   border-radius: var(--r-sm);
-  background: rgba(20,8,0,0.18);
+  background:
+    var(--cartouche-linen),
+    linear-gradient(180deg, rgba(20,8,0,0.22) 0%, rgba(20,8,0,0.16) 100%);
 }
 
 .dashboard-stat-row strong {
@@ -1017,7 +1059,7 @@ body::before {
 .deal-lock-summary {
   border-radius: var(--r-md);
   border: 1px solid rgba(168,116,32,0.18);
-  background: linear-gradient(180deg, rgba(255,252,242,0.94) 0%, rgba(245,233,200,0.76) 100%);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
 }
 
@@ -1159,7 +1201,7 @@ body::before {
   gap: 0;
   border-radius: var(--r-sm);
   border: 1px solid rgba(168,116,32,0.22);
-  background: rgba(255,252,240,0.6);
+  background: var(--cartouche-paper-soft-texture);
   overflow: hidden;
   padding: 0;
 }
@@ -1180,11 +1222,15 @@ body::before {
 .deal-toggle-btn:last-child { border-right: none; }
 
 .deal-toggle-btn:hover {
-  background: rgba(168,116,32,0.10);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(168,116,32,0.11) 0%, rgba(168,116,32,0.045) 100%);
 }
 
 .deal-toggle-btn.selected {
-  background: rgba(200,146,30,0.20);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.22) 0%, rgba(168,116,32,0.09) 100%);
   color: var(--gold-2);
   font-weight: 600;
 }
@@ -1212,7 +1258,7 @@ body::before {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid rgba(168,116,32,0.16);
-  background: rgba(255,252,240,0.8);
+  background: var(--cartouche-paper-soft-texture);
   color: var(--umber-1);
   font-size: 12px;
   line-height: 1.35;
@@ -1221,7 +1267,7 @@ body::before {
 .deal-clause-preview {
   padding: 9px 10px;
   border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.75);
+  background: var(--cartouche-paper-soft-texture);
   border: 1px dashed rgba(168,116,32,0.24);
   color: var(--umber-1);
   font-size: 12px;
@@ -1957,7 +2003,7 @@ body::before {
 .history-entry-card {
   border: 1px solid var(--parch-2);
   border-radius: var(--r-md);
-  background: rgba(255,252,240,0.9);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
 }
 
@@ -2117,7 +2163,7 @@ body::before {
 .dashboard-themes { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .theme-chip {
   padding: 2px 9px;
-  background: var(--parch-0);
+  background: var(--cartouche-paper-soft-texture);
   border-radius: var(--r-sm);
   font-family: var(--font-body);
   font-size: 12px;
@@ -2243,6 +2289,16 @@ body::before {
   paint-order: stroke fill;
 }
 .map-cartouche.occupied .map-cart-bg { opacity: 1; }
+
+.map-cart-wash,
+.invasion-cartouche-wash {
+  pointer-events: none;
+}
+
+.map-cart-linen,
+.invasion-cartouche-linen {
+  pointer-events: none;
+}
 
 .map-cart-inner {
   fill: none;
@@ -2426,19 +2482,7 @@ body::before {
   vertical-align: baseline;
 
   background-color: var(--cart-bg);
-  background-image:
-    /* fine linen texture */
-    repeating-linear-gradient(
-      45deg,
-      rgba(255,250,225,0.07) 0 1px,
-      transparent 1px 5px
-    ),
-    /* soft top→bottom shading: highlight, ink */
-    linear-gradient(
-      180deg,
-      rgba(255,248,220,0.18) 0%,
-      rgba(20,8,0,0.18) 100%
-    );
+  background-image: var(--cartouche-colored-texture);
 
   box-shadow:
     /* gold-leaf inner hairline (sits between the role outline and the fill) */
@@ -2641,9 +2685,7 @@ body::before {
   border: 2px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
   border-radius: var(--r-sm);
   background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  background-image: var(--cartouche-colored-texture);
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   font-family: var(--font-display);
@@ -2692,7 +2734,9 @@ body::before {
   gap: 4px;
   padding: 9px 11px;
   border: 1px solid rgba(240,200,90,0.32);
-  background: rgba(20,8,0,0.22);
+  background:
+    var(--cartouche-linen),
+    linear-gradient(180deg, rgba(20,8,0,0.24) 0%, rgba(20,8,0,0.18) 100%);
   border-radius: var(--r-sm);
   color: inherit;
   min-width: 0;
@@ -2733,7 +2777,7 @@ body::before {
    it inverts to dark-on-parchment for legibility. */
 .balance-panel .finance-card,
 .sidebar-panel:not(.player-dashboard) .finance-card {
-  background: rgba(255,252,240,0.85);
+  background: var(--cartouche-paper-soft-texture);
   border-color: rgba(168,116,32,0.28);
   color: var(--umber-1);
 }
@@ -2976,6 +3020,7 @@ body::before {
 
 .setup-card {
   background:
+    var(--cartouche-paper-linen),
     linear-gradient(160deg, var(--parch-0) 0%, var(--parch-1) 100%);
   border: 1px solid var(--parch-3);
   border-radius: var(--r-lg);
@@ -3074,7 +3119,7 @@ body::before {
   margin: 0 0 var(--sp-4);
   border: 1px solid var(--parch-2);
   border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.55);
+  background: var(--cartouche-paper-soft-texture);
 }
 .rules-card > summary {
   list-style: none;
@@ -3145,9 +3190,7 @@ body::before {
   border: 3px solid var(--empire-border);
   border-radius: 4px;
   background-color: var(--parch-1);
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255,250,225,0.30) 0 1px, transparent 1px 5px),
-    linear-gradient(180deg, rgba(255,248,220,0.45) 0%, rgba(168,116,32,0.12) 100%);
+  background-image: var(--cartouche-paper-texture);
   color: var(--umber-1);
   font-family: var(--font-display);
   font-size: 11px;
@@ -3164,6 +3207,7 @@ body::before {
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   background-color: var(--player-color, var(--gold-1));
+  background-image: var(--cartouche-colored-texture);
   border-color: var(--role-outline-color, var(--gold-1));
   box-shadow:
     inset 0 0 0 1px rgba(240,200,90,0.70),
@@ -3180,9 +3224,7 @@ body::before {
   border: 3px solid var(--role-outline-color, var(--empire-border));
   border-radius: 4px;
   background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  background-image: var(--cartouche-colored-texture);
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   box-shadow: inset 0 0 0 1px rgba(240,200,90,0.45);
@@ -3275,9 +3317,7 @@ body::before {
   border-radius: 4px;
   border: 3px solid var(--role-outline-color, var(--empire-border));
   background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  background-image: var(--cartouche-colored-texture);
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   box-shadow: inset 0 0 0 1px rgba(240,200,90,0.45);
@@ -4048,9 +4088,7 @@ textarea {
   border: 3px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
   border-radius: 4px;
   background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  background-image: var(--cartouche-colored-texture);
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   font-family: var(--font-display);
@@ -4110,7 +4148,7 @@ textarea {
   padding: 12px 14px;
   border: 1px solid rgba(168,116,32,0.18);
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(255,252,242,0.94) 0%, rgba(245,233,200,0.72) 100%);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
@@ -4134,7 +4172,7 @@ textarea {
   padding: 8px 10px;
   border: 1px dashed rgba(168,116,32,0.32);
   border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.6);
+  background: var(--cartouche-paper-soft-texture);
   font-family: var(--font-body);
   font-size: 13px;
   color: var(--umber-1);
@@ -4158,11 +4196,13 @@ textarea {
   padding: 12px 14px;
   border: 1px solid rgba(168,116,32,0.20);
   border-radius: var(--r-md);
-  background: rgba(255,252,240,0.55);
+  background: var(--cartouche-paper-soft-texture);
   box-shadow: var(--shadow-card);
 }
 .court-power-card.used {
-  background: rgba(245,233,200,0.55);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(245,233,200,0.66) 0%, rgba(232,213,163,0.46) 100%);
 }
 .court-power-head {
   display: flex;
@@ -4198,11 +4238,11 @@ textarea {
   padding: 12px;
   border: 1px dashed rgba(168,116,32,0.22);
   border-radius: var(--r-md);
-  background: rgba(255,252,240,0.42);
+  background: var(--cartouche-paper-soft-texture);
 }
 .court-power-done {
   border: 1px solid rgba(168,116,32,0.16);
-  background: rgba(255,252,240,0.55);
+  background: var(--cartouche-paper-soft-texture);
 }
 
 /* ── Estates panel: gold reserve + per-province bid cards ── */
@@ -4242,7 +4282,9 @@ textarea {
   gap: 8px;
   padding: 4px 10px;
   border: 1px solid rgba(200,146,30,0.4);
-  background: rgba(200,146,30,0.10);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.13) 0%, rgba(168,116,32,0.06) 100%);
   border-radius: 999px;
 }
 .estates-reserve .reserve-label {
@@ -4264,7 +4306,7 @@ textarea {
   padding: 12px;
   border: 1px solid rgba(168,116,32,0.20);
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
   transition: border-color 0.12s, box-shadow 0.12s;
 }
@@ -4339,7 +4381,7 @@ textarea {
   padding: 4px 12px;
   border: 1px solid rgba(168,116,32,0.32);
   border-radius: 999px;
-  background: rgba(255,252,240,0.78);
+  background: var(--cartouche-paper-soft-texture);
   font-family: var(--font-display);
   font-size: 12.5px;
 }
@@ -4357,7 +4399,9 @@ textarea {
 }
 .orders-budget.over {
   border-color: rgba(160,48,48,0.45);
-  background: rgba(160,48,48,0.10);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(160,48,48,0.13) 0%, rgba(122,32,32,0.06) 100%);
 }
 .orders-budget.over [data-orders-merc-cost] .value,
 .orders-budget.over [data-orders-merc-cost] .icon { color: var(--crimson-1); }
@@ -4370,7 +4414,7 @@ textarea {
   padding: 12px 14px;
   border: 1px solid rgba(168,116,32,0.20);
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
 }
 .army-card-head {
@@ -4447,9 +4491,7 @@ textarea {
   border: 3px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
   border-radius: var(--r-md);
   background-color: var(--player-color, var(--parch-3));
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
-    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  background-image: var(--cartouche-colored-texture);
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
   font-family: var(--font-display);
@@ -4528,32 +4570,40 @@ textarea {
 }
 .btn-primary {
   border: 1px solid rgba(168,116,32,0.55);
-  background: linear-gradient(180deg, rgba(200,146,30,0.22) 0%, rgba(168,116,32,0.12) 100%);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.22) 0%, rgba(168,116,32,0.12) 100%);
   color: var(--gold-1);
 }
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, rgba(200,146,30,0.34) 0%, rgba(168,116,32,0.18) 100%);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.34) 0%, rgba(168,116,32,0.18) 100%);
   border-color: var(--gold-1);
   box-shadow: var(--shadow-inset), 0 4px 18px rgba(168,116,32,0.20);
 }
 .btn-danger {
   border: 1px solid rgba(160,48,48,0.55);
-  background: linear-gradient(180deg, rgba(160,48,48,0.18) 0%, rgba(122,32,32,0.10) 100%);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(160,48,48,0.18) 0%, rgba(122,32,32,0.10) 100%);
   color: var(--crimson-1);
 }
 .btn-danger:hover:not(:disabled) {
-  background: linear-gradient(180deg, rgba(160,48,48,0.28) 0%, rgba(122,32,32,0.14) 100%);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(160,48,48,0.28) 0%, rgba(122,32,32,0.14) 100%);
   border-color: var(--crimson-1);
   box-shadow: var(--shadow-inset), 0 4px 18px rgba(160,48,48,0.18);
 }
 .btn-secondary {
   border: 1px solid rgba(74,48,24,0.32);
-  background: rgba(255,252,240,0.78);
+  background: var(--cartouche-paper-soft-texture);
   color: var(--umber-2);
 }
 .btn-secondary:hover:not(:disabled) {
   border-color: rgba(74,48,24,0.55);
-  background: rgba(255,252,240,0.95);
+  background: var(--cartouche-paper-texture);
   color: var(--umber-1);
 }
 .btn-primary:disabled,
@@ -4597,7 +4647,7 @@ textarea {
 .action-fold {
   border: 1px solid rgba(168,116,32,0.16);
   border-radius: var(--r-md);
-  background: rgba(255,252,240,0.5);
+  background: var(--cartouche-paper-soft-texture);
   overflow: hidden;
 }
 .action-fold + .action-fold { margin-top: 8px; }
@@ -4611,7 +4661,9 @@ textarea {
   letter-spacing: 1.8px;
   text-transform: uppercase;
   color: var(--gold-1);
-  background: linear-gradient(180deg, rgba(240,228,195,0.5), transparent);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(240,228,195,0.5), transparent);
 }
 .action-fold > summary::-webkit-details-marker { display: none; }
 .action-fold > summary::before {
@@ -4632,7 +4684,7 @@ textarea {
   gap: 0;
   border: 1px solid rgba(168,116,32,0.32);
   border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.6);
+  background: var(--cartouche-paper-soft-texture);
   overflow: hidden;
   align-self: flex-start;
   padding: 0;
@@ -4653,9 +4705,16 @@ textarea {
   transition: background 0.12s, color 0.12s;
 }
 .segmented-control button:last-child { border-right: 0; }
-.segmented-control button:hover { color: var(--umber-1); background: rgba(168,116,32,0.06); }
+.segmented-control button:hover {
+  color: var(--umber-1);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(168,116,32,0.08) 0%, rgba(168,116,32,0.035) 100%);
+}
 .segmented-control button.active {
-  background: rgba(200,146,30,0.22);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.24) 0%, rgba(168,116,32,0.10) 100%);
   color: var(--gold-2);
   box-shadow: inset 0 1px 0 rgba(255,250,228,0.4);
 }
@@ -4666,7 +4725,7 @@ textarea {
   padding: 12px 14px;
   border: 1px solid rgba(168,116,32,0.18);
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
@@ -4700,7 +4759,7 @@ textarea {
   padding: 13px 16px;
   border: 1px solid rgba(168,116,32,0.22);
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
 }
 .result-card-head {
@@ -4718,7 +4777,9 @@ textarea {
   color: var(--gold-1);
   padding: 2px 9px;
   border: 1px solid rgba(168,116,32,0.32);
-  background: rgba(200,146,30,0.12);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.14) 0%, rgba(168,116,32,0.07) 100%);
   border-radius: 999px;
 }
 .result-card-against {
@@ -4742,22 +4803,30 @@ textarea {
   border: 1px solid rgba(0,0,0,0.12);
 }
 .war-victory .war-outcome-badge {
-  background: rgba(58,107,40,0.16);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(58,107,40,0.18) 0%, rgba(42,78,28,0.08) 100%);
   border-color: rgba(58,107,40,0.42);
   color: var(--win);
 }
 .war-defeat .war-outcome-badge {
-  background: rgba(160,48,48,0.14);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(160,48,48,0.16) 0%, rgba(122,32,32,0.08) 100%);
   border-color: rgba(160,48,48,0.42);
   color: var(--crimson-1);
 }
 .war-stalemate .war-outcome-badge {
-  background: rgba(108,72,32,0.14);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(108,72,32,0.16) 0%, rgba(82,54,24,0.08) 100%);
   border-color: rgba(108,72,32,0.36);
   color: var(--umber-2);
 }
 .war-result.empire-fell .war-outcome-badge {
-  background: rgba(160,48,48,0.22);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(160,48,48,0.25) 0%, rgba(122,32,32,0.12) 100%);
   border-color: var(--crimson-1);
   color: #e08888;
   text-shadow: 0 1px 0 rgba(0,0,0,0.4);
@@ -4770,7 +4839,7 @@ textarea {
   align-items: center;
   gap: 18px;
   padding: 12px 14px;
-  background: rgba(255,252,240,0.78);
+  background: var(--cartouche-paper-soft-texture);
   border: 1px solid rgba(168,116,32,0.18);
   border-radius: var(--r-md);
 }
@@ -4819,15 +4888,19 @@ textarea {
   padding: 10px 12px;
   border-radius: var(--r-sm);
   border-left: 4px solid;
-  background: rgba(255,252,240,0.6);
+  background: var(--cartouche-paper-soft-texture);
 }
 .war-result-row.lost {
   border-left-color: var(--crimson-1);
-  background: rgba(160,48,48,0.06);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(160,48,48,0.08) 0%, rgba(122,32,32,0.035) 100%);
 }
 .war-result-row.recovered {
   border-left-color: var(--win);
-  background: rgba(58,107,40,0.06);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(58,107,40,0.08) 0%, rgba(42,78,28,0.035) 100%);
 }
 .war-result-row-label {
   font-family: var(--font-display);
@@ -4856,12 +4929,16 @@ textarea {
   border: 1px solid;
 }
 .coup-outcome-badge.held {
-  background: rgba(200,146,30,0.16);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.18) 0%, rgba(168,116,32,0.08) 100%);
   border-color: rgba(200,146,30,0.42);
   color: var(--gold-2);
 }
 .coup-outcome-badge.changed {
-  background: rgba(122,77,153,0.18);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(122,77,153,0.20) 0%, rgba(90,52,114,0.09) 100%);
   border-color: rgba(122,77,153,0.42);
   color: var(--purple-0);
 }
@@ -4932,7 +5009,7 @@ textarea {
   padding: 13px 14px;
   border: 1px solid rgba(168,116,32,0.22);
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.7) 100%);
+  background: var(--cartouche-paper-texture);
   box-shadow: var(--shadow-card);
 }
 .reward-card-head {
@@ -4950,7 +5027,9 @@ textarea {
   text-transform: uppercase;
   padding: 3px 9px;
   border-radius: 999px;
-  background: rgba(200,146,30,0.12);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.14) 0%, rgba(168,116,32,0.07) 100%);
   border: 1px solid rgba(200,146,30,0.32);
   color: var(--gold-2);
 }
@@ -5006,8 +5085,19 @@ textarea {
   line-height: 1.35;
 }
 .reward-choice-desc .value { font-size: 13px; }
-.reward-choice-restore { color: var(--win); border-color: rgba(58,107,40,0.45); background: linear-gradient(180deg, rgba(58,107,40,0.15) 0%, rgba(58,107,40,0.06) 100%); }
-.reward-choice-restore:hover:not(:disabled) { background: linear-gradient(180deg, rgba(58,107,40,0.24) 0%, rgba(58,107,40,0.10) 100%); border-color: var(--win); }
+.reward-choice-restore {
+  color: var(--win);
+  border-color: rgba(58,107,40,0.45);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(58,107,40,0.15) 0%, rgba(58,107,40,0.06) 100%);
+}
+.reward-choice-restore:hover:not(:disabled) {
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(58,107,40,0.24) 0%, rgba(58,107,40,0.10) 100%);
+  border-color: var(--win);
+}
 .reward-choice-restore .reward-choice-kicker { color: var(--win); }
 .reward-choice-gold .reward-choice-kicker { color: var(--gold-2); }
 
@@ -5197,7 +5287,9 @@ textarea {
       come out essentially the same as the card). Deepen the veil
       and the inner gold hairline, bolden the numerals. */
 .player-dashboard .finance-card {
-  background: rgba(20,8,0,0.46);
+  background:
+    var(--cartouche-linen),
+    linear-gradient(180deg, rgba(20,8,0,0.50) 0%, rgba(20,8,0,0.40) 100%);
   border-color: rgba(240,200,90,0.45);
   box-shadow: inset 0 0 0 1px rgba(255,250,225,0.07);
 }
@@ -5223,7 +5315,9 @@ textarea {
 
 /* 5. Dashboard stat row gets the same heavier veil + shadow stack. */
 .player-dashboard .dashboard-stat-row {
-  background: rgba(20,8,0,0.42);
+  background:
+    var(--cartouche-linen),
+    linear-gradient(180deg, rgba(20,8,0,0.46) 0%, rgba(20,8,0,0.36) 100%);
   border-color: rgba(240,200,90,0.4);
 }
 .player-dashboard .dashboard-stat-row,
@@ -5323,7 +5417,9 @@ textarea {
 
 .action-fold > summary:hover {
   color: var(--gold-2);
-  background: linear-gradient(180deg, rgba(240,228,195,0.72), rgba(255,252,240,0.18));
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(240,228,195,0.72), rgba(255,252,240,0.18));
 }
 
 .choice-btn:hover .province-token,
@@ -5371,6 +5467,7 @@ textarea {
 .estate-card.selected {
   border-color: var(--gold-1);
   background:
+    var(--cartouche-paper-linen),
     linear-gradient(180deg, rgba(255,252,242,0.98) 0%, rgba(245,233,200,0.78) 100%),
     rgba(200,146,30,0.08);
   box-shadow:
@@ -5440,17 +5537,21 @@ textarea {
   padding: 7px 9px;
   border: 1px solid rgba(168,116,32,0.18);
   border-radius: var(--r-sm);
-  background: rgba(255,252,240,0.72);
+  background: var(--cartouche-paper-soft-texture);
 }
 
 .estate-current-bid.owned {
   border-color: rgba(200,146,30,0.42);
-  background: rgba(200,146,30,0.10);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(200,146,30,0.13) 0%, rgba(168,116,32,0.06) 100%);
 }
 
 .estate-current-bid.contested {
   border-color: rgba(122,77,153,0.28);
-  background: rgba(122,77,153,0.07);
+  background:
+    var(--cartouche-paper-linen),
+    linear-gradient(180deg, rgba(122,77,153,0.10) 0%, rgba(90,52,114,0.04) 100%);
 }
 
 .estate-current-label {
