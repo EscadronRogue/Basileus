@@ -91,7 +91,7 @@ const SANKEY_OFFICE_LABELS = {
   PATRIARCH: 'Patriarch',
 };
 const SANKEY_ROUTE_ORDER = ['estates', 'strategoi', 'east_pool', 'west_pool', 'sea_pool', 'bishops', 'patriarch'];
-const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool', 'patriarch']);
+const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool']);
 const SANKEY_OFFICE_ORDER = ['DOM_EAST', 'BASILEUS', 'DOM_WEST', 'ADMIRAL', 'PATRIARCH'];
 const INCOME_FLOW_MIN_ZOOM = 0.25;
 const INCOME_FLOW_MAX_ZOOM = 4;
