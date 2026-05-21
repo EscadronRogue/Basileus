@@ -66,6 +66,8 @@ const CURVE_EPSILON = 1e-9;
 let provinceCentroids = {};
 let invasionOrigins = {};
 let provinceSelectHandler = null;
+let provinceHoverHandler = null;
+let selectedProvinceId = null;
 let hoveredProvinceId = null;
 let viewportLayer = null;
 let latestMapState = null;
@@ -77,8 +79,10 @@ export async function createMapSVG(containerId, options = {}) {
   if (!container) return null;
 
   provinceSelectHandler = options.onProvinceSelect || null;
+  provinceHoverHandler = options.onProvinceHover || null;
   provinceCentroids = {};
   invasionOrigins = {};
+  selectedProvinceId = null;
   hoveredProvinceId = null;
   viewportLayer = null;
   latestMapState = null;
@@ -795,6 +799,8 @@ function addProvinceLabels(layer) {
     layer.appendChild(g);
     layoutMapCartouche(g);
   }
+
+  applyProvinceInteractionState();
 }
 
 function buildMapCartouche(province, centroid, theme = province) {
@@ -978,6 +984,7 @@ export function updateMapState(state) {
 
   updateThreatOverlay(state);
   updateBadges(state);
+  applyProvinceInteractionState();
 }
 
 // Single source of truth for the ownership-derived state class set used by
@@ -1278,14 +1285,65 @@ export function getCentroids() {
 }
 
 export function setSelectedProvince(provinceId) {
-  document.querySelectorAll('.province-shape.selected, .region-stroke.selected, .map-cartouche.selected')
-    .forEach((element) => element.classList.remove('selected'));
+  selectedProvinceId = provinceId || null;
+  applyProvinceInteractionState();
+}
 
+export function setHoveredProvince(provinceId) {
+  updateHoveredProvince(provinceId);
+}
+
+export function focusProvince(provinceId, options = {}) {
   if (!provinceId) return;
 
-  document.querySelector(`.province-shape[data-id="${provinceId}"]`)?.classList.add('selected');
-  document.querySelector(`.region-stroke[data-id="${provinceId}"]`)?.classList.add('selected');
-  document.querySelector(`.map-cartouche[data-id="${provinceId}"]`)?.classList.add('selected');
+  const centroid = provinceCentroids[provinceId];
+  if (centroid && options.center !== false && mapView.zoom > 1.001) {
+    mapView.panX = (MAP_WIDTH / 2) - (centroid.cx * mapView.zoom);
+    mapView.panY = (MAP_HEIGHT / 2) - (centroid.cy * mapView.zoom);
+    clampMapView();
+    applyMapTransform();
+  }
+
+  if (options.pulse !== false) pulseProvince(provinceId);
+}
+
+function applyProvinceInteractionState() {
+  clearProvinceInteractionClass('selected');
+  clearProvinceInteractionClass('hovered');
+
+  if (selectedProvinceId) setProvinceInteractionClass(selectedProvinceId, 'selected');
+  if (hoveredProvinceId) setProvinceInteractionClass(hoveredProvinceId, 'hovered');
+}
+
+function clearProvinceInteractionClass(className) {
+  document.querySelectorAll(`.province-shape.${className}, .region-stroke.${className}, .map-cartouche.${className}`)
+    .forEach((element) => element.classList.remove(className));
+}
+
+function setProvinceInteractionClass(provinceId, className) {
+  document.querySelectorAll([
+    `.province-shape[data-id="${provinceId}"]`,
+    `.region-stroke[data-id="${provinceId}"]`,
+    `.map-cartouche[data-id="${provinceId}"]`,
+  ].join(', '))
+    .forEach((element) => element.classList.add(className));
+}
+
+function pulseProvince(provinceId) {
+  const targets = document.querySelectorAll([
+    `.province-shape[data-id="${provinceId}"]`,
+    `.region-stroke[data-id="${provinceId}"]`,
+    `.map-cartouche[data-id="${provinceId}"]`,
+  ].join(', '));
+
+  targets.forEach((element) => {
+    element.classList.remove('selection-pulse');
+    void element.getBoundingClientRect?.();
+    element.classList.add('selection-pulse');
+    if (typeof window !== 'undefined') {
+      window.setTimeout?.(() => element.classList.remove('selection-pulse'), 700);
+    }
+  });
 }
 
 function findProvinceAtEvent(svg, event) {
@@ -1341,19 +1399,12 @@ function findProvinceElement(element) {
 }
 
 function updateHoveredProvince(provinceId) {
-  if (hoveredProvinceId && hoveredProvinceId !== provinceId) {
-    document.querySelector(`.province-shape[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
-    document.querySelector(`.region-stroke[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
-    document.querySelector(`.map-cartouche[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
-  }
+  const nextProvinceId = provinceId || null;
+  if (hoveredProvinceId === nextProvinceId) return;
 
-  if (provinceId) {
-    document.querySelector(`.province-shape[data-id="${provinceId}"]`)?.classList.add('hovered');
-    document.querySelector(`.region-stroke[data-id="${provinceId}"]`)?.classList.add('hovered');
-    document.querySelector(`.map-cartouche[data-id="${provinceId}"]`)?.classList.add('hovered');
-  }
-
-  hoveredProvinceId = provinceId;
+  hoveredProvinceId = nextProvinceId;
+  applyProvinceInteractionState();
+  provinceHoverHandler?.(hoveredProvinceId);
 }
 
 function createGestureState() {

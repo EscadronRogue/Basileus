@@ -1,6 +1,7 @@
 import { hydratePublicState } from '../engine/publicState.js';
-import { createMapSVG } from '../render/mapRenderer.js';
+import { createMapSVG, focusProvince, setHoveredProvince } from '../render/mapRenderer.js';
 import {
+  applyProvinceInterfaceState,
   createDefaultUiState,
   getPhaseRenderKey,
   renderGameActionPanel,
@@ -223,6 +224,7 @@ export class MultiplayerController {
     this.privateSnapshot = null;
     this.state = null;
     this.selectedProvinceId = null;
+    this.hoveredProvinceId = null;
     this.viewPlayerId = null;
     this.socket = null;
     this.connectionState = 'connecting';
@@ -772,6 +774,25 @@ export class MultiplayerController {
     renderHiddenGameOverOverlay();
   }
 
+  selectProvince(provinceId, options = {}) {
+    const nextProvinceId = provinceId && this.state?.themes?.[provinceId] ? provinceId : null;
+    this.selectedProvinceId = nextProvinceId;
+    this.render();
+    if (options.focusMap && nextProvinceId) {
+      focusProvince(nextProvinceId, { center: true, pulse: true });
+    }
+  }
+
+  previewProvince(provinceId, options = {}) {
+    const nextProvinceId = provinceId && this.state?.themes?.[provinceId] ? provinceId : null;
+    this.hoveredProvinceId = nextProvinceId;
+    if (!options.fromMap) setHoveredProvince(nextProvinceId);
+    applyProvinceInterfaceState({
+      selectedProvinceId: this.selectedProvinceId,
+      hoveredProvinceId: this.hoveredProvinceId,
+    });
+  }
+
   renderLobby() {
     if (!this.setupDialog || !this.roomSnapshot) return;
     const isHost = this.isHost();
@@ -939,8 +960,10 @@ export class MultiplayerController {
     if (document.getElementById('gameMap')) return;
     await createMapSVG('mapContainer', {
       onProvinceSelect: (provinceId) => {
-        this.selectedProvinceId = provinceId;
-        this.render();
+        this.selectProvince(provinceId);
+      },
+      onProvinceHover: (provinceId) => {
+        this.previewProvince(provinceId, { fromMap: true });
       },
     });
   }
@@ -959,6 +982,7 @@ export class MultiplayerController {
         state,
         activePlayerId: this.viewPlayerId,
         selectedProvinceId: this.selectedProvinceId,
+        hoveredProvinceId: this.hoveredProvinceId,
         uiState: this.uiState,
         aiMeta: null,
         privateData: this.privateSnapshot || null,
@@ -967,6 +991,8 @@ export class MultiplayerController {
         renderActionPanel: () => this.renderActionPanel(),
         renderConnectionBadge: () => this.renderConnectionBadge(),
         renderGameOverOverlay: () => this.renderGameOverOverlay(),
+        onSelectProvince: (provinceId) => this.selectProvince(provinceId, { focusMap: true }),
+        onHoverProvince: (provinceId) => this.previewProvince(provinceId),
         rerender: () => this.render(),
       });
       if (phaseChanged) {

@@ -119,7 +119,7 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   const tooltip = valuesText
     ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
     : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
-  return `<span class="${classes}" style="${getProvinceStyleAttr(state, theme)}" title="${tooltip}">${theme.name}${values}</span>`;
+  return `<span class="${classes}" data-province-token="${theme.id}" style="${getProvinceStyleAttr(state, theme)}" title="${tooltip}">${theme.name}${values}</span>`;
 }
 
 export function renderProvinceBadgeList(state, themeIds = []) {

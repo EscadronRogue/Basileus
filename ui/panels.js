@@ -160,6 +160,7 @@ function renderProvinceChoiceGrid(state, themes, options = {}) {
         return `
           <button type="button" class="choice-btn province-choice-btn${isSelected ? ' selected' : ''}"
             data-${attr}="${theme.id}"
+            data-map-province="${theme.id}"
             aria-pressed="${isSelected ? 'true' : 'false'}"
             title="${escapeHtml(theme.name)}">
             ${renderProvinceBadge(state, theme, { showValues: true })}
@@ -729,7 +730,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
               ? (isLeading ? 'Raise' : 'Outbid')
               : 'Bid';
             return `
-              <article class="estate-card${cannotAfford ? ' disabled' : ''}${isLeading ? ' selected' : ''}${auction && !isLeading ? ' contested' : ''}" data-estate="${theme.id}">
+              <article class="estate-card${cannotAfford ? ' disabled' : ''}${isLeading ? ' selected' : ''}${auction && !isLeading ? ' contested' : ''}" data-estate="${theme.id}" data-map-province="${theme.id}">
                 <div class="estate-card-province">
                   ${renderProvinceBadge(state, theme, { showValues: true })}
                 </div>

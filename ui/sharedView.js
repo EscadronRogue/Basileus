@@ -68,6 +68,81 @@ export function setPanelOpen(uiState, panelKey, open) {
   uiState.panels[panelKey] = Boolean(open);
 }
 
+const PROVINCE_INTERFACE_SELECTOR = '[data-map-province], [data-province-token], [data-estate]';
+
+function getProvinceInterfaceId(element) {
+  return element?.dataset?.mapProvince
+    || element?.dataset?.provinceToken
+    || element?.dataset?.estate
+    || '';
+}
+
+function getTopLevelProvinceInterfaceElements(root) {
+  if (!root?.querySelectorAll) return [];
+  return [...root.querySelectorAll(PROVINCE_INTERFACE_SELECTOR)]
+    .filter((element) => !element.parentElement?.closest(PROVINCE_INTERFACE_SELECTOR));
+}
+
+function provinceAttrSelector(provinceId) {
+  const escaped = String(provinceId || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return [
+    `[data-map-province="${escaped}"]`,
+    `[data-province-token="${escaped}"]`,
+    `[data-estate="${escaped}"]`,
+  ].join(', ');
+}
+
+export function applyProvinceInterfaceState({
+  root = document.getElementById('sidebar'),
+  selectedProvinceId = null,
+  hoveredProvinceId = null,
+} = {}) {
+  if (!root?.querySelectorAll) return;
+
+  root.querySelectorAll('.map-selected, .map-hovered').forEach((element) => {
+    element.classList.remove('map-selected', 'map-hovered');
+  });
+
+  if (selectedProvinceId) {
+    root.querySelectorAll(provinceAttrSelector(selectedProvinceId)).forEach((element) => {
+      element.classList.add('map-selected');
+    });
+  }
+
+  if (hoveredProvinceId) {
+    root.querySelectorAll(provinceAttrSelector(hoveredProvinceId)).forEach((element) => {
+      element.classList.add('map-hovered');
+    });
+  }
+}
+
+export function bindProvinceInterfaceSync({
+  root = document.getElementById('sidebar'),
+  selectedProvinceId = null,
+  hoveredProvinceId = null,
+  onSelectProvince = null,
+  onHoverProvince = null,
+} = {}) {
+  if (!root) return;
+
+  applyProvinceInterfaceState({ root, selectedProvinceId, hoveredProvinceId });
+
+  getTopLevelProvinceInterfaceElements(root).forEach((element) => {
+    const provinceId = getProvinceInterfaceId(element);
+    if (!provinceId) return;
+
+    element.addEventListener('click', () => {
+      onSelectProvince?.(provinceId);
+    });
+    element.addEventListener('pointerenter', () => {
+      onHoverProvince?.(provinceId);
+    });
+    element.addEventListener('pointerleave', () => {
+      onHoverProvince?.(null);
+    });
+  });
+}
+
 export function bindUiChrome({ uiState, render }) {
   const containers = [
     document.getElementById('playerDashboard'),
@@ -633,6 +708,7 @@ export function renderGameFrame({
   state,
   activePlayerId,
   selectedProvinceId = null,
+  hoveredProvinceId = null,
   uiState,
   aiMeta = null,
   privateData = null,
@@ -641,6 +717,8 @@ export function renderGameFrame({
   renderActionPanel,
   renderConnectionBadge = null,
   renderGameOverOverlay = null,
+  onSelectProvince = null,
+  onHoverProvince = null,
   rerender = null,
 }) {
   if (!state) return;
@@ -648,6 +726,7 @@ export function renderGameFrame({
   renderConnectionBadge?.();
   updateMapState(state);
   drawInvasionRoute(state.currentInvasion);
+  setSelectedProvince(selectedProvinceId);
   renderPlayerDashboard(
     document.getElementById('playerDashboard'),
     state,
@@ -661,5 +740,12 @@ export function renderGameFrame({
   renderTabs?.();
   renderActionPanel?.();
   bindUiChrome({ uiState, render: rerender || (() => {}) });
+  bindProvinceInterfaceSync({
+    root: document.getElementById('sidebar'),
+    selectedProvinceId,
+    hoveredProvinceId,
+    onSelectProvince,
+    onHoverProvince,
+  });
   if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
 }

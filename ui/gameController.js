@@ -16,8 +16,9 @@ import {
 } from '../engine/runtime.js';
 import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta, hydrateAiOpponent } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
-import { createMapSVG } from '../render/mapRenderer.js';
+import { createMapSVG, focusProvince, setHoveredProvince } from '../render/mapRenderer.js';
 import {
+  applyProvinceInterfaceState,
   createDefaultUiState,
   getPhaseRenderKey,
   renderGameActionPanel,
@@ -47,6 +48,7 @@ export class GameController {
     this.aiMeta = null;
     this.pendingAiTitleAssignment = null;
     this.selectedProvinceId = null;
+    this.hoveredProvinceId = null;
     this.activePlayer = this.config.humanPlayerIds[0] ?? 0;
     this.uiState = createDefaultUiState();
     this.lastPhaseKey = null;
@@ -70,8 +72,10 @@ export class GameController {
 
     await createMapSVG('mapContainer', {
       onProvinceSelect: (provinceId) => {
-        this.selectedProvinceId = provinceId;
-        this.render();
+        this.selectProvince(provinceId);
+      },
+      onProvinceHover: (provinceId) => {
+        this.previewProvince(provinceId, { fromMap: true });
       },
     });
 
@@ -143,6 +147,7 @@ export class GameController {
       state: this.state,
       activePlayerId: this.activePlayer,
       selectedProvinceId: this.selectedProvinceId,
+      hoveredProvinceId: this.hoveredProvinceId,
       uiState: this.uiState,
       aiMeta: this.aiMeta,
       privateData,
@@ -150,6 +155,8 @@ export class GameController {
       renderTabs: () => this.renderPlayerTabs(),
       renderActionPanel: () => this.renderActionPanel(),
       renderGameOverOverlay: () => this.renderGameOver(),
+      onSelectProvince: (provinceId) => this.selectProvince(provinceId, { focusMap: true }),
+      onHoverProvince: (provinceId) => this.previewProvince(provinceId),
       rerender: () => this.render(),
     });
 
@@ -165,6 +172,25 @@ export class GameController {
 
   clearActionError() {
     this.uiState.actionError = '';
+  }
+
+  selectProvince(provinceId, options = {}) {
+    const nextProvinceId = provinceId && this.state?.themes?.[provinceId] ? provinceId : null;
+    this.selectedProvinceId = nextProvinceId;
+    this.render();
+    if (options.focusMap && nextProvinceId) {
+      focusProvince(nextProvinceId, { center: true, pulse: true });
+    }
+  }
+
+  previewProvince(provinceId, options = {}) {
+    const nextProvinceId = provinceId && this.state?.themes?.[provinceId] ? provinceId : null;
+    this.hoveredProvinceId = nextProvinceId;
+    if (!options.fromMap) setHoveredProvince(nextProvinceId);
+    applyProvinceInterfaceState({
+      selectedProvinceId: this.selectedProvinceId,
+      hoveredProvinceId: this.hoveredProvinceId,
+    });
   }
 
   buildPrivateData(playerId) {

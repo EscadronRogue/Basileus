@@ -62,7 +62,7 @@ export const PROVINCES = [
   { id: 'SIC', name: 'Sikelia',         P: 1, T: 1, C: 1, region: REGIONS.SEA, cx: 170, cy: 360, startOccupied: true },
   { id: 'ITA', name: 'Italias',         P: 1, T: 1, C: 1, region: REGIONS.SEA, cx: 190, cy: 280 },
 
-  { id: 'CPL', name: 'Constantinople', region: REGIONS.CPL, cx: 565, cy: 265 },
+  { id: 'CPL', name: 'Konstantinopolis', region: REGIONS.CPL, cx: 565, cy: 265 },
 ];
 
 // Adjacency graph - bidirectional (define each edge once, engine builds both directions).
