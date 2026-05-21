@@ -32,15 +32,20 @@ const FLOW_SOURCE_LABEL = {
 
 const SANKEY_WIDTH = 900;
 const SANKEY_HEIGHT = 470;
-const SANKEY_NODE_WIDTH = 16;
 const SANKEY_TOP = 30;
 const SANKEY_BOTTOM = 30;
 const SANKEY_GAP = 16;
 const SANKEY_COLUMNS = {
   source: 20,
-  route: 220,
-  office: 470,
+  route: 170,
+  office: 430,
   player: 705,
+};
+const SANKEY_NODE_WIDTHS = {
+  source: 66,
+  route: 92,
+  office: 96,
+  player: 142,
 };
 const SANKEY_RESOURCE_COLORS = {
   profit: '#c8921e',
@@ -267,11 +272,6 @@ function getPlayerFlowTotal(flow, playerId) {
   };
 }
 
-function formatPlayerFlowReceipt(flow, playerId) {
-  const total = getPlayerFlowTotal(flow, playerId);
-  return `P${total.profit} T${total.troop} C${total.church}`;
-}
-
 function createSankeyNode(nodes, key, attrs = {}) {
   if (!nodes.has(key)) {
     nodes.set(key, {
@@ -286,6 +286,7 @@ function createSankeyNode(nodes, key, attrs = {}) {
       playerId: attrs.playerId ?? null,
       isUnclaimed: Boolean(attrs.isUnclaimed),
       iconResource: attrs.iconResource || attrs.resource || null,
+      width: attrs.width || null,
       order: attrs.order ?? 0,
       linksIn: [],
       linksOut: [],
@@ -472,6 +473,10 @@ function getNodeMinHeight(node) {
   return 26;
 }
 
+function getNodeWidth(node) {
+  return node.width || SANKEY_NODE_WIDTHS[node.layer] || 88;
+}
+
 function getOrderedSankeyNodes(nodes, layer) {
   const list = [...nodes.values()].filter((node) => node.layer === layer);
   return list.sort((left, right) => {
@@ -493,6 +498,7 @@ function layoutSankeyColumn(list) {
   let y = SANKEY_TOP + Math.max(0, (availableHeight - usedHeight) / 2);
   for (const node of list) {
     node.x = SANKEY_COLUMNS[node.layer];
+    node.width = getNodeWidth(node);
     node.y = y;
     y += node.height + gap;
   }
@@ -553,23 +559,69 @@ function layoutIncomeSankey(nodes, links) {
   };
 }
 
-function renderSankeyLink(link) {
-  const sourceX = link.source.x + SANKEY_NODE_WIDTH;
+function getSankeyLinkGeometry(link) {
+  const sourceX = link.source.x + link.source.width;
   const targetX = link.target.x;
   const curve = Math.max(60, (targetX - sourceX) * 0.54);
-  const path = `M ${sourceX.toFixed(2)} ${link.sy.toFixed(2)} C ${(sourceX + curve).toFixed(2)} ${link.sy.toFixed(2)}, ${(targetX - curve).toFixed(2)} ${link.ty.toFixed(2)}, ${targetX.toFixed(2)} ${link.ty.toFixed(2)}`;
+  return {
+    x0: sourceX,
+    y0: link.sy,
+    x1: sourceX + curve,
+    y1: link.sy,
+    x2: targetX - curve,
+    y2: link.ty,
+    x3: targetX,
+    y3: link.ty,
+  };
+}
+
+function describeSankeyLinkPath(link) {
+  const p = getSankeyLinkGeometry(link);
+  return `M ${p.x0.toFixed(2)} ${p.y0.toFixed(2)} C ${p.x1.toFixed(2)} ${p.y1.toFixed(2)}, ${p.x2.toFixed(2)} ${p.y2.toFixed(2)}, ${p.x3.toFixed(2)} ${p.y3.toFixed(2)}`;
+}
+
+function getBezierPoint(p, t) {
+  const mt = 1 - t;
+  return {
+    x: (mt ** 3) * p.x0 + 3 * (mt ** 2) * t * p.x1 + 3 * mt * (t ** 2) * p.x2 + (t ** 3) * p.x3,
+    y: (mt ** 3) * p.y0 + 3 * (mt ** 2) * t * p.y1 + 3 * mt * (t ** 2) * p.y2 + (t ** 3) * p.y3,
+  };
+}
+
+function getLinkLabelT(link) {
+  if (link.source.layer === 'source') return 0.42;
+  if (link.target.layer === 'player') return 0.58;
+  return 0.5;
+}
+
+function renderSankeyLink(link) {
+  const path = describeSankeyLinkPath(link);
   const title = `${link.label}: ${roundFlowValue(link.value)}`;
   return `<path class="income-sankey-link income-sankey-${link.resource}" d="${path}" stroke="${link.color}" stroke-width="${link.width.toFixed(2)}"><title>${escapeHtml(title)}</title></path>`;
 }
 
-function renderSankeyIconValue(resource, value, x, y, width = 72) {
+function renderSankeyIconValue(resource, value, x, y, width = 72, extraClass = '') {
   return `
     <foreignObject class="income-sankey-foreign" x="${x}" y="${y}" width="${width}" height="24">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="income-sankey-icon-value income-sankey-icon-${resource}">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="income-sankey-icon-value income-sankey-icon-${resource}${extraClass ? ` ${extraClass}` : ''}">
         ${renderFlowValue(resource, value)}
       </div>
     </foreignObject>
   `;
+}
+
+function renderSankeyLinkLabel(link) {
+  const point = getBezierPoint(getSankeyLinkGeometry(link), getLinkLabelT(link));
+  const width = 44;
+  const height = 20;
+  return renderSankeyIconValue(
+    link.resource,
+    link.value,
+    (point.x - width / 2).toFixed(2),
+    (point.y - height / 2).toFixed(2),
+    width,
+    'income-sankey-band-value',
+  );
 }
 
 function renderSankeyPlayerReceipt(flow, node, x, y) {
@@ -586,40 +638,40 @@ function renderSankeyPlayerReceipt(flow, node, x, y) {
 }
 
 function renderSankeyNodeText(node, flow) {
-  const labelX = node.x + SANKEY_NODE_WIDTH + 8;
   const midY = node.y + node.height / 2;
   let label = node.label;
   let meta = `${roundFlowValue(node.value)}`;
   let maxLabel = 19;
 
   if (node.layer === 'source') {
-    return renderSankeyIconValue(node.iconResource, node.value, labelX, midY - 12, 74);
+    return renderSankeyIconValue(node.iconResource, node.value, node.x + 7, midY - 12, node.width - 10, 'inside-node');
   } else if (node.layer === 'route') {
     meta = node.rule || `${roundFlowValue(node.value)}`;
-    maxLabel = 13;
+    maxLabel = 11;
   } else if (node.layer === 'office') {
-    meta = `${roundFlowValue(node.value)}`;
-    maxLabel = 12;
+    meta = '';
+    maxLabel = 11;
   } else if (node.layer === 'player') {
     meta = node.isUnclaimed ? `${roundFlowValue(node.value)}` : '';
-    maxLabel = 15;
+    maxLabel = 13;
   }
 
   label = truncateSvgLabel(label, maxLabel);
   const hasRoomForMeta = node.height >= 24;
   const labelY = hasRoomForMeta ? midY - 3 : midY + 4;
   const metaY = midY + 10;
+  const centerX = node.x + node.width / 2;
 
   if (node.layer === 'player' && !node.isUnclaimed) {
     return `
-      <text class="income-sankey-node-label" x="${labelX}" y="${labelY.toFixed(2)}">${escapeHtml(label)}</text>
-      ${renderSankeyPlayerReceipt(flow, node, labelX - 2, metaY - 11)}
+      <text class="income-sankey-node-label" x="${centerX.toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="middle">${escapeHtml(label)}</text>
+      ${renderSankeyPlayerReceipt(flow, node, node.x + 14, metaY - 11)}
     `;
   }
 
   return `
-    <text class="income-sankey-node-label" x="${labelX}" y="${labelY.toFixed(2)}">${escapeHtml(label)}</text>
-    ${hasRoomForMeta ? `<text class="income-sankey-node-meta" x="${labelX}" y="${metaY.toFixed(2)}">${escapeHtml(meta)}</text>` : ''}
+    <text class="income-sankey-node-label" x="${centerX.toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="middle">${escapeHtml(label)}</text>
+    ${hasRoomForMeta && meta ? `<text class="income-sankey-node-meta" x="${centerX.toFixed(2)}" y="${metaY.toFixed(2)}" text-anchor="middle">${escapeHtml(meta)}</text>` : ''}
   `;
 }
 
@@ -632,7 +684,7 @@ function renderSankeyNode(node, flow) {
   ].filter(Boolean).join(' ');
   return `
     <g class="${classes}">
-      <rect x="${node.x}" y="${node.y.toFixed(2)}" width="${SANKEY_NODE_WIDTH}" height="${node.height.toFixed(2)}" rx="2.4" fill="${node.fill}" stroke="${node.stroke}">
+      <rect x="${node.x}" y="${node.y.toFixed(2)}" width="${node.width}" height="${node.height.toFixed(2)}" rx="4" fill="${node.fill}" stroke="${node.stroke}">
         <title>${escapeHtml(`${node.label}: ${roundFlowValue(node.value)}`)}</title>
       </rect>
       ${renderSankeyNodeText(node, flow)}
@@ -647,11 +699,17 @@ function renderIncomeSankeySvg(state, flow) {
     .sort((left, right) => (right.width - left.width) || left.sourceKey.localeCompare(right.sourceKey))
     .map(renderSankeyLink)
     .join('');
+  const linkLabels = model.links
+    .slice()
+    .sort((left, right) => (left.width - right.width) || left.sourceKey.localeCompare(right.sourceKey))
+    .map(renderSankeyLinkLabel)
+    .join('');
   const nodes = model.nodes.map((node) => renderSankeyNode(node, flow)).join('');
 
   return `
     <svg class="income-flow-sankey" viewBox="0 0 ${SANKEY_WIDTH} ${SANKEY_HEIGHT}" role="img" aria-label="Imperial income Sankey diagram">
       <g class="income-sankey-links">${links}</g>
+      <g class="income-sankey-link-labels">${linkLabels}</g>
       <g class="income-sankey-nodes">${nodes}</g>
     </svg>
   `;

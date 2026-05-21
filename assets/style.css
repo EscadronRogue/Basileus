@@ -4048,34 +4048,34 @@ textarea {
 
 .income-sankey-node-label {
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.2px;
-  fill: var(--umber-0);
+  letter-spacing: 0.1px;
+  fill: #ffffff;
   paint-order: stroke fill;
-  stroke: rgba(255,252,240,0.88);
-  stroke-width: 3px;
+  stroke: rgba(20,8,0,0.62);
+  stroke-width: 2.6px;
   stroke-linejoin: round;
 }
 
 .income-sankey-node-meta {
   font-family: var(--font-body);
   font-size: 10.5px;
-  font-weight: 600;
-  fill: var(--umber-2);
+  font-weight: 700;
+  fill: #ffffff;
   paint-order: stroke fill;
-  stroke: rgba(255,252,240,0.88);
-  stroke-width: 3px;
+  stroke: rgba(20,8,0,0.60);
+  stroke-width: 2.5px;
   stroke-linejoin: round;
 }
 
 .income-sankey-node-source .income-sankey-node-label,
 .income-sankey-node-route .income-sankey-node-label {
-  fill: var(--umber-0);
+  fill: #ffffff;
 }
 
 .income-sankey-node-player .income-sankey-node-meta {
-  fill: var(--gold-2);
+  fill: #ffffff;
 }
 
 .income-sankey-foreign {
@@ -4136,6 +4136,47 @@ textarea {
 }
 
 .income-sankey-icon-trio .icon {
+  font-size: 12px;
+}
+
+.income-sankey-icon-value.inside-node,
+.income-sankey-icon-trio {
+  justify-content: center;
+  width: 100%;
+}
+
+.income-sankey-icon-value.inside-node .value,
+.income-sankey-icon-trio .value {
+  color: #ffffff;
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.70),
+    0 0 5px rgba(20,8,0,0.45);
+}
+
+.income-sankey-icon-value.inside-node .icon,
+.income-sankey-icon-trio .icon {
+  color: #ffffff;
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.55));
+}
+
+.income-sankey-band-value {
+  justify-content: center;
+  min-width: 34px;
+  padding: 2px 5px 3px;
+  border: 1px solid rgba(20,8,0,0.24);
+  border-radius: 999px;
+  background: rgba(255,252,240,0.78);
+  box-shadow:
+    0 1px 2px rgba(46,30,15,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.30);
+}
+
+.income-sankey-band-value .value {
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.income-sankey-band-value .icon {
   font-size: 12px;
 }
 
