@@ -867,11 +867,11 @@ function bindIncomeFlowInteractions(container) {
   };
 
   const updateCursor = () => {
-    if ((gesture.mode === 'pinch' || gesture.mode === 'pan') && isIncomeFlowZoomed(view)) {
+    if (gesture.mode === 'pinch' || gesture.mode === 'pan') {
       svg.style.cursor = 'grabbing';
       return;
     }
-    svg.style.cursor = isIncomeFlowZoomed(view) ? 'grab' : '';
+    svg.style.cursor = 'grab';
   };
 
   const zoomAtClientPoint = (clientX, clientY, factor) => {
@@ -955,10 +955,6 @@ function bindIncomeFlowInteractions(container) {
 
     const dragDistance = Math.hypot(event.clientX - gesture.startClientX, event.clientY - gesture.startClientY);
     if (dragDistance > INCOME_FLOW_DRAG_THRESHOLD_PX) gesture.moved = true;
-    if (!isIncomeFlowZoomed(view)) {
-      updateCursor();
-      return;
-    }
 
     const startPoint = clientPointToIncomeFlowSvg(svg, gesture.startClientX, gesture.startClientY);
     const currentPoint = clientPointToIncomeFlowSvg(svg, event.clientX, event.clientY);
@@ -1051,22 +1047,6 @@ function bindIncomeFlowInteractions(container) {
 
 function clampIncomeFlowView(view) {
   view.zoom = clampValue(view.zoom, INCOME_FLOW_MIN_ZOOM, INCOME_FLOW_MAX_ZOOM);
-
-  if (!isIncomeFlowZoomed(view)) {
-    view.zoom = 1;
-    view.panX = 0;
-    view.panY = 0;
-    return;
-  }
-
-  const scaledWidth = SANKEY_WIDTH * view.zoom;
-  const scaledHeight = SANKEY_HEIGHT * view.zoom;
-  const minPanX = scaledWidth > SANKEY_WIDTH ? SANKEY_WIDTH - scaledWidth : 0;
-  const maxPanX = scaledWidth > SANKEY_WIDTH ? 0 : SANKEY_WIDTH - scaledWidth;
-  const minPanY = scaledHeight > SANKEY_HEIGHT ? SANKEY_HEIGHT - scaledHeight : 0;
-  const maxPanY = scaledHeight > SANKEY_HEIGHT ? 0 : SANKEY_HEIGHT - scaledHeight;
-  view.panX = clampValue(view.panX, minPanX, maxPanX);
-  view.panY = clampValue(view.panY, minPanY, maxPanY);
 }
 
 function isIncomeFlowZoomed(view) {
