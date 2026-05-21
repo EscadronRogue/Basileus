@@ -5302,7 +5302,7 @@ textarea {
 }
 
 .estate-card[data-map-province]:not(.disabled),
-.province-token[data-province-token] {
+[data-map-province] .province-token {
   cursor: pointer;
 }
 

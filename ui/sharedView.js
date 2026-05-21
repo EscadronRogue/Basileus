@@ -68,19 +68,18 @@ export function setPanelOpen(uiState, panelKey, open) {
   uiState.panels[panelKey] = Boolean(open);
 }
 
-const PROVINCE_INTERFACE_SELECTOR = '[data-map-province], [data-province-token], [data-estate]';
+const PROVINCE_INTERACTIVE_SELECTOR = '[data-map-province], [data-estate]';
 
 function getProvinceInterfaceId(element) {
   return element?.dataset?.mapProvince
-    || element?.dataset?.provinceToken
     || element?.dataset?.estate
     || '';
 }
 
 function getTopLevelProvinceInterfaceElements(root) {
   if (!root?.querySelectorAll) return [];
-  return [...root.querySelectorAll(PROVINCE_INTERFACE_SELECTOR)]
-    .filter((element) => !element.parentElement?.closest(PROVINCE_INTERFACE_SELECTOR));
+  return [...root.querySelectorAll(PROVINCE_INTERACTIVE_SELECTOR)]
+    .filter((element) => !element.parentElement?.closest(PROVINCE_INTERACTIVE_SELECTOR));
 }
 
 function provinceAttrSelector(provinceId) {
