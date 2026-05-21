@@ -65,13 +65,16 @@ export function getProvinceRegionPalette(themeOrRegion) {
   const lostFillPercent = LOST_FILL_PERCENT_BY_REGION[region] ?? 24;
   const fill = mixColor(base, 42, 'var(--parch-0)');
   const outline = mixColor(base, 76, DARK_OUTLINE_MIX);
+  const lostFill = mixColor(base, lostFillPercent, 'var(--parch-0)');
+  const lostOutline = mixColor(base, 52, 'var(--parch-2)');
   return {
     base,
     fill,
     cartFill: mixColor(outline, 52, fill),
     outline,
-    lostFill: mixColor(base, lostFillPercent, 'var(--parch-0)'),
-    lostOutline: mixColor(base, 52, 'var(--parch-2)'),
+    lostFill,
+    lostCartFill: mixColor(lostOutline, 62, lostFill),
+    lostOutline,
   };
 }
 
@@ -83,6 +86,7 @@ export function getProvincePaletteStyleAttr(themeOrRegion) {
     `--province-cartouche-fill-color: ${palette.cartFill}`,
     `--province-outline-color: ${palette.outline}`,
     `--province-lost-fill-color: ${palette.lostFill}`,
+    `--province-lost-cartouche-fill-color: ${palette.lostCartFill}`,
     `--province-lost-outline-color: ${palette.lostOutline}`,
   ].join('; ') + ';';
 }

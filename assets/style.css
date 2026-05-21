@@ -2231,7 +2231,7 @@ body::before {
   pointer-events: auto;
 }
 .map-cartouche.occupied {
-  --cart-bg: var(--province-lost-fill-color, color-mix(in srgb, var(--free-fill) 14%, var(--parch-0) 86%));
+  --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, color-mix(in srgb, var(--free-fill) 14%, var(--parch-0) 86%)));
   --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
 }
 
@@ -2453,7 +2453,7 @@ body::before {
 }
 
 .province-token.occupied {
-  --cart-bg: var(--province-lost-fill-color, var(--province-fill-color, var(--free-fill)));
+  --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, var(--province-fill-color, var(--free-fill))));
   --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
 }
 

@@ -10,7 +10,7 @@ export const REGIONS = {
 
 export const REGION_BORDER_COLORS = {
   [REGIONS.EAST]: '#800080',
-  [REGIONS.WEST]: '#AA336A',
+  [REGIONS.WEST]: '#E0115F',
   [REGIONS.SEA]: '#5D3FD3',
   [REGIONS.CPL]: '#D4AF37',
 };
