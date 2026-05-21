@@ -22,9 +22,13 @@ const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' }
 const DARK_OUTLINE_MIX = '#1f1208';
 const LOST_FILL_PERCENT_BY_REGION = {
   east: 28,
-  west: 20,
+  west: 14,
   sea: 28,
   cpl: 18,
+};
+
+const LOST_OUTLINE_PERCENT_BY_REGION = {
+  west: 42,
 };
 
 // ── CSS variable plumbing ─────────────────────────────────────────────
@@ -63,10 +67,11 @@ export function getProvinceRegionPalette(themeOrRegion) {
   const region = typeof themeOrRegion === 'string' ? themeOrRegion : themeOrRegion?.region;
   const base = getRegionColor(region);
   const lostFillPercent = LOST_FILL_PERCENT_BY_REGION[region] ?? 24;
+  const lostOutlinePercent = LOST_OUTLINE_PERCENT_BY_REGION[region] ?? 52;
   const fill = mixColor(base, 42, 'var(--parch-0)');
   const outline = mixColor(base, 76, DARK_OUTLINE_MIX);
   const lostFill = mixColor(base, lostFillPercent, 'var(--parch-0)');
-  const lostOutline = mixColor(base, 52, 'var(--parch-2)');
+  const lostOutline = mixColor(base, lostOutlinePercent, 'var(--parch-2)');
   return {
     base,
     fill,
