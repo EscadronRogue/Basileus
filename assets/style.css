@@ -3965,13 +3965,12 @@ textarea {
 }
 
 .income-flow-diagram {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 9px;
   margin-top: 2px;
   padding: 10px;
-  overflow-x: auto;
-  scrollbar-width: thin;
   border: 1px solid rgba(168,116,32,0.24);
   border-radius: var(--r-md);
   background:
@@ -4019,6 +4018,37 @@ textarea {
   border-radius: var(--r-sm);
   background:
     linear-gradient(180deg, rgba(255,252,242,0.68) 0%, rgba(245,233,200,0.30) 100%);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.income-flow-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.income-flow-canvas {
+  position: relative;
+  width: 100%;
+  min-width: 820px;
+}
+
+.income-flow-controls {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 3;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(100,70,20,0.20);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.86);
+  box-shadow: var(--shadow-card);
 }
 
 .income-sankey-link {
@@ -4206,21 +4236,28 @@ textarea {
   justify-content: center;
   min-width: 48px;
   padding: 4px 8px 5px;
-  border: 1px solid rgba(20,8,0,0.28);
+  border: 1px solid rgba(20,8,0,0.34);
   border-radius: 999px;
-  background: rgba(255,252,240,0.88);
+  background: var(--band-color, rgba(255,252,240,0.88));
+  color: #ffffff;
   box-shadow:
     0 2px 4px rgba(46,30,15,0.22),
-    inset 0 0 0 1px rgba(255,255,255,0.30);
+    inset 0 0 0 1px rgba(255,255,255,0.24);
 }
 
 .income-sankey-band-value .value {
   font-size: 15px;
   line-height: 1;
+  color: #ffffff;
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.68),
+    0 0 4px rgba(20,8,0,0.42);
 }
 
 .income-sankey-band-value .icon {
   font-size: 16px;
+  color: #ffffff;
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.58));
 }
 
 @media (max-width: 720px) {

@@ -90,6 +90,12 @@ const SANKEY_OFFICE_LABELS = {
 const SANKEY_ROUTE_ORDER = ['estates', 'strategoi', 'east_pool', 'west_pool', 'sea_pool', 'bishops', 'patriarch'];
 const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool', 'patriarch']);
 const SANKEY_OFFICE_ORDER = ['DOM_EAST', 'BASILEUS', 'DOM_WEST', 'ADMIRAL', 'PATRIARCH'];
+const INCOME_FLOW_MIN_ZOOM = 1;
+const INCOME_FLOW_MAX_ZOOM = 4;
+const INCOME_FLOW_ZOOM_STEP = 1.2;
+const INCOME_FLOW_DRAG_THRESHOLD_PX = 4;
+const INCOME_FLOW_MIN_PINCH_DISTANCE_PX = 8;
+const incomeFlowViews = new WeakMap();
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -594,10 +600,11 @@ function renderSankeyLink(link) {
   return `<path class="income-sankey-link income-sankey-${link.resource}" d="${path}" stroke="${link.color}" stroke-width="${link.width.toFixed(2)}"><title>${escapeHtml(title)}</title></path>`;
 }
 
-function renderSankeyIconValue(resource, value, x, y, width = 72, extraClass = '', height = 24) {
+function renderSankeyIconValue(resource, value, x, y, width = 72, extraClass = '', height = 24, style = '') {
+  const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
   return `
     <foreignObject class="income-sankey-foreign" x="${x}" y="${y}" width="${width}" height="${height}">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="income-sankey-icon-value income-sankey-icon-${resource}${extraClass ? ` ${extraClass}` : ''}">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="income-sankey-icon-value income-sankey-icon-${resource}${extraClass ? ` ${extraClass}` : ''}"${styleAttr}>
         ${renderFlowValue(resource, value)}
       </div>
     </foreignObject>
@@ -616,6 +623,7 @@ function renderSankeyLinkLabel(link) {
     width,
     'income-sankey-band-value',
     height,
+    `--band-color: ${link.color};`,
   );
 }
 
@@ -716,11 +724,23 @@ function renderIncomeSankeySvg(state, flow) {
   const nodes = model.nodes.map((node) => renderSankeyNode(state, flow, node)).join('');
 
   return `
-    <svg class="income-flow-sankey" viewBox="0 0 ${SANKEY_WIDTH} ${SANKEY_HEIGHT}" role="img" aria-label="Imperial income Sankey diagram">
-      <g class="income-sankey-links">${links}</g>
-      <g class="income-sankey-link-labels">${linkLabels}</g>
-      <g class="income-sankey-nodes">${nodes}</g>
+    <svg class="income-flow-sankey" viewBox="0 0 ${SANKEY_WIDTH} ${SANKEY_HEIGHT}" role="img" aria-label="Imperial income Sankey diagram" overflow="hidden">
+      <g class="income-sankey-viewport">
+        <g class="income-sankey-links">${links}</g>
+        <g class="income-sankey-link-labels">${linkLabels}</g>
+        <g class="income-sankey-nodes">${nodes}</g>
+      </g>
     </svg>
+  `;
+}
+
+function renderIncomeFlowControls() {
+  return `
+    <div class="income-flow-controls" aria-label="Income flow zoom controls">
+      <button class="map-control-btn" type="button" data-income-flow-zoom="in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button class="map-control-btn" type="button" data-income-flow-zoom="out" title="Zoom out" aria-label="Zoom out">-</button>
+      <button class="map-control-btn" type="button" data-income-flow-zoom="reset" title="Reset diagram view" aria-label="Reset diagram view">1:1</button>
+    </div>
   `;
 }
 
@@ -736,9 +756,277 @@ function renderIncomeFlowDiagram(state, flow) {
           ${renderFlowValue('church', flow.totals?.church || 0, 'Church')}
         </span>
       </header>
-      ${renderIncomeSankeySvg(state, flow)}
+      <div class="income-flow-scroll">
+        <div class="income-flow-canvas">
+          ${renderIncomeSankeySvg(state, flow)}
+        </div>
+      </div>
+      ${renderIncomeFlowControls()}
     </section>
   `;
+}
+
+function createIncomeFlowGestureState() {
+  return {
+    mode: 'idle',
+    pointers: new Map(),
+    primaryPointerId: null,
+    startClientX: 0,
+    startClientY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    pinchStartDistance: 0,
+    pinchStartZoom: 1,
+    pinchContentX: 0,
+    pinchContentY: 0,
+    moved: false,
+  };
+}
+
+function getIncomeFlowView(container) {
+  const existing = incomeFlowViews.get(container);
+  if (existing) return existing;
+  const view = { zoom: 1, panX: 0, panY: 0 };
+  incomeFlowViews.set(container, view);
+  return view;
+}
+
+function bindIncomeFlowInteractions(container) {
+  const svg = container?.querySelector?.('.income-flow-sankey');
+  const viewport = svg?.querySelector?.('.income-sankey-viewport');
+  if (!svg || !viewport) return;
+
+  const view = getIncomeFlowView(container);
+  const gesture = createIncomeFlowGestureState();
+
+  const applyTransform = () => {
+    clampIncomeFlowView(view);
+    viewport.setAttribute(
+      'transform',
+      `translate(${view.panX.toFixed(3)} ${view.panY.toFixed(3)}) scale(${view.zoom.toFixed(3)})`,
+    );
+    svg.classList.toggle('is-zoomed', view.zoom > 1.001);
+  };
+
+  const updateCursor = () => {
+    if ((gesture.mode === 'pinch' || gesture.mode === 'pan') && view.zoom > 1.001) {
+      svg.style.cursor = 'grabbing';
+      return;
+    }
+    svg.style.cursor = view.zoom > 1.001 ? 'grab' : '';
+  };
+
+  const zoomAtClientPoint = (clientX, clientY, factor) => {
+    const point = clientPointToIncomeFlowSvg(svg, clientX, clientY);
+    if (!point) return;
+
+    const nextZoom = clampValue(view.zoom * factor, INCOME_FLOW_MIN_ZOOM, INCOME_FLOW_MAX_ZOOM);
+    if (Math.abs(nextZoom - view.zoom) < 0.001) return;
+
+    const contentX = (point.x - view.panX) / view.zoom;
+    const contentY = (point.y - view.panY) / view.zoom;
+
+    view.zoom = nextZoom;
+    view.panX = point.x - contentX * view.zoom;
+    view.panY = point.y - contentY * view.zoom;
+    applyTransform();
+    updateCursor();
+  };
+
+  const zoomAtCenter = (factor) => {
+    const rect = svg.getBoundingClientRect();
+    zoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+  };
+
+  const resetView = () => {
+    view.zoom = 1;
+    view.panX = 0;
+    view.panY = 0;
+    applyTransform();
+    updateCursor();
+  };
+
+  const beginPinch = () => {
+    const pointers = getPrimaryIncomeFlowPointers(gesture);
+    if (pointers.length < 2) return;
+
+    const center = getClientCenter(pointers[0], pointers[1]);
+    const centerPoint = clientPointToIncomeFlowSvg(svg, center.clientX, center.clientY);
+    if (!centerPoint) return;
+
+    const distance = getClientDistance(pointers[0], pointers[1]);
+    gesture.mode = 'pinch';
+    gesture.pinchStartDistance = Math.max(INCOME_FLOW_MIN_PINCH_DISTANCE_PX, distance);
+    gesture.pinchStartZoom = view.zoom;
+    gesture.pinchContentX = (centerPoint.x - view.panX) / view.zoom;
+    gesture.pinchContentY = (centerPoint.y - view.panY) / view.zoom;
+  };
+
+  const updatePinch = () => {
+    const pointers = getPrimaryIncomeFlowPointers(gesture);
+    if (pointers.length < 2 || gesture.mode !== 'pinch') return;
+
+    const distance = getClientDistance(pointers[0], pointers[1]);
+    const center = getClientCenter(pointers[0], pointers[1]);
+    const centerPoint = clientPointToIncomeFlowSvg(svg, center.clientX, center.clientY);
+    if (!centerPoint || distance < INCOME_FLOW_MIN_PINCH_DISTANCE_PX) return;
+
+    view.zoom = clampValue(
+      gesture.pinchStartZoom * (distance / gesture.pinchStartDistance),
+      INCOME_FLOW_MIN_ZOOM,
+      INCOME_FLOW_MAX_ZOOM,
+    );
+    view.panX = centerPoint.x - gesture.pinchContentX * view.zoom;
+    view.panY = centerPoint.y - gesture.pinchContentY * view.zoom;
+    gesture.moved = true;
+    applyTransform();
+    updateCursor();
+  };
+
+  const beginPan = (event) => {
+    gesture.mode = 'pan';
+    gesture.primaryPointerId = event.pointerId;
+    gesture.startClientX = event.clientX;
+    gesture.startClientY = event.clientY;
+    gesture.startPanX = view.panX;
+    gesture.startPanY = view.panY;
+  };
+
+  const updatePan = (event) => {
+    if (gesture.mode !== 'pan' || event.pointerId !== gesture.primaryPointerId) return;
+
+    const dragDistance = Math.hypot(event.clientX - gesture.startClientX, event.clientY - gesture.startClientY);
+    if (dragDistance > INCOME_FLOW_DRAG_THRESHOLD_PX) gesture.moved = true;
+    if (view.zoom <= 1.001) {
+      updateCursor();
+      return;
+    }
+
+    const startPoint = clientPointToIncomeFlowSvg(svg, gesture.startClientX, gesture.startClientY);
+    const currentPoint = clientPointToIncomeFlowSvg(svg, event.clientX, event.clientY);
+    if (!startPoint || !currentPoint) return;
+
+    view.panX = gesture.startPanX + (currentPoint.x - startPoint.x);
+    view.panY = gesture.startPanY + (currentPoint.y - startPoint.y);
+    applyTransform();
+    updateCursor();
+  };
+
+  svg.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    zoomAtClientPoint(event.clientX, event.clientY, event.deltaY < 0 ? INCOME_FLOW_ZOOM_STEP : 1 / INCOME_FLOW_ZOOM_STEP);
+  }, { passive: false });
+
+  svg.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    gesture.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    svg.setPointerCapture?.(event.pointerId);
+    if (gesture.pointers.size >= 2) beginPinch();
+    else beginPan(event);
+    updateCursor();
+  });
+
+  svg.addEventListener('pointermove', (event) => {
+    if (!gesture.pointers.has(event.pointerId)) return;
+    gesture.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    if (gesture.pointers.size >= 2) updatePinch();
+    else updatePan(event);
+  });
+
+  const endGesture = (event) => {
+    if (!gesture.pointers.has(event.pointerId)) return;
+    svg.releasePointerCapture?.(event.pointerId);
+    gesture.pointers.delete(event.pointerId);
+
+    if (gesture.mode === 'pinch' && gesture.pointers.size === 1) {
+      const [remainingPointer] = gesture.pointers.entries();
+      gesture.primaryPointerId = remainingPointer[0];
+      gesture.startClientX = remainingPointer[1].clientX;
+      gesture.startClientY = remainingPointer[1].clientY;
+      gesture.startPanX = view.panX;
+      gesture.startPanY = view.panY;
+      gesture.mode = 'pan';
+      updateCursor();
+      return;
+    }
+
+    if (gesture.mode === 'pinch' && gesture.pointers.size >= 2) {
+      beginPinch();
+      updateCursor();
+      return;
+    }
+
+    if (gesture.pointers.size > 0) return;
+    gesture.mode = 'idle';
+    gesture.primaryPointerId = null;
+    gesture.moved = false;
+    updateCursor();
+  };
+
+  svg.addEventListener('pointerup', endGesture);
+  svg.addEventListener('pointercancel', endGesture);
+  svg.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    resetView();
+  });
+
+  container.querySelectorAll?.('[data-income-flow-zoom]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const action = button.dataset.incomeFlowZoom;
+      if (action === 'in') zoomAtCenter(INCOME_FLOW_ZOOM_STEP);
+      else if (action === 'out') zoomAtCenter(1 / INCOME_FLOW_ZOOM_STEP);
+      else resetView();
+    });
+  });
+
+  applyTransform();
+  updateCursor();
+}
+
+function clampIncomeFlowView(view) {
+  if (view.zoom <= INCOME_FLOW_MIN_ZOOM + 0.001) {
+    view.zoom = 1;
+    view.panX = 0;
+    view.panY = 0;
+    return;
+  }
+
+  view.zoom = clampValue(view.zoom, INCOME_FLOW_MIN_ZOOM, INCOME_FLOW_MAX_ZOOM);
+  const minPanX = SANKEY_WIDTH * (1 - view.zoom);
+  const minPanY = SANKEY_HEIGHT * (1 - view.zoom);
+  view.panX = clampValue(view.panX, minPanX, 0);
+  view.panY = clampValue(view.panY, minPanY, 0);
+}
+
+function clientPointToIncomeFlowSvg(svg, clientX, clientY) {
+  const point = svg.createSVGPoint?.();
+  const matrix = svg.getScreenCTM?.();
+  if (!point || !matrix) return null;
+
+  point.x = clientX;
+  point.y = clientY;
+  return point.matrixTransform(matrix.inverse());
+}
+
+function getPrimaryIncomeFlowPointers(gesture) {
+  return [...gesture.pointers.values()].slice(0, 2);
+}
+
+function getClientCenter(first, second) {
+  return {
+    clientX: (first.clientX + second.clientX) / 2,
+    clientY: (first.clientY + second.clientY) / 2,
+  };
+}
+
+function getClientDistance(first, second) {
+  return Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+}
+
+function clampValue(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function renderRanking(state, scores) {
@@ -809,4 +1097,6 @@ export function renderBalancePanel(container, state, options = {}) {
       ` : ''}
     </div>
   `;
+
+  if (isOpen) bindIncomeFlowInteractions(container);
 }
