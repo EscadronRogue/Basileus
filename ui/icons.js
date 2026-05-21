@@ -31,10 +31,8 @@ const ICON_PATHS = {
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="11.2" cy="12" r="7.4" fill="currentColor" fill-opacity=".12"/>
       <circle cx="11.2" cy="12" r="7.4"/>
-      <path d="M13.8 5.1 Q19.2 6.8 19.2 12 Q19.2 17.2 13.8 18.9" stroke-opacity=".45" stroke-width=".9"/>
-      <path d="M8.1 8.2 Q10 6.9 12.4 7.1" stroke-opacity=".45" stroke-width=".9"/>
-      <path d="M6.9 11.1 L9.6 8.4" stroke-opacity=".35" stroke-width=".9"/>
-      <path d="M13.9 15.5 Q12.4 16.5 10.1 16.2" stroke-opacity=".28" stroke-width=".9"/>
+      <path d="M14.2 5.2 Q19.6 6.8 19.6 12 Q19.6 17.2 14.2 18.8" stroke-opacity=".72" stroke-width="1.2"/>
+      <path d="M15.6 7.4 Q18 8.9 18 12 Q18 15.1 15.6 16.6" stroke-opacity=".48" stroke-width=".9"/>
     </g>
   `,
   church: `
