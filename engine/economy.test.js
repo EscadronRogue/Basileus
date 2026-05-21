@@ -35,7 +35,11 @@ function enterCourt(state) {
 
 test('province table uses profit, troop, and church values with capital excluded', () => {
   const state = makeState();
-  const churchThemes = new Set(['KAP', 'ANT', 'THS', 'THR', 'BUL', 'SAM', 'KYP']);
+  const churchThemes = new Set([
+    'OPS', 'OPT', 'KAP', 'CIL', 'ANT', 'MES',
+    'HEL', 'THS', 'THR', 'BUL',
+    'SAM', 'KYP', 'SIC', 'ITA',
+  ]);
 
   for (const province of PROVINCES) {
     const theme = state.themes[province.id];

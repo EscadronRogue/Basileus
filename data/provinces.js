@@ -17,8 +17,8 @@ export const REGION_BORDER_COLORS = {
 
 export const PROVINCES = [
   // EAST - Domestic of the East
-  { id: 'OPS', name: 'Opsikion',      P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 640, cy: 280 },
-  { id: 'OPT', name: 'Optimaton',     P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 610, cy: 240 },
+  { id: 'OPS', name: 'Opsikion',      P: 1, T: 1, C: 1, region: REGIONS.EAST, cx: 640, cy: 280 },
+  { id: 'OPT', name: 'Optimaton',     P: 1, T: 1, C: 1, region: REGIONS.EAST, cx: 610, cy: 240 },
   { id: 'ANA', name: 'Anatolikon',    P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 720, cy: 340 },
   { id: 'PAP', name: 'Paphlagonia',   P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 700, cy: 220 },
   { id: 'BOU', name: 'Boukellarion',  P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 680, cy: 260 },
@@ -30,14 +30,14 @@ export const PROVINCES = [
   { id: 'KAP', name: 'Kappadokia',    P: 1, T: 1, C: 1, region: REGIONS.EAST, cx: 780, cy: 330 },
   { id: 'THK', name: 'Thrakesion',    P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 620, cy: 350 },
   { id: 'SEL', name: 'Seleukia',      P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 760, cy: 400 },
-  { id: 'CIL', name: 'Kilikia',       P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 830, cy: 380, startOccupied: true },
+  { id: 'CIL', name: 'Kilikia',       P: 1, T: 1, C: 1, region: REGIONS.EAST, cx: 830, cy: 380, startOccupied: true },
   { id: 'ANT', name: 'Antiochia',     P: 1, T: 1, C: 1, region: REGIONS.EAST, cx: 900, cy: 420, startOccupied: true },
-  { id: 'MES', name: 'Mesopotamia',   P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 950, cy: 350, startOccupied: true },
+  { id: 'MES', name: 'Mesopotamia',   P: 1, T: 1, C: 1, region: REGIONS.EAST, cx: 950, cy: 350, startOccupied: true },
   { id: 'VAS', name: 'Vaspurakan',    P: 1, T: 1, C: 0, region: REGIONS.EAST, cx: 980, cy: 280, startOccupied: true },
 
   // WEST - Domestic of the West
   { id: 'NIK', name: 'Nikopolis',     P: 1, T: 1, C: 0, region: REGIONS.WEST, cx: 340, cy: 340 },
-  { id: 'HEL', name: 'Hellas',        P: 1, T: 1, C: 0, region: REGIONS.WEST, cx: 380, cy: 390 },
+  { id: 'HEL', name: 'Hellas',        P: 1, T: 1, C: 1, region: REGIONS.WEST, cx: 380, cy: 390 },
   { id: 'THS', name: 'Thessalonike',  P: 1, T: 1, C: 1, region: REGIONS.WEST, cx: 400, cy: 290 },
   { id: 'STR', name: 'Strymon',       P: 1, T: 1, C: 0, region: REGIONS.WEST, cx: 440, cy: 260 },
   { id: 'MAK', name: 'Makedonia',     P: 1, T: 1, C: 0, region: REGIONS.WEST, cx: 490, cy: 240 },
@@ -59,8 +59,8 @@ export const PROVINCES = [
   { id: 'CHE', name: 'Cherson',         P: 1, T: 1, C: 0, region: REGIONS.SEA, cx: 620, cy: 120 },
   { id: 'PEL', name: 'Peloponnesos',    P: 1, T: 1, C: 0, region: REGIONS.SEA, cx: 380, cy: 440 },
   { id: 'DYR', name: 'Dyrrachium',      P: 1, T: 1, C: 0, region: REGIONS.SEA, cx: 310, cy: 280 },
-  { id: 'SIC', name: 'Sikelia',         P: 1, T: 1, C: 0, region: REGIONS.SEA, cx: 170, cy: 360, startOccupied: true },
-  { id: 'ITA', name: 'Italias',         P: 1, T: 1, C: 0, region: REGIONS.SEA, cx: 190, cy: 280 },
+  { id: 'SIC', name: 'Sikelia',         P: 1, T: 1, C: 1, region: REGIONS.SEA, cx: 170, cy: 360, startOccupied: true },
+  { id: 'ITA', name: 'Italias',         P: 1, T: 1, C: 1, region: REGIONS.SEA, cx: 190, cy: 280 },
 
   { id: 'CPL', name: 'Constantinople', region: REGIONS.CPL, cx: 565, cy: 265 },
 ];

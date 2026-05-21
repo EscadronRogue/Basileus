@@ -41,9 +41,9 @@ function makePanelContainer() {
 test('province badges render the updated P/T/C economy and hide capital values', () => {
   const state = makeState();
 
-  assert.equal(formatProvinceValuesText(state.themes.OPS), 'P1 T1 C0');
+  assert.equal(formatProvinceValuesText(state.themes.OPS), 'P1 T1 C1');
   assert.equal(formatProvinceValuesText(state.themes.CPL), '');
-  assert.match(renderProvinceBadge(state, 'OPS', { showValues: true }), /P1 T1 C0/);
+  assert.match(renderProvinceBadge(state, 'OPS', { showValues: true }), /P1 T1 C1/);
   assert.doesNotMatch(renderProvinceBadge(state, 'CPL', { showValues: true }), /province-token-values/);
 });
 
