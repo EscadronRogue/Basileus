@@ -40,8 +40,8 @@ const SANKEY_ROWS = {
   troopOffice: 300,
   player: 415,
   lowerOffice: 545,
-  lowerRoute: 680,
-  lowerSource: 775,
+  lowerRoute: 575,
+  lowerSource: 710,
 };
 const SANKEY_NODE_WIDTHS = {
   source: 108,
@@ -738,6 +738,10 @@ function renderSankeyNodeHtml(state, flow, node) {
       node,
       `<span class="income-sankey-unclaimed">${renderSankeyLabeledNodeContent(node)}</span>`,
     );
+  }
+
+  if (node.layer === 'route' && node.key === 'route:patriarch') {
+    return renderSankeyOfficeCartouche(state, { ...node, officeKey: 'PATRIARCH' });
   }
 
   return renderSankeyGenericCartouche(node, renderSankeyLabeledNodeContent(node));
