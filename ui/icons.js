@@ -21,27 +21,20 @@ const SVG_VIEWBOX = '0 0 24 24';
 const ICON_PATHS = {
   troop: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M5 8.2 H19 V18.7 H5 Z" fill="currentColor" fill-opacity=".10"/>
-      <path d="M5 8.2 H19 V18.7 H5 Z"/>
-      <path d="M5.7 9 L18.3 17.9"/>
-      <path d="M18.3 9 L5.7 17.9"/>
-      <path d="M9.5 4.4 H14.5 V8.2 H9.5 Z" fill="currentColor" fill-opacity=".12"/>
-      <path d="M9.5 4.4 H14.5 V8.2 H9.5 Z"/>
-      <path d="M11.2 4.4 V2.9 H12.8 V4.4"/>
-      <path d="M8.1 20.3 H15.9"/>
+      <path d="M4.8 6.8 H19.2 V17.8 H4.8 Z" fill="currentColor" fill-opacity=".10"/>
+      <path d="M4.8 6.8 H19.2 V17.8 H4.8 Z"/>
+      <path d="M5.6 7.6 L18.4 17"/>
+      <path d="M18.4 7.6 L5.6 17"/>
     </g>
   `,
   gold: `
     <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M11.6 3.8 Q15.6 3.7 18.2 6.5 Q20.7 9.2 20 13.1 Q19.4 17.1 16 19.1 Q12.7 21.1 8.9 19.5 Q5.1 17.8 4.1 14 Q3.1 10 5.3 6.9 Q7.6 3.9 11.6 3.8 Z" fill="currentColor" fill-opacity=".12"/>
-      <path d="M11.6 3.8 Q15.6 3.7 18.2 6.5 Q20.7 9.2 20 13.1 Q19.4 17.1 16 19.1 Q12.7 21.1 8.9 19.5 Q5.1 17.8 4.1 14 Q3.1 10 5.3 6.9 Q7.6 3.9 11.6 3.8 Z"/>
-      <path d="M7.3 8 Q9.2 6.2 12.1 5.9 Q14.8 5.7 16.9 7.3" stroke-opacity=".45" stroke-width=".8"/>
-      <path d="M17.7 9.2 Q18.8 12.3 17.2 15.3 Q15.6 18 12.5 18.3" stroke-opacity=".32" stroke-width=".8"/>
-      <path d="M7.2 14.9 Q8.5 17.2 11.1 17.7" stroke-opacity=".25" stroke-width=".8"/>
-      <circle cx="9.1" cy="10.2" r=".55" fill="currentColor" fill-opacity=".34" stroke="none"/>
-      <circle cx="13.8" cy="8.7" r=".45" fill="currentColor" fill-opacity=".28" stroke="none"/>
-      <circle cx="14.8" cy="13.3" r=".58" fill="currentColor" fill-opacity=".22" stroke="none"/>
-      <circle cx="10.6" cy="15" r=".38" fill="currentColor" fill-opacity=".24" stroke="none"/>
+      <circle cx="11.2" cy="12" r="7.4" fill="currentColor" fill-opacity=".12"/>
+      <circle cx="11.2" cy="12" r="7.4"/>
+      <path d="M13.8 5.1 Q19.2 6.8 19.2 12 Q19.2 17.2 13.8 18.9" stroke-opacity=".45" stroke-width=".9"/>
+      <path d="M8.1 8.2 Q10 6.9 12.4 7.1" stroke-opacity=".45" stroke-width=".9"/>
+      <path d="M6.9 11.1 L9.6 8.4" stroke-opacity=".35" stroke-width=".9"/>
+      <path d="M13.9 15.5 Q12.4 16.5 10.1 16.2" stroke-opacity=".28" stroke-width=".9"/>
     </g>
   `,
   church: `
