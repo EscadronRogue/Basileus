@@ -20,6 +20,9 @@ const CHURCH_FILL = '#1a1a1a';
 const OCCUPIED_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
 const DARK_OUTLINE_MIX = '#1f1208';
+const CARTOUCHE_FILL_BY_REGION = {
+  cpl: '#D4AF37',
+};
 const LOST_CART_FILL_PERCENT_BY_REGION = {
   east: 28,
   west: 14,
@@ -93,7 +96,7 @@ export function getProvinceRegionPalette(themeOrRegion) {
   return {
     base,
     fill,
-    cartFill: mixColor(outline, 52, fill),
+    cartFill: CARTOUCHE_FILL_BY_REGION[region] || mixColor(outline, 52, fill),
     outline,
     lostFill,
     lostCartFill: mixColor(lostOutline, 62, lostCartReferenceFill),
