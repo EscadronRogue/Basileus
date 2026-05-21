@@ -30,18 +30,18 @@ const FLOW_SOURCE_LABEL = {
   church: 'Church',
 };
 
-const SANKEY_WIDTH = 1100;
-const SANKEY_HEIGHT = 860;
-const SANKEY_SIDE_PAD = 64;
-const SANKEY_GAP = 34;
+const SANKEY_WIDTH = 1280;
+const SANKEY_HEIGHT = 1000;
+const SANKEY_SIDE_PAD = 84;
+const SANKEY_GAP = 56;
 const SANKEY_ROWS = {
-  troopSource: 30,
-  troopRoute: 165,
-  troopOffice: 300,
-  player: 415,
-  lowerOffice: 545,
-  lowerRoute: 575,
-  lowerSource: 710,
+  troopSource: 40,
+  troopRoute: 210,
+  troopOffice: 380,
+  player: 510,
+  lowerOffice: 650,
+  lowerRoute: 700,
+  lowerSource: 870,
 };
 const SANKEY_NODE_WIDTHS = {
   source: 108,

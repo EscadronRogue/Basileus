@@ -4012,7 +4012,7 @@ textarea {
 .income-flow-sankey {
   display: block;
   width: 100%;
-  min-width: 1000px;
+  min-width: 1150px;
   height: auto;
   min-height: 250px;
   border-radius: var(--r-sm);
@@ -4034,7 +4034,7 @@ textarea {
 .income-flow-canvas {
   position: relative;
   width: 100%;
-  min-width: 1000px;
+  min-width: 1150px;
 }
 
 .income-flow-controls {
