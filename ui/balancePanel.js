@@ -29,7 +29,26 @@ const FLOW_SOURCE_LABEL = {
   church: 'Church',
 };
 
-const FLOW_ROUTE_DETAIL_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool', 'patriarch']);
+const SANKEY_WIDTH = 900;
+const SANKEY_HEIGHT = 470;
+const SANKEY_NODE_WIDTH = 16;
+const SANKEY_TOP = 30;
+const SANKEY_BOTTOM = 30;
+const SANKEY_GAP = 16;
+const SANKEY_COLUMNS = {
+  source: 20,
+  route: 220,
+  office: 470,
+  player: 705,
+};
+const SANKEY_RESOURCE_COLORS = {
+  profit: '#c8921e',
+  troop: '#6b4a28',
+  church: '#2e5490',
+};
+const SANKEY_ROUTE_ORDER = ['estates', 'strategoi', 'east_pool', 'west_pool', 'sea_pool', 'bishops', 'patriarch'];
+const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool', 'patriarch']);
+const SANKEY_OFFICE_ORDER = ['DOM_EAST', 'BASILEUS', 'DOM_WEST', 'ADMIRAL', 'PATRIARCH'];
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -171,122 +190,384 @@ function getFlowRecipientName(state, playerId) {
   return formatPlayerLabel(player) || `Player ${Number(playerId) + 1}`;
 }
 
-function renderFlowBar(state, route) {
-  const total = Math.max(0, Number(route?.total) || 0);
-  if (total <= 0) {
-    return '<div class="income-flow-bar is-empty" aria-hidden="true"><span></span></div>';
-  }
+function roundFlowValue(value) {
+  return Math.max(0, Math.round(Number(value) || 0));
+}
 
-  const segments = (route.recipients || []).map((entry) => {
-    const value = Math.max(0, Number(entry.value) || 0);
-    const share = total > 0 ? (value / total) * 100 : 0;
-    const name = getFlowRecipientName(state, entry.playerId);
-    return `
-      <span class="income-flow-segment" style="${getPlayerStyleAttr(state, entry.playerId)} --flow-share:${share.toFixed(3)}%;" title="${escapeHtml(`${name}: ${value}`)}"></span>
-    `;
+function truncateSvgLabel(value, maxLength = 18) {
+  const text = String(value || '');
+  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text;
+}
+
+function getResourceColor(resource) {
+  return SANKEY_RESOURCE_COLORS[resource] || '#8c6840';
+}
+
+function getPlayerColor(state, playerId) {
+  return getPlayer(state, playerId)?.color || '#8c6840';
+}
+
+function getFlowSection(flow, key) {
+  return (flow.sections || []).find((section) => section.key === key) || null;
+}
+
+function getPlayerFlowTotal(flow, playerId) {
+  const entry = (flow.playerTotals || []).find((row) => Number(row.playerId) === Number(playerId));
+  return {
+    profit: roundFlowValue(entry?.profit),
+    troop: roundFlowValue(entry?.troop),
+    church: roundFlowValue(entry?.church),
+  };
+}
+
+function formatPlayerFlowReceipt(flow, playerId) {
+  const total = getPlayerFlowTotal(flow, playerId);
+  return `P${total.profit} T${total.troop} C${total.church}`;
+}
+
+function createSankeyNode(nodes, key, attrs = {}) {
+  if (!nodes.has(key)) {
+    nodes.set(key, {
+      key,
+      layer: attrs.layer || 'route',
+      label: attrs.label || key,
+      rule: attrs.rule || '',
+      resource: attrs.resource || null,
+      value: 0,
+      fill: attrs.fill || '#8c6840',
+      stroke: attrs.stroke || 'rgba(20,8,0,0.35)',
+      playerId: attrs.playerId ?? null,
+      isUnclaimed: Boolean(attrs.isUnclaimed),
+      order: attrs.order ?? 0,
+      linksIn: [],
+      linksOut: [],
+    });
+  }
+  const node = nodes.get(key);
+  if (attrs.value != null) node.value = Math.max(node.value, Math.max(0, Number(attrs.value) || 0));
+  if (attrs.addValue != null) node.value += Math.max(0, Number(attrs.addValue) || 0);
+  return node;
+}
+
+function addSankeyLink(nodes, links, sourceKey, targetKey, value, resource, label) {
+  const amount = Math.max(0, Number(value) || 0);
+  if (amount <= 0 || !nodes.has(sourceKey) || !nodes.has(targetKey)) return;
+  const link = {
+    sourceKey,
+    targetKey,
+    value: amount,
+    resource,
+    label,
+    color: getResourceColor(resource),
+  };
+  links.push(link);
+}
+
+function ensureUnclaimedNode(nodes, resource) {
+  return createSankeyNode(nodes, `unclaimed:${resource}`, {
+    layer: 'player',
+    label: 'Unclaimed',
+    resource,
+    addValue: 0,
+    fill: '#d8c8a8',
+    stroke: 'rgba(107,74,40,0.48)',
+    isUnclaimed: true,
+    order: 999,
   });
-
-  if (route.unclaimed > 0) {
-    const share = total > 0 ? (route.unclaimed / total) * 100 : 0;
-    segments.push(`<span class="income-flow-segment unclaimed" style="--flow-share:${share.toFixed(3)}%;" title="Unclaimed: ${route.unclaimed}"></span>`);
-  }
-
-  return `<div class="income-flow-bar" aria-hidden="true">${segments.join('')}</div>`;
 }
 
-function renderFlowRecipientChips(state, route) {
-  const chips = (route.recipients || []).map((entry) => {
-    const player = getPlayer(state, entry.playerId);
-    const name = formatPlayerLabel(player) || `Player ${Number(entry.playerId) + 1}`;
-    return `
-      <span class="income-flow-recipient-chip" style="${getPlayerStyleAttr(state, entry.playerId)}" title="${escapeHtml(name)}">
-        <span class="income-flow-chip-dot" aria-hidden="true"></span>
-        <span class="income-flow-chip-name">${escapeHtml(name)}</span>
-        <span class="income-flow-chip-value">${Math.max(0, Math.round(Number(entry.value) || 0))}</span>
-      </span>
-    `;
+function buildIncomeSankeyModel(state, flow) {
+  const nodes = new Map();
+  const links = [];
+  const officeTerminals = new Map();
+
+  for (const resource of ['profit', 'troop', 'church']) {
+    const section = getFlowSection(flow, resource);
+    createSankeyNode(nodes, `source:${resource}`, {
+      layer: 'source',
+      label: FLOW_SOURCE_LABEL[resource] || resource,
+      resource,
+      value: section?.total || 0,
+      fill: getResourceColor(resource),
+      stroke: 'rgba(20,8,0,0.46)',
+      order: ['profit', 'troop', 'church'].indexOf(resource),
+    });
+  }
+
+  for (const player of state.players || []) {
+    const totals = getPlayerFlowTotal(flow, player.id);
+    createSankeyNode(nodes, `player:${player.id}`, {
+      layer: 'player',
+      label: formatPlayerLabel(player) || `Player ${Number(player.id) + 1}`,
+      value: totals.profit + totals.troop + totals.church,
+      fill: player.color || '#8c6840',
+      stroke: 'rgba(20,8,0,0.48)',
+      playerId: player.id,
+      order: player.id,
+    });
+  }
+
+  for (const section of flow.sections || []) {
+    for (const route of section.routes || []) {
+      const routeKey = `route:${route.key}`;
+      createSankeyNode(nodes, routeKey, {
+        layer: 'route',
+        label: route.label,
+        rule: route.rule,
+        resource: route.resource,
+        value: route.total,
+        fill: getResourceColor(route.resource),
+        stroke: 'rgba(20,8,0,0.42)',
+        order: SANKEY_ROUTE_ORDER.indexOf(route.key),
+      });
+      addSankeyLink(
+        nodes,
+        links,
+        `source:${section.key}`,
+        routeKey,
+        route.total,
+        route.resource,
+        `${FLOW_SOURCE_LABEL[section.key] || section.label} to ${route.label}`,
+      );
+
+      if (SANKEY_CASCADE_ROUTE_KEYS.has(route.key)) {
+        for (const office of route.offices || []) {
+          const officeKey = `office:${office.officeKey}`;
+          const holderColor = office.playerId == null ? getResourceColor(route.resource) : getPlayerColor(state, office.playerId);
+          createSankeyNode(nodes, officeKey, {
+            layer: 'office',
+            label: getOfficeDisplayName(state, office.officeKey),
+            resource: route.resource,
+            addValue: office.value,
+            fill: holderColor,
+            stroke: getResourceColor(route.resource),
+            playerId: office.playerId,
+            order: SANKEY_OFFICE_ORDER.indexOf(office.officeKey),
+          });
+          addSankeyLink(
+            nodes,
+            links,
+            routeKey,
+            officeKey,
+            office.value,
+            route.resource,
+            `${route.label} to ${getOfficeDisplayName(state, office.officeKey)}`,
+          );
+
+          const terminalKey = `${officeKey}:${office.playerId ?? 'unclaimed'}:${route.resource}`;
+          const terminal = officeTerminals.get(terminalKey) || {
+            sourceKey: officeKey,
+            playerId: office.playerId,
+            resource: route.resource,
+            value: 0,
+            label: getOfficeDisplayName(state, office.officeKey),
+          };
+          terminal.value += Math.max(0, Number(office.value) || 0);
+          officeTerminals.set(terminalKey, terminal);
+        }
+      } else {
+        for (const recipient of route.recipients || []) {
+          addSankeyLink(
+            nodes,
+            links,
+            routeKey,
+            `player:${recipient.playerId}`,
+            recipient.value,
+            route.resource,
+            `${route.label} to ${getFlowRecipientName(state, recipient.playerId)}`,
+          );
+        }
+      }
+
+      if (route.unclaimed > 0) {
+        const unclaimed = ensureUnclaimedNode(nodes, route.resource);
+        unclaimed.value += route.unclaimed;
+        addSankeyLink(nodes, links, routeKey, unclaimed.key, route.unclaimed, route.resource, `${route.label} unclaimed`);
+      }
+    }
+  }
+
+  for (const terminal of officeTerminals.values()) {
+    if (terminal.playerId == null) {
+      const unclaimed = ensureUnclaimedNode(nodes, terminal.resource);
+      unclaimed.value += terminal.value;
+      addSankeyLink(nodes, links, terminal.sourceKey, unclaimed.key, terminal.value, terminal.resource, `${terminal.label} unclaimed`);
+    } else {
+      addSankeyLink(
+        nodes,
+        links,
+        terminal.sourceKey,
+        `player:${terminal.playerId}`,
+        terminal.value,
+        terminal.resource,
+        `${terminal.label} to ${getFlowRecipientName(state, terminal.playerId)}`,
+      );
+    }
+  }
+
+  return layoutIncomeSankey(nodes, links);
+}
+
+function getNodeMinHeight(node) {
+  if (node.layer === 'source') return 42;
+  if (node.layer === 'player') return 38;
+  if (node.layer === 'route') return 28;
+  return 26;
+}
+
+function getOrderedSankeyNodes(nodes, layer) {
+  const list = [...nodes.values()].filter((node) => node.layer === layer);
+  return list.sort((left, right) => {
+    const leftOrder = left.order < 0 ? 999 : left.order;
+    const rightOrder = right.order < 0 ? 999 : right.order;
+    return (leftOrder - rightOrder) || left.label.localeCompare(right.label);
   });
+}
 
-  if (route.unclaimed > 0) {
-    chips.push(`
-      <span class="income-flow-recipient-chip unclaimed" title="Unclaimed">
-        <span class="income-flow-chip-dot" aria-hidden="true"></span>
-        <span class="income-flow-chip-name">Unclaimed</span>
-        <span class="income-flow-chip-value">${Math.max(0, Math.round(Number(route.unclaimed) || 0))}</span>
-      </span>
-    `);
+function layoutSankeyColumn(list) {
+  if (!list.length) return;
+  const availableHeight = SANKEY_HEIGHT - SANKEY_TOP - SANKEY_BOTTOM;
+  const totalHeight = list.reduce((sum, node) => sum + node.height, 0);
+  const preferredGapTotal = Math.max(0, list.length - 1) * SANKEY_GAP;
+  const gap = list.length > 1
+    ? Math.max(8, Math.min(SANKEY_GAP, (availableHeight - totalHeight) / (list.length - 1)))
+    : 0;
+  const usedHeight = totalHeight + Math.max(0, list.length - 1) * gap;
+  let y = SANKEY_TOP + Math.max(0, (availableHeight - usedHeight) / 2);
+  for (const node of list) {
+    node.x = SANKEY_COLUMNS[node.layer];
+    node.y = y;
+    y += node.height + gap;
+  }
+  void preferredGapTotal;
+}
+
+function layoutIncomeSankey(nodes, links) {
+  for (const link of links) {
+    link.source = nodes.get(link.sourceKey);
+    link.target = nodes.get(link.targetKey);
   }
 
-  return chips.length ? `<div class="income-flow-chip-row">${chips.join('')}</div>` : '';
+  const sourceNodes = getOrderedSankeyNodes(nodes, 'source');
+  const routeNodes = getOrderedSankeyNodes(nodes, 'route');
+  const officeNodes = getOrderedSankeyNodes(nodes, 'office');
+  const playerNodes = getOrderedSankeyNodes(nodes, 'player');
+  const columns = [sourceNodes, routeNodes, officeNodes, playerNodes];
+  const maxNodeCount = Math.max(...columns.map((column) => column.length), 1);
+  const availableHeight = SANKEY_HEIGHT - SANKEY_TOP - SANKEY_BOTTOM - Math.max(0, maxNodeCount - 1) * SANKEY_GAP;
+  const maxColumnValue = Math.max(
+    ...columns.map((column) => column.reduce((sum, node) => sum + Math.max(0, Number(node.value) || 0), 0)),
+    1,
+  );
+  const scale = Math.max(2.4, Math.min(7.2, availableHeight / maxColumnValue));
+
+  for (const link of links) {
+    link.width = Math.max(2.5, link.value * scale);
+    link.source.linksOut.push(link);
+    link.target.linksIn.push(link);
+  }
+
+  for (const node of nodes.values()) {
+    const outWidth = node.linksOut.reduce((sum, link) => sum + link.width, 0);
+    const inWidth = node.linksIn.reduce((sum, link) => sum + link.width, 0);
+    node.height = Math.max(getNodeMinHeight(node), node.value * scale, outWidth, inWidth);
+  }
+
+  columns.forEach(layoutSankeyColumn);
+
+  for (const node of nodes.values()) {
+    const outgoing = node.linksOut.slice().sort((left, right) => (left.target.y - right.target.y) || (left.target.x - right.target.x));
+    const incoming = node.linksIn.slice().sort((left, right) => (left.source.y - right.source.y) || (left.source.x - right.source.x));
+    let outCursor = (node.height - outgoing.reduce((sum, link) => sum + link.width, 0)) / 2;
+    for (const link of outgoing) {
+      link.sy = node.y + outCursor + link.width / 2;
+      outCursor += link.width;
+    }
+    let inCursor = (node.height - incoming.reduce((sum, link) => sum + link.width, 0)) / 2;
+    for (const link of incoming) {
+      link.ty = node.y + inCursor + link.width / 2;
+      inCursor += link.width;
+    }
+  }
+
+  return {
+    nodes: [...nodes.values()],
+    links,
+  };
 }
 
-function renderFlowOfficeDetails(state, route) {
-  if (!FLOW_ROUTE_DETAIL_KEYS.has(route.key) || !route.offices?.length) return '';
-  const rows = route.offices.map((office) => {
-    const holderName = office.playerId == null ? 'Vacant' : getFlowRecipientName(state, office.playerId);
-    const style = office.playerId == null ? '' : getPlayerStyleAttr(state, office.playerId);
-    return `
-      <span class="income-flow-office-chip" style="${style}" title="${escapeHtml(holderName)}">
-        <span class="income-flow-office-name">${escapeHtml(getOfficeDisplayName(state, office.officeKey))}</span>
-        <span class="income-flow-office-value">${Math.max(0, Math.round(Number(office.value) || 0))}</span>
-      </span>
-    `;
-  }).join('');
-  return `<div class="income-flow-office-row">${rows}</div>`;
+function renderSankeyLink(link) {
+  const sourceX = link.source.x + SANKEY_NODE_WIDTH;
+  const targetX = link.target.x;
+  const curve = Math.max(60, (targetX - sourceX) * 0.54);
+  const path = `M ${sourceX.toFixed(2)} ${link.sy.toFixed(2)} C ${(sourceX + curve).toFixed(2)} ${link.sy.toFixed(2)}, ${(targetX - curve).toFixed(2)} ${link.ty.toFixed(2)}, ${targetX.toFixed(2)} ${link.ty.toFixed(2)}`;
+  const title = `${link.label}: ${roundFlowValue(link.value)}`;
+  return `<path class="income-sankey-link income-sankey-${link.resource}" d="${path}" stroke="${link.color}" stroke-width="${link.width.toFixed(2)}"><title>${escapeHtml(title)}</title></path>`;
 }
 
-function renderFlowRoute(state, route) {
-  const total = Math.max(0, Number(route.total) || 0);
-  const sourceText = route.sourceCount === 1 ? '1 source' : `${route.sourceCount} sources`;
+function renderSankeyNodeText(node, flow) {
+  const labelX = node.x + SANKEY_NODE_WIDTH + 8;
+  const midY = node.y + node.height / 2;
+  let label = node.label;
+  let meta = `${roundFlowValue(node.value)}`;
+  let maxLabel = 19;
+
+  if (node.layer === 'source') {
+    meta = `${roundFlowValue(node.value)} ${node.resource === 'troop' ? 'troops' : node.resource}`;
+  } else if (node.layer === 'route') {
+    meta = node.rule || `${roundFlowValue(node.value)}`;
+    maxLabel = 18;
+  } else if (node.layer === 'office') {
+    meta = `${roundFlowValue(node.value)}`;
+    maxLabel = 18;
+  } else if (node.layer === 'player') {
+    meta = node.isUnclaimed ? `${roundFlowValue(node.value)} unclaimed` : formatPlayerFlowReceipt(flow, node.playerId);
+    maxLabel = 21;
+  }
+
+  label = truncateSvgLabel(label, maxLabel);
+  const hasRoomForMeta = node.height >= 24;
+  const labelY = hasRoomForMeta ? midY - 3 : midY + 4;
+  const metaY = midY + 10;
+
   return `
-    <article class="income-flow-route income-flow-${route.resource}${total <= 0 ? ' is-empty' : ''}">
-      <div class="income-flow-route-head">
-        <span class="income-flow-route-label">${escapeHtml(route.label)}</span>
-        <span class="income-flow-route-rule">${escapeHtml(route.rule || sourceText)}</span>
-        <span class="income-flow-route-value">${renderFlowValue(route.resource, total, route.label)}</span>
-      </div>
-      ${renderFlowBar(state, route)}
-      ${renderFlowRecipientChips(state, route)}
-      ${renderFlowOfficeDetails(state, route)}
-    </article>
+    <text class="income-sankey-node-label" x="${labelX}" y="${labelY.toFixed(2)}">${escapeHtml(label)}</text>
+    ${hasRoomForMeta ? `<text class="income-sankey-node-meta" x="${labelX}" y="${metaY.toFixed(2)}">${escapeHtml(meta)}</text>` : ''}
   `;
 }
 
-function renderFlowSection(state, section) {
-  const iconKind = getFlowIconKind(section.key);
-  const total = Math.max(0, Number(section.total) || 0);
+function renderSankeyNode(node, flow) {
+  const classes = [
+    'income-sankey-node',
+    `income-sankey-node-${node.layer}`,
+    node.resource ? `income-sankey-node-${node.resource}` : '',
+    node.isUnclaimed ? 'is-unclaimed' : '',
+  ].filter(Boolean).join(' ');
   return `
-    <section class="income-flow-section income-flow-${section.key}">
-      <div class="income-flow-source-node">
-        <span class="income-flow-source-icon">${renderIcon(iconKind)}</span>
-        <span class="income-flow-source-copy">
-          <span class="income-flow-source-label">${escapeHtml(FLOW_SOURCE_LABEL[section.key] || section.label)}</span>
-          <span class="income-flow-source-value">${renderFlowValue(section.key, total, section.label)}</span>
-        </span>
-      </div>
-      <div class="income-flow-route-stack">
-        ${section.routes.map((route) => renderFlowRoute(state, route)).join('')}
-      </div>
-    </section>
+    <g class="${classes}">
+      <rect x="${node.x}" y="${node.y.toFixed(2)}" width="${SANKEY_NODE_WIDTH}" height="${node.height.toFixed(2)}" rx="2.4" fill="${node.fill}" stroke="${node.stroke}">
+        <title>${escapeHtml(`${node.label}: ${roundFlowValue(node.value)}`)}</title>
+      </rect>
+      ${renderSankeyNodeText(node, flow)}
+    </g>
   `;
 }
 
-function renderFlowPlayerRows(state, flow) {
-  return (flow.playerTotals || []).map((entry) => {
-    const player = getPlayer(state, entry.playerId);
-    const total = (Number(entry.profit) || 0) + (Number(entry.troop) || 0) + (Number(entry.church) || 0);
-    return `
-      <article class="income-flow-player${total <= 0 ? ' is-empty' : ''}" style="${getPlayerStyleAttr(state, entry.playerId)}">
-        <span class="income-flow-player-dot" aria-hidden="true"></span>
-        <span class="income-flow-player-name">${renderPlayerRoleName(state, player)}</span>
-        <span class="income-flow-player-values">
-          ${renderFlowValue('profit', entry.profit, 'Profit')}
-          ${renderFlowValue('troop', entry.troop, 'Troops')}
-          ${renderFlowValue('church', entry.church, 'Church')}
-        </span>
-      </article>
-    `;
-  }).join('');
+function renderIncomeSankeySvg(state, flow) {
+  const model = buildIncomeSankeyModel(state, flow);
+  const links = model.links
+    .slice()
+    .sort((left, right) => (right.width - left.width) || left.sourceKey.localeCompare(right.sourceKey))
+    .map(renderSankeyLink)
+    .join('');
+  const nodes = model.nodes.map((node) => renderSankeyNode(node, flow)).join('');
+
+  return `
+    <svg class="income-flow-sankey" viewBox="0 0 ${SANKEY_WIDTH} ${SANKEY_HEIGHT}" role="img" aria-label="Imperial income Sankey diagram">
+      <g class="income-sankey-links">${links}</g>
+      <g class="income-sankey-nodes">${nodes}</g>
+    </svg>
+  `;
 }
 
 function renderIncomeFlowDiagram(state, flow) {
@@ -301,15 +582,7 @@ function renderIncomeFlowDiagram(state, flow) {
           ${renderFlowValue('church', flow.totals?.church || 0, 'Church')}
         </span>
       </header>
-      <div class="income-flow-board">
-        <div class="income-flow-main">
-          ${flow.sections.map((section) => renderFlowSection(state, section)).join('')}
-        </div>
-        <aside class="income-flow-players" aria-label="Dynasty receipts">
-          <div class="income-flow-players-title">Dynasties</div>
-          ${renderFlowPlayerRows(state, flow)}
-        </aside>
-      </div>
+      ${renderIncomeSankeySvg(state, flow)}
     </section>
   `;
 }
