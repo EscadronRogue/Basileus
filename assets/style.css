@@ -4144,120 +4144,49 @@ textarea {
   font-size: 16px;
 }
 
-.income-sankey-unclaimed {
+.income-sankey-node-name {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.income-sankey-foreign {
-  overflow: visible;
-  pointer-events: none;
-}
-
-.income-sankey-icon-value,
-.income-sankey-icon-trio {
+.income-sankey-node-total {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  width: max-content;
+  justify-content: center;
+  gap: 5px;
   min-width: 0;
-  padding: 0;
-  font-family: var(--font-display);
-  color: var(--umber-0);
   white-space: nowrap;
 }
 
-.income-sankey-icon-value .value,
-.income-sankey-icon-trio .value {
-  font-size: 11px;
+.income-sankey-node-total .value {
+  font-size: 12.5px;
   line-height: 1;
-  color: inherit;
-  text-shadow:
-    0 1px 0 rgba(255,252,240,0.95),
-    0 0 4px rgba(255,252,240,0.86);
-}
-
-.income-sankey-icon-value .icon,
-.income-sankey-icon-trio .icon {
-  font-size: 13px;
-  color: inherit;
-}
-
-.income-sankey-icon-profit,
-.income-sankey-icon-trio .value.gold {
-  color: var(--gold-1);
-}
-
-.income-sankey-icon-troop,
-.income-sankey-icon-trio .value.troop {
-  color: var(--umber-1);
-}
-
-.income-sankey-icon-church,
-.income-sankey-icon-trio .value.church {
-  color: var(--church-1);
-}
-
-.income-sankey-icon-trio {
-  gap: 7px;
-}
-
-.income-sankey-icon-trio .value {
-  font-size: 10.5px;
-}
-
-.income-sankey-icon-trio .icon {
-  font-size: 12px;
-}
-
-.income-sankey-icon-value.inside-node,
-.income-sankey-icon-trio {
-  justify-content: center;
-  width: 100%;
-}
-
-.income-sankey-icon-value.inside-node .value,
-.income-sankey-icon-trio .value {
   color: #ffffff;
   text-shadow:
     0 1px 0 rgba(20,8,0,0.70),
     0 0 5px rgba(20,8,0,0.45);
 }
 
-.income-sankey-icon-value.inside-node .icon,
-.income-sankey-icon-trio .icon {
+.income-sankey-node-total .icon {
+  font-size: 13px;
   color: #ffffff;
   filter: drop-shadow(0 1px 0 rgba(20,8,0,0.55));
 }
 
-.income-sankey-band-value {
+.income-sankey-node-html-route .title-token,
+.income-sankey-node-html-office .title-token,
+.income-sankey-node-html-player .title-token {
+  gap: 8px;
+}
+
+.income-sankey-unclaimed {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  min-width: 48px;
-  padding: 4px 8px 5px;
-  border: 1px solid rgba(20,8,0,0.34);
-  border-radius: 999px;
-  background: var(--band-color, rgba(255,252,240,0.88));
-  color: #ffffff;
-  box-shadow:
-    0 2px 4px rgba(46,30,15,0.22),
-    inset 0 0 0 1px rgba(255,255,255,0.24);
-}
-
-.income-sankey-band-value .value {
-  font-size: 15px;
-  line-height: 1;
-  color: #ffffff;
-  text-shadow:
-    0 1px 0 rgba(20,8,0,0.68),
-    0 0 4px rgba(20,8,0,0.42);
-}
-
-.income-sankey-band-value .icon {
-  font-size: 16px;
-  color: #ffffff;
-  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.58));
+  gap: 7px;
 }
 
 @media (max-width: 720px) {

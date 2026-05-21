@@ -44,9 +44,9 @@ const SANKEY_ROWS = {
   lowerSource: 775,
 };
 const SANKEY_NODE_WIDTHS = {
-  source: 100,
-  route: 112,
-  office: 138,
+  source: 108,
+  route: 140,
+  office: 156,
   player: 170,
 };
 const SANKEY_NODE_HEIGHTS = {
@@ -657,51 +657,22 @@ function describeSankeyLinkPath(link) {
   return `M ${p.x0.toFixed(2)} ${p.y0.toFixed(2)} C ${p.x1.toFixed(2)} ${p.y1.toFixed(2)}, ${p.x2.toFixed(2)} ${p.y2.toFixed(2)}, ${p.x3.toFixed(2)} ${p.y3.toFixed(2)}`;
 }
 
-function getBezierPoint(p, t) {
-  const mt = 1 - t;
-  return {
-    x: (mt ** 3) * p.x0 + 3 * (mt ** 2) * t * p.x1 + 3 * mt * (t ** 2) * p.x2 + (t ** 3) * p.x3,
-    y: (mt ** 3) * p.y0 + 3 * (mt ** 2) * t * p.y1 + 3 * mt * (t ** 2) * p.y2 + (t ** 3) * p.y3,
-  };
-}
-
-function getLinkLabelT(link) {
-  if (link.source.layer === 'source') return 0.42;
-  if (link.target.layer === 'player') return 0.58;
-  return 0.5;
-}
-
 function renderSankeyLink(link) {
   const path = describeSankeyLinkPath(link);
   const title = `${link.label}: ${roundFlowValue(link.value)}`;
   return `<path class="income-sankey-link income-sankey-${link.resource}" d="${path}" stroke="${link.color}" stroke-width="${link.width.toFixed(2)}"><title>${escapeHtml(title)}</title></path>`;
 }
 
-function renderSankeyIconValue(resource, value, x, y, width = 72, extraClass = '', height = 24, style = '') {
-  const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
-  return `
-    <foreignObject class="income-sankey-foreign" x="${x}" y="${y}" width="${width}" height="${height}">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="income-sankey-icon-value income-sankey-icon-${resource}${extraClass ? ` ${extraClass}` : ''}"${styleAttr}>
-        ${renderFlowValue(resource, value)}
-      </div>
-    </foreignObject>
-  `;
+function renderSankeyNodeTotal(node) {
+  if (!node.iconResource && !node.resource) return '';
+  return `<span class="income-sankey-node-total">${renderFlowValue(node.iconResource || node.resource, node.value)}</span>`;
 }
 
-function renderSankeyLinkLabel(link) {
-  const point = getBezierPoint(getSankeyLinkGeometry(link), getLinkLabelT(link));
-  const width = 64;
-  const height = 28;
-  return renderSankeyIconValue(
-    link.resource,
-    link.value,
-    (point.x - width / 2).toFixed(2),
-    (point.y - height / 2).toFixed(2),
-    width,
-    'income-sankey-band-value',
-    height,
-    `--band-color: ${link.color};`,
-  );
+function renderSankeyLabeledNodeContent(node) {
+  return `
+    <span class="income-sankey-node-name">${escapeHtml(node.label)}</span>
+    ${renderSankeyNodeTotal(node)}
+  `;
 }
 
 function renderSankeyGenericCartouche(node, content, title = '') {
@@ -719,11 +690,15 @@ function renderSankeyOfficeCartouche(state, node) {
   const officeKey = node.officeKey || String(node.key || '').replace(/^office:/, '');
   if (!officeKey) return '';
   const holderId = getOfficeHolder(state, officeKey);
-  return renderTitleBadge(state, officeKey, {
+  const badge = renderTitleBadge(state, officeKey, {
     holderId,
     compact: true,
     label: node.label,
   });
+  const title = escapeHtml(`${node.label}: ${roundFlowValue(node.value)}`);
+  return badge
+    .replace(/ title="[^"]*"/, ` title="${title}"`)
+    .replace('</span>', `${renderSankeyNodeTotal(node)}</span>`);
 }
 
 function renderSankeyPlayerCartouche(state, flow, node) {
@@ -754,18 +729,18 @@ function renderSankeyNodeHtml(state, flow, node) {
   }
 
   if (node.layer === 'office') {
-    return renderSankeyOfficeCartouche(state, node) || renderSankeyGenericCartouche(node, escapeHtml(node.label));
+    return renderSankeyOfficeCartouche(state, node) || renderSankeyGenericCartouche(node, renderSankeyLabeledNodeContent(node));
   }
 
   if (node.layer === 'player') {
     if (!node.isUnclaimed) return renderSankeyPlayerCartouche(state, flow, node);
     return renderSankeyGenericCartouche(
       node,
-      `<span class="income-sankey-unclaimed">${escapeHtml(node.label)} ${renderFlowValue(node.resource, node.value)}</span>`,
+      `<span class="income-sankey-unclaimed">${renderSankeyLabeledNodeContent(node)}</span>`,
     );
   }
 
-  return renderSankeyGenericCartouche(node, escapeHtml(node.label));
+  return renderSankeyGenericCartouche(node, renderSankeyLabeledNodeContent(node));
 }
 
 function renderSankeyNode(state, flow, node) {
@@ -794,18 +769,12 @@ function renderIncomeSankeySvg(state, flow) {
     .sort((left, right) => (right.width - left.width) || left.sourceKey.localeCompare(right.sourceKey))
     .map(renderSankeyLink)
     .join('');
-  const linkLabels = model.links
-    .slice()
-    .sort((left, right) => (left.width - right.width) || left.sourceKey.localeCompare(right.sourceKey))
-    .map(renderSankeyLinkLabel)
-    .join('');
   const nodes = model.nodes.map((node) => renderSankeyNode(state, flow, node)).join('');
 
   return `
     <svg class="income-flow-sankey" viewBox="0 0 ${SANKEY_WIDTH} ${SANKEY_HEIGHT}" role="img" aria-label="Imperial income Sankey diagram" overflow="hidden">
       <g class="income-sankey-viewport">
         <g class="income-sankey-links">${links}</g>
-        <g class="income-sankey-link-labels">${linkLabels}</g>
         <g class="income-sankey-nodes">${nodes}</g>
       </g>
     </svg>
