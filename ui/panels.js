@@ -138,6 +138,7 @@ function renderPlayerChoiceGrid(state, options = {}) {
         return `
           <button type="button" class="choice-btn player-choice-btn${isSelected ? ' selected' : ''}"
             data-${attr}="${player.id}"
+            aria-pressed="${isSelected ? 'true' : 'false'}"
             style="${getPlayerStyleAttr(state, player.id)}"
             title="${escapeHtml(playerDisplayLabel(player))}">
             <span class="choice-crest">${playerInitial(player)}</span>
@@ -159,6 +160,7 @@ function renderProvinceChoiceGrid(state, themes, options = {}) {
         return `
           <button type="button" class="choice-btn province-choice-btn${isSelected ? ' selected' : ''}"
             data-${attr}="${theme.id}"
+            aria-pressed="${isSelected ? 'true' : 'false'}"
             title="${escapeHtml(theme.name)}">
             ${renderProvinceBadge(state, theme, { showValues: true })}
           </button>
@@ -182,6 +184,7 @@ function renderTitleChoiceGrid(state, entries, options = {}) {
         });
         return `
           <button type="button" class="choice-btn title-choice-btn${isSelected ? ' selected' : ''}"
+            aria-pressed="${isSelected ? 'true' : 'false'}"
             data-${attr}="${entry.key}">
             ${badge}
           </button>
@@ -201,6 +204,7 @@ function renderRevocationChoiceGrid(state, targets, options = {}) {
         const isSelected = target.value === selectedValue;
         return `
           <button type="button" class="choice-btn revocation-choice-btn${isSelected ? ' selected' : ''}"
+            aria-pressed="${isSelected ? 'true' : 'false'}"
             data-${attr}="${target.value}">
             ${target.badge || escapeHtml(target.label)}
           </button>
@@ -701,6 +705,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
 export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
   const freeThemes = getFreeThemes(state);
   const player = getPlayer(state, playerId);
+  const activeBidderId = Number(playerId);
   const reserve = Math.max(0, Number(player?.gold) || 0);
   container.innerHTML = `
     <section class="phase-card estates-panel">
@@ -716,9 +721,18 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
           ${freeThemes.map((theme) => {
             const minimum = getMinimumLandBid(state, theme.id);
             const value = getThemeLandPrice(theme);
-            const cannotAfford = minimum > reserve;
+            const auction = state.landAuctions?.[theme.id] || null;
+            const bidderId = auction?.bidderId == null ? null : Number(auction.bidderId);
+            const bidder = bidderId == null ? null : getPlayer(state, bidderId);
+            const isLeading = bidderId === activeBidderId;
+            const ownBid = isLeading ? Number(auction?.amount) || 0 : 0;
+            const dueNow = Math.max(0, minimum - ownBid);
+            const cannotAfford = dueNow > reserve;
+            const bidButtonLabel = auction
+              ? (isLeading ? 'Raise' : 'Outbid')
+              : 'Bid';
             return `
-              <article class="estate-card${cannotAfford ? ' disabled' : ''}" data-estate="${theme.id}">
+              <article class="estate-card${cannotAfford ? ' disabled' : ''}${isLeading ? ' selected' : ''}${auction && !isLeading ? ' contested' : ''}" data-estate="${theme.id}">
                 <div class="estate-card-province">
                   ${renderProvinceBadge(state, theme, { showValues: true })}
                 </div>
@@ -732,11 +746,18 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
                     <dd>${formatGoldHtml(minimum)}</dd>
                   </div>
                 </dl>
+                ${auction ? `
+                  <div class="estate-current-bid ${isLeading ? 'owned' : 'contested'}">
+                    <span class="estate-current-label">${isLeading ? 'Your high bid' : 'High bid'}</span>
+                    <span class="estate-current-bidder">${bidder ? renderPlayerRoleName(state, bidder) : 'Unknown'}</span>
+                    <span class="estate-current-amount">${formatGoldHtml(Number(auction.amount) || 0)}</span>
+                  </div>
+                ` : ''}
                 <div class="estate-card-bid">
                   <input type="number" min="${minimum}" value="${minimum}" data-estate-bid="${theme.id}" ${cannotAfford ? 'disabled' : ''}>
-                  <button type="button" class="btn-primary estate-bid-btn" data-action="bid-estate" data-theme="${theme.id}" ${cannotAfford ? 'disabled' : ''}>Bid</button>
+                  <button type="button" class="btn-primary estate-bid-btn" data-action="bid-estate" data-theme="${theme.id}" ${cannotAfford ? 'disabled' : ''}>${bidButtonLabel}</button>
                 </div>
-                ${cannotAfford ? '<div class="estate-card-warn">Not enough gold to meet the minimum.</div>' : ''}
+                ${cannotAfford ? `<div class="estate-card-warn">Need ${formatGoldHtml(dueNow)} of unreserved gold to bid.</div>` : ''}
               </article>
             `;
           }).join('')}
@@ -750,6 +771,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
   container.querySelectorAll('[data-action="bid-estate"]').forEach((button) => {
     button.addEventListener('click', () => {
       const themeId = button.dataset.theme;
+      container.querySelector(`[data-estate="${themeId}"]`)?.classList.add('is-pressing');
       callbacks.buy?.(themeId, { amount: Number(container.querySelector(`[data-estate-bid="${themeId}"]`)?.value) });
     });
   });
@@ -810,6 +832,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       <button type="button"
         class="candidate-row${isSelected ? ' selected' : ''}"
         data-candidate-pick="${candidate.id}"
+        aria-pressed="${isSelected ? 'true' : 'false'}"
         style="${getPlayerStyleAttr(state, candidate.id)}">
         <span class="candidate-crest">${playerInitial(candidate)}</span>
         <span class="candidate-name">${escapeHtml(playerDisplayLabel(candidate))}</span>

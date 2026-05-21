@@ -1344,11 +1344,13 @@ function updateHoveredProvince(provinceId) {
   if (hoveredProvinceId && hoveredProvinceId !== provinceId) {
     document.querySelector(`.province-shape[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
     document.querySelector(`.region-stroke[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
+    document.querySelector(`.map-cartouche[data-id="${hoveredProvinceId}"]`)?.classList.remove('hovered');
   }
 
   if (provinceId) {
     document.querySelector(`.province-shape[data-id="${provinceId}"]`)?.classList.add('hovered');
     document.querySelector(`.region-stroke[data-id="${provinceId}"]`)?.classList.add('hovered');
+    document.querySelector(`.map-cartouche[data-id="${provinceId}"]`)?.classList.add('hovered');
   }
 
   hoveredProvinceId = provinceId;

@@ -552,10 +552,10 @@ body::before {
   scrollbar-color: var(--parch-3) var(--parch-1);
 }
 
-#actionPanel { order: 2; scroll-margin-top: var(--sidebar-gap); }
-#playerDashboard { order: 3; }
-#notificationPanel { order: 4; }
-#balancePanel { order: 5; }
+#playerDashboard { order: 2; }
+#balancePanel { order: 3; }
+#actionPanel { order: 4; scroll-margin-top: var(--sidebar-gap); }
+#notificationPanel { order: 5; }
 #historyPanel { order: 6; }
 
 #sidebar::-webkit-scrollbar { width: 8px; }
@@ -5207,3 +5207,210 @@ textarea {
       under-weighted. Bolden them so the column reads vertically. */
 .balance-row .breakdown .value .value-num { font-weight: 700; }
 .balance-row .pts { font-weight: 700; }
+
+/* Interaction feedback pass: keep every click target in the cartouche system. */
+:where(
+  .player-tab,
+  .sidebar-panel-head,
+  .choice-btn,
+  .candidate-row,
+  .estate-card,
+  .btn-primary,
+  .btn-danger,
+  .btn-secondary,
+  .map-control-btn,
+  .setup-choice-btn,
+  .setup-ai-opponent-btn,
+  .segmented-control button,
+  .action-fold > summary
+) {
+  -webkit-tap-highlight-color: rgba(240,200,90,0.22);
+}
+
+:where(
+  .btn-primary,
+  .btn-danger,
+  .btn-secondary,
+  .map-control-btn,
+  .setup-choice-btn,
+  .setup-ai-opponent-btn,
+  .segmented-control button,
+  .choice-btn,
+  .candidate-row,
+  .player-tab,
+  .sidebar-panel-head
+):active:not(:disabled) {
+  transform: translateY(1px) scale(0.992);
+}
+
+.sidebar-panel-head:focus-visible,
+.action-fold > summary:focus-visible,
+.player-tab:focus-visible,
+.candidate-row:focus-visible,
+.estate-card:focus-within,
+.segmented-control button:focus-visible,
+.map-control-btn:focus-visible {
+  outline: 2px solid var(--gold-1);
+  outline-offset: 3px;
+}
+
+.action-fold > summary:hover {
+  color: var(--gold-2);
+  background: linear-gradient(180deg, rgba(240,228,195,0.72), rgba(255,252,240,0.18));
+}
+
+.choice-btn:hover .province-token,
+.choice-btn:hover .title-token {
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.72),
+    0 0 0 1px rgba(240,200,90,0.18),
+    0 2px 6px rgba(46,30,15,0.18);
+}
+
+.province-choice-btn.selected .province-token,
+.title-choice-btn.selected .title-token,
+.revocation-choice-btn.selected .title-token,
+.revocation-choice-btn.selected .province-token {
+  filter: brightness(1.05) saturate(1.04);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.88),
+    0 0 0 2px rgba(240,200,90,0.55),
+    0 0 0 4px var(--cart-border, var(--gold-1)),
+    0 2px 8px rgba(30,16,0,0.22);
+}
+
+.choice-btn[aria-pressed="true"] {
+  filter: brightness(1.04);
+}
+
+.appointment-preview:not(:has(.muted)) {
+  border-style: solid;
+  border-color: rgba(200,146,30,0.42);
+  background: rgba(200,146,30,0.08);
+}
+
+.estate-card:not(.disabled) {
+  cursor: default;
+}
+
+.estate-card:not(.disabled):hover,
+.estate-card:not(.disabled):focus-within {
+  border-color: rgba(200,146,30,0.46);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.20),
+    0 5px 16px rgba(168,116,32,0.18);
+}
+
+.estate-card.selected {
+  border-color: var(--gold-1);
+  background:
+    linear-gradient(180deg, rgba(255,252,242,0.98) 0%, rgba(245,233,200,0.78) 100%),
+    rgba(200,146,30,0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.42),
+    0 0 0 2px rgba(240,200,90,0.42),
+    0 0 0 4px rgba(168,116,32,0.24),
+    0 4px 14px rgba(168,116,32,0.18);
+}
+
+.estate-card.contested {
+  border-color: rgba(122,77,153,0.34);
+}
+
+.estate-card.is-pressing {
+  transform: translateY(1px);
+  filter: brightness(1.03);
+}
+
+.estate-current-bid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.72);
+}
+
+.estate-current-bid.owned {
+  border-color: rgba(200,146,30,0.42);
+  background: rgba(200,146,30,0.10);
+}
+
+.estate-current-bid.contested {
+  border-color: rgba(122,77,153,0.28);
+  background: rgba(122,77,153,0.07);
+}
+
+.estate-current-label {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+
+.estate-current-bidder {
+  min-width: 0;
+  display: flex;
+}
+
+.estate-current-bidder .player-role-name {
+  font-size: 10px;
+  padding: 3px 7px 4px;
+  border-width: 3px;
+}
+
+.estate-current-amount {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--gold-1);
+  white-space: nowrap;
+}
+
+.estate-bid-btn:active:not(:disabled) {
+  box-shadow:
+    inset 0 1px 4px rgba(46,30,15,0.16),
+    0 1px 4px rgba(46,30,15,0.12);
+}
+
+.map-cartouche.hovered {
+  filter: brightness(1.06) drop-shadow(0 0 0.55px rgba(240,200,90,0.65));
+}
+
+.map-cartouche.hovered .map-cart-inner {
+  stroke: rgba(240,200,90,0.82);
+  stroke-width: 0.18;
+}
+
+.map-cartouche.selected {
+  filter:
+    drop-shadow(0 0 0.55px rgba(255,250,220,0.90))
+    drop-shadow(0 0 1.25px rgba(240,200,90,0.86));
+}
+
+.province-shape.hovered {
+  filter: brightness(1.08) saturate(1.03);
+}
+
+.province-shape.selected,
+.province-shape.selected:hover,
+.province-shape.selected.hovered {
+  filter:
+    brightness(1.06)
+    drop-shadow(0 0 0.7px rgba(255,250,220,0.92))
+    drop-shadow(0 0 1.7px rgba(240,200,90,0.82));
+}
+
+.region-stroke.hovered {
+  filter: drop-shadow(0 0 0.35px rgba(240,200,90,0.42));
+}
+
+.region-stroke.selected,
+.region-stroke.selected.hovered {
+  filter:
+    drop-shadow(0 0 0.55px rgba(255,250,220,0.72))
+    drop-shadow(0 0 1.35px rgba(240,200,90,0.72));
+}
