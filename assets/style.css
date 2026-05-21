@@ -4134,6 +4134,10 @@ textarea {
 }
 .appointment-preview .muted { color: var(--umber-3); font-style: italic; }
 .appointment-preview .danger { color: var(--crimson-1); font-family: var(--font-display); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; }
+.appointment-preview .province-token {
+  cursor: default;
+  pointer-events: none;
+}
 .appointment-actions { margin-top: 2px; }
 .appointment-actions .btn-primary:disabled { opacity: 0.42; cursor: not-allowed; }
 

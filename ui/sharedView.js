@@ -69,6 +69,7 @@ export function setPanelOpen(uiState, panelKey, open) {
 }
 
 const PROVINCE_INTERACTIVE_SELECTOR = '[data-map-province], [data-estate]';
+const provinceSyncAborters = new WeakMap();
 
 function getProvinceInterfaceId(element) {
   return element?.dataset?.mapProvince
@@ -80,6 +81,12 @@ function getTopLevelProvinceInterfaceElements(root) {
   if (!root?.querySelectorAll) return [];
   return [...root.querySelectorAll(PROVINCE_INTERACTIVE_SELECTOR)]
     .filter((element) => !element.parentElement?.closest(PROVINCE_INTERACTIVE_SELECTOR));
+}
+
+function findProvinceInterfaceElement(target, root) {
+  const element = target?.closest?.(PROVINCE_INTERACTIVE_SELECTOR);
+  if (!element || !root?.contains?.(element)) return null;
+  return element.parentElement?.closest(PROVINCE_INTERACTIVE_SELECTOR) ? null : element;
 }
 
 function provinceAttrSelector(provinceId) {
@@ -126,19 +133,34 @@ export function bindProvinceInterfaceSync({
 
   applyProvinceInterfaceState({ root, selectedProvinceId, hoveredProvinceId });
 
+  provinceSyncAborters.get(root)?.abort();
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  if (controller) provinceSyncAborters.set(root, controller);
+  const signal = controller?.signal;
+
+  root.addEventListener?.('click', (event) => {
+    const element = findProvinceInterfaceElement(event.target, root);
+    const provinceId = getProvinceInterfaceId(element);
+    if (!provinceId) return;
+
+    const selectAfterLocalHandlers = () => onSelectProvince?.(provinceId);
+    if (typeof window !== 'undefined') {
+      window.setTimeout(selectAfterLocalHandlers, 0);
+      return;
+    }
+    selectAfterLocalHandlers();
+  }, { capture: true, ...(signal ? { signal } : {}) });
+
   getTopLevelProvinceInterfaceElements(root).forEach((element) => {
     const provinceId = getProvinceInterfaceId(element);
     if (!provinceId) return;
 
-    element.addEventListener('click', () => {
-      onSelectProvince?.(provinceId);
-    });
     element.addEventListener('pointerenter', () => {
       onHoverProvince?.(provinceId);
-    });
+    }, signal ? { signal } : undefined);
     element.addEventListener('pointerleave', () => {
       onHoverProvince?.(null);
-    });
+    }, signal ? { signal } : undefined);
   });
 }
 
