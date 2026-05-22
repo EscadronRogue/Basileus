@@ -115,11 +115,37 @@ function buildObligationNotifications(state, viewerId, dealView, notifications) 
   }
 }
 
+const REVOCATION_EVENT_TYPES = new Set([
+  'revoke_minor_title',
+  'revoke_court_title',
+  'revoke_theme',
+  'church_land_revoked',
+]);
+
+function normalizePlayerId(value) {
+  if (value == null) return null;
+  const playerId = Number(value);
+  return Number.isInteger(playerId) ? playerId : null;
+}
+
+function getRevokedPlayerIds(event) {
+  const details = event.details || {};
+  const ids = [];
+  if (Array.isArray(details.revokedPlayerIds)) {
+    ids.push(...details.revokedPlayerIds.map(normalizePlayerId));
+  }
+  ids.push(normalizePlayerId(details.revokedPlayerId));
+  if (event.type === 'church_land_revoked') {
+    ids.push(normalizePlayerId(details.formerBishopId));
+  }
+  return [...new Set(ids.filter(Number.isInteger))];
+}
+
 function buildRevocationNotifications(state, viewerId, notifications) {
+  const normalizedViewerId = normalizePlayerId(viewerId);
   for (const event of state.history || []) {
-    if (!['revoke_minor_title', 'revoke_court_title', 'revoke_theme'].includes(event.type)) continue;
-    const revokedPlayerId = event.details?.revokedPlayerId;
-    if (Number(revokedPlayerId) !== Number(viewerId)) continue;
+    if (!REVOCATION_EVENT_TYPES.has(event.type)) continue;
+    if (!getRevokedPlayerIds(event).includes(normalizedViewerId)) continue;
     pushNotification(notifications, {
       id: `history:${event.id}:revoked:${viewerId}`,
       kind: 'revocation',

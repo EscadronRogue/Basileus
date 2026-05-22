@@ -5,6 +5,7 @@ import { PROVINCES } from '../data/provinces.js';
 import { createGameState, getPlayer, getOfficeHolder } from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
 import { applyInvasionResult } from './combat.js';
+import { buildPrivateNotifications } from './notifications.js';
 import { buildBalanceOfPower, buildFinalScores } from './scoring.js';
 import {
   applyCourtAction,
@@ -160,6 +161,60 @@ test('patriarch may appoint bishops in occupied original church provinces', () =
 
   assert.equal(result.ok, true);
   assert.equal(state.themes.KAP.bishop, 2);
+});
+
+test('private estate revocation preserves seated offices and notifies the estate owner', () => {
+  const state = makeState();
+  state.themes.OPS.owner = 2;
+  state.themes.OPS.strategos = 3;
+  state.themes.OPS.bishop = 1;
+  enterCourt(state);
+
+  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+
+  assert.equal(result.ok, true);
+  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(state.themes.OPS.strategos, 3);
+  assert.equal(state.themes.OPS.bishop, 1);
+  assert.equal(state.courtActions.revokedThisTurn['theme:OPS'], true);
+  assert.equal(state.courtActions.revokedThisTurn['minor:OPS:strategos'], undefined);
+  assert.equal(state.courtActions.revokedThisTurn['minor:OPS:bishop'], undefined);
+
+  const ownerNotices = buildPrivateNotifications(state, 2).notifications;
+  assert.equal(ownerNotices.some((notice) => notice.kind === 'revocation' && /private ownership/.test(notice.body)), true);
+  assert.equal(buildPrivateNotifications(state, 3).notifications.some((notice) => notice.kind === 'revocation'), false);
+  assert.equal(buildPrivateNotifications(state, 1).notifications.some((notice) => notice.kind === 'revocation'), false);
+});
+
+test('same-turn office appointments do not block private estate revocation', () => {
+  const state = makeState();
+  state.themes.OPS.owner = 2;
+  enterCourt(state);
+
+  const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 3 });
+  assert.equal(appointment.ok, true);
+
+  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+
+  assert.equal(result.ok, true);
+  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(state.themes.OPS.strategos, 3);
+});
+
+test('church land revocation notifies an unseated bishop', () => {
+  const state = makeState();
+  state.themes.OPS.owner = 'church';
+  state.themes.OPS.bishop = 2;
+  enterCourt(state);
+
+  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+
+  assert.equal(result.ok, true);
+  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(state.themes.OPS.bishop, null);
+  const bishopNotice = buildPrivateNotifications(state, 2).notifications.find((notice) => notice.kind === 'revocation');
+  assert.ok(bishopNotice);
+  assert.match(bishopNotice.body, /unseats .* as bishop/);
 });
 
 test('court no longer allows gifting private land to the church', () => {

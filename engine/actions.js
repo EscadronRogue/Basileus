@@ -206,8 +206,7 @@ export function checkRevocationCurrentTurnAppointment(state, revocationValue) {
     const theme = state.themes?.[id];
     if (!theme) return { ok: true };
     const blocked = [];
-    if (theme.strategos != null && isTitleAppointedThisTurn(state, getMinorTitleSlotKey(id, 'strategos'))) blocked.push('strategos');
-    if (theme.bishop != null && isTitleAppointedThisTurn(state, getMinorTitleSlotKey(id, 'bishop'))) blocked.push('bishop');
+    if (theme.owner === 'church' && theme.bishop != null && isTitleAppointedThisTurn(state, getMinorTitleSlotKey(id, 'bishop'))) blocked.push('bishop');
     if (blocked.length > 0) return fail(`${themeName(state, id)} has a ${blocked.join(' and ')} appointed this turn and cannot be stripped until next turn.`);
   }
   return { ok: true };
@@ -476,7 +475,14 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
     type: 'revoke_minor_title',
     actorId: revokerId,
     summary: `${playerName(state, revokerId)} revokes the ${titleType} of ${themeName(state, themeId)}.`,
-    details: { themeId, themeName: themeName(state, themeId), titleType, revokedPlayerId: targetPlayerId, revokedPlayerName: playerName(state, targetPlayerId) },
+    details: {
+      themeId,
+      themeName: themeName(state, themeId),
+      titleType,
+      revokedPlayerId: targetPlayerId,
+      revokedPlayerIds: [targetPlayerId],
+      revokedPlayerName: playerName(state, targetPlayerId),
+    },
   });
   return { ok: true };
 }
@@ -503,7 +509,13 @@ export function revokeCourtTitle(state, courtTitleType, revokerId = state.basile
     type: 'revoke_court_title',
     actorId: revokerId,
     summary: `${playerName(state, revokerId)} revokes the ${courtTitleName(courtTitleType)} from ${playerName(state, holderId)}.`,
-    details: { titleType: courtTitleType, titleName: courtTitleName(courtTitleType), revokedPlayerId: holderId, revokedPlayerName: playerName(state, holderId) },
+    details: {
+      titleType: courtTitleType,
+      titleName: courtTitleName(courtTitleType),
+      revokedPlayerId: holderId,
+      revokedPlayerIds: [holderId],
+      revokedPlayerName: playerName(state, holderId),
+    },
   });
   return { ok: true };
 }
@@ -520,21 +532,21 @@ export function revokeTheme(state, themeId, revokerId = state.basileusId) {
   const targetCheck = checkRevocationTargetCooldown(state, revokerId, targetPlayerId);
   if (!targetCheck.ok) return targetCheck;
 
-  const revokedSlots = [getThemeOwnershipSlotKey(themeId)];
-  if (theme.strategos != null) revokedSlots.push(getMinorTitleSlotKey(themeId, 'strategos'));
-  if (theme.bishop != null) revokedSlots.push(getMinorTitleSlotKey(themeId, 'bishop'));
   theme.owner = null;
-  theme.strategos = null;
-  theme.bishop = null;
-  theme.bishopIsDonor = false;
-  recordRevocation(state, revokerId, targetPlayerId, revokedSlots, 'BASILEUS');
+  recordRevocation(state, revokerId, targetPlayerId, [getThemeOwnershipSlotKey(themeId)], 'BASILEUS');
   state.log.push({ type: 'revoke_theme', theme: themeId, round: state.round, revokerId });
   recordHistoryEvent(state, {
     category: 'court',
     type: 'revoke_theme',
     actorId: revokerId,
     summary: `${playerName(state, revokerId)} strips ${themeName(state, themeId)} from private ownership.`,
-    details: { themeId, themeName: themeName(state, themeId), revokedPlayerId: targetPlayerId, revokedPlayerName: playerName(state, targetPlayerId) },
+    details: {
+      themeId,
+      themeName: themeName(state, themeId),
+      revokedPlayerId: targetPlayerId,
+      revokedPlayerIds: [targetPlayerId],
+      revokedPlayerName: playerName(state, targetPlayerId),
+    },
   });
   return { ok: true };
 }
@@ -552,7 +564,7 @@ export function revokeChurchLand(state, themeId, revokerId = state.basileusId) {
   theme.owner = null;
   theme.bishop = null;
   theme.bishopIsDonor = false;
-  recordRevocation(state, revokerId, Number.isInteger(formerBishop) ? formerBishop : revokerId, [
+  recordRevocation(state, revokerId, Number.isInteger(formerBishop) ? formerBishop : null, [
     getThemeOwnershipSlotKey(themeId),
     getMinorTitleSlotKey(themeId, 'bishop'),
   ], 'BASILEUS');
@@ -561,8 +573,17 @@ export function revokeChurchLand(state, themeId, revokerId = state.basileusId) {
     category: 'court',
     type: 'church_land_revoked',
     actorId: revokerId,
-    summary: `${playerName(state, revokerId)} restores ${themeName(state, themeId)} from church ownership.`,
-    details: { themeId, themeName: themeName(state, themeId), formerBishopId: formerBishop },
+    summary: Number.isInteger(formerBishop)
+      ? `${playerName(state, revokerId)} restores ${themeName(state, themeId)} from church ownership and unseats ${playerName(state, formerBishop)} as bishop.`
+      : `${playerName(state, revokerId)} restores ${themeName(state, themeId)} from church ownership.`,
+    details: {
+      themeId,
+      themeName: themeName(state, themeId),
+      formerBishopId: formerBishop,
+      revokedPlayerId: Number.isInteger(formerBishop) ? formerBishop : null,
+      revokedPlayerIds: Number.isInteger(formerBishop) ? [formerBishop] : [],
+      titleType: Number.isInteger(formerBishop) ? 'bishop' : null,
+    },
   });
   return { ok: true };
 }
