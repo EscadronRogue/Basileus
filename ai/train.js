@@ -269,20 +269,65 @@ function normalizeOptions(rawOptions = {}) {
   };
 }
 
+function emitProgress(options, event) {
+  if (typeof options.onProgress === 'function') options.onProgress(event);
+}
+
 export function trainStrategyWeights(rawOptions = {}) {
   const options = normalizeOptions(rawOptions);
   const rng = makeRng(options.seed);
   let population = seedPopulation(options, rng);
   const generations = [];
   let best = null;
+  const startedAt = Date.now();
+
+  emitProgress(options, {
+    type: 'training-start',
+    generations: options.generations,
+    population: options.population,
+    games: options.games,
+    totalGames: options.generations * options.population * options.games,
+    league: options.league,
+    seed: options.seed,
+    elapsedMs: 0,
+  });
 
   for (let generation = 0; generation < options.generations; generation += 1) {
-    const evaluated = population
-      .map((profile, index) => ({
-        ...profile,
-        metrics: evaluateStrategyWeights(profile.weights, options, generation * options.population + index),
-      }))
-      .sort((left, right) => right.metrics.objective - left.metrics.objective);
+    emitProgress(options, {
+      type: 'generation-start',
+      generation: generation + 1,
+      generations: options.generations,
+      elapsedMs: Date.now() - startedAt,
+    });
+
+    const evaluated = [];
+    for (let index = 0; index < population.length; index += 1) {
+      const profile = population[index];
+      emitProgress(options, {
+        type: 'candidate-start',
+        generation: generation + 1,
+        generations: options.generations,
+        candidate: index + 1,
+        population: options.population,
+        name: profile.name,
+        games: options.games,
+        elapsedMs: Date.now() - startedAt,
+      });
+      const metrics = evaluateStrategyWeights(profile.weights, options, generation * options.population + index);
+      const candidate = { ...profile, metrics };
+      evaluated.push(candidate);
+      emitProgress(options, {
+        type: 'candidate-end',
+        generation: generation + 1,
+        generations: options.generations,
+        candidate: index + 1,
+        population: options.population,
+        name: profile.name,
+        metrics,
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+    evaluated.sort((left, right) => right.metrics.objective - left.metrics.objective);
 
     if (!best || evaluated[0].metrics.objective > best.metrics.objective) best = evaluated[0];
     generations.push({
@@ -292,6 +337,16 @@ export function trainStrategyWeights(rawOptions = {}) {
         metrics: evaluated[0].metrics,
         weights: compactWeights(evaluated[0].weights),
       },
+    });
+    emitProgress(options, {
+      type: 'generation-end',
+      generation: generation + 1,
+      generations: options.generations,
+      bestName: evaluated[0].name,
+      bestMetrics: evaluated[0].metrics,
+      globalBestName: best.name,
+      globalBestMetrics: best.metrics,
+      elapsedMs: Date.now() - startedAt,
     });
 
     const elites = evaluated.slice(0, options.elite);
@@ -315,7 +370,23 @@ export function trainStrategyWeights(rawOptions = {}) {
     },
     generations,
   };
-  if (options.save) result.saved = saveBestOpponent(result);
+  if (options.save) {
+    result.saved = saveBestOpponent(result);
+    emitProgress(options, {
+      type: 'saved',
+      firstName: result.saved.opponent.firstName,
+      id: result.saved.opponent.id,
+      path: result.saved.path,
+      elapsedMs: Date.now() - startedAt,
+    });
+  }
+  emitProgress(options, {
+    type: 'training-end',
+    bestName: result.best.name,
+    bestMetrics: result.best.metrics,
+    saved: result.saved || null,
+    elapsedMs: Date.now() - startedAt,
+  });
   return result;
 }
 
@@ -331,6 +402,10 @@ function parseArgs(argv) {
     }
     if (key === 'no-save') {
       options.save = false;
+      continue;
+    }
+    if (key === 'quiet') {
+      options.quiet = true;
       continue;
     }
     const value = argv[index + 1];
@@ -349,6 +424,38 @@ function parseArgs(argv) {
     else if (key === 'league') options.league = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
   }
   return options;
+}
+
+function percent(value) {
+  return `${Math.round((Number(value) || 0) * 100)}%`;
+}
+
+function seconds(ms) {
+  return `${round((Number(ms) || 0) / 1000, 1)}s`;
+}
+
+function compactMetrics(metrics) {
+  return `objective ${metrics.objective}, win ${percent(metrics.winRate)}, rank ${metrics.averageRank}, fall ${percent(metrics.fallRate)}`;
+}
+
+function createCliProgressLogger() {
+  return (event) => {
+    if (event.type === 'training-start') {
+      console.log(`[train ${seconds(event.elapsedMs)}] Starting ${event.generations} generations x ${event.population} profiles x ${event.games} games (${event.totalGames} games total), seed ${event.seed}.`);
+    } else if (event.type === 'generation-start') {
+      console.log(`[train ${seconds(event.elapsedMs)}] Generation ${event.generation}/${event.generations} started.`);
+    } else if (event.type === 'candidate-start') {
+      console.log(`[train ${seconds(event.elapsedMs)}]   Candidate ${event.candidate}/${event.population}: ${event.name} (${event.games} games)`);
+    } else if (event.type === 'candidate-end') {
+      console.log(`[train ${seconds(event.elapsedMs)}]   -> ${event.name}: ${compactMetrics(event.metrics)}`);
+    } else if (event.type === 'generation-end') {
+      console.log(`[train ${seconds(event.elapsedMs)}] Generation ${event.generation}/${event.generations} winner: ${event.bestName} (${compactMetrics(event.bestMetrics)}). Global best: ${event.globalBestName}.`);
+    } else if (event.type === 'saved') {
+      console.log(`[train ${seconds(event.elapsedMs)}] Saved ${event.firstName} (${event.id}) to ${event.path}.`);
+    } else if (event.type === 'training-end') {
+      console.log(`[train ${seconds(event.elapsedMs)}] Finished. Best: ${event.bestName} (${compactMetrics(event.bestMetrics)}).`);
+    }
+  };
 }
 
 function formatTrainingReport(result) {
@@ -374,6 +481,7 @@ const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(impo
 
 if (isCli) {
   const options = parseArgs(process.argv.slice(2));
+  if (!options.json && !options.quiet) options.onProgress = createCliProgressLogger();
   const result = trainStrategyWeights(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else console.log(formatTrainingReport(result));

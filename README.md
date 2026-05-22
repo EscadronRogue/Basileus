@@ -124,6 +124,8 @@ AI seats use legal action generation plus a compact strategic evaluator. The eva
 
 Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights against that league, saves the best tuned opponent to `ai/tunedOpponents.json`, and gives it a Greek first name from `ai/greekNames.js`.
 
+The trainer prints progress while it runs: generation starts, candidate scores, generation winners, final best result, and the saved opponent. Use `--quiet` to suppress the progress log, or `--json` for machine-readable output without progress lines.
+
 When trained opponents are available, new single-player games assign AI seats from that trained pool by default. Built-in strategy styles remain available as a fallback when no tuned opponents have been saved yet.
 
 The named opponent catalog is intentionally lightweight: names identify seats, while the shared strategic planner makes the decisions.
