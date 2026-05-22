@@ -108,7 +108,7 @@ test('legal estate actions dispatch through the shared AI action path', () => {
   assert.equal(Boolean(state.landAuctions[action.payload.themeId]), true);
 });
 
-test('AI court legal actions respect appointment-or-revocation office mode', () => {
+test('AI court legal actions use the shared two-action court power limit', () => {
   const state = makeState();
   state.themes.KAP.strategos = 3;
   state.phase = 'income';
@@ -119,7 +119,8 @@ test('AI court legal actions respect appointment-or-revocation office mode', () 
 
   const appointmentModeActions = listLegalCourtActions(state, 1);
   assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'appoint-strategos'), true);
-  assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'revoke' && action.payload?.value?.endsWith(':strategos')), false);
+  assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'minor:KAP:strategos'), true);
+  assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'minor:OPS:strategos'), false);
 
   const revokeState = makeState();
   revokeState.themes.OPS.strategos = 2;
@@ -130,7 +131,7 @@ test('AI court legal actions respect appointment-or-revocation office mode', () 
   assert.equal(revocation.ok, true);
 
   const revocationModeActions = listLegalCourtActions(revokeState, 1);
-  assert.equal(revocationModeActions.some((action) => action.payload?.action === 'appoint-strategos'), false);
+  assert.equal(revocationModeActions.some((action) => action.payload?.action === 'appoint-strategos'), true);
 });
 
 test('AI court planner uses another appointment to unlock future self-appointments', () => {

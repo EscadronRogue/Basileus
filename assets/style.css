@@ -4440,6 +4440,9 @@ textarea {
 .court-power-card.revocation-mode {
   border-left: 3px solid rgba(142,43,43,0.62);
 }
+.court-power-card.mixed-mode {
+  border-left: 3px solid rgba(128,91,31,0.62);
+}
 .court-power-head {
   display: flex;
   align-items: center;

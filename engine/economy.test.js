@@ -152,7 +152,7 @@ test('court actions are role-filtered and appointment-capped per major title', (
   assert.equal(state.courtActions.playerConfirmed.has(1), true);
 });
 
-test('appointing with a major title blocks its revocations for the turn', () => {
+test('court powers can mix appointments and revocations while preserving same-title turn locks', () => {
   const state = makeState();
   state.themes.KAP.strategos = 3;
   enterCourt(state);
@@ -160,26 +160,36 @@ test('appointing with a major title blocks its revocations for the turn', () => 
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
   assert.equal(appointment.ok, true);
 
-  const revocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:KAP:strategos' });
-  assert.equal(revocation.ok, false);
-  assert.match(revocation.reason, /Domestic of the East already appointed this turn/);
+  const sameTitleRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:OPS:strategos' });
+  assert.equal(sameTitleRevocation.ok, false);
+  assert.match(sameTitleRevocation.reason, /was appointed this turn and cannot be revoked/);
 
-  const secondAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
-  assert.equal(secondAppointment.ok, true);
+  const otherRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:KAP:strategos' });
+  assert.equal(otherRevocation.ok, true);
+  assert.equal(state.themes.KAP.strategos, null);
+
+  const thirdAction = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
+  assert.equal(thirdAction.ok, false);
+  assert.match(thirdAction.reason, /already completed its 2 court actions/);
 });
 
-test('revoking with a major title blocks its appointments for the turn', () => {
+test('court powers may spend both actions on revocations', () => {
   const state = makeState();
   state.themes.OPS.strategos = 2;
+  state.themes.KAP.strategos = 3;
   enterCourt(state);
 
-  const revocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:OPS:strategos' });
-  assert.equal(revocation.ok, true);
+  const firstRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:OPS:strategos' });
+  assert.equal(firstRevocation.ok, true);
   assert.equal(state.themes.OPS.strategos, null);
+
+  const secondRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:KAP:strategos' });
+  assert.equal(secondRevocation.ok, true);
+  assert.equal(state.themes.KAP.strategos, null);
 
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
   assert.equal(appointment.ok, false);
-  assert.match(appointment.reason, /Domestic of the East already used its revocation/);
+  assert.match(appointment.reason, /already completed its 2 court actions/);
 });
 
 test('patriarch may appoint bishops in occupied original church provinces', () => {
