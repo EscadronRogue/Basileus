@@ -1,7 +1,95 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-22T09:23:35.715Z",
+  "updatedAt": "2026-05-22T11:22:58.841Z",
   "opponents": [
+    {
+      "id": "tuned-theophanes",
+      "firstName": "Theophanes",
+      "label": "Tuned AI",
+      "description": "Tuned against strategic, defender, usurper, profiteer, random, copycat.",
+      "policy": {
+        "policyId": "tuned",
+        "strategyWeights": {
+          "ownRecipientBonus": 3.3055207793422174,
+          "leaderDenial": 1.085725708055957,
+          "rivalDenial": 0.09681555680037864,
+          "courtGainFloor": 0.35,
+          "estateGainFloor": 0.2,
+          "estateProfit": 6.420972050937741,
+          "estateBidCost": 1.0148687731586739,
+          "estateThreatPenalty": 2.529434500386073,
+          "invasionMargin": 1.3046897454632322,
+          "capitalFallPenalty": 283.1501846159338,
+          "capitalRiskPenalty": 123.3314369471615,
+          "invasionVictoryBonus": 2.7935500412384537,
+          "invasionDefeatPenalty": 13.623426667636513,
+          "recoveryBonus": 0.9578662975050948,
+          "throneBase": 15.458332467439973,
+          "throneProgress": 22.809398649884674,
+          "selfClaim": 0.05,
+          "incumbentDefense": 1.3913660795306497,
+          "supportLeaderPenalty": 0.20809880360202693,
+          "supportOtherClaimant": 0.043730843999046934,
+          "reserveValue": 0.4086075609360742,
+          "mercenaryCostPenalty": 0.20834207520986853
+        }
+      },
+      "strategyWeights": {
+        "ownRecipientBonus": 3.3055207793422174,
+        "leaderDenial": 1.085725708055957,
+        "rivalDenial": 0.09681555680037864,
+        "courtGainFloor": 0.35,
+        "estateGainFloor": 0.2,
+        "estateProfit": 6.420972050937741,
+        "estateBidCost": 1.0148687731586739,
+        "estateThreatPenalty": 2.529434500386073,
+        "invasionMargin": 1.3046897454632322,
+        "capitalFallPenalty": 283.1501846159338,
+        "capitalRiskPenalty": 123.3314369471615,
+        "invasionVictoryBonus": 2.7935500412384537,
+        "invasionDefeatPenalty": 13.623426667636513,
+        "recoveryBonus": 0.9578662975050948,
+        "throneBase": 15.458332467439973,
+        "throneProgress": 22.809398649884674,
+        "selfClaim": 0.05,
+        "incumbentDefense": 1.3913660795306497,
+        "supportLeaderPenalty": 0.20809880360202693,
+        "supportOtherClaimant": 0.043730843999046934,
+        "reserveValue": 0.4086075609360742,
+        "mercenaryCostPenalty": 0.20834207520986853
+      },
+      "metrics": {
+        "objective": 131.51,
+        "winRate": 0.55,
+        "averageRank": 2.7,
+        "averagePoints": 1.35,
+        "fallRate": 0.35,
+        "stuck": 0
+      },
+      "training": {
+        "trainedAt": "2026-05-22T11:22:58.841Z",
+        "generations": 10,
+        "population": 20,
+        "gamesPerCandidate": 20,
+        "playerCounts": [
+          5
+        ],
+        "deckSizes": [
+          9
+        ],
+        "seed": 3421719541,
+        "league": [
+          "strategic",
+          "defender",
+          "usurper",
+          "profiteer",
+          "random",
+          "copycat"
+        ],
+        "selfPlayEvery": 4,
+        "fallPenalty": 130
+      }
+    },
     {
       "id": "tuned-athanasios",
       "firstName": "Athanasios",
@@ -66,29 +154,7 @@
         "fallRate": 0.45,
         "stuck": 0
       },
-      "training": {
-        "trainedAt": "2026-05-22T09:23:35.715Z",
-        "generations": 10,
-        "population": 20,
-        "gamesPerCandidate": 20,
-        "playerCounts": [
-          5
-        ],
-        "deckSizes": [
-          9
-        ],
-        "seed": 2290114656,
-        "league": [
-          "strategic",
-          "defender",
-          "usurper",
-          "profiteer",
-          "random",
-          "copycat"
-        ],
-        "selfPlayEvery": 4,
-        "fallPenalty": 130
-      }
+      "source": "tuned"
     },
     {
       "id": "tuned-kyriakos",
