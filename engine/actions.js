@@ -822,17 +822,45 @@ export function autoConfirmFinishedCourtPlayers(state) {
   return confirmed;
 }
 
+function mergeReciprocalCoupBallots(ballots) {
+  const ballotByPlayer = new Map(ballots.map((ballot) => [ballot.playerId, ballot]));
+  const processed = new Set();
+
+  for (const ballot of ballots) {
+    const playerId = ballot.playerId;
+    const candidateId = ballot.candidateId;
+    if (processed.has(playerId) || candidateId === playerId) continue;
+
+    const reciprocal = ballotByPlayer.get(candidateId);
+    if (!reciprocal || reciprocal.candidateId !== playerId) continue;
+
+    processed.add(playerId);
+    processed.add(candidateId);
+    if (ballot.troops === reciprocal.troops) continue;
+
+    const mergedCandidateId = ballot.troops > reciprocal.troops ? playerId : candidateId;
+    ballot.candidateId = mergedCandidateId;
+    reciprocal.candidateId = mergedCandidateId;
+  }
+}
+
 export function resolveCoup(state, allOrders, capitalTroops) {
-  const candidateVotes = {};
-  const contributions = [];
   const ballots = [];
   for (const [pidStr, orders] of Object.entries(allOrders || {})) {
     const pid = Number(pidStr);
     const candidate = Number.isInteger(Number(orders?.candidate)) ? Number(orders.candidate) : state.basileusId;
     const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
-    candidateVotes[candidate] = (candidateVotes[candidate] || 0) + troops;
     ballots.push({ playerId: pid, candidateId: candidate, troops });
-    if (troops > 0) contributions.push({ playerId: pid, candidateId: candidate, troops });
+  }
+
+  mergeReciprocalCoupBallots(ballots);
+
+  const candidateVotes = {};
+  const contributions = [];
+  for (const ballot of ballots) {
+    const { playerId, candidateId, troops } = ballot;
+    candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + troops;
+    if (troops > 0) contributions.push({ playerId, candidateId, troops });
   }
 
   let winner = state.basileusId;

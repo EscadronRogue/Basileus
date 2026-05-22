@@ -399,6 +399,32 @@ test('coup resolution records every claimant pick and positive supporter contrib
   ]);
 });
 
+test('coup resolution merges reciprocal claimant picks behind the higher troop claimant', () => {
+  const state = makeState();
+  const result = resolveCoup(state, {
+    1: { candidate: 2 },
+    2: { candidate: 1 },
+    3: { candidate: 3 },
+  }, {
+    1: 3,
+    2: 5,
+    3: 2,
+  });
+
+  assert.equal(result.winner, 2);
+  assert.deepEqual(result.votes, { 2: 8, 3: 2 });
+  assert.deepEqual(result.contributions, [
+    { playerId: 1, candidateId: 2, troops: 3 },
+    { playerId: 2, candidateId: 2, troops: 5 },
+    { playerId: 3, candidateId: 3, troops: 2 },
+  ]);
+  assert.deepEqual(result.ballots, [
+    { playerId: 1, candidateId: 2, troops: 3 },
+    { playerId: 2, candidateId: 2, troops: 5 },
+    { playerId: 3, candidateId: 3, troops: 2 },
+  ]);
+});
+
 test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {
   const state = makeState();
   state.themes.SAM.owner = 2;
