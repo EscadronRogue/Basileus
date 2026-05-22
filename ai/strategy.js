@@ -21,6 +21,7 @@ const MAX_ESTATE_BIDS_PER_AI = 3;
 
 export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   ownRecipientBonus: 3,
+  appointmentUnlockBonus: 4,
   leaderDenial: 1.2,
   rivalDenial: 0.35,
   courtGainFloor: COURT_GAIN_FLOOR,
@@ -185,6 +186,13 @@ function scoreRecipientGain(final, playerId, recipientId, leaderId, categoryKey,
   return -value * weights.rivalDenial;
 }
 
+function scoreAppointmentUnlock(state, playerId, recipientId, leaderId = null, weights = DEFAULT_STRATEGY_WEIGHTS) {
+  if (!getPlayer(state, playerId)?.appointmentCooldown?.selfLocked) return 0;
+  if (!Number.isInteger(recipientId) || recipientId === playerId) return 0;
+  if (recipientId === leaderId) return 0;
+  return weights.appointmentUnlockBonus;
+}
+
 function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderIdFromScores(final, playerId), weights = DEFAULT_STRATEGY_WEIGHTS) {
   const payloadAction = String(action?.payload?.action || '');
   const targetId = getActionTargetPlayerId(state, action);
@@ -192,15 +200,18 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
   const theme = themeId ? state.themes?.[themeId] : null;
 
   if (payloadAction === 'appoint-strategos') {
-    return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1), weights);
+    return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1), weights)
+      + scoreAppointmentUnlock(state, playerId, targetId, leaderId, weights);
   }
   if (payloadAction === 'appoint-bishop') {
-    return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1), weights);
+    return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1), weights)
+      + scoreAppointmentUnlock(state, playerId, targetId, leaderId, weights);
   }
   if (payloadAction === 'appoint-court') {
+    const unlockValue = scoreAppointmentUnlock(state, playerId, targetId, leaderId, weights);
     if (targetId === playerId) return 4;
-    if (targetId === leaderId) return -5;
-    return -0.5;
+    if (targetId === leaderId) return -5 + unlockValue;
+    return -0.5 + unlockValue;
   }
 
   if (payloadAction === 'revoke') {

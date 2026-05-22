@@ -188,6 +188,46 @@ function collectHistory(stats, state) {
   }
 }
 
+function createAppointmentStats() {
+  return {
+    selfAppointments: 0,
+    otherAppointments: 0,
+    unlockAppointments: 0,
+    finalSelfLocked: false,
+  };
+}
+
+function collectAppointmentStatsByPlayer(state) {
+  const byPlayer = Object.fromEntries(
+    (state.players || []).map((player) => [player.id, createAppointmentStats()]),
+  );
+  const selfLocked = Object.fromEntries((state.players || []).map((player) => [player.id, false]));
+
+  for (const event of state.history || []) {
+    if (!['appoint_strategos', 'appoint_bishop', 'appoint_court_title'].includes(event.type)) continue;
+    const appointerId = Number(event.actorId);
+    const appointeeId = Number(event.details?.appointeeId);
+    if (!Number.isInteger(appointerId) || !Number.isInteger(appointeeId) || !byPlayer[appointerId]) continue;
+
+    if (appointeeId === appointerId) {
+      byPlayer[appointerId].selfAppointments += 1;
+      selfLocked[appointerId] = true;
+      continue;
+    }
+
+    byPlayer[appointerId].otherAppointments += 1;
+    if (selfLocked[appointerId]) byPlayer[appointerId].unlockAppointments += 1;
+    selfLocked[appointerId] = false;
+  }
+
+  for (const player of state.players || []) {
+    if (!byPlayer[player.id]) continue;
+    byPlayer[player.id].finalSelfLocked = Boolean(player.appointmentCooldown?.selfLocked);
+  }
+
+  return byPlayer;
+}
+
 function collectScoring(stats, state) {
   const final = buildFinalScores(state);
   const winner = final.winners[0] || final.scores[0] || null;
@@ -296,6 +336,7 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
 
   collectHistory(localStats, state);
   collectScoring(localStats, state);
+  const appointmentStatsByPlayer = collectAppointmentStatsByPlayer(state);
 
   const final = buildFinalScores(state);
   return {
@@ -313,6 +354,7 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
     })),
     winnerIds: final.winners.map((entry) => entry.playerId),
     topScore: final.topScore,
+    appointmentStatsByPlayer,
     stats: localStats,
   };
 }

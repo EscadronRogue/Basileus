@@ -133,6 +133,37 @@ test('AI court legal actions respect appointment-or-revocation office mode', () 
   assert.equal(revocationModeActions.some((action) => action.payload?.action === 'appoint-strategos'), false);
 });
 
+test('AI court planner uses another appointment to unlock future self-appointments', () => {
+  const state = makeState();
+  state.players[1].appointmentCooldown = { selfLocked: true, lastAppointeeId: 1 };
+  state.phase = 'income';
+  phaseCourt(state);
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0, 2, 3],
+    aiPlayers: {
+      1: {
+        policy: {
+          policyId: 'tuned',
+          strategyWeights: {
+            rivalDenial: 0.7,
+            appointmentUnlockBonus: 4,
+          },
+        },
+      },
+    },
+  });
+
+  const result = runAICourtAutomation(state, meta, { mode: 'finish' });
+  const firstAppointment = state.history.find((event) => (
+    ['appoint_strategos', 'appoint_bishop', 'appoint_court_title'].includes(event.type)
+    && event.actorId === 1
+  ));
+
+  assert.equal(result.ok, true);
+  assert.equal(Boolean(firstAppointment), true);
+  assert.notEqual(firstAppointment.details.appointeeId, 1);
+});
+
 test('AI simulation runner completes deterministic all-AI games', () => {
   const result = simulateGames({
     games: 3,
@@ -177,6 +208,8 @@ test('AI training harness evaluates strategy weight profiles', () => {
   assert.notEqual(result.options.seed, second.options.seed);
   assert.equal(Number.isFinite(result.best.metrics.objective), true);
   assert.equal(typeof result.best.weights.invasionMargin, 'number');
+  assert.equal(typeof result.best.weights.appointmentUnlockBonus, 'number');
+  assert.equal(typeof result.best.metrics.appointmentUnlockRate, 'number');
   assert.equal(result.saved, undefined);
 });
 
@@ -201,6 +234,7 @@ test('AI training can save a Greek-named tuned opponent', () => {
     assert.equal(GREEK_FIRST_NAMES.includes(payload.opponents[0].firstName), true);
     assert.equal(payload.opponents[0].policy.policyId, 'tuned');
     assert.equal(typeof payload.opponents[0].strategyWeights.invasionMargin, 'number');
+    assert.equal(typeof payload.opponents[0].training.appointmentUnlockRate, 'number');
     assert.deepEqual(payload.opponents[0].training.playerCounts, [5]);
     assert.deepEqual(payload.opponents[0].training.deckSizes, [1]);
   } finally {
