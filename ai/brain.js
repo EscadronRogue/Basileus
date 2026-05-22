@@ -9,6 +9,7 @@ import {
   TUNED_OPPONENT_ROSTER_URL,
 } from './opponentRoster.js';
 import {
+  buildCoupCoalitionContext,
   applyPolicyEstateActions,
   choosePolicyCourtAction,
   choosePolicyOrderAction,
@@ -17,6 +18,7 @@ import {
   describePolicyOrderChoice,
   normalizePolicyConfig,
 } from './policies.js';
+import { getAiMemory } from './memory.js';
 
 export const AI_OPPONENT_MISSING_MESSAGE = 'AI opponent not found.';
 export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
@@ -179,8 +181,8 @@ export function runAICourtAutomation(state, meta, options = {}) {
   return { ok: true, actions: applied };
 }
 
-export function buildAIOrders(state, meta, playerId) {
-  const action = choosePolicyOrderAction(state, meta, playerId);
+export function buildAIOrders(state, meta, playerId, options = {}) {
+  const action = choosePolicyOrderAction(state, meta, playerId, options);
   if (!action) throw new Error(`No legal order available for AI player ${playerId}.`);
   const playerMeta = meta?.players?.[playerId];
   return {
@@ -217,13 +219,15 @@ function cloneForOrderPlanning(state) {
 
 export function buildSimultaneousAIOrders(state, meta) {
   const planningState = cloneForOrderPlanning(state);
+  const memory = getAiMemory(planningState, meta);
+  const coalitionContext = buildCoupCoalitionContext(planningState, meta, memory);
   const plans = [];
   for (const player of state?.players || []) {
     if (!isAIPlayer(meta, player.id)) continue;
     if (state.allOrders?.[player.id]) continue;
     plans.push({
       playerId: player.id,
-      orders: buildAIOrders(planningState, meta, player.id),
+      orders: buildAIOrders(planningState, meta, player.id, { memory, coalitionContext }),
     });
   }
   return plans;

@@ -266,6 +266,72 @@ test('simultaneous AI planning ignores already submitted human deployment orders
   assert.equal(Object.hasOwn(state.allOrders, 1), false);
 });
 
+function coalitionWeights() {
+  return {
+    selfClaim: 0.2,
+    coalitionWillingness: 2.2,
+    relationshipCoupWeight: 1.8,
+    favorSeekingWeight: 1.2,
+    supportLeaderPenalty: 1.8,
+    supportOtherClaimant: 0.2,
+    selfClaimThreshold: 1.6,
+  };
+}
+
+function prepareCoalitionDeploymentState() {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.currentTroops = {
+    BASILEUS: { normal: 4, capitalLocked: 0 },
+    DOM_EAST: { normal: 1, capitalLocked: 0 },
+    DOM_WEST: { normal: 1, capitalLocked: 0 },
+    ADMIRAL: { normal: 1, capitalLocked: 0 },
+  };
+  return state;
+}
+
+test('AI coup coalition planning rallies weak AI seats behind one friendly claimant', () => {
+  const state = prepareCoalitionDeploymentState();
+  state.history.push(
+    { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 2, details: { appointeeId: 1 } },
+    { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 2, details: { appointeeId: 3 } },
+  );
+  const weights = coalitionWeights();
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0],
+    aiPlayers: {
+      1: { policy: { policyId: 'tuned', strategyWeights: weights } },
+      2: { policy: { policyId: 'tuned', strategyWeights: weights } },
+      3: { policy: { policyId: 'tuned', strategyWeights: weights } },
+    },
+  });
+
+  const plans = buildSimultaneousAIOrders(state, meta);
+
+  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.candidate]), [[1, 2], [2, 2], [3, 2]]);
+});
+
+test('AI coup coalition planning can support a human claimant with good relations', () => {
+  const state = prepareCoalitionDeploymentState();
+  state.currentTroops.ADMIRAL = { normal: 2, capitalLocked: 0 };
+  state.history.push(
+    { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 3, details: { appointeeId: 1 } },
+    { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 3, details: { appointeeId: 2 } },
+  );
+  const weights = coalitionWeights();
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0, 3],
+    aiPlayers: {
+      1: { policy: { policyId: 'tuned', strategyWeights: weights } },
+      2: { policy: { policyId: 'tuned', strategyWeights: weights } },
+    },
+  });
+
+  const plans = buildSimultaneousAIOrders(state, meta);
+
+  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.candidate]), [[1, 3], [2, 3]]);
+});
+
 test('AI title planning returns a legal title redistribution action', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0] });

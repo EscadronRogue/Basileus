@@ -7,6 +7,7 @@ import {
   listLegalTitleAssignments,
 } from './legalActions.js';
 import {
+  buildCoupCoalitionContext,
   chooseStrategicCourtAction,
   chooseStrategicEstateActions,
   chooseStrategicOrderAction,
@@ -14,6 +15,8 @@ import {
   chooseStrategicTitleAssignment,
   describeOrderChoice,
 } from './strategy.js';
+
+export { buildCoupCoalitionContext };
 
 export const POLICY_WEIGHT_PRESETS = Object.freeze({
   strategic: {},
@@ -27,18 +30,18 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     recoveryBonus: 1.1,
     selfClaim: 0.58,
     throneBase: 12,
-    throneProgress: 22,
     mercenaryCostPenalty: 0.08,
+    defenseContextWeight: 1.45,
   },
   usurper: {
     throneBase: 44,
-    throneProgress: 70,
     selfClaim: 1.75,
     supportOtherClaimant: 0.25,
     invasionMargin: 0.72,
     capitalFallPenalty: 280,
     capitalRiskPenalty: 80,
     reserveValue: 0.12,
+    coalitionWillingness: 0.55,
   },
   profiteer: {
     estateProfit: 7.2,
@@ -58,6 +61,8 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     selfClaim: 1.2,
     invasionMargin: 0.82,
     capitalFallPenalty: 300,
+    reciprocityWeight: 0.35,
+    favorSeekingWeight: 0.25,
   },
   loyalist: {
     selfClaim: 0.25,
@@ -65,11 +70,13 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     supportOtherClaimant: 0.1,
     invasionMargin: 1.2,
     capitalFallPenalty: 720,
+    coalitionWillingness: 0.45,
   },
   copycat: {
     selfClaim: 0.9,
     supportOtherClaimant: 0.9,
     invasionMargin: 1,
+    coalitionWillingness: 1.25,
   },
   random: {},
 });
@@ -141,11 +148,11 @@ export function choosePolicyCourtAction(state, meta, playerId) {
   return chooseStrategicCourtAction(state, meta, playerId);
 }
 
-export function choosePolicyOrderAction(state, meta, playerId) {
+export function choosePolicyOrderAction(state, meta, playerId, options = {}) {
   const policyId = getPolicyId(meta, playerId);
   if (policyId === 'random') return pickAction(state, listLegalOrderActions(state, playerId));
   if (policyId === 'copycat') return chooseCopycatOrderAction(state, meta, playerId);
-  return chooseStrategicOrderAction(state, meta, playerId);
+  return chooseStrategicOrderAction(state, meta, playerId, options);
 }
 
 export function describePolicyOrderChoice(state, playerId, action) {
