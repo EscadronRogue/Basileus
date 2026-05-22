@@ -2,8 +2,8 @@
 import { recordHistoryEvent } from './history.js';
 import { formatPlayerLabel, getPlayer } from './state.js';
 import {
+  completeCourtPhase,
   confirmTitleRedistribution,
-  phaseEstates,
   submitOrders,
   toggleEstatesReady,
 } from './turnflow.js';
@@ -232,6 +232,6 @@ export function applyManualTitleReassignment(state, aiMeta, basileusId, titleAss
 
 export function advanceFromCourtToEstates(state) {
   if (state.phase !== 'court') return fail('Court is not active.');
-  phaseEstates(state);
+  completeCourtPhase(state);
   return { ok: true };
 }

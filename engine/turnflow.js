@@ -8,7 +8,7 @@ import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerMercenaryOrd
 import { formatGold, formatTroops } from './presentation.js';
 import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
 
-export const PHASES = ['invasion', 'title_redistribution', 'income', 'court', 'estates', 'deployment', 'resolution', 'cleanup'];
+export const PHASES = ['invasion', 'title_redistribution', 'court', 'income', 'estates', 'deployment', 'resolution', 'cleanup'];
 export const STARTING_INCOME_GOLD = 4;
 
 function isStartingIncome(state) {
@@ -132,12 +132,6 @@ export function confirmTitleRedistribution(state, playerId, assignments) {
   if (playerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus may redistribute major titles.' };
   const result = applyTitleRedistribution(state, state.basileusId, assignments);
   if (!result.ok) return result;
-  phaseIncome(state);
-  if (state.finalScoringPending) {
-    state.finalScoringPending = false;
-    state.phase = 'scoring';
-    return { ok: true };
-  }
   phaseCourt(state);
   return { ok: true };
 }
@@ -206,11 +200,23 @@ export function phaseCourt(state) {
     playerConfirmed: new Set(),
   };
   autoConfirmFinishedCourtPlayers(state);
-  if (isCourtComplete(state)) phaseEstates(state);
+  completeCourtPhase(state);
 }
 
 export function isCourtComplete(state) {
   return (state.courtActions?.playerConfirmed?.size || 0) === state.players.length;
+}
+
+export function completeCourtPhase(state) {
+  if (!state || state.phase !== 'court' || !isCourtComplete(state)) return false;
+  phaseIncome(state);
+  if (state.finalScoringPending) {
+    state.finalScoringPending = false;
+    state.phase = 'scoring';
+    return true;
+  }
+  phaseEstates(state);
+  return true;
 }
 
 export function phaseEstates(state) {
@@ -620,7 +626,12 @@ export function advanceToNextInteractivePhase(state) {
     }
     if (state.phase === 'title_redistribution') return;
     if (state.phase === 'income') {
-      phaseCourt(state);
+      if (state.finalScoringPending) {
+        state.finalScoringPending = false;
+        state.phase = 'scoring';
+        return;
+      }
+      phaseEstates(state);
       return;
     }
     if (state.phase === 'court' || state.phase === 'estates' || state.phase === 'deployment' || state.phase === 'resolution') return;

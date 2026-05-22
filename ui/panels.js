@@ -2,8 +2,12 @@
 import { MAJOR_TITLES } from '../data/titles.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
 import {
+  COURT_POWER_ACTION_LIMIT,
+  getCourtPowerActionCount,
+  getCourtPowerActionKinds,
   getCourtPowerActionKind,
   getUsedCourtPowers,
+  isCourtPowerExhausted,
   isCourtPowerUsed,
   getMinimumLandBid,
   suggestMajorTitleAssignments,
@@ -236,7 +240,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
   container.innerHTML = `
     <section class="phase-card title-redistribution-panel">
       <h3>Redistribute Major Titles</h3>
-      <p class="section-hint">${isBasileus ? 'Assign each major office to an eligible player before the income phase.' : 'Waiting for the Basileus to assign the major titles.'}</p>
+      <p class="section-hint">${isBasileus ? 'Assign each major office to an eligible player before Court opens.' : 'Waiting for the Basileus to assign the major titles.'}</p>
       <div class="title-redist-stack">
         ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => {
           const assigned = Number(draft.assignments[titleKey]);
@@ -747,11 +751,14 @@ function getVisibleCourtPowerKeys(state, playerId) {
 }
 
 function renderCourtPowerCard(state, playerId, draft, powerKey) {
-  const usedKind = getCourtPowerActionKind(state, playerId, powerKey);
+  const usedKinds = getCourtPowerActionKinds(state, playerId, powerKey);
+  const usedCount = getCourtPowerActionCount(state, playerId, powerKey);
+  const exhausted = isCourtPowerExhausted(state, playerId, powerKey);
+  const usedSummary = usedKinds.length ? usedKinds.join(', ') : getCourtPowerActionKind(state, playerId, powerKey);
   const appointHtml = renderCourtAppointmentsForPower(state, playerId, draft, powerKey);
   const revokeHtml = renderCourtRevocationsForPower(state, playerId, draft, powerKey);
-  const body = usedKind
-    ? `<div class="panel-empty court-power-done">${getCourtPowerLabel(powerKey)} action recorded: ${escapeHtml(usedKind)}.</div>`
+  const body = exhausted
+    ? `<div class="panel-empty court-power-done">${getCourtPowerLabel(powerKey)} actions recorded: ${escapeHtml(usedSummary || 'complete')}.</div>`
     : `
         <div class="court-choice-lane">
           ${appointHtml || '<div class="choice-grid-empty">No appointments available</div>'}
@@ -759,12 +766,12 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
         </div>
       `;
   return `
-    <section class="court-power-card${usedKind ? ' used' : ''}" data-court-power="${powerKey}">
+    <section class="court-power-card${exhausted ? ' used' : ''}" data-court-power="${powerKey}">
       <header class="court-power-head">
         ${renderCourtPowerBadge(state, playerId, powerKey)}
-        ${usedKind ? '<span class="court-power-state">Used</span>' : '<span class="court-power-state">Appoint or revoke</span>'}
+        <span class="court-power-state">${usedCount ? `${usedCount}/${COURT_POWER_ACTION_LIMIT} used` : 'Appoint or revoke'}</span>
       </header>
-      ${!usedKind ? '<p class="section-hint">One action for this office this round.</p>' : ''}
+      ${!exhausted ? `<p class="section-hint">Up to ${COURT_POWER_ACTION_LIMIT} actions for this office this round.</p>` : ''}
       ${body}
     </section>
   `;

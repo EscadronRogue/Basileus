@@ -26,6 +26,8 @@ const STRATEGOS_TITLE_BY_REGION = {
   sea: 'ADMIRAL',
 };
 
+export const COURT_POWER_ACTION_LIMIT = 2;
+
 function playerName(state, playerId) {
   const player = getPlayer(state, playerId);
   return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
@@ -89,12 +91,47 @@ function getPlayerPowerUseMap(state, playerId) {
   return courtActions.powerUsed[playerId];
 }
 
+function normalizeCourtPowerUse(value) {
+  if (!value) return { count: 0, kinds: [] };
+  if (typeof value === 'string') return { count: 1, kinds: [value] };
+  if (Array.isArray(value)) {
+    const kinds = value.filter(Boolean).map((entry) => String(entry));
+    return { count: kinds.length, kinds };
+  }
+  if (typeof value === 'object') {
+    const kinds = Array.isArray(value.kinds)
+      ? value.kinds.filter(Boolean).map((entry) => String(entry))
+      : [];
+    const fallbackKind = value.lastKind || value.kind || value.actionKind || null;
+    if (!kinds.length && fallbackKind) kinds.push(String(fallbackKind));
+    const count = Math.max(
+      kinds.length,
+      Number.isFinite(Number(value.count)) ? Number(value.count) : 0,
+    );
+    return { count, kinds };
+  }
+  return { count: 0, kinds: [] };
+}
+
+export function getCourtPowerActionKinds(state, playerId, powerKey) {
+  return normalizeCourtPowerUse(getPlayerPowerUseMap(state, playerId)[powerKey]).kinds;
+}
+
+export function getCourtPowerActionCount(state, playerId, powerKey) {
+  return normalizeCourtPowerUse(getPlayerPowerUseMap(state, playerId)[powerKey]).count;
+}
+
 export function getCourtPowerActionKind(state, playerId, powerKey) {
-  return getPlayerPowerUseMap(state, playerId)[powerKey] || null;
+  const kinds = getCourtPowerActionKinds(state, playerId, powerKey);
+  return kinds.at(-1) || null;
 }
 
 export function isCourtPowerUsed(state, playerId, powerKey) {
-  return Boolean(getCourtPowerActionKind(state, playerId, powerKey));
+  return getCourtPowerActionCount(state, playerId, powerKey) > 0;
+}
+
+export function isCourtPowerExhausted(state, playerId, powerKey) {
+  return getCourtPowerActionCount(state, playerId, powerKey) >= COURT_POWER_ACTION_LIMIT;
 }
 
 export function getUsedCourtPowers(state, playerId) {
@@ -104,25 +141,27 @@ export function getUsedCourtPowers(state, playerId) {
 export function markCourtActionUsed(state, playerId, powerKey = 'PLAYER', actionKind = 'action') {
   const courtActions = ensureCourtActionState(state);
   courtActions.actionUsed[playerId] = true;
-  getPlayerPowerUseMap(state, playerId)[powerKey] = actionKind;
+  const powerUse = getPlayerPowerUseMap(state, playerId);
+  const current = normalizeCourtPowerUse(powerUse[powerKey]);
+  const kinds = current.kinds.slice();
+  kinds.push(actionKind);
+  powerUse[powerKey] = {
+    count: Math.max(current.count + 1, kinds.length),
+    lastKind: actionKind,
+    kinds,
+  };
 }
 
 function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
   if (state.phase !== 'court') return fail('Court actions are only available during Court.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
-  if (isCourtPowerUsed(state, playerId, powerKey)) {
-    const usedKind = getCourtPowerActionKind(state, playerId, powerKey);
-    const verb = usedKind === 'appoint'
-      ? 'appointed'
-      : usedKind === 'revoke'
-        ? 'revoked'
-        : 'acted';
+  if (isCourtPowerExhausted(state, playerId, powerKey)) {
     const attempted = actionKind === 'appoint'
       ? 'appoint'
       : actionKind === 'revoke'
         ? 'revoke'
         : 'act';
-    return fail(`${courtPowerName(powerKey)} already ${verb} this turn and cannot ${attempted} again until next turn.`);
+    return fail(`${courtPowerName(powerKey)} already used ${COURT_POWER_ACTION_LIMIT} court actions this turn and cannot ${attempted} again until next turn.`);
   }
   return { ok: true };
 }
@@ -604,7 +643,7 @@ export function getCourtPowerKeys(state, playerId) {
 export function hasCourtPowerOptions(state, playerId, powerKey) {
   if (state.phase !== 'court') return false;
   if (state.courtActions?.playerConfirmed?.has(playerId)) return false;
-  if (isCourtPowerUsed(state, playerId, powerKey)) return false;
+  if (isCourtPowerExhausted(state, playerId, powerKey)) return false;
   if (powerKey === 'BASILEUS') {
     return playerId === state.basileusId
       && (hasBasileusAppointmentTarget(state) || hasBasileusRevocationTarget(state));

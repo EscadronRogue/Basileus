@@ -53,12 +53,13 @@ async function verifyMultiplayerRulePatchFlow() {
     assignments: suggestMajorTitleAssignments(room.gameState, basileusId),
   });
   assert.equal(room.gameState.phase, 'court');
-  assert.equal(room.gameState.players.every((player) => player.gold === 4), true);
+  assert.equal(room.gameState.players.every((player) => player.gold === 0), true);
 
   for (const player of room.gameState.players) {
     send(room, player.id, { type: 'confirm_court' });
   }
   assert.equal(room.gameState.phase, 'estates');
+  assert.equal(room.gameState.players.every((player) => player.gold === 4), true);
 
   send(room, 1, { type: 'estate_action', action: 'buy', themeId: 'OPS', amount: 2 });
   assert.equal(room.gameState.landAuctions.OPS.bidderId, 1);
@@ -84,7 +85,21 @@ async function verifyMultiplayerRulePatchFlow() {
   assert.equal(Object.keys(room.gameState.allOrders).length, room.gameState.players.length);
 
   send(room, 0, { type: 'continue_after_resolution' });
-  assert.equal(['cleanup', 'scoring'].includes(room.gameState.phase), true);
+  if (!room.gameState.gameOver) {
+    assert.equal(room.gameState.phase, 'title_redistribution');
+    const finalBasileusId = room.gameState.basileusId;
+    send(room, finalBasileusId, {
+      type: 'reassign_major_titles',
+      assignments: suggestMajorTitleAssignments(room.gameState, finalBasileusId),
+    });
+    assert.equal(room.gameState.phase, 'court');
+    for (const player of room.gameState.players) {
+      send(room, player.id, { type: 'confirm_court' });
+    }
+    assert.equal(room.gameState.phase, 'scoring');
+  } else {
+    assert.equal(room.gameState.phase, 'cleanup');
+  }
 }
 
 try {

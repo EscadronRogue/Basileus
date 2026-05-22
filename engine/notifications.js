@@ -139,7 +139,7 @@ function buildPendingActionNotifications(state, viewerId, notifications) {
       id: `title-reassignment:${viewerId}:${state.round}`,
       kind: 'title_reassignment',
       title: 'Redistribute the major offices',
-      body: 'As Basileus, confirm or redistribute the major titles before income.',
+      body: 'As Basileus, confirm or redistribute the major titles before Court.',
       urgent: true,
       action: 'open_title_redistribution',
       round: state.round,

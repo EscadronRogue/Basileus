@@ -13,6 +13,7 @@ import {
   submitHumanOrders,
 } from './commands.js';
 import {
+  completeCourtPhase,
   confirmTitleRedistribution,
   phaseCleanup,
   phaseCourt,
@@ -95,7 +96,7 @@ test('income routes estates, bishops, strategos troops, and occupied bishop valu
   assert.deepEqual(bishopRoute.recipients, [{ playerId: 1, value: 2 }]);
 });
 
-test('title redistribution precedes starting income and court', () => {
+test('title redistribution opens court before starting income', () => {
   const state = makeState();
   state.round = 1;
   state.phase = 'title_redistribution';
@@ -105,12 +106,22 @@ test('title redistribution precedes starting income and court', () => {
 
   assert.equal(result.ok, true);
   assert.equal(state.phase, 'court');
+  assert.equal(state.startingIncomeResolved, false);
+  assert.deepEqual(state.players.map((player) => player.gold), [0, 0, 0, 0]);
+  assert.equal(getOfficeHolder(state, 'BASILEUS'), state.basileusId);
+
+  for (const player of state.players) {
+    if (state.phase !== 'court' || state.courtActions.playerConfirmed.has(player.id)) continue;
+    const skip = applyCourtAction(state, player.id, { action: 'skip' });
+    assert.equal(skip.ok, true);
+  }
+  completeCourtPhase(state);
+  assert.equal(state.phase, 'estates');
   assert.equal(state.startingIncomeResolved, true);
   assert.deepEqual(state.players.map((player) => player.gold), [4, 4, 4, 4]);
-  assert.equal(getOfficeHolder(state, 'BASILEUS'), state.basileusId);
 });
 
-test('court actions are role-filtered and one action per major title', () => {
+test('court actions are role-filtered and capped at two actions per major title', () => {
   const state = makeState();
   enterCourt(state);
 
@@ -122,13 +133,21 @@ test('court actions are role-filtered and one action per major title', () => {
   assert.equal(goodStrategos.ok, true);
   assert.equal(state.themes.OPS.strategos, 2);
 
-  const sameTitleAction = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
+  const secondStrategos = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
+  assert.equal(secondStrategos.ok, true);
+  assert.equal(state.themes.OPT.strategos, 3);
+
+  const sameTitleAction = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'KAP', appointeeId: 0 });
   assert.equal(sameTitleAction.ok, false);
-  assert.match(sameTitleAction.reason, /Domestic of the East already appointed/);
+  assert.match(sameTitleAction.reason, /already used 2 court actions/);
 
   const secondAction = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'KAP', appointeeId: 3 });
   assert.equal(secondAction.ok, true);
   assert.equal(state.themes.KAP.bishop, 3);
+
+  const secondBishop = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'ANT', appointeeId: 2 });
+  assert.equal(secondBishop.ok, true);
+  assert.equal(state.themes.ANT.bishop, 2);
   assert.equal(state.courtActions.playerConfirmed.has(1), true);
 });
 
@@ -295,7 +314,7 @@ test('final scoring uses last income phase shares without free citizens', () => 
   assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 20);
 });
 
-test('final title redistribution triggers one last income phase before scoring', () => {
+test('final title redistribution triggers one last court and income phase before scoring', () => {
   const state = makeState();
   state.round = state.maxRounds;
   state.invasionDeck = [];
@@ -312,6 +331,15 @@ test('final title redistribution triggers one last income phase before scoring',
   const result = confirmTitleRedistribution(state, state.basileusId, assignments);
 
   assert.equal(result.ok, true);
+  assert.equal(state.phase, 'court');
+  assert.equal(state.finalScoringPending, true);
+
+  for (const player of state.players) {
+    if (state.phase !== 'court' || state.courtActions.playerConfirmed.has(player.id)) continue;
+    const skip = applyCourtAction(state, player.id, { action: 'skip' });
+    assert.equal(skip.ok, true);
+  }
+  completeCourtPhase(state);
   assert.equal(state.phase, 'scoring');
   assert.equal(state.finalScoringPending, false);
   assert.equal(state.lastIncome.round, state.round);

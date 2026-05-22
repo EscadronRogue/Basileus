@@ -273,9 +273,9 @@ export const PHASE_NAMES = {
 export const PHASE_TOOLTIPS = {
   setup: 'Provinces, titles and starting gold are dealt out.',
   invasion: 'A new invasion is drawn. Its route shows which provinces are at risk.',
-  title_redistribution: 'The Basileus confirms or redistributes the major titles.',
+  title_redistribution: 'The Basileus confirms or redistributes the major titles before Court.',
   income: 'Provinces pay out gold and raise troops automatically.',
-  court: 'Each player takes one appointment, revocation, deal, or skip action.',
+  court: 'Each player appoints or revokes up to twice per office before income.',
   estates: 'Dynasties bid for private land.',
   deployment: 'Each player funds armies, hires mercenaries, chooses destinations, and backs a claimant.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
@@ -314,7 +314,7 @@ export function renderTopBar(state) {
 
   if (roundEl) {
     roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
-    roundEl.title = `Game ends after ${state.maxRounds} invasions, then one final title redistribution and income phase. Each 25% category share scores 1 point, up to 3; highest total wins.`;
+    roundEl.title = `Game ends after ${state.maxRounds} invasions, then one final title redistribution, Court, and income phase. Each 25% category share scores 1 point, up to 3; highest total wins.`;
   }
   if (phaseEl) {
     if (state.gameOver?.type === 'fall') {

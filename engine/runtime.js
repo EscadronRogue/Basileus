@@ -7,13 +7,13 @@ import {
   advanceToNextInteractivePhase,
   applyDefenderRewardChoice,
   allOrdersSubmitted,
+  completeCourtPhase,
   confirmTitleRedistribution,
   getPendingDefenderRewards,
   hasPendingDefenderRewards,
   isCourtComplete,
   phaseCleanup,
   phaseDeployment,
-  phaseEstates,
   phaseResolution,
   setEstatesReady,
 } from './turnflow.js';
@@ -112,8 +112,7 @@ export function autoResolveUnavailableHumanAppointments(state, playerId, aiMeta 
 }
 
 export function maybeAdvanceCourt(state, aiMeta = null) {
-  if (state && isCourtComplete(state)) {
-    phaseEstates(state);
+  if (state && completeCourtPhase(state)) {
     if (aiMeta) invalidateRoundContext(aiMeta);
   }
 }
@@ -150,7 +149,7 @@ export function processAiFlow(state, aiMeta, options = {}) {
         runAICourtAutomation(state, aiMeta, { mode: courtMode });
       }
       if (courtMode === 'finish' && isCourtComplete(state)) {
-        phaseEstates(state);
+        completeCourtPhase(state);
         invalidateRoundContext(aiMeta);
         continue;
       }
