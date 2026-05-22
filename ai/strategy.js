@@ -41,19 +41,19 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   estateProfit: 4,
   estateBidCost: 1.15,
   estateThreatPenalty: 1.5,
-  invasionMargin: 1.35,
-  capitalFallPenalty: 650,
-  capitalRiskPenalty: 220,
+  invasionMargin: 1.75,
+  capitalFallPenalty: 760,
+  capitalRiskPenalty: 260,
   invasionVictoryBonus: 6,
-  invasionDefeatPenalty: 8,
+  invasionDefeatPenalty: 10,
   recoveryBonus: 0.8,
   throneBase: 18,
   throneProgress: 0,
-  selfClaim: 1,
-  incumbentDefense: 1,
+  selfClaim: 1.1,
+  incumbentDefense: 0.85,
   supportLeaderPenalty: 0.9,
   supportOtherClaimant: 0.6,
-  reserveValue: 0.25,
+  reserveValue: 0.32,
   mercenaryCostPenalty: 0.12,
   reciprocityWeight: 0.6,
   grudgeWeight: 0.8,
@@ -67,12 +67,12 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   coalitionWillingness: 0.65,
   relationshipCoupWeight: 0.6,
   coalitionDefectionPenalty: 1,
-  surplusDefensePenalty: 0,
-  frontierSurplusValue: 1,
-  frontierSurplusCap: 24,
-  coupOpportunityWeight: 0.15,
+  surplusDefensePenalty: 0.16,
+  frontierSurplusValue: 0.5,
+  frontierSurplusCap: 12,
+  coupOpportunityWeight: 0.28,
   allyDefenseReliance: 1,
-  selfClaimThreshold: 1.1,
+  selfClaimThreshold: 0.98,
   kingmakerPenalty: 0.25,
 });
 
@@ -589,15 +589,19 @@ function scoreInvasionMargin(margin, weights) {
   const surplusValue = clamp(
     Number.isFinite(rawSurplusValue) ? rawSurplusValue : DEFAULT_STRATEGY_WEIGHTS.frontierSurplusValue,
     0,
-    1,
+    0.8,
   );
   const surplusCap = clamp(
     Number.isFinite(rawSurplusCap) ? rawSurplusCap : DEFAULT_STRATEGY_WEIGHTS.frontierSurplusCap,
     0,
     24,
   );
+  const cappedSurplus = Math.min(surplusCap, surplus);
+  const usefulSurplus = Math.min(3, cappedSurplus);
+  const extraSurplus = Math.max(0, cappedSurplus - usefulSurplus);
   return Math.max(-28, shortfall) * weights.invasionMargin
-    + Math.min(surplusCap, surplus) * weights.invasionMargin * surplusValue;
+    + usefulSurplus * weights.invasionMargin * surplusValue
+    + extraSurplus * weights.invasionMargin * surplusValue * 0.35;
 }
 
 function themeStake(state, playerId, themeId) {
@@ -625,7 +629,7 @@ function scoreWarPlan(state, playerId, summary, estimates, weights, context = {}
   const surplusFrontier = Math.max(0, totalFrontier - usefulFrontierTarget(state, invasion, highStrength));
 
   let value = scoreInvasionMargin(margin, weights);
-  value -= surplusFrontier * weights.surplusDefensePenalty;
+  value -= surplusFrontier * (0.06 + weights.surplusDefensePenalty);
   if (expected.reachedCPL) value -= weights.capitalFallPenalty;
   else if (high.reachedCPL) value -= weights.capitalRiskPenalty;
   if (expected.outcome === 'victory') value += weights.invasionVictoryBonus;

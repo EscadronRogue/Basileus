@@ -87,7 +87,7 @@ export const STRATEGY_WEIGHT_BOUNDS = Object.freeze({
   incumbentDefense: [0.1, 2.4],
   supportLeaderPenalty: [0.1, 2.4],
   supportOtherClaimant: [0, 1.8],
-  reserveValue: [0, 1.2],
+  reserveValue: [0.15, 1.4],
   mercenaryCostPenalty: [0, 0.55],
   reciprocityWeight: [0, 1.8],
   grudgeWeight: [0, 1.8],
@@ -101,12 +101,12 @@ export const STRATEGY_WEIGHT_BOUNDS = Object.freeze({
   coalitionWillingness: [0, 2.4],
   relationshipCoupWeight: [0, 1.8],
   coalitionDefectionPenalty: [0, 2.4],
-  surplusDefensePenalty: [0, 2.4],
-  frontierSurplusValue: [0, 1],
-  frontierSurplusCap: [0, 24],
-  coupOpportunityWeight: [0, 2.4],
+  surplusDefensePenalty: [0.05, 2.4],
+  frontierSurplusValue: [0, 0.8],
+  frontierSurplusCap: [0, 16],
+  coupOpportunityWeight: [0.05, 2.4],
   allyDefenseReliance: [0.55, 1],
-  selfClaimThreshold: [0.7, 1.8],
+  selfClaimThreshold: [0.65, 1.6],
   kingmakerPenalty: [0, 1.2],
 });
 
@@ -192,6 +192,35 @@ function pickScheduledValue(values, index, offset = 0) {
 function round(value, places = 3) {
   const factor = 10 ** places;
   return Math.round((Number(value) || 0) * factor) / factor;
+}
+
+function scoreBand(value, min, max, reward, lowPenalty, highPenalty) {
+  const number = Number(value) || 0;
+  if (number < min) return -(min - number) * lowPenalty;
+  if (number > max) return reward - (number - max) * highPenalty;
+  return reward;
+}
+
+function scoreAggregateTrainingShape(metrics, options) {
+  const fallRate = Number(metrics.fallRate) || 0;
+  const selfClaimRate = Number(metrics.selfClaimRate) || 0;
+  const credibleSelfClaimRate = Number(metrics.credibleSelfClaimRate) || 0;
+  const averageWarMargin = Number(metrics.averageWarMargin) || 0;
+  const fundedTroopsPerOrder = Number(metrics.fundedTroopsPerOrder) || 0;
+  const fallPenalty = Math.max(0, Number(options.fallPenalty) || 0);
+
+  let adjustment = 0;
+  adjustment -= fallRate * fallPenalty * 0.18;
+  adjustment -= Math.max(0, 0.25 - fallRate) * fallPenalty * 0.9;
+  const highFallGap = Math.max(0, fallRate - 0.75);
+  adjustment -= highFallGap * fallPenalty * 4.5;
+  adjustment -= highFallGap * highFallGap * fallPenalty * 2;
+
+  adjustment += scoreBand(credibleSelfClaimRate, 0.12, 0.25, 48, 220, 80);
+  adjustment -= Math.max(0, 0.14 - selfClaimRate) * 90;
+  adjustment -= Math.max(0, averageWarMargin - 5) * 3.2;
+  adjustment -= Math.max(0, fundedTroopsPerOrder - 4.8) * 7.5;
+  return adjustment;
 }
 
 function clamp(value, [min, max]) {
@@ -399,11 +428,10 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
   objective += Math.min(0.35, credibleSelfClaimRate) * 42;
   objective += Math.min(8, averageSelfClaimTroops) * (selfClaims > 0 ? 1.8 : 0);
   objective -= tokenSelfClaimRate * 28;
-  objective -= Math.max(0, 0.08 - credibleSelfClaimRate) * 18;
+  objective -= Math.max(0, 0.08 - credibleSelfClaimRate) * 12;
   objective -= defeatRate * 14;
   objective += victoryRate * 5;
-  objective -= Math.max(0, averageWarMargin - 8) * 1.4;
-  if (game.fall) objective -= options.fallPenalty;
+  objective -= Math.max(0, averageWarMargin - 10) * 0.5;
   if (game.reason === 'stuck') objective -= 120;
 
   return {
@@ -481,23 +509,42 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     unresolvedAppointmentLocks += score.unresolvedAppointmentLock;
   }
 
+  const games = Math.max(1, options.games);
+  const metrics = {
+    objective: total / games,
+    winRate: wins / games,
+    averageRank: rankTotal / games,
+    averagePoints: pointTotal / games,
+    averagePointMargin: pointMarginTotal / games,
+    fallRate: falls / games,
+    averageWarMargin: averageWarMargin / games,
+    selfClaimRate: selfClaimRate / games,
+    credibleSelfClaimRate: credibleSelfClaimRate / games,
+    selfClaimWinRate: selfClaimWinRate / games,
+    tokenSelfClaimRate: tokenSelfClaimRate / games,
+    averageSelfClaimTroops: averageSelfClaimTroops / games,
+    capitalTroopsPerOrder: capitalTroopsPerOrder / games,
+    fundedTroopsPerOrder: fundedTroopsPerOrder / games,
+  };
+  metrics.objective += scoreAggregateTrainingShape(metrics, options);
+
   return {
-    objective: round(total / options.games),
-    winRate: round(wins / options.games),
-    averageRank: round(rankTotal / options.games),
-    averagePoints: round(pointTotal / options.games),
-    averagePointMargin: round(pointMarginTotal / options.games),
-    fallRate: round(falls / options.games),
-    averageWarMargin: round(averageWarMargin / options.games),
-    selfClaimRate: round(selfClaimRate / options.games),
-    credibleSelfClaimRate: round(credibleSelfClaimRate / options.games),
-    selfClaimWinRate: round(selfClaimWinRate / options.games),
-    tokenSelfClaimRate: round(tokenSelfClaimRate / options.games),
-    averageSelfClaimTroops: round(averageSelfClaimTroops / options.games),
-    capitalTroopsPerOrder: round(capitalTroopsPerOrder / options.games),
-    fundedTroopsPerOrder: round(fundedTroopsPerOrder / options.games),
+    objective: round(metrics.objective),
+    winRate: round(metrics.winRate),
+    averageRank: round(metrics.averageRank),
+    averagePoints: round(metrics.averagePoints),
+    averagePointMargin: round(metrics.averagePointMargin),
+    fallRate: round(metrics.fallRate),
+    averageWarMargin: round(metrics.averageWarMargin),
+    selfClaimRate: round(metrics.selfClaimRate),
+    credibleSelfClaimRate: round(metrics.credibleSelfClaimRate),
+    selfClaimWinRate: round(metrics.selfClaimWinRate),
+    tokenSelfClaimRate: round(metrics.tokenSelfClaimRate),
+    averageSelfClaimTroops: round(metrics.averageSelfClaimTroops),
+    capitalTroopsPerOrder: round(metrics.capitalTroopsPerOrder),
+    fundedTroopsPerOrder: round(metrics.fundedTroopsPerOrder),
     appointmentUnlockRate: round(appointmentUnlocks / Math.max(1, selfAppointments)),
-    unresolvedAppointmentLocks: round(unresolvedAppointmentLocks / options.games),
+    unresolvedAppointmentLocks: round(unresolvedAppointmentLocks / games),
     stuck,
   };
 }
@@ -555,7 +602,7 @@ function buildSavedOpponent(result, champion, index, existing) {
     metrics: champion.metrics,
     training: {
       trainedAt: new Date().toISOString(),
-      objectiveVersion: 2,
+      objectiveVersion: 3,
       championRank: index + 1,
       generations: result.options.generations,
       population: result.options.population,

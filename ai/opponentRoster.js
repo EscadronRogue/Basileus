@@ -60,15 +60,37 @@ function migrateLegacyTunedWeights(entry, weights) {
   };
 }
 
+function migrateDangerBandTunedWeights(entry, weights) {
+  if ((Number(entry?.training?.objectiveVersion) || 0) >= 3) return weights;
+  if ((entry?.policy?.policyId || entry?.policyId || 'tuned') !== 'tuned') return weights;
+  return {
+    ...weights,
+    invasionMargin: Math.min(Number(weights.invasionMargin) || 1.65, 1.65),
+    capitalFallPenalty: Math.min(Number(weights.capitalFallPenalty) || 680, 680),
+    capitalRiskPenalty: Math.min(Number(weights.capitalRiskPenalty) || 230, 230),
+    invasionDefeatPenalty: Math.min(Number(weights.invasionDefeatPenalty) || 10, 14),
+    selfClaim: Math.max(Number(weights.selfClaim) || 0, 0.9),
+    incumbentDefense: Math.min(Number(weights.incumbentDefense) || 0.85, 1.1),
+    supportOtherClaimant: Math.max(Number(weights.supportOtherClaimant) || 0, 0.5),
+    reserveValue: Math.max(Number(weights.reserveValue) || 0, 0.48),
+    surplusDefensePenalty: Math.max(Number(weights.surplusDefensePenalty) || 0, 0.28),
+    frontierSurplusValue: Math.min(Number(weights.frontierSurplusValue) || 0.5, 0.5),
+    frontierSurplusCap: Math.min(Number(weights.frontierSurplusCap) || 12, 12),
+    coupOpportunityWeight: Math.max(Number(weights.coupOpportunityWeight) || 0, 0.42),
+    selfClaimThreshold: Math.min(Number(weights.selfClaimThreshold) || 0.98, 1.05),
+  };
+}
+
 function normalizeTunedOpponent(entry, index = 0) {
   if (!entry || typeof entry !== 'object') return null;
   const id = String(entry.id || `tuned-${index + 1}`).trim();
   const firstName = String(entry.firstName || entry.name || '').trim();
   if (!id || !firstName) return null;
-  const strategyWeights = migrateLegacyTunedWeights(
+  const legacyWeights = migrateLegacyTunedWeights(
     entry,
     entry.strategyWeights || entry.policy?.strategyWeights || entry.weights || {},
   );
+  const strategyWeights = migrateDangerBandTunedWeights(entry, legacyWeights);
   return {
     id,
     firstName,

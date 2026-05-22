@@ -67,7 +67,9 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   Default: `0.35`
 
 - `--fall-penalty X`  
-  Objective penalty when the empire falls. Higher values teach the AI that surviving matters more than simply scoring highest.
+  Objective pressure around empire collapse. Fall rates below 75% are penalized lightly,
+  fall rates above 75% are punished hard, and fall rates below 25% are also penalized
+  because the AI is probably playing too safely.
   Default: `130`
 
 - `--opponent-mix robust|beginner`  
