@@ -15,7 +15,7 @@ import { getSpendableGold } from '../engine/deals.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/turnflow.js';
 import { getFreeThemes, getPlayer } from '../engine/state.js';
-import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
+import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { readTroopEntry } from '../engine/cascade.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
@@ -313,13 +313,12 @@ export function listLegalOrderActions(state, playerId) {
     for (const mercenaries of buildMercenaryPlans(state, playerId, armies)) {
       for (const candidate of state.players.map((player) => player.id)) {
         const orders = { armies, mercenaries, candidate };
-        const trial = cloneForValidation(state);
-        const result = submitHumanOrders(trial, playerId, orders);
-        if (!result.ok) continue;
-        const key = stablePayload(result.orders);
+        const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
+        if (!normalized.ok) continue;
+        const key = stablePayload(normalized.orders);
         if (seen.has(key)) continue;
         seen.add(key);
-        actions.push({ id: actionId('orders', result.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: result.orders });
+        actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
         if (actions.length >= 260) return actions;
       }
     }

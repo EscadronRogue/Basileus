@@ -15,6 +15,7 @@ import {
   runAICourtAutomation,
 } from './brain.js';
 import { applyLegalAction, listLegalEstateActions } from './legalActions.js';
+import { simulateGames } from './simulate.js';
 
 function makeState() {
   const state = createGameState({ playerCount: 4, deckSize: 2, seed: 13, historyEnabled: true });
@@ -100,6 +101,15 @@ test('legal estate actions dispatch through the shared AI action path', () => {
 
   assert.equal(result.ok, true);
   assert.equal(Boolean(state.landAuctions[action.payload.themeId]), true);
+});
+
+test('AI simulation runner completes deterministic all-AI games', () => {
+  const result = simulateGames({ games: 3, playerCount: 4, deckSize: 2, seed: 91, samples: 2 });
+
+  assert.equal(result.games, 3);
+  assert.equal(result.completed + result.stuck, 3);
+  assert.equal(result.resolutions > 0, true);
+  assert.equal(Number.isFinite(result.scoring.winnerScore), true);
 });
 
 test('simultaneous AI planning ignores already submitted human deployment orders', () => {

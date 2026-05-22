@@ -29,6 +29,7 @@
   "scripts": {
     "serve": "node multiplayer/server.js",
     "serve:multiplayer": "node multiplayer/server.js",
+    "simulate:ai": "node ai/simulate.js",
     "test:economy": "node engine/economy.test.js",
     "test:ai": "node --test ai/brain.test.js ai/purge.test.js",
     "test:multiplayer": "node multiplayer/verify.js",
