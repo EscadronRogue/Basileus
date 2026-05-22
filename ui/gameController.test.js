@@ -162,6 +162,7 @@ test('court estate revocations show owner color without the old separator', () =
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
+  assert.match(container.innerHTML, /revocation-target-card estate/);
   assert.match(container.innerHTML, /province-owner-marker compact/);
   assert.equal(container.innerHTML.includes(`--province-owner-color: ${state.players[2].color};`), true);
   assert.equal(container.innerHTML.includes('Estate —'), false);

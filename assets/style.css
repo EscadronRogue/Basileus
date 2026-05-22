@@ -4359,9 +4359,94 @@ textarea {
 /* Title and province choice buttons reuse the existing token visuals;
    we just need a clean selected ring around the inner cartouche. */
 .title-choice-btn { padding: 3px; }
+.revocation-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+.revocation-choice-btn {
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  border: 1px solid rgba(168,116,32,0.22);
+  border-radius: var(--r-sm);
+  background:
+    linear-gradient(180deg, rgba(255,252,242,0.94), rgba(245,233,200,0.62));
+  box-shadow:
+    inset 0 0 0 1px rgba(255,250,228,0.30),
+    0 1px 2px rgba(46,30,15,0.10);
+}
+.revocation-choice-btn:hover {
+  border-color: rgba(200,146,30,0.46);
+  background:
+    linear-gradient(180deg, rgba(255,252,242,0.98), rgba(245,233,200,0.78));
+}
+.revocation-choice-btn.selected {
+  border-color: var(--gold-1);
+  background:
+    linear-gradient(180deg, rgba(255,252,242,0.98), rgba(245,233,200,0.82));
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.42),
+    0 0 0 2px rgba(240,200,90,0.42),
+    0 0 0 4px rgba(168,116,32,0.22),
+    0 3px 10px rgba(168,116,32,0.16);
+}
+.revocation-target-card {
+  display: grid;
+  grid-template-columns: minmax(76px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+}
+.revocation-target-kind,
+.revocation-target-place {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.revocation-target-kind {
+  justify-content: flex-start;
+}
+.revocation-target-place {
+  justify-content: flex-start;
+  gap: 5px;
+}
+.revocation-target-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  padding: 4px 9px 5px;
+  border: 1px solid rgba(168,116,32,0.42);
+  border-radius: 3px;
+  background: rgba(255,252,240,0.72);
+  color: var(--umber-2);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.revocation-target-card .title-token.compact,
+.revocation-target-card .province-token.compact {
+  border-width: 3px;
+  padding: 4px 8px 5px;
+  line-height: 1.18;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.revocation-target-place .province-token {
+  min-width: 0;
+  text-align: left;
+}
 .title-choice-btn.selected .title-token,
-.revocation-choice-btn.selected .title-token,
-.revocation-choice-btn.selected .province-token {
+.province-choice-btn.selected .province-token {
   box-shadow:
     inset 0 0 0 1px rgba(240,200,90,0.85),
     0 0 0 1.5px var(--gold-4),
@@ -5768,9 +5853,7 @@ textarea {
 }
 
 .province-choice-btn.selected .province-token,
-.title-choice-btn.selected .title-token,
-.revocation-choice-btn.selected .title-token,
-.revocation-choice-btn.selected .province-token {
+.title-choice-btn.selected .title-token {
   filter: brightness(1.05) saturate(1.04);
   box-shadow:
     inset 0 0 0 1px rgba(240,200,90,0.88),

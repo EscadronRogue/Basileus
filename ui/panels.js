@@ -283,6 +283,43 @@ function renderRevocationChoiceGrid(state, targets, options = {}) {
   `;
 }
 
+function renderRevocationTargetBadge(state, target) {
+  const [kind, themeId, titleType] = String(target?.value || '').split(':');
+  const theme = state.themes?.[themeId];
+  if (!theme) return escapeHtml(target?.label || '');
+
+  if (kind === 'minor') {
+    const titleKind = titleType === 'strategos' ? 'STRATEGOS' : 'BISHOP';
+    const holderId = titleType === 'strategos' ? theme.strategos : theme.bishop;
+    return `
+      <span class="revocation-target-card ${escapeHtml(titleType)}">
+        <span class="revocation-target-kind">
+          ${renderTitleBadge(state, titleKind, { holderId, themeId, compact: true })}
+        </span>
+        <span class="revocation-target-place">
+          ${renderProvinceBadge(state, theme, { compact: true })}
+        </span>
+      </span>
+    `;
+  }
+
+  if (kind === 'theme') {
+    return `
+      <span class="revocation-target-card estate">
+        <span class="revocation-target-kind">
+          <span class="revocation-target-label">Estate</span>
+        </span>
+        <span class="revocation-target-place">
+          ${renderProvinceOwnerMarker(state, theme, { compact: true })}
+          ${renderProvinceBadge(state, theme, { compact: true })}
+        </span>
+      </span>
+    `;
+  }
+
+  return escapeHtml(target?.label || '');
+}
+
 function renderArmyOfficeBadge(state, officeKey, playerId) {
   if (isStrategosDeploymentArmyKey(officeKey)) {
     return renderTitleBadge(state, 'STRATEGOS', {
@@ -595,27 +632,7 @@ function renderCourtAppointments(state, playerId, draft) {
 function renderCourtRevocations(state, playerId, draft) {
   const rawTargets = getRevocationTargets(state, playerId);
   if (!rawTargets.length) return '';
-  // Decorate each target with a cartouche badge so the choice grid looks
-  // like the appointment row, not a flat list.
-  const targets = rawTargets.map((target) => {
-    let badge = '';
-    if (target.value.startsWith('minor:')) {
-      const [, themeId, kind] = target.value.split(':');
-      const theme = state.themes[themeId];
-      if (theme) {
-        const titleKind = kind === 'strategos' ? 'STRATEGOS' : 'BISHOP';
-        const holderId = kind === 'strategos' ? theme.strategos : theme.bishop;
-        badge = `${renderTitleBadge(state, titleKind, { holderId, themeId, compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
-      }
-    } else if (target.value.startsWith('theme:')) {
-      const themeId = target.value.split(':')[1];
-      const theme = state.themes[themeId];
-      if (theme) {
-        badge = `<span class="muted">Estate</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
-      }
-    }
-    return { ...target, badge };
-  });
+  const targets = decorateRevocationTargets(state, rawTargets);
   const selectedValue = draft.revoke?.target || null;
   const selectedTarget = targets.find((t) => t.value === selectedValue);
   const ready = Boolean(selectedTarget);
@@ -773,25 +790,7 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
 }
 
 function decorateRevocationTargets(state, targets) {
-  return targets.map((target) => {
-    let badge = '';
-    if (target.value.startsWith('minor:')) {
-      const [, themeId, kind] = target.value.split(':');
-      const theme = state.themes[themeId];
-      if (theme) {
-        const titleKind = kind === 'strategos' ? 'STRATEGOS' : 'BISHOP';
-        const holderId = kind === 'strategos' ? theme.strategos : theme.bishop;
-        badge = `${renderTitleBadge(state, titleKind, { holderId, themeId, compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
-      }
-    } else if (target.value.startsWith('theme:')) {
-      const themeId = target.value.split(':')[1];
-      const theme = state.themes[themeId];
-      if (theme) {
-        badge = `<span class="muted">Estate</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
-      }
-    }
-    return { ...target, badge };
-  });
+  return targets.map((target) => ({ ...target, badge: renderRevocationTargetBadge(state, target) }));
 }
 
 function renderCourtRevocationsForPower(state, playerId, draft, powerKey) {
