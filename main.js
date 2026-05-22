@@ -335,7 +335,7 @@ async function launchMultiplayerFlow(intent) {
   const setupRng = makeChoiceRng(seed);
 
   const playerCount = Number.parseInt(
-    resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '4'),
+    resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '5'),
     10,
   );
   const deckSize = Number.parseInt(
@@ -385,7 +385,7 @@ btnStart.addEventListener('click', async () => {
   const modeChoices = getNonRandomOptionValues(setupMode).filter((value) => value !== 'multiplayer');
 
   const playerCount = Number.parseInt(
-    resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '4'),
+    resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '5'),
     10,
   );
   const deckSize = Number.parseInt(

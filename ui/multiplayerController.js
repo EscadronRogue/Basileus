@@ -936,7 +936,7 @@ export class MultiplayerController {
     });
 
     this.setupDialog.querySelector('#btnStartRoom')?.addEventListener('click', () => {
-      const playerCount = Number(this.setupDialog.querySelector('#roomPlayerCount')?.value || config.playerCount || 4);
+      const playerCount = Number(this.setupDialog.querySelector('#roomPlayerCount')?.value || config.playerCount || 5);
       const deckSize = Number(this.setupDialog.querySelector('#roomDeckSize')?.value || config.deckSize || 9);
       const seed = this.setupDialog.querySelector('#roomSeedInput')?.value?.trim() || '';
       this.send('set_room_config', {

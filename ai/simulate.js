@@ -11,7 +11,7 @@ import { createAIMeta } from './brain.js';
 
 const DEFAULT_OPTIONS = {
   games: 100,
-  playerCount: 4,
+  playerCount: 5,
   deckSize: 9,
   seed: 1,
   maxSteps: 500,

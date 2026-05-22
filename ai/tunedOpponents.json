@@ -1,5 +1,90 @@
 {
   "version": 1,
-  "updatedAt": null,
-  "opponents": []
+  "updatedAt": "2026-05-22T07:14:24.532Z",
+  "opponents": [
+    {
+      "id": "tuned-eustathios",
+      "firstName": "Eustathios",
+      "label": "Tuned AI",
+      "description": "Tuned against strategic, defender, usurper, profiteer, random, copycat.",
+      "policy": {
+        "policyId": "tuned",
+        "strategyWeights": {
+          "ownRecipientBonus": 2.5356291495449845,
+          "leaderDenial": 1.1790468821592628,
+          "rivalDenial": 0.3441399619769305,
+          "courtGainFloor": 0.35,
+          "estateGainFloor": 0.2,
+          "estateProfit": 4.963917374260723,
+          "estateBidCost": 1.2354275459128432,
+          "estateThreatPenalty": 1.9167867433512584,
+          "invasionMargin": 1.5426588550136424,
+          "capitalFallPenalty": 582.0979072777554,
+          "capitalRiskPenalty": 131.60888485595586,
+          "invasionVictoryBonus": 8.260059128712863,
+          "invasionDefeatPenalty": 10.729228255633265,
+          "recoveryBonus": 0.8621589945210144,
+          "throneBase": 16.31783275116235,
+          "throneProgress": 24.736809800583867,
+          "selfClaim": 0.2106252197361551,
+          "incumbentDefense": 1.2116274792505428,
+          "supportLeaderPenalty": 0.7129689262585714,
+          "supportOtherClaimant": 0.104046618325077,
+          "reserveValue": 0.21296813623644412,
+          "mercenaryCostPenalty": 0.11615051073888315
+        }
+      },
+      "strategyWeights": {
+        "ownRecipientBonus": 2.5356291495449845,
+        "leaderDenial": 1.1790468821592628,
+        "rivalDenial": 0.3441399619769305,
+        "courtGainFloor": 0.35,
+        "estateGainFloor": 0.2,
+        "estateProfit": 4.963917374260723,
+        "estateBidCost": 1.2354275459128432,
+        "estateThreatPenalty": 1.9167867433512584,
+        "invasionMargin": 1.5426588550136424,
+        "capitalFallPenalty": 582.0979072777554,
+        "capitalRiskPenalty": 131.60888485595586,
+        "invasionVictoryBonus": 8.260059128712863,
+        "invasionDefeatPenalty": 10.729228255633265,
+        "recoveryBonus": 0.8621589945210144,
+        "throneBase": 16.31783275116235,
+        "throneProgress": 24.736809800583867,
+        "selfClaim": 0.2106252197361551,
+        "incumbentDefense": 1.2116274792505428,
+        "supportLeaderPenalty": 0.7129689262585714,
+        "supportOtherClaimant": 0.104046618325077,
+        "reserveValue": 0.21296813623644412,
+        "mercenaryCostPenalty": 0.11615051073888315
+      },
+      "metrics": {
+        "objective": 130.838,
+        "winRate": 0.458,
+        "averageRank": 2.042,
+        "averagePoints": 3.042,
+        "fallRate": 0.333,
+        "stuck": 0
+      },
+      "training": {
+        "trainedAt": "2026-05-22T07:14:24.532Z",
+        "generations": 3,
+        "population": 10,
+        "gamesPerCandidate": 24,
+        "playerCount": 4,
+        "deckSize": 9,
+        "seed": 1000,
+        "league": [
+          "strategic",
+          "defender",
+          "usurper",
+          "profiteer",
+          "random",
+          "copycat"
+        ],
+        "selfPlayEvery": 4,
+        "fallPenalty": 130
+      }
+    }
+  ]
 }

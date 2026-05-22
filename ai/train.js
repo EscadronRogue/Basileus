@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 
 import { makeRng } from '../engine/state.js';
 import { simulateGame } from './simulate.js';
@@ -14,9 +15,9 @@ const DEFAULT_OPTIONS = {
   population: 10,
   elite: 3,
   games: 24,
-  playerCount: 4,
-  deckSize: 9,
-  seed: 1000,
+  playerCounts: [5],
+  deckSizes: [9],
+  seed: null,
   maxSteps: 500,
   mutation: 0.35,
   fallPenalty: 130,
@@ -57,6 +58,46 @@ function toInt(value, fallback) {
 function toFloat(value, fallback) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function randomTrainingSeed() {
+  return randomBytes(4).readUInt32BE(0);
+}
+
+function uniqueInts(values) {
+  return [...new Set(values.filter((value) => Number.isInteger(value)))];
+}
+
+function toIntList(value, fallback, min, max) {
+  const fallbackValues = Array.isArray(fallback) ? fallback : [fallback];
+  const rawValues = Array.isArray(value)
+    ? value
+    : String(value ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  const parsed = [];
+
+  for (const rawValue of rawValues) {
+    if (typeof rawValue === 'string' && /^\d+\s*-\s*\d+$/.test(rawValue)) {
+      const [left, right] = rawValue.split('-').map((entry) => Number.parseInt(entry.trim(), 10));
+      const start = Math.min(left, right);
+      const end = Math.max(left, right);
+      for (let current = start; current <= end; current += 1) parsed.push(current);
+      continue;
+    }
+    const number = Number.parseInt(rawValue, 10);
+    if (Number.isInteger(number)) parsed.push(number);
+  }
+
+  const normalized = uniqueInts(parsed.map((entry) => Math.max(min, Math.min(max, entry))))
+    .sort((left, right) => left - right);
+  return normalized.length ? normalized : fallbackValues.slice();
+}
+
+function pickScheduledValue(values, index, offset = 0) {
+  const list = Array.isArray(values) && values.length ? values : [values];
+  return list[Math.abs(index + offset) % list.length];
 }
 
 function round(value, places = 3) {
@@ -110,11 +151,19 @@ function seedPopulation(options, rng) {
   return population.slice(0, options.population);
 }
 
-function buildPoliciesForGame(weights, options, gameIndex, profileIndex) {
-  const candidateSeat = gameIndex % options.playerCount;
+function buildTrainingScenario(options, gameIndex, profileIndex) {
+  return {
+    playerCount: pickScheduledValue(options.playerCounts, gameIndex, profileIndex),
+    deckSize: pickScheduledValue(options.deckSizes, Math.floor(gameIndex / Math.max(1, options.playerCounts.length)), profileIndex),
+    seed: (options.seed + profileIndex * 100000 + gameIndex) >>> 0,
+  };
+}
+
+function buildPoliciesForGame(weights, options, gameIndex, profileIndex, playerCount) {
+  const candidateSeat = gameIndex % playerCount;
   const selfPlay = options.selfPlayEvery > 0 && gameIndex % options.selfPlayEvery === 0;
   const policies = [];
-  for (let seatId = 0; seatId < options.playerCount; seatId += 1) {
+  for (let seatId = 0; seatId < playerCount; seatId += 1) {
     if (selfPlay || seatId === candidateSeat) {
       policies.push({ policyId: 'tuned', label: 'candidate', strategyWeights: weights });
     } else {
@@ -157,17 +206,18 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
   let stuck = 0;
 
   for (let gameIndex = 0; gameIndex < options.games; gameIndex += 1) {
-    const { candidateSeat, policies } = buildPoliciesForGame(weights, options, gameIndex, profileIndex);
+    const scenario = buildTrainingScenario(options, gameIndex, profileIndex);
+    const { candidateSeat, policies } = buildPoliciesForGame(weights, options, gameIndex, profileIndex, scenario.playerCount);
     const game = simulateGame({
-      playerCount: options.playerCount,
-      deckSize: options.deckSize,
-      seed: options.seed + profileIndex * 100000 + gameIndex,
+      playerCount: scenario.playerCount,
+      deckSize: scenario.deckSize,
+      seed: scenario.seed,
       maxSteps: options.maxSteps,
       policies,
       historyEnabled: false,
       samples: 0,
     }, 0);
-    const score = scoreCandidateGame(game, candidateSeat, options.playerCount, options);
+    const score = scoreCandidateGame(game, candidateSeat, scenario.playerCount, options);
     total += score.objective;
     wins += score.won ? 1 : 0;
     rankTotal += score.rank;
@@ -230,8 +280,8 @@ function saveBestOpponent(result) {
       generations: result.options.generations,
       population: result.options.population,
       gamesPerCandidate: result.options.games,
-      playerCount: result.options.playerCount,
-      deckSize: result.options.deckSize,
+      playerCounts: result.options.playerCounts,
+      deckSizes: result.options.deckSizes,
       seed: result.options.seed,
       league: result.options.league,
       selfPlayEvery: result.options.selfPlayEvery,
@@ -249,6 +299,8 @@ function saveBestOpponent(result) {
 
 function normalizeOptions(rawOptions = {}) {
   const population = Math.max(2, toInt(rawOptions.population, DEFAULT_OPTIONS.population));
+  const rawPlayerCounts = rawOptions.playerCounts ?? rawOptions.playerCount ?? DEFAULT_OPTIONS.playerCounts;
+  const rawDeckSizes = rawOptions.deckSizes ?? rawOptions.deckSize ?? DEFAULT_OPTIONS.deckSizes;
   return {
     ...DEFAULT_OPTIONS,
     ...rawOptions,
@@ -256,9 +308,9 @@ function normalizeOptions(rawOptions = {}) {
     population,
     elite: Math.max(1, Math.min(population, toInt(rawOptions.elite, DEFAULT_OPTIONS.elite))),
     games: Math.max(1, toInt(rawOptions.games, DEFAULT_OPTIONS.games)),
-    playerCount: Math.max(3, Math.min(5, toInt(rawOptions.playerCount, DEFAULT_OPTIONS.playerCount))),
-    deckSize: Math.max(1, toInt(rawOptions.deckSize, DEFAULT_OPTIONS.deckSize)),
-    seed: toInt(rawOptions.seed, DEFAULT_OPTIONS.seed),
+    playerCounts: toIntList(rawPlayerCounts, DEFAULT_OPTIONS.playerCounts, 3, 5),
+    deckSizes: toIntList(rawDeckSizes, DEFAULT_OPTIONS.deckSizes, 1, 30),
+    seed: Number.isInteger(rawOptions.seed) ? rawOptions.seed : randomTrainingSeed(),
     maxSteps: Math.max(20, toInt(rawOptions.maxSteps, DEFAULT_OPTIONS.maxSteps)),
     mutation: Math.max(0.01, Math.min(1.5, toFloat(rawOptions.mutation, DEFAULT_OPTIONS.mutation))),
     fallPenalty: Math.max(0, toFloat(rawOptions.fallPenalty, DEFAULT_OPTIONS.fallPenalty)),
@@ -274,7 +326,7 @@ function emitProgress(options, event) {
 }
 
 export function trainStrategyWeights(rawOptions = {}) {
-  const options = normalizeOptions(rawOptions);
+  const options = { ...normalizeOptions(rawOptions), seed: randomTrainingSeed() };
   const rng = makeRng(options.seed);
   let population = seedPopulation(options, rng);
   const generations = [];
@@ -287,6 +339,8 @@ export function trainStrategyWeights(rawOptions = {}) {
     population: options.population,
     games: options.games,
     totalGames: options.generations * options.population * options.games,
+    playerCounts: options.playerCounts,
+    deckSizes: options.deckSizes,
     league: options.league,
     seed: options.seed,
     elapsedMs: 0,
@@ -414,9 +468,8 @@ function parseArgs(argv) {
     else if (key === 'population') options.population = toInt(value, DEFAULT_OPTIONS.population);
     else if (key === 'elite') options.elite = toInt(value, DEFAULT_OPTIONS.elite);
     else if (key === 'games') options.games = toInt(value, DEFAULT_OPTIONS.games);
-    else if (key === 'players') options.playerCount = toInt(value, DEFAULT_OPTIONS.playerCount);
-    else if (key === 'deck') options.deckSize = toInt(value, DEFAULT_OPTIONS.deckSize);
-    else if (key === 'seed') options.seed = toInt(value, DEFAULT_OPTIONS.seed);
+    else if (key === 'players' || key === 'player-counts') options.playerCounts = value;
+    else if (key === 'deck' || key === 'decks') options.deckSizes = value;
     else if (key === 'mutation') options.mutation = toFloat(value, DEFAULT_OPTIONS.mutation);
     else if (key === 'fall-penalty') options.fallPenalty = toFloat(value, DEFAULT_OPTIONS.fallPenalty);
     else if (key === 'self-play-every') options.selfPlayEvery = toInt(value, DEFAULT_OPTIONS.selfPlayEvery);
@@ -441,7 +494,7 @@ function compactMetrics(metrics) {
 function createCliProgressLogger() {
   return (event) => {
     if (event.type === 'training-start') {
-      console.log(`[train ${seconds(event.elapsedMs)}] Starting ${event.generations} generations x ${event.population} profiles x ${event.games} games (${event.totalGames} games total), seed ${event.seed}.`);
+      console.log(`[train ${seconds(event.elapsedMs)}] Starting ${event.generations} generations x ${event.population} profiles x ${event.games} games (${event.totalGames} games total), seed ${event.seed}. Players ${event.playerCounts.join('/')}, decks ${event.deckSizes.join('/')}.`);
     } else if (event.type === 'generation-start') {
       console.log(`[train ${seconds(event.elapsedMs)}] Generation ${event.generation}/${event.generations} started.`);
     } else if (event.type === 'candidate-start') {
@@ -461,6 +514,7 @@ function createCliProgressLogger() {
 function formatTrainingReport(result) {
   const lines = [
     `AI training: ${result.options.generations} generations, ${result.options.population} profiles, ${result.options.games} games/profile`,
+    `Players: ${result.options.playerCounts.join(', ')}; decks: ${result.options.deckSizes.join(', ')}; random seed ${result.options.seed}`,
     `League: ${result.options.league.join(', ')}; self-play every ${result.options.selfPlayEvery || 'never'} games`,
     `Best: ${result.best.name}, objective ${result.best.metrics.objective}, win ${Math.round(result.best.metrics.winRate * 100)}%, rank ${result.best.metrics.averageRank}, fall ${Math.round(result.best.metrics.fallRate * 100)}%`,
     'Generation winners:',

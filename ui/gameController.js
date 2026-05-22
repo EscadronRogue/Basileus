@@ -31,7 +31,7 @@ import {
 export class GameController {
   constructor(config = {}) {
     this.config = {
-      playerCount: config.playerCount || 4,
+      playerCount: config.playerCount || 5,
       deckSize: config.deckSize || 9,
       seed: config.seed || Date.now(),
       historyEnabled: config.historyEnabled !== false,
@@ -41,7 +41,7 @@ export class GameController {
         : [],
       humanPlayerIds: Array.isArray(config.humanPlayerIds)
         ? config.humanPlayerIds.slice()
-        : Array.from({ length: config.playerCount || 4 }, (_, index) => index),
+        : Array.from({ length: config.playerCount || 5 }, (_, index) => index),
     };
 
     this.state = null;

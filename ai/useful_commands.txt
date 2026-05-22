@@ -1,0 +1,92 @@
+No code changes. Current `train:ai` parameters are:
+
+```powershell
+npm.cmd run train:ai -- --generations 3 --population 10 --elite 3 --games 24
+```
+
+**Core Training**
+- `--generations N`  
+  Number of evolutionary rounds. More generations means more refinement.
+  Default: `3`
+
+- `--population N`  
+  Number of candidate AI personalities tested per generation.
+  Default: `10`
+
+- `--elite N`  
+  Number of best candidates preserved into the next generation.
+  Default: `3`
+
+- `--games N`  
+  Number of games each candidate plays during evaluation.
+  Default: `24`
+
+Total rough workload:
+
+```text
+generations x population x games
+```
+
+So `3 x 10 x 24 = 720` simulated games.
+
+**Game Setup**
+- `--players N`  
+  Number of players per simulated game. Clamped between `3` and `5`.
+  Default: `4`
+
+- `--deck N`  
+  Invasion deck size / game length.
+  Default: `9`
+
+- `--seed N`  
+  Deterministic seed for reproducible training.
+  Default: `1000`
+
+**Learning Behavior**
+- `--mutation X`  
+  How aggressively new candidates vary from elite parents. Higher means more exploration, lower means more refinement.
+  Default: `0.35`
+
+- `--fall-penalty X`  
+  Objective penalty when the empire falls. Higher values teach the AI that surviving matters more than simply scoring highest.
+  Default: `130`
+
+- `--self-play-every N`  
+  Every Nth evaluation game uses the candidate policy for all AI seats. This prevents it from only exploiting weaker opponents.
+  Default: `4`
+
+**Opponent League**
+- `--league a,b,c`  
+  Opponent pool used during training. Current useful values include:
+  `strategic`, `defender`, `usurper`, `profiteer`, `random`, `copycat`, `greedy`, `loyalist`.
+
+Example:
+
+```powershell
+npm.cmd run train:ai -- --league strategic,defender,random,copycat
+```
+
+**Saving / Output**
+- `--no-save`  
+  Runs training but does not save the best trained AI.
+
+- `--output PATH`  
+  Saves trained opponents somewhere other than `ai/tunedOpponents.json`.
+
+- `--quiet`  
+  Suppresses progress logs, keeps only final report.
+
+- `--json`  
+  Outputs machine-readable JSON and disables progress lines.
+
+A good serious run would be:
+
+```powershell
+npm.cmd run train:ai -- --generations 8 --population 16 --elite 4 --games 40 --fall-penalty 220
+```
+
+A quick test run:
+
+```powershell
+npm.cmd run train:ai -- --generations 1 --population 4 --games 6 --no-save
+```

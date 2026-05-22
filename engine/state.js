@@ -83,7 +83,7 @@ function createThemeState(province) {
   };
 }
 
-export function createGameState({ playerCount = 4, deckSize = 9, seed, historyEnabled = false } = {}) {
+export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEnabled = false } = {}) {
   const rng = makeRng(seed);
   const dynastyPool = shuffle(DYNASTIES, rng);
   const players = [];

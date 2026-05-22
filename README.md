@@ -60,7 +60,7 @@ npm run serve:multiplayer
 | --- | --- |
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
-| `npm run simulate:ai -- --games 200 --players 4 --deck 9` | Runs deterministic all-AI simulation batches and reports aggregate behavior. |
+| `npm run simulate:ai -- --games 200 --players 5 --deck 9` | Runs deterministic all-AI simulation batches and reports aggregate behavior. |
 | `npm run train:ai -- --generations 3 --population 10 --games 24` | Tunes strategy weights against a mixed AI policy league and saves the best tuned opponent. |
 | `npm run test:economy` | Engine/economy rules tests. |
 | `npm run test:ai` | Strategic AI and legal-action smoke tests. |
@@ -123,6 +123,8 @@ Useful entry points:
 AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 25%/50%/75% thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, title redistribution, and defender rewards.
 
 Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights against that league, saves the best tuned opponent to `ai/tunedOpponents.json`, and gives it a Greek first name from `ai/greekNames.js`.
+
+Training always creates a fresh random seed. By default it trains on 5-player, 9-invasion games. Pass comma lists or ranges to train across varied setups in one run, such as `--players 3,4,5 --deck 6,9,12` or `--players 3-5`.
 
 The trainer prints progress while it runs: generation starts, candidate scores, generation winners, final best result, and the saved opponent. Use `--quiet` to suppress the progress log, or `--json` for machine-readable output without progress lines.
 

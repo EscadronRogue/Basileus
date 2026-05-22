@@ -130,13 +130,26 @@ test('AI training harness evaluates strategy weight profiles', () => {
     population: 2,
     elite: 1,
     games: 2,
-    playerCount: 4,
-    deckSize: 2,
+    playerCounts: '3-5',
+    deckSizes: '1,2',
+    seed: 133,
+    save: false,
+  });
+  const second = trainStrategyWeights({
+    generations: 1,
+    population: 2,
+    elite: 1,
+    games: 1,
+    playerCounts: [3],
+    deckSizes: [1],
     seed: 133,
     save: false,
   });
 
   assert.equal(result.generations.length, 1);
+  assert.deepEqual(result.options.playerCounts, [3, 4, 5]);
+  assert.deepEqual(result.options.deckSizes, [1, 2]);
+  assert.notEqual(result.options.seed, second.options.seed);
   assert.equal(Number.isFinite(result.best.metrics.objective), true);
   assert.equal(typeof result.best.weights.invasionMargin, 'number');
   assert.equal(result.saved, undefined);
@@ -151,8 +164,8 @@ test('AI training can save a Greek-named tuned opponent', () => {
       population: 2,
       elite: 1,
       games: 1,
-      playerCount: 4,
-      deckSize: 1,
+      playerCounts: [5],
+      deckSizes: [1],
       seed: 144,
       outputPath,
     });
@@ -163,6 +176,8 @@ test('AI training can save a Greek-named tuned opponent', () => {
     assert.equal(GREEK_FIRST_NAMES.includes(payload.opponents[0].firstName), true);
     assert.equal(payload.opponents[0].policy.policyId, 'tuned');
     assert.equal(typeof payload.opponents[0].strategyWeights.invasionMargin, 'number');
+    assert.deepEqual(payload.opponents[0].training.playerCounts, [5]);
+    assert.deepEqual(payload.opponents[0].training.deckSizes, [1]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

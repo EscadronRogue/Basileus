@@ -1,6 +1,6 @@
 export const PLAYER_COUNT_MIN = 3;
 export const PLAYER_COUNT_MAX = 5;
-export const DEFAULT_PLAYER_COUNT = 4;
+export const DEFAULT_PLAYER_COUNT = 5;
 export const DEFAULT_DECK_SIZE = 9;
 
 export const DEFAULT_ROOM_CONFIG = {
