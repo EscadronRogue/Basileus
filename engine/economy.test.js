@@ -17,7 +17,7 @@ import {
   phaseCleanup,
   phaseCourt,
 } from './turnflow.js';
-import { suggestMajorTitleAssignments } from './actions.js';
+import { resolveCoup, suggestMajorTitleAssignments } from './actions.js';
 
 function makeState() {
   const state = createGameState({ playerCount: 4, deckSize: 2, seed: 7, historyEnabled: true });
@@ -200,6 +200,25 @@ test('deployment schema funds armies, pays unfunded troops, and stores mercenary
   assert.equal(getPlayer(state, 0).gold, 0);
   assert.deepEqual(state.mercenaryOrders[0], { count: 2, destination: 'capital' });
   assert.equal(state.allOrders[0].armies.BASILEUS.funded, 1);
+});
+
+test('coup resolution records every claimant pick and positive supporter contribution', () => {
+  const state = makeState();
+  const result = resolveCoup(state, {
+    0: { candidate: 2 },
+    1: { candidate: 3 },
+  }, {
+    0: 4,
+    1: 0,
+  });
+
+  assert.equal(result.winner, 2);
+  assert.deepEqual(result.votes, { 2: 4, 3: 0 });
+  assert.deepEqual(result.contributions, [{ playerId: 0, candidateId: 2, troops: 4 }]);
+  assert.deepEqual(result.ballots, [
+    { playerId: 0, candidateId: 2, troops: 4 },
+    { playerId: 1, candidateId: 3, troops: 0 },
+  ]);
 });
 
 test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {

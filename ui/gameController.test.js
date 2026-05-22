@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createGameState } from '../engine/state.js';
+import { buildPrivateDealView } from '../engine/deals.js';
 import { renderProvinceBadge, formatProvinceValuesText } from './labels.js';
 import {
   renderCourtPanel,
   renderEstatesPanel,
   renderOrdersPanel,
+  renderResolutionPanel,
   renderTitleRedistributionPanel,
 } from './panels.js';
 import {
@@ -160,9 +162,67 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.match(container.innerHTML, /Funding/);
   assert.match(container.innerHTML, /Mercs/);
   assert.match(container.innerHTML, /Unfunded troops stay home/);
+  assert.match(container.innerHTML, /Coup support/);
+  assert.match(container.innerHTML, /Only funded Capital troops/);
   assert.match(container.innerHTML, /capital locked/);
   assert.match(container.innerHTML, /Mercenaries/);
   assert.match(container.innerHTML, /Lock Deployment/);
+});
+
+test('deployment panel surfaces deal-forced coup support before lock-in', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.round = 1;
+  state.players[state.basileusId].gold = 1;
+  state.currentTroops = {
+    BASILEUS: { normal: 2, capitalLocked: 0 },
+  };
+  state.activeDealObligations = [{
+    id: 'deal-obligation-test',
+    kind: 'coup_support',
+    status: 'active',
+    giverId: state.basileusId,
+    receiverId: 2,
+    nextDueRound: state.round,
+    durationTurns: 1,
+    remainingTurns: 1,
+    startTrigger: { type: 'immediate' },
+    payload: { candidateId: 2, troopCount: 1 },
+  }];
+  const container = makePanelContainer();
+  const uiState = createDefaultUiState();
+
+  renderOrdersPanel(container, state, state.basileusId, {}, {
+    uiState,
+    privateData: buildPrivateDealView(state, state.basileusId),
+  });
+
+  assert.match(container.innerHTML, /Deal commitments/);
+  assert.match(container.innerHTML, /Claimant:/);
+  assert.match(container.innerHTML, /Deal lock/);
+  assert.match(container.innerHTML, /must deploy to Capital/);
+  assert.match(container.innerHTML, /data-candidate-pick="1"[\s\S]*disabled/);
+});
+
+test('coup resolution shows supporters and zero-capital claimant picks', () => {
+  const state = makeState();
+  state.phase = 'resolution';
+  state.lastCoupResult = {
+    winner: 2,
+    votes: { 2: 3, 3: 0 },
+    contributions: [{ playerId: 0, candidateId: 2, troops: 3 }],
+    ballots: [
+      { playerId: 0, candidateId: 2, troops: 3 },
+      { playerId: 1, candidateId: 3, troops: 0 },
+    ],
+  };
+  const container = makePanelContainer();
+
+  renderResolutionPanel(container, state);
+
+  assert.match(container.innerHTML, /Coup/);
+  assert.match(container.innerHTML, /vote-supporters/);
+  assert.match(container.innerHTML, /No capital troops from/);
 });
 
 test('default interface opens the action lane and keeps support panels collapsed', () => {

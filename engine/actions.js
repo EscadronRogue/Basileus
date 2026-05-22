@@ -654,11 +654,13 @@ export function autoConfirmFinishedCourtPlayers(state) {
 export function resolveCoup(state, allOrders, capitalTroops) {
   const candidateVotes = {};
   const contributions = [];
+  const ballots = [];
   for (const [pidStr, orders] of Object.entries(allOrders || {})) {
     const pid = Number(pidStr);
     const candidate = Number.isInteger(Number(orders?.candidate)) ? Number(orders.candidate) : state.basileusId;
     const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
     candidateVotes[candidate] = (candidateVotes[candidate] || 0) + troops;
+    ballots.push({ playerId: pid, candidateId: candidate, troops });
     if (troops > 0) contributions.push({ playerId: pid, candidateId: candidate, troops });
   }
 
@@ -673,7 +675,7 @@ export function resolveCoup(state, allOrders, capitalTroops) {
       ? state.basileusId
       : Number(tied[0][0]);
   }
-  return { winner, votes: candidateVotes, contributions };
+  return { winner, votes: candidateVotes, contributions, ballots };
 }
 
 export function validateMajorTitleAssignments(state, basileusId, titleAssignments) {
