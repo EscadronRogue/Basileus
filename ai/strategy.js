@@ -773,13 +773,34 @@ function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLe
 
 function scoreDeploymentTactics(state, playerId, action, context = {}) {
   const summary = summarizeOrders(state, playerId, action.orders);
-  const estimates = estimateOtherDeployment(state, playerId, context.memory);
+  const estimates = context.estimates || estimateOtherDeployment(state, playerId, context.memory);
   const weights = context.weights || DEFAULT_STRATEGY_WEIGHTS;
-  let value = scoreWarPlan(state, playerId, summary, estimates, weights, context);
-  value += scoreCoupPlan(state, playerId, summary, estimates, context.leaderId, weights, context);
-  value += Math.min(summary.idleTroops, 10) * weights.reserveValue;
-  value -= summary.mercCost * weights.mercenaryCostPenalty;
-  return value;
+  const nonCoupKey = [
+    summary.frontierTroops,
+    summary.idleTroops,
+    summary.mercCost,
+  ].join(':');
+  let nonCoupValue = context.nonCoupScoreCache?.get(nonCoupKey);
+  if (nonCoupValue == null) {
+    nonCoupValue = scoreWarPlan(state, playerId, summary, estimates, weights, context)
+      + Math.min(summary.idleTroops, 10) * weights.reserveValue
+      - summary.mercCost * weights.mercenaryCostPenalty;
+    context.nonCoupScoreCache?.set(nonCoupKey, nonCoupValue);
+  }
+
+  const coupKey = [
+    summary.candidate,
+    summary.capitalTroops,
+    estimates.maxCapitalTroops,
+    estimates.incumbentCapitalTroops,
+  ].join(':');
+  let coupValue = context.coupScoreCache?.get(coupKey);
+  if (coupValue == null) {
+    coupValue = scoreCoupPlan(state, playerId, summary, estimates, context.leaderId, weights, context);
+    context.coupScoreCache?.set(coupKey, coupValue);
+  }
+
+  return nonCoupValue + coupValue;
 }
 
 export function chooseStrategicOrderAction(state, meta, playerId, options = {}) {
@@ -791,6 +812,9 @@ export function chooseStrategicOrderAction(state, meta, playerId, options = {}) 
     weights: getStrategyWeights(meta, playerId),
     memory,
     coalitionContext,
+    estimates: estimateOtherDeployment(state, playerId, memory),
+    nonCoupScoreCache: new Map(),
+    coupScoreCache: new Map(),
   };
   return actions
     .map((action) => ({ action, score: scoreDeploymentTactics(state, playerId, action, context) }))

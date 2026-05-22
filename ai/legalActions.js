@@ -21,22 +21,40 @@ import { MAJOR_TITLES } from '../data/titles.js';
 
 export const AI_DEALS_ENABLED = false;
 
-function cloneForValidation(state) {
-  // structuredClone keeps Sets/Maps intact; the JSON fallback flattens
-  // them, so the defensive rebuild stays in the JSON branch.
-  let clone;
+function cloneValueForValidation(value) {
+  if (value == null) return value;
   try {
-    clone = structuredClone(state);
+    return structuredClone(value);
   } catch {
-    clone = JSON.parse(JSON.stringify(state));
-    if (state.courtActions) {
-      clone.courtActions = {
-        ...clone.courtActions,
-        playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
-      };
-    }
+    return JSON.parse(JSON.stringify(value));
   }
-  // The RNG is a function and never survives either clone path.
+}
+
+function cloneForValidation(state) {
+  const clone = {
+    ...state,
+    players: cloneValueForValidation(state.players || []),
+    themes: cloneValueForValidation(state.themes || {}),
+    courtActions: cloneValueForValidation(state.courtActions),
+    activeDealObligations: cloneValueForValidation(state.activeDealObligations || []),
+    reservedGold: cloneValueForValidation(state.reservedGold || {}),
+    dealThreads: cloneValueForValidation(state.dealThreads || []),
+    pendingDefenderRewards: cloneValueForValidation(state.pendingDefenderRewards || []),
+    landAuctions: cloneValueForValidation(state.landAuctions || {}),
+    estatesReady: cloneValueForValidation(state.estatesReady || {}),
+    currentTroops: cloneValueForValidation(state.currentTroops || {}),
+    allOrders: cloneValueForValidation(state.allOrders || {}),
+    mercenaryOrders: cloneValueForValidation(state.mercenaryOrders || {}),
+    log: [],
+    historyEnabled: false,
+    history: null,
+  };
+  if (state.courtActions && !(clone.courtActions?.playerConfirmed instanceof Set)) {
+    clone.courtActions = {
+      ...clone.courtActions,
+      playerConfirmed: new Set([...(state.courtActions.playerConfirmed || [])]),
+    };
+  }
   clone.rng = state.rng;
   return clone;
 }
