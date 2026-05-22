@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createGameState } from '../engine/state.js';
+import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
 import { renderProvinceBadge, formatProvinceValuesText } from './labels.js';
 import {
@@ -89,6 +90,47 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(patriarchPanel.innerHTML, /Revoke/);
   assert.doesNotMatch(patriarchPanel.innerHTML, /Gift/);
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
+});
+
+test('court panel disables appointments blocked by current legality', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  state.players[1].appointmentCooldown = { selfLocked: true };
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /data-bishop-player-pick="1"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /You cannot appoint yourself twice in a row/);
+});
+
+test('court panel disables revocations blocked by same-turn appointments', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+
+  const result = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
+  assert.equal(result.ok, true);
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /was appointed this turn and cannot be revoked until next turn/);
 });
 
 test('court estate revocations show owner color without the old separator', () => {

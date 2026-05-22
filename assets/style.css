@@ -4302,7 +4302,12 @@ textarea {
   transition: filter 0.12s, transform 0.12s;
 }
 .choice-btn:hover { filter: brightness(1.06); }
-.choice-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+.choice-btn:disabled,
+.choice-btn.disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  filter: grayscale(0.22) saturate(0.72);
+}
 .choice-btn:focus-visible { outline: 2px solid var(--gold-1); outline-offset: 2px; }
 
 /* Player choice button — standalone cartouche (crest + name) since
@@ -5726,6 +5731,21 @@ textarea {
     0 0 0 2px rgba(240,200,90,0.55),
     0 0 0 4px var(--cart-border, var(--gold-1)),
     0 2px 8px rgba(30,16,0,0.22);
+}
+
+.choice-btn:disabled.selected,
+.choice-btn.disabled.selected,
+.choice-btn:disabled[aria-pressed="true"],
+.choice-btn.disabled[aria-pressed="true"] {
+  filter: grayscale(0.24) saturate(0.72);
+}
+
+.choice-btn:disabled .province-token,
+.choice-btn:disabled .title-token,
+.choice-btn.disabled .province-token,
+.choice-btn.disabled .title-token {
+  filter: grayscale(0.26) saturate(0.72);
+  box-shadow: inset 0 0 0 1px rgba(80,62,42,0.25);
 }
 
 .choice-btn[aria-pressed="true"] {

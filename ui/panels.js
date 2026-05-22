@@ -1,6 +1,7 @@
 // ui/panels.js - compact phase panels for the updated ruleset.
 import { MAJOR_TITLES } from '../data/titles.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
+import { applyCourtAction } from '../engine/commands.js';
 import {
   COURT_POWER_ACTION_LIMIT,
   getCourtPowerActionCount,
@@ -36,6 +37,46 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function cloneStateForValidation(state) {
+  let clone;
+  try {
+    clone = structuredClone({ ...state, rng: null });
+  } catch {
+    clone = JSON.parse(JSON.stringify({ ...state, rng: null }));
+    if (state.courtActions) {
+      clone.courtActions = {
+        ...clone.courtActions,
+        playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
+      };
+    }
+  }
+  clone.rng = state.rng;
+  return clone;
+}
+
+function validateCourtPayload(state, playerId, payload) {
+  if (!payload) return { ok: false, reason: 'Choose a legal court action.' };
+  try {
+    const result = applyCourtAction(cloneStateForValidation(state), playerId, payload);
+    return result?.ok ? { ok: true } : { ok: false, reason: result?.reason || 'Not legal right now.' };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'Not legal right now.' };
+  }
+}
+
+function choiceDisabledReason(entry, value, options = {}) {
+  const reason = typeof options.getDisabledReason === 'function'
+    ? options.getDisabledReason(entry, value)
+    : null;
+  return reason ? String(reason) : '';
+}
+
+function disabledChoiceAttrs(reason, label) {
+  if (!reason) return '';
+  const title = label ? `${label} - ${reason}` : reason;
+  return ` disabled aria-disabled="true" title="${escapeHtml(title)}"`;
 }
 
 function getDraftBucket(uiState, state, scope, playerId) {
@@ -137,15 +178,18 @@ function renderPlayerChoiceGrid(state, options = {}) {
   return `
     <div class="choice-grid player-choice-grid">
       ${list.map((player) => {
+        const disabledReason = choiceDisabledReason(player, player.id, options);
+        const label = playerDisplayLabel(player);
         const isSelected = Number(selectedId) === player.id;
         return `
-          <button type="button" class="choice-btn player-choice-btn${isSelected ? ' selected' : ''}"
+          <button type="button" class="choice-btn player-choice-btn${isSelected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
             data-${attr}="${player.id}"
             aria-pressed="${isSelected ? 'true' : 'false'}"
             style="${getPlayerStyleAttr(state, player.id)}"
-            title="${escapeHtml(playerDisplayLabel(player))}">
+            title="${escapeHtml(disabledReason ? `${label} - ${disabledReason}` : label)}"
+            ${disabledReason ? 'disabled aria-disabled="true"' : ''}>
             <span class="choice-crest">${playerInitial(player)}</span>
-            <span class="choice-label">${escapeHtml(playerDisplayLabel(player))}</span>
+            <span class="choice-label">${escapeHtml(label)}</span>
           </button>
         `;
       }).join('')}
@@ -159,13 +203,15 @@ function renderProvinceChoiceGrid(state, themes, options = {}) {
   return `
     <div class="choice-grid province-choice-grid">
       ${themes.map((theme) => {
+        const disabledReason = choiceDisabledReason(theme, theme.id, options);
         const isSelected = selectedId === theme.id;
         return `
-          <button type="button" class="choice-btn province-choice-btn${isSelected ? ' selected' : ''}"
+          <button type="button" class="choice-btn province-choice-btn${isSelected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
             data-${attr}="${theme.id}"
             data-map-province="${theme.id}"
             aria-pressed="${isSelected ? 'true' : 'false'}"
-            title="${escapeHtml(theme.name)}">
+            title="${escapeHtml(disabledReason ? `${theme.name} - ${disabledReason}` : theme.name)}"
+            ${disabledReason ? 'disabled aria-disabled="true"' : ''}>
             ${renderProvinceBadge(state, theme, { showValues: true })}
           </button>
         `;
@@ -180,6 +226,7 @@ function renderTitleChoiceGrid(state, entries, options = {}) {
   return `
     <div class="choice-grid title-choice-grid">
       ${entries.map((entry) => {
+        const disabledReason = choiceDisabledReason(entry, entry.key, options);
         const isSelected = entry.key === selectedKey;
         const badge = renderTitleBadge(state, entry.kind, {
           holderId,
@@ -187,9 +234,10 @@ function renderTitleChoiceGrid(state, entries, options = {}) {
           compact: true,
         });
         return `
-          <button type="button" class="choice-btn title-choice-btn${isSelected ? ' selected' : ''}"
+          <button type="button" class="choice-btn title-choice-btn${isSelected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
             aria-pressed="${isSelected ? 'true' : 'false'}"
-            data-${attr}="${entry.key}">
+            data-${attr}="${entry.key}"
+            ${disabledChoiceAttrs(disabledReason, entry.label)}>
             ${badge}
           </button>
         `;
@@ -199,17 +247,18 @@ function renderTitleChoiceGrid(state, entries, options = {}) {
 }
 
 function renderRevocationChoiceGrid(state, targets, options = {}) {
-  void state;
   const { attr, selectedValue = null } = options;
   if (!targets.length) return `<div class="choice-grid-empty">Nothing to revoke right now</div>`;
   return `
     <div class="choice-grid revocation-choice-grid">
       ${targets.map((target) => {
+        const disabledReason = choiceDisabledReason(target, target.value, options);
         const isSelected = target.value === selectedValue;
         return `
-          <button type="button" class="choice-btn revocation-choice-btn${isSelected ? ' selected' : ''}"
+          <button type="button" class="choice-btn revocation-choice-btn${isSelected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
             aria-pressed="${isSelected ? 'true' : 'false'}"
-            data-${attr}="${target.value}">
+            data-${attr}="${target.value}"
+            ${disabledChoiceAttrs(disabledReason, target.label)}>
             ${target.badge || escapeHtml(target.label)}
           </button>
         `;
@@ -602,6 +651,50 @@ function getCourtPowerLabel(powerKey) {
   return MAJOR_TITLES[powerKey]?.name || powerKey;
 }
 
+function getAppointmentPayload(powerKey, targetKey, appointeeId) {
+  if (!targetKey || appointeeId == null) return null;
+  const normalizedAppointeeId = Number(appointeeId);
+  if (!Number.isInteger(normalizedAppointeeId)) return null;
+  if (powerKey === 'BASILEUS') {
+    return { action: 'appoint-court', titleType: targetKey, appointeeId: normalizedAppointeeId };
+  }
+  if (powerKey === 'PATRIARCH') {
+    return { action: 'appoint-bishop', themeId: targetKey, appointeeId: normalizedAppointeeId };
+  }
+  return { action: 'appoint-strategos', titleKey: powerKey, themeId: targetKey, appointeeId: normalizedAppointeeId };
+}
+
+function getAppointmentDisabledReason(state, playerId, powerKey, targetKey, appointeeId) {
+  const payload = getAppointmentPayload(powerKey, targetKey, appointeeId);
+  if (!payload) return 'Make both picks first.';
+  const result = validateCourtPayload(state, playerId, payload);
+  return result.ok ? '' : result.reason;
+}
+
+function getTargetDisabledReason(state, playerId, powerKey, targetKey) {
+  let firstReason = '';
+  for (const player of state.players || []) {
+    const reason = getAppointmentDisabledReason(state, playerId, powerKey, targetKey, player.id);
+    if (!reason) return '';
+    if (!firstReason) firstReason = reason;
+  }
+  return firstReason || 'No legal appointee right now.';
+}
+
+function getAppointeeDisabledReason(state, playerId, powerKey, targets, appointeeId, selectedTargetKey = null) {
+  if (selectedTargetKey) {
+    return getAppointmentDisabledReason(state, playerId, powerKey, selectedTargetKey, appointeeId);
+  }
+  let firstReason = '';
+  for (const target of targets || []) {
+    const targetKey = target.key || target.id;
+    const reason = getAppointmentDisabledReason(state, playerId, powerKey, targetKey, appointeeId);
+    if (!reason) return '';
+    if (!firstReason) firstReason = reason;
+  }
+  return firstReason || 'No legal office for this appointee right now.';
+}
+
 function renderCourtPowerBadge(state, playerId, powerKey) {
   return renderTitleBadge(state, powerKey, {
     holderId: playerId,
@@ -617,15 +710,28 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
     const appoint = draft.appointCourt || {};
     const target = courtTargets.find((entry) => entry.key === appoint.title) || null;
     const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
-    const ready = Boolean(target && appointee);
+    const selectedReason = target && appointee
+      ? getAppointmentDisabledReason(state, playerId, powerKey, target.key, appointee.id)
+      : '';
+    const ready = Boolean(target && appointee && !selectedReason);
     const preview = ready
       ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, target.kind, { holderId: appointee.id, label: target.label, compact: true })}`
-      : null;
+      : selectedReason
+        ? `<span class="muted">Cannot appoint: ${escapeHtml(selectedReason)}</span>`
+        : null;
     return renderAppointmentSection({
       kind: 'court',
       title: 'Appoint',
-      targetPicker: renderTitleChoiceGrid(state, courtTargets, { attr: 'court-title-pick', selectedKey: appoint.title }),
-      playerPicker: renderPlayerChoiceGrid(state, { attr: 'court-player-pick', selectedId: appoint.playerId }),
+      targetPicker: renderTitleChoiceGrid(state, courtTargets, {
+        attr: 'court-title-pick',
+        selectedKey: appoint.title,
+        getDisabledReason: (entry) => getTargetDisabledReason(state, playerId, powerKey, entry.key),
+      }),
+      playerPicker: renderPlayerChoiceGrid(state, {
+        attr: 'court-player-pick',
+        selectedId: appoint.playerId,
+        getDisabledReason: (player) => getAppointeeDisabledReason(state, playerId, powerKey, courtTargets, player.id, target?.key || null),
+      }),
       preview,
       buttonLabel: 'Appoint',
       buttonAttr: 'appoint-court',
@@ -639,15 +745,28 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
     const appoint = draft.appointBishop || {};
     const target = appoint.themeId ? state.themes[appoint.themeId] : null;
     const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
-    const ready = Boolean(target && appointee && bishops.some((theme) => theme.id === target.id));
+    const selectedReason = target && appointee
+      ? getAppointmentDisabledReason(state, playerId, powerKey, target.id, appointee.id)
+      : '';
+    const ready = Boolean(target && appointee && bishops.some((theme) => theme.id === target.id) && !selectedReason);
     const preview = ready
       ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'BISHOP', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
-      : null;
+      : selectedReason
+        ? `<span class="muted">Cannot appoint: ${escapeHtml(selectedReason)}</span>`
+        : null;
     return renderAppointmentSection({
       kind: 'bishop',
       title: 'Appoint',
-      targetPicker: renderProvinceChoiceGrid(state, bishops, { attr: 'bishop-theme-pick', selectedId: appoint.themeId }),
-      playerPicker: renderPlayerChoiceGrid(state, { attr: 'bishop-player-pick', selectedId: appoint.playerId }),
+      targetPicker: renderProvinceChoiceGrid(state, bishops, {
+        attr: 'bishop-theme-pick',
+        selectedId: appoint.themeId,
+        getDisabledReason: (theme) => getTargetDisabledReason(state, playerId, powerKey, theme.id),
+      }),
+      playerPicker: renderPlayerChoiceGrid(state, {
+        attr: 'bishop-player-pick',
+        selectedId: appoint.playerId,
+        getDisabledReason: (player) => getAppointeeDisabledReason(state, playerId, powerKey, bishops, player.id, target?.id || null),
+      }),
       preview,
       buttonLabel: 'Appoint Bishop',
       buttonAttr: 'appoint-bishop',
@@ -660,15 +779,28 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
   const appoint = draft.appointStrategos || {};
   const target = appoint.themeId ? state.themes[appoint.themeId] : null;
   const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
-  const ready = Boolean(target && appointee && strategoi.some((theme) => theme.id === target.id));
+  const selectedReason = target && appointee
+    ? getAppointmentDisabledReason(state, playerId, powerKey, target.id, appointee.id)
+    : '';
+  const ready = Boolean(target && appointee && strategoi.some((theme) => theme.id === target.id) && !selectedReason);
   const preview = ready
     ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'STRATEGOS', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
-    : null;
+    : selectedReason
+      ? `<span class="muted">Cannot appoint: ${escapeHtml(selectedReason)}</span>`
+      : null;
   return renderAppointmentSection({
     kind: 'strategos',
     title: 'Appoint',
-    targetPicker: renderProvinceChoiceGrid(state, strategoi, { attr: 'strategos-theme-pick', selectedId: appoint.themeId }),
-    playerPicker: renderPlayerChoiceGrid(state, { attr: 'strategos-player-pick', selectedId: appoint.playerId }),
+    targetPicker: renderProvinceChoiceGrid(state, strategoi, {
+      attr: 'strategos-theme-pick',
+      selectedId: appoint.themeId,
+      getDisabledReason: (theme) => getTargetDisabledReason(state, playerId, powerKey, theme.id),
+    }),
+    playerPicker: renderPlayerChoiceGrid(state, {
+      attr: 'strategos-player-pick',
+      selectedId: appoint.playerId,
+      getDisabledReason: (player) => getAppointeeDisabledReason(state, playerId, powerKey, strategoi, player.id, target?.id || null),
+    }),
     preview,
     buttonLabel: 'Appoint Strategos',
     buttonAttr: 'appoint-strategos',
@@ -704,11 +836,15 @@ function decorateRevocationTargets(state, targets) {
 }
 
 function renderCourtRevocationsForPower(state, playerId, draft, powerKey) {
-  const targets = decorateRevocationTargets(state, getRevocationTargets(state, playerId, powerKey));
+  const targets = decorateRevocationTargets(state, getRevocationTargets(state, playerId, powerKey))
+    .map((target) => {
+      const result = validateCourtPayload(state, playerId, { action: 'revoke', value: target.value });
+      return { ...target, disabledReason: result.ok ? '' : result.reason };
+    });
   if (!targets.length) return '';
   const selectedValue = draft.revoke?.target || null;
   const selectedTarget = targets.find((t) => t.value === selectedValue);
-  const ready = Boolean(selectedTarget);
+  const ready = Boolean(selectedTarget && !selectedTarget.disabledReason);
   return `
     <section class="appointment-section revocation-section">
       <header class="appointment-section-head">
@@ -716,10 +852,18 @@ function renderCourtRevocationsForPower(state, playerId, draft, powerKey) {
       </header>
       <div class="appointment-step">
         ${renderPickerStep(1, 'Pick what to revoke')}
-        ${renderRevocationChoiceGrid(state, targets, { attr: 'revoke-pick', selectedValue })}
+        ${renderRevocationChoiceGrid(state, targets, {
+          attr: 'revoke-pick',
+          selectedValue,
+          getDisabledReason: (target) => target.disabledReason,
+        })}
       </div>
       <div class="appointment-preview">
-        ${selectedTarget ? `<span class="danger">Revoke</span> ${selectedTarget.badge}` : '<span class="muted">Pick a target to revoke</span>'}
+        ${ready
+          ? `<span class="danger">Revoke</span> ${selectedTarget.badge}`
+          : selectedTarget?.disabledReason
+            ? `<span class="muted">Cannot revoke: ${escapeHtml(selectedTarget.disabledReason)}</span>`
+            : '<span class="muted">Pick a target to revoke</span>'}
       </div>
       <div class="panel-actions">
         <button type="button" class="btn-danger" data-action="revoke" ${ready ? '' : 'disabled'}>Revoke</button>
@@ -801,6 +945,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
   const onPick = (selector, draftKey, prop, transform = (v) => v) => {
     container.querySelectorAll(selector).forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
         const value = transform(btn.dataset[Object.keys(btn.dataset)[0]] ?? '');
         const next = { ...(draft[draftKey] || {}), [prop]: value };
         draft[draftKey] = next;
