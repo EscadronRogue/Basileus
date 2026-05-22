@@ -4434,6 +4434,9 @@ textarea {
 .court-power-card.used {
   background: rgba(245,233,200,0.55);
 }
+.court-power-card.passed {
+  border-style: dashed;
+}
 .court-power-card.appointment-mode {
   border-left: 3px solid rgba(55,104,122,0.62);
 }
@@ -4482,6 +4485,9 @@ textarea {
 .court-power-done {
   border: 1px solid rgba(168,116,32,0.16);
   background: rgba(255,252,240,0.55);
+}
+.court-pass-actions {
+  justify-content: flex-end;
 }
 
 /* ── Estates panel: gold reserve + per-province bid cards ── */

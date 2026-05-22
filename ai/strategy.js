@@ -412,10 +412,13 @@ export function chooseStrategicCourtAction(state, meta, playerId) {
   const actions = listLegalCourtActions(state, playerId);
   const confirmation = actions.find((action) => action.kind === 'court-confirm')
     || actions.find((action) => action.payload?.action === 'skip')
+    || actions.find((action) => action.payload?.action === 'pass-court-power')
     || null;
   const candidates = actions.filter((action) => (
     action.kind !== 'court-confirm'
     && action.payload?.action !== 'skip'
+    && action.payload?.action !== 'pass-court-power'
+    && action.payload?.action !== 'pass'
   ));
   if (!candidates.length) return confirmation;
 

@@ -94,25 +94,36 @@ function getPlayerPowerUseMap(state, playerId) {
 }
 
 function normalizeCourtPowerUse(value) {
-  if (!value) return { count: 0, kinds: [] };
-  if (typeof value === 'string') return { count: 1, kinds: [value] };
+  if (!value) return { count: 0, kinds: [], passed: false };
+  if (typeof value === 'string') {
+    return value === 'pass'
+      ? { count: 0, kinds: [], passed: true }
+      : { count: 1, kinds: [value], passed: false };
+  }
   if (Array.isArray(value)) {
-    const kinds = value.filter(Boolean).map((entry) => String(entry));
-    return { count: kinds.length, kinds };
+    const entries = value.filter(Boolean).map((entry) => String(entry));
+    const kinds = entries.filter((entry) => entry !== 'pass');
+    return { count: kinds.length, kinds, passed: entries.includes('pass') };
   }
   if (typeof value === 'object') {
+    let passed = Boolean(value.passed || value.pass);
     const kinds = Array.isArray(value.kinds)
       ? value.kinds.filter(Boolean).map((entry) => String(entry))
       : [];
+    if (kinds.includes('pass')) passed = true;
+    const filteredKinds = kinds.filter((entry) => entry !== 'pass');
     const fallbackKind = value.lastKind || value.kind || value.actionKind || null;
-    if (!kinds.length && fallbackKind) kinds.push(String(fallbackKind));
+    if (!filteredKinds.length && fallbackKind) {
+      if (String(fallbackKind) === 'pass') passed = true;
+      else filteredKinds.push(String(fallbackKind));
+    }
     const count = Math.max(
-      kinds.length,
+      filteredKinds.length,
       Number.isFinite(Number(value.count)) ? Number(value.count) : 0,
     );
-    return { count, kinds };
+    return { count, kinds: filteredKinds, passed };
   }
-  return { count: 0, kinds: [] };
+  return { count: 0, kinds: [], passed: false };
 }
 
 export function getCourtPowerActionKinds(state, playerId, powerKey) {
@@ -126,6 +137,10 @@ export function getCourtPowerActionCount(state, playerId, powerKey) {
 export function getCourtPowerActionKind(state, playerId, powerKey) {
   const kinds = getCourtPowerActionKinds(state, playerId, powerKey);
   return kinds.at(-1) || null;
+}
+
+export function isCourtPowerPassed(state, playerId, powerKey) {
+  return normalizeCourtPowerUse(getPlayerPowerUseMap(state, playerId)[powerKey]).passed;
 }
 
 function getCourtPowerKindCount(state, playerId, powerKey, actionKind) {
@@ -151,10 +166,12 @@ export function getCourtPowerUseMode(state, playerId, powerKey) {
 }
 
 export function isCourtPowerUsed(state, playerId, powerKey) {
-  return getCourtPowerActionCount(state, playerId, powerKey) > 0;
+  const use = normalizeCourtPowerUse(getPlayerPowerUseMap(state, playerId)[powerKey]);
+  return use.count > 0 || use.passed;
 }
 
 export function isCourtPowerExhausted(state, playerId, powerKey) {
+  if (isCourtPowerPassed(state, playerId, powerKey)) return true;
   const appointments = getCourtPowerAppointmentCount(state, playerId, powerKey);
   const revocations = getCourtPowerRevocationCount(state, playerId, powerKey);
   const totalActions = getCourtPowerActionCount(state, playerId, powerKey);
@@ -179,12 +196,29 @@ export function markCourtActionUsed(state, playerId, powerKey = 'PLAYER', action
     count: Math.max(current.count + 1, kinds.length),
     lastKind: actionKind,
     kinds,
+    passed: current.passed,
+  };
+}
+
+export function markCourtPowerPassed(state, playerId, powerKey) {
+  const courtActions = ensureCourtActionState(state);
+  courtActions.actionUsed[playerId] = true;
+  const powerUse = getPlayerPowerUseMap(state, playerId);
+  const current = normalizeCourtPowerUse(powerUse[powerKey]);
+  powerUse[powerKey] = {
+    count: current.count,
+    lastKind: current.kinds.at(-1) || null,
+    kinds: current.kinds.slice(),
+    passed: true,
   };
 }
 
 function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
   if (state.phase !== 'court') return fail('Court actions are only available during Court.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  if (isCourtPowerPassed(state, playerId, powerKey)) {
+    return fail(`${courtPowerName(powerKey)} already passed for this turn.`);
+  }
 
   const appointments = getCourtPowerAppointmentCount(state, playerId, powerKey);
   const revocations = getCourtPowerRevocationCount(state, playerId, powerKey);
@@ -701,6 +735,30 @@ export function getCourtPowerKeys(state, playerId) {
     ...(player.majorTitles || []),
     ...getUsedCourtPowers(state, playerId),
   ]);
+}
+
+function canPlayerUseCourtPower(state, playerId, powerKey) {
+  const player = getPlayer(state, playerId);
+  if (!player) return false;
+  if (powerKey === 'BASILEUS') return playerId === state.basileusId;
+  return (player.majorTitles || []).includes(powerKey);
+}
+
+export function passCourtPower(state, playerId, powerKey) {
+  const normalizedPowerKey = String(powerKey || '').trim();
+  if (state.phase !== 'court') return fail('Court actions are only available during Court.');
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  if (!normalizedPowerKey || !canPlayerUseCourtPower(state, playerId, normalizedPowerKey)) {
+    return fail('Choose a valid court office to pass.');
+  }
+  if (isCourtPowerPassed(state, playerId, normalizedPowerKey)) {
+    return fail(`${courtPowerName(normalizedPowerKey)} already passed for this turn.`);
+  }
+  if (isCourtPowerExhausted(state, playerId, normalizedPowerKey)) {
+    return fail(`${courtPowerName(normalizedPowerKey)} already completed its ${COURT_POWER_ACTION_LIMIT} court actions this turn.`);
+  }
+  markCourtPowerPassed(state, playerId, normalizedPowerKey);
+  return { ok: true };
 }
 
 export function hasCourtPowerOptions(state, playerId, powerKey) {

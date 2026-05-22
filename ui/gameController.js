@@ -323,6 +323,7 @@ export class GameController {
         action: 'appoint-bishop', themeId, appointeeId,
       }),
       revoke: (value) => dispatch({ action: 'revoke', value }),
+      'pass-court-power': (powerKey) => dispatch({ action: 'pass-court-power', powerKey }),
     };
   }
 

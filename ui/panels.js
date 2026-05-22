@@ -12,6 +12,7 @@ import {
   getCourtPowerUseMode,
   getUsedCourtPowers,
   isCourtPowerExhausted,
+  isCourtPowerPassed,
   isCourtPowerUsed,
   getMinimumLandBid,
   validateMajorTitleAssignments,
@@ -917,6 +918,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const revocationCount = getCourtPowerRevocationCount(state, playerId, powerKey);
   const actionCount = getCourtPowerActionCount(state, playerId, powerKey);
   const mode = getCourtPowerUseMode(state, playerId, powerKey);
+  const passed = isCourtPowerPassed(state, playerId, powerKey);
   const exhausted = isCourtPowerExhausted(state, playerId, powerKey);
   const usedSummary = usedKinds.length ? usedKinds.join(', ') : getCourtPowerActionKind(state, playerId, powerKey);
   const appointHtml = renderCourtAppointmentsForPower(state, playerId, draft, powerKey);
@@ -928,13 +930,19 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   ].filter(Boolean).join(', ');
   const stateText = actionCount
     ? `${actionCount}/${COURT_POWER_ACTION_LIMIT} actions${usedParts ? ` (${usedParts})` : ''}`
-    : 'Choose actions';
-  const hint = actionCount > 0 && !exhausted
+    : passed
+      ? 'Passed'
+      : 'Choose actions';
+  const hint = passed
+    ? ''
+    : actionCount > 0 && !exhausted
     ? `${courtPowerCountLabel(remainingActions, 'action')} remains for this office.`
     : !exhausted
       ? `Up to ${COURT_POWER_ACTION_LIMIT} appointments or revocations for this office this round.`
       : '';
-  const doneText = actionCount
+  const doneText = passed
+    ? `${getCourtPowerLabel(powerKey)} passed${actionCount ? ` after ${courtPowerCountLabel(actionCount, 'action')}` : ' with no action recorded'}.`
+    : actionCount
     ? `${getCourtPowerLabel(powerKey)} ${courtPowerCountLabel(actionCount, 'action')} recorded${usedParts ? ` (${escapeHtml(usedParts)})` : ''}.`
     : `${getCourtPowerLabel(powerKey)} actions recorded${usedSummary ? `: ${escapeHtml(usedSummary)}` : ''}.`;
   const body = exhausted
@@ -944,10 +952,14 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
           ${appointHtml || '<div class="choice-grid-empty">No appointments available</div>'}
           ${revokeHtml || '<div class="choice-grid-empty">No revocations available</div>'}
         </div>
+        <div class="panel-actions court-pass-actions">
+          <button type="button" class="btn-secondary" data-action="pass-court-power" data-court-pass-power="${escapeHtml(powerKey)}">${actionCount ? 'Pass Remaining' : 'Pass'}</button>
+        </div>
       `;
   const cardClass = [
     'court-power-card',
     exhausted ? 'used' : '',
+    passed ? 'passed' : '',
     mode === 'appoint' ? 'appointment-mode' : '',
     mode === 'revoke' ? 'revocation-mode' : '',
     mode === 'mixed' ? 'mixed-mode' : '',
@@ -1027,6 +1039,11 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
     const target = draft.revoke?.target;
     if (!target) return;
     callbacks.revoke?.(target);
+  });
+  bindSelectAction(container, '[data-action="pass-court-power"]', (btn) => {
+    const powerKey = btn.dataset.courtPassPower;
+    if (!powerKey) return;
+    callbacks['pass-court-power']?.(powerKey);
   });
 }
 

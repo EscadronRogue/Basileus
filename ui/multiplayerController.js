@@ -760,6 +760,10 @@ export class MultiplayerController {
         action: 'revoke',
         value,
       }),
+      'pass-court-power': (powerKey) => this.send('court_action', {
+        action: 'pass-court-power',
+        powerKey,
+      }),
     };
   }
 

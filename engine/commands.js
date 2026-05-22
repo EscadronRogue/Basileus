@@ -26,6 +26,7 @@ import {
   checkRevocationCurrentTurnAppointment,
   hasCourtActionUsed,
   markCourtActionUsed,
+  passCourtPower,
   revokeChurchLand,
   revokeCourtTitle,
   revokeMinorTitle,
@@ -58,6 +59,13 @@ export function applyCourtAction(state, playerId, payload = {}) {
 
   if (action === 'skip') {
     return confirmCourt(state, playerId);
+  }
+
+  if (action === 'pass-court-power' || action === 'pass') {
+    const result = passCourtPower(state, playerId, payload.powerKey);
+    if (!result?.ok) return fail(result?.reason || 'Could not pass that court office.');
+    autoConfirmFinishedCourtPlayer(state, playerId);
+    return { ok: true };
   }
 
   if (action === 'appoint-court') {

@@ -78,6 +78,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   renderCourtPanel(basileusPanel, state, state.basileusId, {}, { uiState: createDefaultUiState() });
   assert.match(basileusPanel.innerHTML, /Empress/);
   assert.match(basileusPanel.innerHTML, /Choose actions/);
+  assert.match(basileusPanel.innerHTML, /data-action="pass-court-power"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /End Court/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Skip Action/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Confirm Court/);
@@ -158,6 +159,31 @@ test('court estate revocations show owner color without the old separator', () =
   assert.equal(container.innerHTML.includes(`--province-owner-color: ${state.players[2].color};`), true);
   assert.equal(container.innerHTML.includes('Estate —'), false);
   assert.equal(container.innerHTML.includes('Estate â€”'), false);
+});
+
+test('court panel lets a player pass one office while keeping other offices available', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
+  assert.match(container.innerHTML, /data-court-pass-power="DOM_EAST"/);
+  assert.match(container.innerHTML, /data-court-pass-power="PATRIARCH"/);
+
+  const pass = applyCourtAction(state, 1, { action: 'pass-court-power', powerKey: 'DOM_EAST' });
+  assert.equal(pass.ok, true);
+  renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /passed with no action recorded/);
+  assert.doesNotMatch(container.innerHTML, /data-court-pass-power="DOM_EAST"/);
+  assert.match(container.innerHTML, /data-court-pass-power="PATRIARCH"/);
 });
 
 test('estates panel lists free land bids before deployment', () => {

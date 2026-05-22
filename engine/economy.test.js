@@ -19,7 +19,15 @@ import {
   phaseCleanup,
   phaseCourt,
 } from './turnflow.js';
-import { resolveCoup, suggestMajorTitleAssignments } from './actions.js';
+import {
+  getCourtPowerActionCount,
+  getCourtPowerAppointmentCount,
+  getCourtPowerRevocationCount,
+  isCourtPowerExhausted,
+  isCourtPowerPassed,
+  resolveCoup,
+  suggestMajorTitleAssignments,
+} from './actions.js';
 
 function makeState() {
   const state = createGameState({ playerCount: 4, deckSize: 2, seed: 7, historyEnabled: true });
@@ -190,6 +198,35 @@ test('court powers may spend both actions on revocations', () => {
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
   assert.equal(appointment.ok, false);
   assert.match(appointment.reason, /already completed its 2 court actions/);
+});
+
+test('court powers can pass remaining appointments and revocations without counting either', () => {
+  const state = makeState();
+  state.themes.KAP.strategos = 3;
+  enterCourt(state);
+
+  const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
+  assert.equal(appointment.ok, true);
+
+  const domesticPass = applyCourtAction(state, 1, { action: 'pass-court-power', powerKey: 'DOM_EAST' });
+  assert.equal(domesticPass.ok, true);
+  assert.equal(getCourtPowerActionCount(state, 1, 'DOM_EAST'), 1);
+  assert.equal(getCourtPowerAppointmentCount(state, 1, 'DOM_EAST'), 1);
+  assert.equal(getCourtPowerRevocationCount(state, 1, 'DOM_EAST'), 0);
+  assert.equal(isCourtPowerPassed(state, 1, 'DOM_EAST'), true);
+  assert.equal(isCourtPowerExhausted(state, 1, 'DOM_EAST'), true);
+
+  const blockedAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
+  assert.equal(blockedAppointment.ok, false);
+  assert.match(blockedAppointment.reason, /already passed/);
+
+  const patriarchPass = applyCourtAction(state, 1, { action: 'pass-court-power', powerKey: 'PATRIARCH' });
+  assert.equal(patriarchPass.ok, true);
+  assert.equal(getCourtPowerActionCount(state, 1, 'PATRIARCH'), 0);
+  assert.equal(getCourtPowerAppointmentCount(state, 1, 'PATRIARCH'), 0);
+  assert.equal(getCourtPowerRevocationCount(state, 1, 'PATRIARCH'), 0);
+  assert.equal(isCourtPowerPassed(state, 1, 'PATRIARCH'), true);
+  assert.equal(state.courtActions.playerConfirmed.has(1), true);
 });
 
 test('patriarch may appoint bishops in occupied original church provinces', () => {

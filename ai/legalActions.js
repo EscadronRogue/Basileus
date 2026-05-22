@@ -7,6 +7,7 @@ import {
 } from '../engine/commands.js';
 import {
   canBuyTheme,
+  getAvailableCourtPowers,
   getMinimumLandBid,
   suggestMajorTitleAssignments,
   validateMajorTitleAssignments,
@@ -191,12 +192,19 @@ function appendRevocationActions(actions, state, playerId) {
   }
 }
 
+function appendCourtPowerPassActions(actions, state, playerId) {
+  for (const powerKey of getAvailableCourtPowers(state, playerId)) {
+    pushCourt(actions, state, playerId, { action: 'pass-court-power', powerKey }, 'pass court office');
+  }
+}
+
 export function listLegalCourtActions(state, playerId) {
   if (!state || state.phase !== 'court') return [];
   if (state.courtActions?.playerConfirmed?.has(playerId)) return [];
   const actions = [];
   appendAppointmentActions(actions, state, playerId);
   appendRevocationActions(actions, state, playerId);
+  appendCourtPowerPassActions(actions, state, playerId);
   pushCourt(actions, state, playerId, { action: 'skip' }, 'skip court action');
   pushConfirmation(actions, state, playerId);
   return uniqueActions(actions);
