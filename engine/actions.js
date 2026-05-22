@@ -26,7 +26,9 @@ const STRATEGOS_TITLE_BY_REGION = {
   sea: 'ADMIRAL',
 };
 
-export const COURT_POWER_ACTION_LIMIT = 2;
+export const COURT_POWER_APPOINTMENT_LIMIT = 2;
+export const COURT_POWER_REVOCATION_LIMIT = 1;
+export const COURT_POWER_ACTION_LIMIT = COURT_POWER_APPOINTMENT_LIMIT;
 
 function playerName(state, playerId) {
   const player = getPlayer(state, playerId);
@@ -126,12 +128,37 @@ export function getCourtPowerActionKind(state, playerId, powerKey) {
   return kinds.at(-1) || null;
 }
 
+function getCourtPowerKindCount(state, playerId, powerKey, actionKind) {
+  return getCourtPowerActionKinds(state, playerId, powerKey)
+    .filter((kind) => kind === actionKind).length;
+}
+
+export function getCourtPowerAppointmentCount(state, playerId, powerKey) {
+  return getCourtPowerKindCount(state, playerId, powerKey, 'appoint');
+}
+
+export function getCourtPowerRevocationCount(state, playerId, powerKey) {
+  return getCourtPowerKindCount(state, playerId, powerKey, 'revoke');
+}
+
+export function getCourtPowerUseMode(state, playerId, powerKey) {
+  if (getCourtPowerRevocationCount(state, playerId, powerKey) > 0) return 'revoke';
+  if (getCourtPowerAppointmentCount(state, playerId, powerKey) > 0) return 'appoint';
+  return null;
+}
+
 export function isCourtPowerUsed(state, playerId, powerKey) {
   return getCourtPowerActionCount(state, playerId, powerKey) > 0;
 }
 
 export function isCourtPowerExhausted(state, playerId, powerKey) {
-  return getCourtPowerActionCount(state, playerId, powerKey) >= COURT_POWER_ACTION_LIMIT;
+  const appointments = getCourtPowerAppointmentCount(state, playerId, powerKey);
+  const revocations = getCourtPowerRevocationCount(state, playerId, powerKey);
+  if (revocations >= COURT_POWER_REVOCATION_LIMIT) return true;
+  if (appointments >= COURT_POWER_APPOINTMENT_LIMIT) return true;
+
+  const kinds = getCourtPowerActionKinds(state, playerId, powerKey);
+  return kinds.length === 0 && getCourtPowerActionCount(state, playerId, powerKey) >= COURT_POWER_ACTION_LIMIT;
 }
 
 export function getUsedCourtPowers(state, playerId) {
@@ -155,15 +182,31 @@ export function markCourtActionUsed(state, playerId, powerKey = 'PLAYER', action
 function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
   if (state.phase !== 'court') return fail('Court actions are only available during Court.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
-  if (isCourtPowerExhausted(state, playerId, powerKey)) {
-    const attempted = actionKind === 'appoint'
-      ? 'appoint'
-      : actionKind === 'revoke'
-        ? 'revoke'
-        : 'act';
-    return fail(`${courtPowerName(powerKey)} already used ${COURT_POWER_ACTION_LIMIT} court actions this turn and cannot ${attempted} again until next turn.`);
+
+  const appointments = getCourtPowerAppointmentCount(state, playerId, powerKey);
+  const revocations = getCourtPowerRevocationCount(state, playerId, powerKey);
+  if (actionKind === 'appoint') {
+    if (revocations >= COURT_POWER_REVOCATION_LIMIT) {
+      return fail(`${courtPowerName(powerKey)} already used its revocation this turn and cannot appoint until next turn.`);
+    }
+    if (appointments >= COURT_POWER_APPOINTMENT_LIMIT) {
+      return fail(`${courtPowerName(powerKey)} already used ${COURT_POWER_APPOINTMENT_LIMIT} appointments this turn and cannot appoint again until next turn.`);
+    }
+  } else if (actionKind === 'revoke') {
+    if (appointments > 0) {
+      return fail(`${courtPowerName(powerKey)} already appointed this turn and cannot revoke until next turn.`);
+    }
+    if (revocations >= COURT_POWER_REVOCATION_LIMIT) {
+      return fail(`${courtPowerName(powerKey)} already used its revocation this turn and cannot revoke again until next turn.`);
+    }
+  } else if (isCourtPowerExhausted(state, playerId, powerKey)) {
+    return fail(`${courtPowerName(powerKey)} already completed its court actions this turn.`);
   }
   return { ok: true };
+}
+
+function canCourtPowerUseActionKind(state, playerId, powerKey, actionKind) {
+  return checkCourtActionAvailable(state, playerId, powerKey, actionKind).ok;
 }
 
 export function isTitleAppointedThisTurn(state, slotKey) {
@@ -665,17 +708,28 @@ export function hasCourtPowerOptions(state, playerId, powerKey) {
   if (state.phase !== 'court') return false;
   if (state.courtActions?.playerConfirmed?.has(playerId)) return false;
   if (isCourtPowerExhausted(state, playerId, powerKey)) return false;
+  const canAppoint = canCourtPowerUseActionKind(state, playerId, powerKey, 'appoint');
+  const canRevoke = canCourtPowerUseActionKind(state, playerId, powerKey, 'revoke');
   if (powerKey === 'BASILEUS') {
     return playerId === state.basileusId
-      && (hasBasileusAppointmentTarget(state) || hasBasileusRevocationTarget(state));
+      && (
+        (canAppoint && hasBasileusAppointmentTarget(state))
+        || (canRevoke && hasBasileusRevocationTarget(state))
+      );
   }
   if (powerKey === 'PATRIARCH') {
     return getPlayer(state, playerId)?.majorTitles?.includes('PATRIARCH')
-      && (hasBishopAppointmentTarget(state) || hasBishopRevocationTarget(state));
+      && (
+        (canAppoint && hasBishopAppointmentTarget(state))
+        || (canRevoke && hasBishopRevocationTarget(state))
+      );
   }
   if (powerKey === 'DOM_EAST' || powerKey === 'DOM_WEST' || powerKey === 'ADMIRAL') {
     return getPlayer(state, playerId)?.majorTitles?.includes(powerKey)
-      && (hasStrategosAppointmentTarget(state, powerKey) || hasStrategosRevocationTarget(state, powerKey));
+      && (
+        (canAppoint && hasStrategosAppointmentTarget(state, powerKey))
+        || (canRevoke && hasStrategosRevocationTarget(state, powerKey))
+      );
   }
   return false;
 }

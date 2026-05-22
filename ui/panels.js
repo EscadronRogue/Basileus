@@ -3,10 +3,13 @@ import { MAJOR_TITLES } from '../data/titles.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
 import { applyCourtAction } from '../engine/commands.js';
 import {
-  COURT_POWER_ACTION_LIMIT,
-  getCourtPowerActionCount,
+  COURT_POWER_APPOINTMENT_LIMIT,
+  COURT_POWER_REVOCATION_LIMIT,
+  getCourtPowerAppointmentCount,
   getCourtPowerActionKinds,
   getCourtPowerActionKind,
+  getCourtPowerRevocationCount,
+  getCourtPowerUseMode,
   getUsedCourtPowers,
   isCourtPowerExhausted,
   isCourtPowerUsed,
@@ -894,28 +897,56 @@ function getVisibleCourtPowerKeys(state, playerId) {
   ));
 }
 
+function courtPowerCountLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const usedKinds = getCourtPowerActionKinds(state, playerId, powerKey);
-  const usedCount = getCourtPowerActionCount(state, playerId, powerKey);
+  const appointmentCount = getCourtPowerAppointmentCount(state, playerId, powerKey);
+  const revocationCount = getCourtPowerRevocationCount(state, playerId, powerKey);
+  const mode = getCourtPowerUseMode(state, playerId, powerKey);
   const exhausted = isCourtPowerExhausted(state, playerId, powerKey);
   const usedSummary = usedKinds.length ? usedKinds.join(', ') : getCourtPowerActionKind(state, playerId, powerKey);
   const appointHtml = renderCourtAppointmentsForPower(state, playerId, draft, powerKey);
   const revokeHtml = renderCourtRevocationsForPower(state, playerId, draft, powerKey);
+  const remainingAppointments = Math.max(0, COURT_POWER_APPOINTMENT_LIMIT - appointmentCount);
+  const stateText = revocationCount
+    ? `${revocationCount}/${COURT_POWER_REVOCATION_LIMIT} revocation`
+    : appointmentCount
+      ? `${appointmentCount}/${COURT_POWER_APPOINTMENT_LIMIT} appointments`
+      : 'Choose appoint or revoke';
+  const hint = appointmentCount > 0 && !exhausted
+    ? `Appointment mode: ${courtPowerCountLabel(remainingAppointments, 'appointment')} remains; revocation is closed for this office.`
+    : !exhausted
+      ? `Either ${COURT_POWER_APPOINTMENT_LIMIT} appointments or ${COURT_POWER_REVOCATION_LIMIT} revocation for this office this round.`
+      : '';
+  const doneText = revocationCount
+    ? `${getCourtPowerLabel(powerKey)} revocation recorded.`
+    : appointmentCount
+      ? `${getCourtPowerLabel(powerKey)} ${courtPowerCountLabel(appointmentCount, 'appointment')} recorded.`
+      : `${getCourtPowerLabel(powerKey)} actions recorded${usedSummary ? `: ${escapeHtml(usedSummary)}` : ''}.`;
   const body = exhausted
-    ? `<div class="panel-empty court-power-done">${getCourtPowerLabel(powerKey)} actions recorded: ${escapeHtml(usedSummary || 'complete')}.</div>`
+    ? `<div class="panel-empty court-power-done">${doneText}</div>`
     : `
         <div class="court-choice-lane">
           ${appointHtml || '<div class="choice-grid-empty">No appointments available</div>'}
           ${revokeHtml || '<div class="choice-grid-empty">No revocations available</div>'}
         </div>
       `;
+  const cardClass = [
+    'court-power-card',
+    exhausted ? 'used' : '',
+    mode === 'appoint' ? 'appointment-mode' : '',
+    mode === 'revoke' ? 'revocation-mode' : '',
+  ].filter(Boolean).join(' ');
   return `
-    <section class="court-power-card${exhausted ? ' used' : ''}" data-court-power="${powerKey}">
+    <section class="${cardClass}" data-court-power="${powerKey}">
       <header class="court-power-head">
         ${renderCourtPowerBadge(state, playerId, powerKey)}
-        <span class="court-power-state">${usedCount ? `${usedCount}/${COURT_POWER_ACTION_LIMIT} used` : 'Appoint or revoke'}</span>
+        <span class="court-power-state">${stateText}</span>
       </header>
-      ${!exhausted ? `<p class="section-hint">Up to ${COURT_POWER_ACTION_LIMIT} actions for this office this round.</p>` : ''}
+      ${hint ? `<p class="section-hint">${hint}</p>` : ''}
       ${body}
     </section>
   `;

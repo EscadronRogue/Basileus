@@ -75,7 +75,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   const basileusPanel = makePanelContainer();
   renderCourtPanel(basileusPanel, state, state.basileusId, {}, { uiState: createDefaultUiState() });
   assert.match(basileusPanel.innerHTML, /Empress/);
-  assert.match(basileusPanel.innerHTML, /Appoint or revoke/);
+  assert.match(basileusPanel.innerHTML, /Choose appoint or revoke/);
   assert.doesNotMatch(basileusPanel.innerHTML, /End Court/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Skip Action/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Confirm Court/);
@@ -122,6 +122,7 @@ test('court panel disables revocations blocked by same-turn appointments', () =>
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
+  state.themes.KAP.strategos = 3;
 
   const result = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
   assert.equal(result.ok, true);
@@ -129,8 +130,12 @@ test('court panel disables revocations blocked by same-turn appointments', () =>
   const container = makePanelContainer();
   renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
 
+  assert.match(container.innerHTML, /1\/2 appointments/);
+  assert.match(container.innerHTML, /Appointment mode: 1 appointment remains/);
   assert.match(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*disabled[^>]*>/);
   assert.match(container.innerHTML, /was appointed this turn and cannot be revoked until next turn/);
+  assert.match(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /Domestic of the East already appointed this turn/);
 });
 
 test('court estate revocations show owner color without the old separator', () => {

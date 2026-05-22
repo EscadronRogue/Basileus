@@ -275,7 +275,7 @@ export const PHASE_TOOLTIPS = {
   invasion: 'A new invasion is drawn. Its route shows which provinces are at risk.',
   title_redistribution: 'The Basileus confirms or redistributes the major titles before Court.',
   income: 'Provinces pay out gold and raise troops automatically.',
-  court: 'Each player appoints or revokes up to twice per office before income.',
+  court: 'Each office may make either up to two appointments or one revocation before income.',
   estates: 'Dynasties bid for private land.',
   deployment: 'Each player funds armies, hires mercenaries, chooses destinations, and backs a claimant.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',

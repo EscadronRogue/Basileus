@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 
 import { createGameState } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
-import { submitHumanOrders } from '../engine/commands.js';
+import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
 import { validateMajorTitleAssignments } from '../engine/actions.js';
 import {
   buildAIOrders,
@@ -17,7 +17,7 @@ import {
   planMajorTitleAssignment,
   runAICourtAutomation,
 } from './brain.js';
-import { applyLegalAction, listLegalEstateActions } from './legalActions.js';
+import { applyLegalAction, listLegalCourtActions, listLegalEstateActions } from './legalActions.js';
 import { simulateGames } from './simulate.js';
 import { trainStrategyWeights } from './train.js';
 import { GREEK_FIRST_NAMES } from './greekNames.js';
@@ -106,6 +106,31 @@ test('legal estate actions dispatch through the shared AI action path', () => {
 
   assert.equal(result.ok, true);
   assert.equal(Boolean(state.landAuctions[action.payload.themeId]), true);
+});
+
+test('AI court legal actions respect appointment-or-revocation office mode', () => {
+  const state = makeState();
+  state.themes.KAP.strategos = 3;
+  state.phase = 'income';
+  phaseCourt(state);
+
+  const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
+  assert.equal(appointment.ok, true);
+
+  const appointmentModeActions = listLegalCourtActions(state, 1);
+  assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'appoint-strategos'), true);
+  assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'revoke' && action.payload?.value?.endsWith(':strategos')), false);
+
+  const revokeState = makeState();
+  revokeState.themes.OPS.strategos = 2;
+  revokeState.phase = 'income';
+  phaseCourt(revokeState);
+
+  const revocation = applyCourtAction(revokeState, 1, { action: 'revoke', value: 'minor:OPS:strategos' });
+  assert.equal(revocation.ok, true);
+
+  const revocationModeActions = listLegalCourtActions(revokeState, 1);
+  assert.equal(revocationModeActions.some((action) => action.payload?.action === 'appoint-strategos'), false);
 });
 
 test('AI simulation runner completes deterministic all-AI games', () => {
