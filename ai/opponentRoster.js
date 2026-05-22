@@ -37,12 +37,38 @@ function fallbackForSeat(seatId = 0) {
   return FALLBACK_AI_OPPONENTS[index] || FALLBACK_AI_OPPONENTS[0];
 }
 
+function migrateLegacyTunedWeights(entry, weights) {
+  if ((Number(entry?.training?.objectiveVersion) || 0) >= 2) return weights;
+  if ((entry?.policy?.policyId || entry?.policyId || 'tuned') !== 'tuned') return weights;
+  return {
+    ...weights,
+    invasionMargin: Math.min(Number(weights.invasionMargin) || 0.82, 1.35),
+    capitalFallPenalty: Math.min(Number(weights.capitalFallPenalty) || 520, 520),
+    capitalRiskPenalty: Math.min(Number(weights.capitalRiskPenalty) || 160, 160),
+    throneBase: Math.max(Number(weights.throneBase) || 0, 24),
+    selfClaim: Math.max(Number(weights.selfClaim) || 0, 0.85),
+    incumbentDefense: Math.min(Number(weights.incumbentDefense) || 0.8, 1.1),
+    supportLeaderPenalty: Math.min(Number(weights.supportLeaderPenalty) || 0.9, 1.05),
+    supportOtherClaimant: Math.max(Number(weights.supportOtherClaimant) || 0, 0.55),
+    coalitionWillingness: Math.max(Number(weights.coalitionWillingness) || 0, 0.85),
+    relationshipCoupWeight: Math.max(Number(weights.relationshipCoupWeight) || 0, 0.7),
+    surplusDefensePenalty: Math.max(Number(weights.surplusDefensePenalty) || 0, 0.28),
+    frontierSurplusValue: Math.min(Number(weights.frontierSurplusValue) || 0.35, 0.35),
+    frontierSurplusCap: Math.min(Number(weights.frontierSurplusCap) || 7, 7),
+    coupOpportunityWeight: Math.max(Number(weights.coupOpportunityWeight) || 0, 0.65),
+    selfClaimThreshold: Math.min(Number(weights.selfClaimThreshold) || 0.95, 1),
+  };
+}
+
 function normalizeTunedOpponent(entry, index = 0) {
   if (!entry || typeof entry !== 'object') return null;
   const id = String(entry.id || `tuned-${index + 1}`).trim();
   const firstName = String(entry.firstName || entry.name || '').trim();
   if (!id || !firstName) return null;
-  const strategyWeights = entry.strategyWeights || entry.policy?.strategyWeights || entry.weights || {};
+  const strategyWeights = migrateLegacyTunedWeights(
+    entry,
+    entry.strategyWeights || entry.policy?.strategyWeights || entry.weights || {},
+  );
   return {
     id,
     firstName,

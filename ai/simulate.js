@@ -79,6 +79,7 @@ function emptyStats(options) {
       categories: {},
     },
     winners: {},
+    players: {},
     samples: [],
   };
 }
@@ -90,6 +91,31 @@ function addCount(target, key, amount = 1) {
 function round(value, places = 2) {
   const factor = 10 ** places;
   return Math.round((Number(value) || 0) * factor) / factor;
+}
+
+function createPlayerStats() {
+  return {
+    orders: 0,
+    frontierTroops: 0,
+    capitalTroops: 0,
+    idleTroops: 0,
+    fundedTroops: 0,
+    mercenaries: 0,
+    mercenaryCost: 0,
+    selfClaims: 0,
+    selfClaimWins: 0,
+    selfClaimTroops: 0,
+    credibleSelfClaims: 0,
+    tokenSelfClaims: 0,
+    incumbentBacks: 0,
+    otherBacks: 0,
+  };
+}
+
+function ensurePlayerStats(stats, playerId) {
+  const key = String(playerId);
+  if (!stats.players[key]) stats.players[key] = createPlayerStats();
+  return stats.players[key];
 }
 
 function getOrderOfficeKeys(state, playerId) {
@@ -157,6 +183,8 @@ function collectResolution(stats, state) {
 
   for (const player of state.players || []) {
     const order = summarizeOrders(state, player.id);
+    const playerStats = ensurePlayerStats(stats, player.id);
+
     stats.deployment.orders += 1;
     stats.deployment.frontierTroops += order.frontierTroops;
     stats.deployment.capitalTroops += order.capitalTroops;
@@ -165,9 +193,28 @@ function collectResolution(stats, state) {
     stats.deployment.mercenaries += order.mercenaryCount;
     stats.deployment.mercenaryCost += order.mercenaryCost;
 
-    if (order.candidate === player.id) stats.coups.selfClaims += 1;
-    else if (order.candidate === state.basileusId) stats.coups.incumbentBacks += 1;
-    else stats.coups.otherBacks += 1;
+    playerStats.orders += 1;
+    playerStats.frontierTroops += order.frontierTroops;
+    playerStats.capitalTroops += order.capitalTroops;
+    playerStats.idleTroops += order.idleTroops;
+    playerStats.fundedTroops += order.fundedTroops;
+    playerStats.mercenaries += order.mercenaryCount;
+    playerStats.mercenaryCost += order.mercenaryCost;
+
+    if (order.candidate === player.id) {
+      stats.coups.selfClaims += 1;
+      playerStats.selfClaims += 1;
+      playerStats.selfClaimTroops += order.capitalTroops;
+      if (order.capitalTroops >= 3) playerStats.credibleSelfClaims += 1;
+      else playerStats.tokenSelfClaims += 1;
+      if (coup?.winner === player.id && order.capitalTroops > 0) playerStats.selfClaimWins += 1;
+    } else if (order.candidate === state.basileusId) {
+      stats.coups.incumbentBacks += 1;
+      playerStats.incumbentBacks += 1;
+    } else {
+      stats.coups.otherBacks += 1;
+      playerStats.otherBacks += 1;
+    }
   }
 }
 
@@ -355,6 +402,7 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
     winnerIds: final.winners.map((entry) => entry.playerId),
     topScore: final.topScore,
     appointmentStatsByPlayer,
+    playerStatsByPlayer: localStats.players,
     stats: localStats,
   };
 }

@@ -18,16 +18,35 @@ npm.cmd run train:ai -- --generations 3 --population 10 --elite 3 --games 24
   Default: `3`
 
 - `--games N`  
-  Number of games each candidate plays during evaluation.
+  Number of games used for finalist re-evaluation. The trainer now screens every
+  candidate on fewer games first, then re-tests the best finalists on this many
+  games.
   Default: `24`
 
 Total rough workload:
 
 ```text
-generations x population x games
+generations x population x screening-games + finalists x finalist-games
 ```
 
-So `3 x 10 x 24 = 720` simulated games.
+So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
+720-game full evaluation.
+
+- `--screening-games N`
+  Number of quick games used for every candidate in every generation.
+  Default: about one third of `--games`, minimum `4` for larger runs.
+
+- `--finalist-games N`
+  Number of games used to re-rank the finalist pool.
+  Default: same as `--games`
+
+- `--finalists N`
+  Number of top distinct candidates to re-evaluate at the end.
+  Default: `5`
+
+- `--workers N`
+  Parallel worker threads used by the CLI trainer.
+  Default: up to `4`, based on available CPU cores.
 
 **Game Setup**
 - `--players N`  
@@ -67,6 +86,10 @@ So `3 x 10 x 24 = 720` simulated games.
   Number of saved tuned opponents loaded from the output roster for the robust champion pool.
   Default: `6`
 
+- `--save-champions N`
+  Number of newly trained champions exported to the output roster.
+  Default: `5`
+
 **Opponent League**
 - `--league a,b,c`  
   Custom non-champion opponent pool used during training. In `beginner` mode it is the full non-self-play league. In `robust` mode it replaces the built-in non-champion bucket while saved champions still participate.
@@ -81,7 +104,7 @@ npm.cmd run train:ai -- --league strategic,defender,random,copycat
 
 **Saving / Output**
 - `--no-save`  
-  Runs training but does not save the best trained AI.
+  Runs training but does not save the trained champions.
 
 - `--output PATH`  
   Saves trained opponents somewhere other than `ai/tunedOpponents.json`.

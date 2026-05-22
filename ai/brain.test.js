@@ -234,7 +234,7 @@ test('AI training beginner mix preserves the original opponent proportions', () 
   assert.equal(result.options.opponentSummary.exposure.copycat, 0.125);
 });
 
-test('AI training can save a Greek-named tuned opponent', () => {
+test('AI training can save Greek-named tuned champions', () => {
   const dir = mkdtempSync(join(tmpdir(), 'basileus-ai-'));
   const outputPath = join(dir, 'tunedOpponents.json');
   try {
@@ -251,11 +251,16 @@ test('AI training can save a Greek-named tuned opponent', () => {
     const payload = JSON.parse(readFileSync(outputPath, 'utf8'));
 
     assert.equal(result.saved.path, outputPath);
-    assert.equal(payload.opponents.length, 1);
+    assert.equal(payload.opponents.length, 2);
+    assert.equal(result.saved.opponents.length, 2);
+    assert.equal(result.champions.length, 2);
     assert.equal(GREEK_FIRST_NAMES.includes(payload.opponents[0].firstName), true);
     assert.equal(payload.opponents[0].policy.policyId, 'tuned');
     assert.equal(typeof payload.opponents[0].strategyWeights.invasionMargin, 'number');
     assert.equal(typeof payload.opponents[0].training.appointmentUnlockRate, 'number');
+    assert.equal(typeof payload.opponents[0].training.screeningGamesPerCandidate, 'number');
+    assert.equal(payload.opponents[0].training.championRank, 1);
+    assert.equal(payload.opponents[1].training.championRank, 2);
     assert.deepEqual(payload.opponents[0].training.playerCounts, [5]);
     assert.deepEqual(payload.opponents[0].training.deckSizes, [1]);
   } finally {

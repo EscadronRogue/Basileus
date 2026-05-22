@@ -122,15 +122,15 @@ Useful entry points:
 
 AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 25%/50%/75% thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, title redistribution, and defender rewards.
 
-Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights, saves the best tuned opponent to `ai/tunedOpponents.json`, and gives it a Greek first name from `ai/greekNames.js`.
+Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights, re-ranks a finalist pool, saves the top tuned champions to `ai/tunedOpponents.json`, and gives each one a Greek first name from `ai/greekNames.js`.
 
 Training defaults to the `robust` opponent mix: roughly one third candidate self-play, a saved tuned champion pool when available, mostly strong built-in styles, and only a small random/copycat oddball share. Use `--opponent-mix beginner` to preserve the original easier mix: 25% self-play plus an even split across strategic, defender, usurper, profiteer, random, and copycat.
 
 Training always creates a fresh random seed. By default it trains on 5-player, 9-invasion games. Pass comma lists or ranges to train across varied setups in one run, such as `--players 3,4,5 --deck 6,9,12` or `--players 3-5`.
 
-The trainer prints progress while it runs: generation starts, candidate scores, generation winners, final best result, and the saved opponent. Use `--quiet` to suppress the progress log, or `--json` for machine-readable output without progress lines.
+Training uses staged evaluation by default: broad candidate screening uses fewer games, then the strongest distinct finalists are re-tested with the full `--games` budget. The CLI trainer also uses worker threads by default; pass `--workers 1` for serial evaluation. The trainer prints progress while it runs: generation starts, candidate scores, finalist scores, generation winners, final champion leaderboard, and the saved opponents. Use `--quiet` to suppress the progress log, or `--json` for machine-readable output without progress lines.
 
-When trained opponents are available, new single-player games assign AI seats from that trained pool by default. Built-in strategy styles remain available as a fallback when no tuned opponents have been saved yet.
+When trained opponents are available, new single-player games assign AI seats from that trained champion pool by default. Built-in strategy styles remain available as a fallback when no tuned opponents have been saved yet.
 
 The named opponent catalog is intentionally lightweight: names identify seats, while the shared strategic planner makes the decisions.
 

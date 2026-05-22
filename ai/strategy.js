@@ -35,9 +35,9 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   estateProfit: 4,
   estateBidCost: 1.15,
   estateThreatPenalty: 1.5,
-  invasionMargin: 0.9,
-  capitalFallPenalty: 420,
-  capitalRiskPenalty: 120,
+  invasionMargin: 1.35,
+  capitalFallPenalty: 650,
+  capitalRiskPenalty: 220,
   invasionVictoryBonus: 6,
   invasionDefeatPenalty: 8,
   recoveryBonus: 0.8,
@@ -819,14 +819,30 @@ function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLe
     const claimLeverage = summary.capitalTroops > rivalCapital + 0.5
       ? 1
       : clamp(summary.capitalTroops / (rivalCapital + 1), 0, 1);
+    const decisiveTroops = Math.max(0, summary.capitalTroops - rivalCapital);
+    const coalitionBacking = context.coalitionContext?.candidates?.find((candidate) => (
+      candidate.candidateId === playerId
+      && candidate.supporters?.some((supporter) => supporter.playerId !== playerId)
+      && candidate.expectedVotes > rivalCapital
+    ));
+    const claimSafety = safetyScale;
+    const tokenPenalty = summary.capitalTroops > 0 && summary.capitalTroops < 3
+      ? (3 - summary.capitalTroops) * (2.8 + weights.selfClaim) * (coalitionBacking ? 0.25 : 1)
+      : 0;
     let value = 0;
-    if (summary.capitalTroops > rivalCapital + 0.5) value = throneValue * weights.selfClaim;
-    else if (summary.capitalTroops > 0) value = (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.45 * weights.selfClaim;
-    else value = -5;
+    if (summary.capitalTroops > rivalCapital + 0.5) {
+      value = throneValue * weights.selfClaim * claimSafety
+        + decisiveTroops * weights.selfClaim * 1.2 * safetyScale;
+    } else if (summary.capitalTroops >= 3) {
+      value = (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.35 * weights.selfClaim;
+    } else if (summary.capitalTroops > 0) {
+      value = (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.12 * weights.selfClaim;
+    } else value = -5;
     value += summary.capitalTroops
       * weights.coupOpportunityWeight
       * safetyScale
       * (0.35 + claimLeverage + (table.underCouping || 0) * 0.35);
+    value -= tokenPenalty;
     value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
     value += summary.capitalTroops * (table.underCouping || 0) * weights.coalitionWillingness * 0.18;
     value -= summary.capitalTroops * (table.overCouping || 0) * weights.coalitionWillingness * 0.12;

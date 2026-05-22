@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { availableParallelism } from 'node:os';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 
 import { makeRng } from '../engine/state.js';
 import { simulateGame } from './simulate.js';
@@ -24,6 +26,11 @@ const DEFAULT_OPTIONS = {
   opponentMix: 'robust',
   selfPlayEvery: null,
   championPoolSize: 6,
+  screeningGames: null,
+  finalistGames: null,
+  finalists: 5,
+  saveChampions: 5,
+  workers: null,
   save: true,
   outputPath: fileURLToPath(new URL('./tunedOpponents.json', import.meta.url)),
   league: ['strategic', 'defender', 'usurper', 'profiteer', 'random', 'copycat'],
@@ -111,6 +118,19 @@ function toInt(value, fallback) {
 function toFloat(value, fallback) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function defaultScreeningGames(games) {
+  if (games < 12) return games;
+  return Math.max(4, Math.ceil(games / 3));
+}
+
+function defaultWorkerCount() {
+  try {
+    return Math.max(1, Math.min(4, availableParallelism() - 1));
+  } catch {
+    return 1;
+  }
 }
 
 function randomTrainingSeed() {
@@ -345,46 +365,60 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
   const rankIndex = game.finalScores.findIndex((entry) => entry.playerId === candidateSeat);
   const rank = rankIndex >= 0 ? rankIndex + 1 : playerCount;
   const entry = game.finalScores[rankIndex] || { points: 0, gold: 0, projectedIncome: 0 };
+  const bestRival = game.finalScores.find((score) => score.playerId !== candidateSeat) || null;
+  const pointMargin = (Number(entry.points) || 0) - (Number(bestRival?.points) || 0);
   const resolutions = Math.max(1, Number(game.stats?.resolutions) || 0);
-  const orders = Math.max(1, Number(game.stats?.deployment?.orders) || 0);
   const victoryRate = (Number(game.stats?.wars?.victory) || 0) / resolutions;
   const defeatRate = (Number(game.stats?.wars?.defeat) || 0) / resolutions;
   const averageWarMargin = (Number(game.stats?.wars?.marginTotal) || 0) / resolutions;
-  const selfClaimRate = (Number(game.stats?.coups?.selfClaims) || 0) / orders;
-  const capitalTroopsPerOrder = (Number(game.stats?.deployment?.capitalTroops) || 0) / orders;
-  const fundedTroopsPerOrder = (Number(game.stats?.deployment?.fundedTroops) || 0) / orders;
+  const playerStats = game.playerStatsByPlayer?.[candidateSeat] || game.playerStatsByPlayer?.[String(candidateSeat)] || {};
+  const orders = Math.max(1, Number(playerStats.orders) || 0);
+  const selfClaims = Number(playerStats.selfClaims) || 0;
+  const credibleSelfClaims = Number(playerStats.credibleSelfClaims) || 0;
+  const tokenSelfClaims = Number(playerStats.tokenSelfClaims) || 0;
+  const selfClaimWins = Number(playerStats.selfClaimWins) || 0;
+  const selfClaimRate = selfClaims / orders;
+  const credibleSelfClaimRate = credibleSelfClaims / orders;
+  const selfClaimWinRate = selfClaimWins / Math.max(1, selfClaims);
+  const tokenSelfClaimRate = tokenSelfClaims / Math.max(1, selfClaims);
+  const averageSelfClaimTroops = selfClaims > 0 ? (Number(playerStats.selfClaimTroops) || 0) / selfClaims : 0;
+  const capitalTroopsPerOrder = (Number(playerStats.capitalTroops) || 0) / orders;
+  const fundedTroopsPerOrder = (Number(playerStats.fundedTroops) || 0) / orders;
   const appointmentStats = game.appointmentStatsByPlayer?.[candidateSeat] || {};
   const appointmentUnlocks = Number(appointmentStats.unlockAppointments) || 0;
   const unresolvedAppointmentLock = appointmentStats.finalSelfLocked ? 1 : 0;
   const won = game.winnerIds.includes(candidateSeat);
 
-  let objective = won ? 160 : 0;
-  objective += (playerCount - rank) * 34;
-  objective += (Number(entry.points) || 0) * 8;
-  objective += (Number(entry.gold) || 0) * 0.25;
-  objective += (Number(entry.projectedIncome) || 0) * 0.5;
-  objective += victoryRate * 24;
-  objective -= defeatRate * 34;
-  objective -= Math.max(0, averageWarMargin - 7) * 3.2;
-  objective -= Math.max(0, victoryRate - 0.88) * 24;
-  objective -= Math.max(0, 0.12 - selfClaimRate) * 54;
-  objective += Math.min(0.3, selfClaimRate) * 18;
-  if (capitalTroopsPerOrder < 1 && selfClaimRate < 0.14) {
-    objective -= (1 - capitalTroopsPerOrder) * 7;
-  }
-  objective += appointmentUnlocks * 10;
-  objective -= unresolvedAppointmentLock * 18;
+  let objective = won ? 240 : 0;
+  objective += (playerCount - rank) * 55;
+  objective += pointMargin * 28;
+  objective += (Number(entry.points) || 0) * 18;
+  objective += Math.min(40, Math.max(0, Number(entry.gold) || 0)) * 0.12;
+  objective += Math.max(0, Number(entry.projectedIncome) || 0) * 0.18;
+  objective += selfClaimWinRate * 70;
+  objective += Math.min(0.35, credibleSelfClaimRate) * 42;
+  objective += Math.min(8, averageSelfClaimTroops) * (selfClaims > 0 ? 1.8 : 0);
+  objective -= tokenSelfClaimRate * 28;
+  objective -= Math.max(0, 0.08 - credibleSelfClaimRate) * 18;
+  objective -= defeatRate * 14;
+  objective += victoryRate * 5;
+  objective -= Math.max(0, averageWarMargin - 8) * 1.4;
   if (game.fall) objective -= options.fallPenalty;
-  if (game.reason === 'stuck') objective -= 100;
+  if (game.reason === 'stuck') objective -= 120;
 
   return {
     objective,
     won,
     rank,
     points: Number(entry.points) || 0,
+    pointMargin,
     fall: Boolean(game.fall),
     averageWarMargin,
     selfClaimRate,
+    credibleSelfClaimRate,
+    selfClaimWinRate,
+    tokenSelfClaimRate,
+    averageSelfClaimTroops,
     capitalTroopsPerOrder,
     fundedTroopsPerOrder,
     appointmentUnlocks,
@@ -399,6 +433,7 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
   let wins = 0;
   let rankTotal = 0;
   let pointTotal = 0;
+  let pointMarginTotal = 0;
   let falls = 0;
   let stuck = 0;
   let appointmentUnlocks = 0;
@@ -406,6 +441,10 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
   let unresolvedAppointmentLocks = 0;
   let averageWarMargin = 0;
   let selfClaimRate = 0;
+  let credibleSelfClaimRate = 0;
+  let selfClaimWinRate = 0;
+  let tokenSelfClaimRate = 0;
+  let averageSelfClaimTroops = 0;
   let capitalTroopsPerOrder = 0;
   let fundedTroopsPerOrder = 0;
 
@@ -426,10 +465,15 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     wins += score.won ? 1 : 0;
     rankTotal += score.rank;
     pointTotal += score.points;
+    pointMarginTotal += score.pointMargin;
     falls += score.fall ? 1 : 0;
     stuck += game.reason === 'stuck' ? 1 : 0;
     averageWarMargin += score.averageWarMargin;
     selfClaimRate += score.selfClaimRate;
+    credibleSelfClaimRate += score.credibleSelfClaimRate;
+    selfClaimWinRate += score.selfClaimWinRate;
+    tokenSelfClaimRate += score.tokenSelfClaimRate;
+    averageSelfClaimTroops += score.averageSelfClaimTroops;
     capitalTroopsPerOrder += score.capitalTroopsPerOrder;
     fundedTroopsPerOrder += score.fundedTroopsPerOrder;
     appointmentUnlocks += score.appointmentUnlocks;
@@ -442,9 +486,14 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     winRate: round(wins / options.games),
     averageRank: round(rankTotal / options.games),
     averagePoints: round(pointTotal / options.games),
+    averagePointMargin: round(pointMarginTotal / options.games),
     fallRate: round(falls / options.games),
     averageWarMargin: round(averageWarMargin / options.games),
     selfClaimRate: round(selfClaimRate / options.games),
+    credibleSelfClaimRate: round(credibleSelfClaimRate / options.games),
+    selfClaimWinRate: round(selfClaimWinRate / options.games),
+    tokenSelfClaimRate: round(tokenSelfClaimRate / options.games),
+    averageSelfClaimTroops: round(averageSelfClaimTroops / options.games),
     capitalTroopsPerOrder: round(capitalTroopsPerOrder / options.games),
     fundedTroopsPerOrder: round(fundedTroopsPerOrder / options.games),
     appointmentUnlockRate: round(appointmentUnlocks / Math.max(1, selfAppointments)),
@@ -491,25 +540,27 @@ function trainingDescription(options) {
   return `Tuned with the ${preset} opponent mix${championText}.`;
 }
 
-function saveBestOpponent(result) {
-  const existing = readSavedOpponents(result.options.outputPath);
-  const firstName = pickGreekFirstName(`${result.options.seed}:${Date.now()}:${result.best.metrics.objective}`);
+function buildSavedOpponent(result, champion, index, existing) {
+  const firstName = pickGreekFirstName(`${result.options.seed}:${Date.now()}:${index}:${champion.metrics.objective}`);
   const entry = {
     id: uniqueTunedId(firstName, existing),
     firstName,
-    label: 'Tuned AI',
+    label: index === 0 ? 'Tuned AI' : `Tuned AI ${index + 1}`,
     description: trainingDescription(result.options),
     policy: {
       policyId: 'tuned',
-      strategyWeights: result.best.weights,
+      strategyWeights: champion.weights,
     },
-    strategyWeights: result.best.weights,
-    metrics: result.best.metrics,
+    strategyWeights: champion.weights,
+    metrics: champion.metrics,
     training: {
       trainedAt: new Date().toISOString(),
+      objectiveVersion: 2,
+      championRank: index + 1,
       generations: result.options.generations,
       population: result.options.population,
-      gamesPerCandidate: result.options.games,
+      screeningGamesPerCandidate: result.options.screeningGames,
+      gamesPerCandidate: result.options.finalistGames,
       playerCounts: result.options.playerCounts,
       deckSizes: result.options.deckSizes,
       seed: result.options.seed,
@@ -519,21 +570,46 @@ function saveBestOpponent(result) {
       championOpponentIds: result.options.opponentSummary?.championOpponentIds || [],
       selfPlayEvery: result.options.selfPlayEvery,
       fallPenalty: result.options.fallPenalty,
-      appointmentUnlockRate: result.best.metrics.appointmentUnlockRate,
-      unresolvedAppointmentLocks: result.best.metrics.unresolvedAppointmentLocks,
+      appointmentUnlockRate: champion.metrics.appointmentUnlockRate,
+      unresolvedAppointmentLocks: champion.metrics.unresolvedAppointmentLocks,
     },
   };
+  existing.push(entry);
+  return entry;
+}
+
+function saveBestOpponents(result) {
+  const existing = readSavedOpponents(result.options.outputPath);
+  const idScratch = existing.slice();
+  const opponents = result.champions
+    .slice(0, result.options.saveChampions)
+    .map((champion, index) => buildSavedOpponent(result, champion, index, idScratch));
+  const updatedAt = opponents[0]?.training?.trainedAt || new Date().toISOString();
   const payload = {
     version: 1,
-    updatedAt: entry.training.trainedAt,
-    opponents: [entry, ...existing].slice(0, 24),
+    updatedAt,
+    opponents: [...opponents, ...existing].slice(0, 24),
   };
   writeFileSync(result.options.outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  return { path: result.options.outputPath, opponent: entry };
+  return { path: result.options.outputPath, opponent: opponents[0] || null, opponents };
 }
 
 function normalizeOptions(rawOptions = {}) {
   const population = Math.max(2, toInt(rawOptions.population, DEFAULT_OPTIONS.population));
+  const games = Math.max(1, toInt(rawOptions.games, DEFAULT_OPTIONS.games));
+  const screeningGames = Math.max(1, Math.min(
+    games,
+    toInt(rawOptions.screeningGames ?? rawOptions.screenGames, defaultScreeningGames(games)),
+  ));
+  const finalistGames = Math.max(
+    screeningGames,
+    toInt(rawOptions.finalistGames ?? rawOptions.finalGames, games),
+  );
+  const saveChampions = Math.max(1, Math.min(24, toInt(rawOptions.saveChampions ?? rawOptions.championsToSave, DEFAULT_OPTIONS.saveChampions)));
+  const finalists = Math.min(
+    population,
+    Math.max(saveChampions, toInt(rawOptions.finalists ?? rawOptions.finalistCount, DEFAULT_OPTIONS.finalists)),
+  );
   const rawPlayerCounts = rawOptions.playerCounts ?? rawOptions.playerCount ?? DEFAULT_OPTIONS.playerCounts;
   const rawDeckSizes = rawOptions.deckSizes ?? rawOptions.deckSize ?? DEFAULT_OPTIONS.deckSizes;
   const opponentMix = normalizeOpponentMix(rawOptions.opponentMix ?? rawOptions.trainingProfile ?? rawOptions.trainingPreset);
@@ -545,7 +621,11 @@ function normalizeOptions(rawOptions = {}) {
     generations: Math.max(1, toInt(rawOptions.generations, DEFAULT_OPTIONS.generations)),
     population,
     elite: Math.max(1, Math.min(population, toInt(rawOptions.elite, DEFAULT_OPTIONS.elite))),
-    games: Math.max(1, toInt(rawOptions.games, DEFAULT_OPTIONS.games)),
+    games,
+    screeningGames,
+    finalistGames,
+    finalists,
+    saveChampions,
     playerCounts: toIntList(rawPlayerCounts, DEFAULT_OPTIONS.playerCounts, 3, 5),
     deckSizes: toIntList(rawDeckSizes, DEFAULT_OPTIONS.deckSizes, 1, 30),
     seed: Number.isInteger(rawOptions.seed) ? rawOptions.seed : randomTrainingSeed(),
@@ -561,6 +641,7 @@ function normalizeOptions(rawOptions = {}) {
     outputPath: rawOptions.outputPath || DEFAULT_OPTIONS.outputPath,
     league: toPolicyList(rawOptions.league, DEFAULT_OPTIONS.league),
     leagueWasExplicit: rawOptions.league != null,
+    workers: Math.max(1, toInt(rawOptions.workers, defaultWorkerCount())),
   };
 }
 
@@ -568,12 +649,92 @@ function emitProgress(options, event) {
   if (typeof options.onProgress === 'function') options.onProgress(event);
 }
 
-export function trainStrategyWeights(rawOptions = {}) {
+function estimatedTrainingGames(options) {
+  const screeningTotal = options.generations * options.population * options.screeningGames;
+  const finalistTotal = options.finalistGames > options.screeningGames
+    ? options.finalists * options.finalistGames
+    : 0;
+  return screeningTotal + finalistTotal;
+}
+
+function evaluationOptions(options, games) {
+  const clone = { ...options, games };
+  delete clone.onProgress;
+  Object.defineProperty(clone, 'trainingOpponentPool', {
+    value: options.trainingOpponentPool,
+    enumerable: true,
+    configurable: true,
+  });
+  return clone;
+}
+
+function candidateProfileIndex(options, generation, index) {
+  return generation * options.population + index;
+}
+
+function finalProfileIndex(index) {
+  return 100000 + index;
+}
+
+function evaluateProfile(profile, options, profileIndex, games) {
+  return {
+    ...profile,
+    metrics: evaluateStrategyWeights(profile.weights, evaluationOptions(options, games), profileIndex),
+  };
+}
+
+function compareCandidates(left, right) {
+  return (
+    (right.metrics.objective - left.metrics.objective)
+    || ((right.metrics.winRate || 0) - (left.metrics.winRate || 0))
+    || ((left.metrics.fallRate || 0) - (right.metrics.fallRate || 0))
+    || String(left.name).localeCompare(String(right.name))
+  );
+}
+
+function weightsSignature(weights) {
+  return JSON.stringify(compactWeights(weights));
+}
+
+function uniqueSortedCandidates(candidates, limit = Infinity) {
+  const seen = new Set();
+  const unique = [];
+  for (const candidate of candidates.slice().sort(compareCandidates)) {
+    const signature = weightsSignature(candidate.weights);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    unique.push(candidate);
+    if (unique.length >= limit) break;
+  }
+  return unique;
+}
+
+function compactChampion(candidate) {
+  return {
+    name: candidate.name,
+    metrics: candidate.metrics,
+    weights: candidate.weights,
+    compactWeights: compactWeights(candidate.weights),
+    screeningMetrics: candidate.screeningMetrics || null,
+  };
+}
+
+function createTrainingResult(options, champions, generations) {
+  const best = champions[0];
+  return {
+    options,
+    best: compactChampion(best),
+    champions: champions.map(compactChampion),
+    generations,
+  };
+}
+
+function beginTraining(rawOptions = {}) {
   const options = finalizeTrainingOptions({ ...rawOptions, seed: randomTrainingSeed() });
   const rng = makeRng(options.seed);
   let population = seedPopulation(options, rng);
   const generations = [];
-  let best = null;
+  let leaderboard = [];
   const startedAt = Date.now();
 
   emitProgress(options, {
@@ -581,7 +742,12 @@ export function trainStrategyWeights(rawOptions = {}) {
     generations: options.generations,
     population: options.population,
     games: options.games,
-    totalGames: options.generations * options.population * options.games,
+    screeningGames: options.screeningGames,
+    finalistGames: options.finalistGames,
+    finalists: options.finalists,
+    saveChampions: options.saveChampions,
+    workers: options.workers,
+    totalGames: estimatedTrainingGames(options),
     playerCounts: options.playerCounts,
     deckSizes: options.deckSizes,
     league: options.league,
@@ -591,6 +757,96 @@ export function trainStrategyWeights(rawOptions = {}) {
     elapsedMs: 0,
   });
 
+  return { options, rng, population, generations, leaderboard, startedAt };
+}
+
+function evaluatePopulationSerial(population, options, generation, startedAt, games) {
+  const evaluated = [];
+  for (let index = 0; index < population.length; index += 1) {
+    const profile = population[index];
+    emitProgress(options, {
+      type: 'candidate-start',
+      generation: generation + 1,
+      generations: options.generations,
+      candidate: index + 1,
+      population: options.population,
+      name: profile.name,
+      games,
+      elapsedMs: Date.now() - startedAt,
+    });
+    const candidate = evaluateProfile(profile, options, candidateProfileIndex(options, generation, index), games);
+    evaluated.push(candidate);
+    emitProgress(options, {
+      type: 'candidate-end',
+      generation: generation + 1,
+      generations: options.generations,
+      candidate: index + 1,
+      population: options.population,
+      name: profile.name,
+      metrics: candidate.metrics,
+      elapsedMs: Date.now() - startedAt,
+    });
+  }
+  return evaluated.sort(compareCandidates);
+}
+
+function rerankFinalistsSerial(candidates, options, startedAt) {
+  const finalists = uniqueSortedCandidates(candidates, options.finalists);
+  if (options.finalistGames <= options.screeningGames) return finalists;
+  const evaluated = [];
+  for (let index = 0; index < finalists.length; index += 1) {
+    const profile = finalists[index];
+    emitProgress(options, {
+      type: 'finalist-start',
+      finalist: index + 1,
+      finalists: finalists.length,
+      name: profile.name,
+      games: options.finalistGames,
+      elapsedMs: Date.now() - startedAt,
+    });
+    const candidate = evaluateProfile(profile, options, finalProfileIndex(index), options.finalistGames);
+    candidate.screeningMetrics = profile.metrics;
+    evaluated.push(candidate);
+    emitProgress(options, {
+      type: 'finalist-end',
+      finalist: index + 1,
+      finalists: finalists.length,
+      name: profile.name,
+      metrics: candidate.metrics,
+      elapsedMs: Date.now() - startedAt,
+    });
+  }
+  return uniqueSortedCandidates(evaluated, options.finalists);
+}
+
+function completeTraining(result, startedAt) {
+  if (result.options.save) {
+    result.saved = saveBestOpponents(result);
+    emitProgress(result.options, {
+      type: 'saved',
+      firstName: result.saved.opponent?.firstName || null,
+      id: result.saved.opponent?.id || null,
+      count: result.saved.opponents.length,
+      path: result.saved.path,
+      elapsedMs: Date.now() - startedAt,
+    });
+  }
+  emitProgress(result.options, {
+    type: 'training-end',
+    bestName: result.best.name,
+    bestMetrics: result.best.metrics,
+    champions: result.champions,
+    saved: result.saved || null,
+    elapsedMs: Date.now() - startedAt,
+  });
+  return result;
+}
+
+export function trainStrategyWeights(rawOptions = {}) {
+  const session = beginTraining(rawOptions);
+  const { options, rng, generations, startedAt } = session;
+  let { population, leaderboard } = session;
+
   for (let generation = 0; generation < options.generations; generation += 1) {
     emitProgress(options, {
       type: 'generation-start',
@@ -599,36 +855,9 @@ export function trainStrategyWeights(rawOptions = {}) {
       elapsedMs: Date.now() - startedAt,
     });
 
-    const evaluated = [];
-    for (let index = 0; index < population.length; index += 1) {
-      const profile = population[index];
-      emitProgress(options, {
-        type: 'candidate-start',
-        generation: generation + 1,
-        generations: options.generations,
-        candidate: index + 1,
-        population: options.population,
-        name: profile.name,
-        games: options.games,
-        elapsedMs: Date.now() - startedAt,
-      });
-      const metrics = evaluateStrategyWeights(profile.weights, options, generation * options.population + index);
-      const candidate = { ...profile, metrics };
-      evaluated.push(candidate);
-      emitProgress(options, {
-        type: 'candidate-end',
-        generation: generation + 1,
-        generations: options.generations,
-        candidate: index + 1,
-        population: options.population,
-        name: profile.name,
-        metrics,
-        elapsedMs: Date.now() - startedAt,
-      });
-    }
-    evaluated.sort((left, right) => right.metrics.objective - left.metrics.objective);
+    const evaluated = evaluatePopulationSerial(population, options, generation, startedAt, options.screeningGames);
+    leaderboard = uniqueSortedCandidates([...leaderboard, ...evaluated], Math.max(options.finalists * 4, options.elite));
 
-    if (!best || evaluated[0].metrics.objective > best.metrics.objective) best = evaluated[0];
     generations.push({
       generation: generation + 1,
       best: {
@@ -643,8 +872,8 @@ export function trainStrategyWeights(rawOptions = {}) {
       generations: options.generations,
       bestName: evaluated[0].name,
       bestMetrics: evaluated[0].metrics,
-      globalBestName: best.name,
-      globalBestMetrics: best.metrics,
+      globalBestName: leaderboard[0].name,
+      globalBestMetrics: leaderboard[0].metrics,
       elapsedMs: Date.now() - startedAt,
     });
 
@@ -659,34 +888,169 @@ export function trainStrategyWeights(rawOptions = {}) {
     }
   }
 
-  const result = {
-    options,
-    best: {
-      name: best.name,
-      metrics: best.metrics,
-      weights: best.weights,
-      compactWeights: compactWeights(best.weights),
-    },
-    generations,
-  };
-  if (options.save) {
-    result.saved = saveBestOpponent(result);
+  const champions = rerankFinalistsSerial(leaderboard, options, startedAt);
+  return completeTraining(createTrainingResult(options, champions, generations), startedAt);
+}
+
+function evaluateProfileInWorker(profile, options, profileIndex, games) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL(import.meta.url), {
+      workerData: {
+        kind: 'evaluate-profile',
+        profile,
+        profileIndex,
+        games,
+        options: evaluationOptions(options, games),
+      },
+    });
+    worker.once('message', (message) => {
+      if (message?.ok) resolve({ ...profile, metrics: message.metrics });
+      else reject(new Error(message?.error || 'Worker evaluation failed.'));
+    });
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (code !== 0) reject(new Error(`Worker exited with code ${code}.`));
+    });
+  });
+}
+
+async function evaluatePopulationParallel(population, options, generation, startedAt, games) {
+  if (options.workers <= 1 || population.length <= 1) {
+    return evaluatePopulationSerial(population, options, generation, startedAt, games);
+  }
+
+  const evaluated = [];
+  let nextIndex = 0;
+  async function runWorkerLane() {
+    while (nextIndex < population.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const profile = population[index];
+      emitProgress(options, {
+        type: 'candidate-start',
+        generation: generation + 1,
+        generations: options.generations,
+        candidate: index + 1,
+        population: options.population,
+        name: profile.name,
+        games,
+        elapsedMs: Date.now() - startedAt,
+      });
+      const candidate = await evaluateProfileInWorker(
+        profile,
+        options,
+        candidateProfileIndex(options, generation, index),
+        games,
+      );
+      evaluated[index] = candidate;
+      emitProgress(options, {
+        type: 'candidate-end',
+        generation: generation + 1,
+        generations: options.generations,
+        candidate: index + 1,
+        population: options.population,
+        name: profile.name,
+        metrics: candidate.metrics,
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(options.workers, population.length) }, () => runWorkerLane()),
+  );
+  return evaluated.filter(Boolean).sort(compareCandidates);
+}
+
+async function rerankFinalistsParallel(candidates, options, startedAt) {
+  const finalists = uniqueSortedCandidates(candidates, options.finalists);
+  if (options.finalistGames <= options.screeningGames || options.workers <= 1 || finalists.length <= 1) {
+    return rerankFinalistsSerial(candidates, options, startedAt);
+  }
+
+  const evaluated = [];
+  let nextIndex = 0;
+  async function runWorkerLane() {
+    while (nextIndex < finalists.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const profile = finalists[index];
+      emitProgress(options, {
+        type: 'finalist-start',
+        finalist: index + 1,
+        finalists: finalists.length,
+        name: profile.name,
+        games: options.finalistGames,
+        elapsedMs: Date.now() - startedAt,
+      });
+      const candidate = await evaluateProfileInWorker(profile, options, finalProfileIndex(index), options.finalistGames);
+      candidate.screeningMetrics = profile.metrics;
+      evaluated[index] = candidate;
+      emitProgress(options, {
+        type: 'finalist-end',
+        finalist: index + 1,
+        finalists: finalists.length,
+        name: profile.name,
+        metrics: candidate.metrics,
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(options.workers, finalists.length) }, () => runWorkerLane()),
+  );
+  return uniqueSortedCandidates(evaluated.filter(Boolean), options.finalists);
+}
+
+export async function trainStrategyWeightsAsync(rawOptions = {}) {
+  const session = beginTraining(rawOptions);
+  const { options, rng, generations, startedAt } = session;
+  let { population, leaderboard } = session;
+
+  for (let generation = 0; generation < options.generations; generation += 1) {
     emitProgress(options, {
-      type: 'saved',
-      firstName: result.saved.opponent.firstName,
-      id: result.saved.opponent.id,
-      path: result.saved.path,
+      type: 'generation-start',
+      generation: generation + 1,
+      generations: options.generations,
       elapsedMs: Date.now() - startedAt,
     });
+
+    const evaluated = await evaluatePopulationParallel(population, options, generation, startedAt, options.screeningGames);
+    leaderboard = uniqueSortedCandidates([...leaderboard, ...evaluated], Math.max(options.finalists * 4, options.elite));
+
+    generations.push({
+      generation: generation + 1,
+      best: {
+        name: evaluated[0].name,
+        metrics: evaluated[0].metrics,
+        weights: compactWeights(evaluated[0].weights),
+      },
+    });
+    emitProgress(options, {
+      type: 'generation-end',
+      generation: generation + 1,
+      generations: options.generations,
+      bestName: evaluated[0].name,
+      bestMetrics: evaluated[0].metrics,
+      globalBestName: leaderboard[0].name,
+      globalBestMetrics: leaderboard[0].metrics,
+      elapsedMs: Date.now() - startedAt,
+    });
+
+    const elites = evaluated.slice(0, options.elite);
+    population = elites.map((profile) => ({ name: profile.name, weights: profile.weights }));
+    while (population.length < options.population) {
+      const parent = elites[Math.floor(rng() * elites.length)];
+      population.push({
+        name: `${parent.name}-g${generation + 1}-${population.length + 1}`,
+        weights: mutateWeights(parent.weights, rng, options.mutation),
+      });
+    }
   }
-  emitProgress(options, {
-    type: 'training-end',
-    bestName: result.best.name,
-    bestMetrics: result.best.metrics,
-    saved: result.saved || null,
-    elapsedMs: Date.now() - startedAt,
-  });
-  return result;
+
+  const champions = await rerankFinalistsParallel(leaderboard, options, startedAt);
+  return completeTraining(createTrainingResult(options, champions, generations), startedAt);
 }
 
 function parseArgs(argv) {
@@ -721,6 +1085,11 @@ function parseArgs(argv) {
     else if (key === 'population') options.population = toInt(value, DEFAULT_OPTIONS.population);
     else if (key === 'elite') options.elite = toInt(value, DEFAULT_OPTIONS.elite);
     else if (key === 'games') options.games = toInt(value, DEFAULT_OPTIONS.games);
+    else if (key === 'screening-games' || key === 'screen-games') options.screeningGames = toInt(value, DEFAULT_OPTIONS.screeningGames);
+    else if (key === 'finalist-games' || key === 'final-games') options.finalistGames = toInt(value, DEFAULT_OPTIONS.finalistGames);
+    else if (key === 'finalists' || key === 'finalist-count') options.finalists = toInt(value, DEFAULT_OPTIONS.finalists);
+    else if (key === 'save-champions' || key === 'champions-to-save') options.saveChampions = toInt(value, DEFAULT_OPTIONS.saveChampions);
+    else if (key === 'workers') options.workers = toInt(value, DEFAULT_OPTIONS.workers);
     else if (key === 'players' || key === 'player-counts') options.playerCounts = value;
     else if (key === 'deck' || key === 'decks') options.deckSizes = value;
     else if (key === 'mutation') options.mutation = toFloat(value, DEFAULT_OPTIONS.mutation);
@@ -743,13 +1112,14 @@ function seconds(ms) {
 }
 
 function compactMetrics(metrics) {
-  return `objective ${metrics.objective}, win ${percent(metrics.winRate)}, rank ${metrics.averageRank}, fall ${percent(metrics.fallRate)}, margin ${metrics.averageWarMargin}, self-claim ${percent(metrics.selfClaimRate)}, unlock ${percent(metrics.appointmentUnlockRate)}`;
+  return `objective ${metrics.objective}, win ${percent(metrics.winRate)}, rank ${metrics.averageRank}, score margin ${metrics.averagePointMargin}, fall ${percent(metrics.fallRate)}, war margin ${metrics.averageWarMargin}, credible coups ${percent(metrics.credibleSelfClaimRate)}, coup wins ${percent(metrics.selfClaimWinRate)}`;
 }
 
 function createCliProgressLogger() {
   return (event) => {
     if (event.type === 'training-start') {
-      console.log(`[train ${seconds(event.elapsedMs)}] Starting ${event.generations} generations x ${event.population} profiles x ${event.games} games (${event.totalGames} games total), seed ${event.seed}. Players ${event.playerCounts.join('/')}, decks ${event.deckSizes.join('/')}.`);
+      console.log(`[train ${seconds(event.elapsedMs)}] Starting ${event.generations} generations x ${event.population} profiles x ${event.screeningGames} screening games, then ${event.finalists} finalists x ${event.finalistGames} games (${event.totalGames} games estimated), seed ${event.seed}. Workers ${event.workers}.`);
+      console.log(`[train ${seconds(event.elapsedMs)}] Players ${event.playerCounts.join('/')}, decks ${event.deckSizes.join('/')}. Saving up to ${event.saveChampions} champions.`);
       console.log(`[train ${seconds(event.elapsedMs)}] Opponent mix: ${event.opponentMix}; expected exposure ${formatExposure(event.opponentSummary?.exposure)}.`);
     } else if (event.type === 'generation-start') {
       console.log(`[train ${seconds(event.elapsedMs)}] Generation ${event.generation}/${event.generations} started.`);
@@ -757,10 +1127,14 @@ function createCliProgressLogger() {
       console.log(`[train ${seconds(event.elapsedMs)}]   Candidate ${event.candidate}/${event.population}: ${event.name} (${event.games} games)`);
     } else if (event.type === 'candidate-end') {
       console.log(`[train ${seconds(event.elapsedMs)}]   -> ${event.name}: ${compactMetrics(event.metrics)}`);
+    } else if (event.type === 'finalist-start') {
+      console.log(`[train ${seconds(event.elapsedMs)}]   Finalist ${event.finalist}/${event.finalists}: ${event.name} (${event.games} games)`);
+    } else if (event.type === 'finalist-end') {
+      console.log(`[train ${seconds(event.elapsedMs)}]   => ${event.name}: ${compactMetrics(event.metrics)}`);
     } else if (event.type === 'generation-end') {
       console.log(`[train ${seconds(event.elapsedMs)}] Generation ${event.generation}/${event.generations} winner: ${event.bestName} (${compactMetrics(event.bestMetrics)}). Global best: ${event.globalBestName}.`);
     } else if (event.type === 'saved') {
-      console.log(`[train ${seconds(event.elapsedMs)}] Saved ${event.firstName} (${event.id}) to ${event.path}.`);
+      console.log(`[train ${seconds(event.elapsedMs)}] Saved ${event.count} champion${event.count === 1 ? '' : 's'} to ${event.path}.`);
     } else if (event.type === 'training-end') {
       console.log(`[train ${seconds(event.elapsedMs)}] Finished. Best: ${event.bestName} (${compactMetrics(event.bestMetrics)}).`);
     }
@@ -769,10 +1143,14 @@ function createCliProgressLogger() {
 
 function formatTrainingReport(result) {
   const lines = [
-    `AI training: ${result.options.generations} generations, ${result.options.population} profiles, ${result.options.games} games/profile`,
+    `AI training: ${result.options.generations} generations, ${result.options.population} profiles, ${result.options.screeningGames} screening games/profile, ${result.options.finalistGames} finalist games/profile`,
     `Players: ${result.options.playerCounts.join(', ')}; decks: ${result.options.deckSizes.join(', ')}; random seed ${result.options.seed}`,
     `Opponent mix: ${result.options.opponentMix}; exposure ${formatExposure(result.options.opponentSummary?.exposure)}`,
-    `Best: ${result.best.name}, objective ${result.best.metrics.objective}, win ${Math.round(result.best.metrics.winRate * 100)}%, rank ${result.best.metrics.averageRank}, fall ${Math.round(result.best.metrics.fallRate * 100)}%, margin ${result.best.metrics.averageWarMargin}, self-claim ${Math.round(result.best.metrics.selfClaimRate * 100)}%, unlock ${Math.round(result.best.metrics.appointmentUnlockRate * 100)}%`,
+    `Best: ${result.best.name}, objective ${result.best.metrics.objective}, win ${Math.round(result.best.metrics.winRate * 100)}%, rank ${result.best.metrics.averageRank}, score margin ${result.best.metrics.averagePointMargin}, fall ${Math.round(result.best.metrics.fallRate * 100)}%, credible coups ${Math.round(result.best.metrics.credibleSelfClaimRate * 100)}%, coup wins ${Math.round(result.best.metrics.selfClaimWinRate * 100)}%`,
+    'Champion leaderboard:',
+    ...result.champions.map((entry, index) => (
+      `- #${index + 1} ${entry.name}: objective ${entry.metrics.objective}, win ${Math.round(entry.metrics.winRate * 100)}%, rank ${entry.metrics.averageRank}, credible coups ${Math.round(entry.metrics.credibleSelfClaimRate * 100)}%`
+    )),
     'Generation winners:',
     ...result.generations.map((entry) => (
       `- g${entry.generation}: ${entry.best.name}, objective ${entry.best.metrics.objective}, win ${Math.round(entry.best.metrics.winRate * 100)}%, rank ${entry.best.metrics.averageRank}`
@@ -781,7 +1159,7 @@ function formatTrainingReport(result) {
     JSON.stringify(result.best.compactWeights, null, 2),
   ];
   if (result.saved) {
-    lines.push(`Saved opponent: ${result.saved.opponent.firstName} (${result.saved.opponent.id})`);
+    lines.push(`Saved opponents: ${result.saved.opponents.map((entry) => `${entry.firstName} (${entry.id})`).join(', ')}`);
     lines.push(`Saved to: ${result.saved.path}`);
   }
   return lines.join('\n');
@@ -789,10 +1167,22 @@ function formatTrainingReport(result) {
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-if (isCli) {
+if (!isMainThread && workerData?.kind === 'evaluate-profile') {
+  try {
+    const profile = workerData.profile;
+    const metrics = evaluateStrategyWeights(
+      profile.weights,
+      workerData.options,
+      workerData.profileIndex,
+    );
+    parentPort.postMessage({ ok: true, metrics });
+  } catch (error) {
+    parentPort.postMessage({ ok: false, error: error?.message || String(error) });
+  }
+} else if (isCli) {
   const options = parseArgs(process.argv.slice(2));
   if (!options.json && !options.quiet) options.onProgress = createCliProgressLogger();
-  const result = trainStrategyWeights(options);
+  const result = await trainStrategyWeightsAsync(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else console.log(formatTrainingReport(result));
 }
