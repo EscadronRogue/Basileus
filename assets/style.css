@@ -2563,6 +2563,17 @@ body::before {
   stroke: currentColor;
   pointer-events: none;
 }
+.icon-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.icon-set .icon {
+  width: 1em;
+  height: 1em;
+}
 .icon-troop  { color: var(--umber-1); }
 .icon-gold   { color: var(--gold-1); }
 .icon-estate { color: var(--purple-0); }
@@ -2596,6 +2607,9 @@ body::before {
   align-self: center;
   font-size: 1em;
 }
+.value .icon-set {
+  align-self: center;
+}
 .value .value-num { font-variant-numeric: tabular-nums; }
 .value .value-noun {
   font-family: var(--font-display);
@@ -2611,6 +2625,7 @@ body::before {
 .value.gold   { color: var(--gold-1); }
 .value.estate { color: var(--purple-0); }
 .value.church { color: var(--church-1); }
+.value.office { color: var(--umber-1); }
 .value.troop  .icon { color: inherit; }
 .value.gold   .icon { color: inherit; }
 .value.estate .icon { color: inherit; }
@@ -2621,7 +2636,8 @@ body::before {
 .value.muted  { color: var(--umber-3); }
 
 /* Balance-of-power pie title takes the category icon */
-.balance-pie-icon { font-size: 13px; margin-right: 5px; }
+.balance-pie-icon,
+.balance-pie-iconset { font-size: 13px; margin-right: 5px; }
 .balance-pie-title { display: inline-flex; align-items: center; gap: 4px; }
 
 /* Dashboard "Gold" row gets a leading coin icon and reads as a label */
@@ -5394,7 +5410,8 @@ textarea {
   font-family: var(--font-display);
   font-size: 11px;
 }
-.score-cat .icon { font-size: 12px; }
+.score-cat .icon,
+.score-cat .icon-set { font-size: 12px; }
 .score-cat-share { color: var(--umber-2); }
 .score-cat-pts { color: var(--gold-2); font-weight: 700; }
 .score-row.winner .score-cat {

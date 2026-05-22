@@ -192,10 +192,10 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
   const theme = themeId ? state.themes?.[themeId] : null;
 
   if (payloadAction === 'appoint-strategos') {
-    return scoreRecipientGain(final, playerId, targetId, leaderId, 'strategos', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1), weights);
+    return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1), weights);
   }
   if (payloadAction === 'appoint-bishop') {
-    return scoreRecipientGain(final, playerId, targetId, leaderId, 'church', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1), weights);
+    return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1), weights);
   }
   if (payloadAction === 'appoint-court') {
     if (targetId === playerId) return 4;
@@ -207,9 +207,9 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
     if (targetId === playerId) return -100;
     let deniedValue = 1.5;
     if (action.payload?.value?.startsWith('minor:') && action.payload?.value?.endsWith(':strategos')) {
-      deniedValue += scoreResourceGain(final, targetId, 'strategos', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1));
+      deniedValue += scoreResourceGain(final, targetId, 'office', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1));
     } else if (action.payload?.value?.startsWith('minor:') && action.payload?.value?.endsWith(':bishop')) {
-      deniedValue += scoreResourceGain(final, targetId, 'church', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1));
+      deniedValue += scoreResourceGain(final, targetId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1));
     } else if (action.payload?.value?.startsWith('theme:')) {
       deniedValue += scoreResourceGain(final, targetId, 'estate', Math.max(1, Number(theme?.P ?? theme?.origin?.P) || 1));
     }
@@ -273,9 +273,8 @@ function estimateTitleYield(state, titleKey) {
 function scoreTitleAssignment(state, final, basileusId, leaderId, action, weights) {
   let score = 0;
   for (const [titleKey, holderId] of Object.entries(action.assignments || {})) {
-    const categoryKey = titleKey === 'PATRIARCH' ? 'church' : 'strategos';
     const amount = estimateTitleYield(state, titleKey);
-    score += scoreRecipientGain(final, basileusId, Number(holderId), leaderId, categoryKey, amount, weights);
+    score += scoreRecipientGain(final, basileusId, Number(holderId), leaderId, 'office', amount, weights);
     if (Number(holderId) === leaderId) score -= 5;
   }
   return score;

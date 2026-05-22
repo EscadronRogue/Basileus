@@ -281,16 +281,18 @@ test('final scoring uses last income phase shares without free citizens', () => 
   assert.equal(category(0, 'estate').value, 3);
   assert.equal(category(1, 'estate').value, 1);
   assert.equal(category(0, 'estate').totalValue, 4);
-  assert.equal(category(1, 'church').value, 6);
-  assert.equal(category(2, 'church').value, 6);
-  assert.equal(category(2, 'strategos').value, 5);
-  assert.equal(category(3, 'strategos').value, 2);
-  assert.equal(category(0, 'strategos').value, 1);
-  assert.equal(category(2, 'strategos').totalValue, 8);
+  assert.equal(category(0, 'office').value, 1);
+  assert.equal(category(1, 'office').value, 6);
+  assert.equal(category(2, 'office').value, 11);
+  assert.equal(category(3, 'office').value, 2);
+  assert.equal(category(2, 'office').totalValue, 20);
+  assert.equal(category(1, 'church'), undefined);
+  assert.equal(category(2, 'strategos'), undefined);
 
   const balance = buildBalanceOfPower(state);
   assert.equal(balance.categories.some((entry) => entry.slices.some((slice) => slice.kind === 'free')), false);
   assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 4);
+  assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 20);
 });
 
 test('final title redistribution triggers one last income phase before scoring', () => {

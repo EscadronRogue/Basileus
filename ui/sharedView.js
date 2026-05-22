@@ -14,7 +14,7 @@ import {
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
 import { getPlayerStyleAttr, renderPlayerRoleName, renderTitleBadge } from './labels.js';
-import { renderIcon } from './icons.js';
+import { renderIconSet } from './icons.js';
 
 export function createDefaultUiState() {
   return {
@@ -280,7 +280,7 @@ export const PHASE_TOOLTIPS = {
   deployment: 'Each player funds armies, hires mercenaries, chooses destinations, and backs a claimant.',
   resolution: 'Coup is decided first by Capital troops, then the war by Frontier troops vs invader strength.',
   cleanup: 'Per-turn state clears before the next invasion.',
-  scoring: 'Each 25% share of gold reserves, profit income, church income, and troop income scores 1 point, up to 3 per category.',
+  scoring: 'Each 25% share of gold reserves, profit income, and combined office income scores 1 point, up to 3 per category.',
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
@@ -556,12 +556,10 @@ export function renderScoringHtml(state, options = {}) {
     : '';
   const actionButtons = [newGameButton].filter(Boolean).join('');
 
-  const CATEGORY_ICON = { gold: 'gold', estate: 'estate', church: 'church', strategos: 'troop' };
-
   return `
     <div class="scoring-panel">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Highest point total wins. Each 25% share of Gold reserves, Profit income, Church income, and Troop income is worth 1 point, up to 3 per category.</p>
+      <p class="section-hint">Highest point total wins. Each 25% share of Gold reserves, Profit income, and Office income is worth 1 point, up to 3 per category.</p>
       <div class="score-list">
         ${scores.map((score) => {
           const rank = scores.filter((other) => other.points > score.points).length + 1;
@@ -572,8 +570,7 @@ export function renderScoringHtml(state, options = {}) {
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
             <span class="score-breakdown">
               ${score.categories.map((category) => {
-                const iconKind = CATEGORY_ICON[category.key];
-                const iconHtml = iconKind ? renderIcon(iconKind) : '';
+                const iconHtml = renderIconSet(category.iconKinds || []);
                 return `
                   <span class="score-cat" title="${escapeHtml(category.label)} - ${formatScoreShare(category.share)} share, ${category.points} point${category.points === 1 ? '' : 's'}">
                     ${iconHtml}

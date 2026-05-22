@@ -87,6 +87,14 @@ export function renderIcon(kind, extraClass = '') {
   return `<span class="${cls}">${inlineSvg(kind)}</span>`;
 }
 
+export function renderIconSet(kinds, extraClass = '') {
+  const list = (Array.isArray(kinds) ? kinds : [kinds])
+    .filter((kind) => ICON_PATHS[kind]);
+  if (!list.length) return '';
+  const cls = `icon-set${extraClass ? ` ${extraClass}` : ''}`;
+  return `<span class="${cls}">${list.map((kind) => renderIcon(kind)).join('')}</span>`;
+}
+
 // Resolve the label text for a "Troop / Troops" style label option.
 // opts.label can be:
 //   true        → auto pluralise based on |value|

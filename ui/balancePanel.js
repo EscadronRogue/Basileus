@@ -8,14 +8,13 @@ import { buildBalanceOfPower } from '../engine/scoring.js';
 import { buildIncomeFlow } from '../engine/cascade.js';
 import { getPlayerStyleAttr, renderPlayerRoleName, renderTitleBadge } from './labels.js';
 import { formatPlayerLabel, getOfficeDisplayName, getOfficeHolder, getPlayer } from '../engine/state.js';
-import { renderIcon } from './icons.js';
+import { renderIcon, renderIconSet } from './icons.js';
 import { REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 
-const CATEGORY_ICON_KIND = {
-  gold: 'gold',
-  estate: 'estate',
-  church: 'church',
-  strategos: 'troop',
+const CATEGORY_ICON_KINDS = {
+  gold: ['gold'],
+  estate: ['estate'],
+  office: ['church', 'troop'],
 };
 
 const FLOW_ICON_KIND = {
@@ -194,8 +193,7 @@ function renderLegend(state, category) {
 }
 
 function renderPieCard(state, category) {
-  const iconKind = CATEGORY_ICON_KIND[category.key];
-  const iconHtml = iconKind ? renderIcon(iconKind, 'balance-pie-icon') : '';
+  const iconHtml = renderCategoryIconSet(category, 'balance-pie-iconset');
   return `
     <div class="balance-pie" title="${category.description}">
       <div class="balance-pie-head">
@@ -210,16 +208,27 @@ function renderPieCard(state, category) {
 function renderRankingBreakdown(entry) {
   if (!Array.isArray(entry?.categories)) return '';
 
-  const order = ['gold', 'estate', 'church', 'strategos'];
   const parts = [];
-  for (const key of order) {
-    const cat = entry.categories.find((c) => c.key === key);
-    if (!cat) continue;
-    const iconKind = CATEGORY_ICON_KIND[key] || key;
+  for (const cat of entry.categories) {
     const value = Math.max(0, Math.round(Number(cat.value) || 0));
-    parts.push(renderValueChip(iconKind, value, cat.label));
+    parts.push(renderCategoryValueChip(cat, value));
   }
   return parts.join('');
+}
+
+function getCategoryIconKinds(category) {
+  return (Array.isArray(category?.iconKinds) && category.iconKinds.length)
+    ? category.iconKinds
+    : CATEGORY_ICON_KINDS[category?.key] || [];
+}
+
+function renderCategoryIconSet(category, extraClass = '') {
+  return renderIconSet(getCategoryIconKinds(category), extraClass);
+}
+
+function renderCategoryValueChip(category, value) {
+  const title = category?.label ? ` title="${escapeHtml(category.label)}"` : '';
+  return `<span class="value ${category?.key || ''}"${title}>${renderCategoryIconSet(category)}<span class="value-num">${value}</span></span>`;
 }
 
 function renderValueChip(iconKind, value, label) {
@@ -1144,7 +1153,7 @@ export function renderBalancePanel(container, state, options = {}) {
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body">
-          <p class="section-hint">Gold reserves score alongside shares of the last income flow.</p>
+          <p class="section-hint">Gold reserves score alongside Profit and combined Office income shares.</p>
           ${renderRanking(state, balance.scores)}
           <div class="balance-pie-grid">
             ${balance.categories.map((category) => renderPieCard(state, category)).join('')}

@@ -312,7 +312,10 @@ test('final scoring view uses income-share scoring categories', () => {
 
   assert.match(html, /Final Reckoning/);
   assert.match(html, /Profit income/);
-  assert.match(html, /Church income/);
-  assert.match(html, /Troop income/);
+  assert.match(html, /Office income/);
+  assert.match(html, /icon-church/);
+  assert.match(html, /icon-troop/);
+  assert.doesNotMatch(html, /Church income/);
+  assert.doesNotMatch(html, /Troop income/);
   assert.doesNotMatch(html, new RegExp('T' + 'ax'));
 });

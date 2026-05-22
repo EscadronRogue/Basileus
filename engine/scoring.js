@@ -6,31 +6,28 @@ export const SCORE_CATEGORIES = [
     key: 'gold',
     label: 'Gold Reserves',
     description: 'Gold currently held in the treasury.',
+    iconKinds: ['gold'],
   },
   {
     key: 'estate',
     label: 'Profit Income',
     description: 'Profit income received during the last income phase.',
+    iconKinds: ['estate'],
   },
   {
-    key: 'church',
-    label: 'Church Income',
-    description: 'Church income received during the last income phase.',
-  },
-  {
-    key: 'strategos',
-    label: 'Troop Income',
-    description: 'Troop income raised during the last income phase.',
+    key: 'office',
+    label: 'Office Income',
+    description: 'Combined church and troop income received during the last income phase.',
+    iconKinds: ['church', 'troop'],
   },
 ];
 
 export const SCORE_SHARE_THRESHOLDS = [0.25, 0.5, 0.75];
 const SCORE_EPSILON = 1e-9;
 
-const SCORE_INCOME_RESOURCE_BY_CATEGORY = {
-  estate: 'profit',
-  church: 'church',
-  strategos: 'troop',
+const SCORE_INCOME_RESOURCES_BY_CATEGORY = {
+  estate: ['profit'],
+  office: ['church', 'troop'],
 };
 
 function getScoringIncome(state) {
@@ -47,7 +44,8 @@ function readIncomeResource(income, playerId, resource) {
 
 function readCategoryValue(state, playerId, categoryKey, income) {
   if (categoryKey === 'gold') return Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
-  return readIncomeResource(income, playerId, SCORE_INCOME_RESOURCE_BY_CATEGORY[categoryKey]);
+  return (SCORE_INCOME_RESOURCES_BY_CATEGORY[categoryKey] || [])
+    .reduce((total, resource) => total + readIncomeResource(income, playerId, resource), 0);
 }
 
 export function getScorePointsForShare(share) {
@@ -151,6 +149,7 @@ export function buildBalanceOfPower(state) {
       key: category.key,
       label: category.label,
       description: category.description,
+      iconKinds: category.iconKinds,
       total,
       playerTotal: total,
       freeCitizens: 0,
