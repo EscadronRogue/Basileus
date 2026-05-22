@@ -51,13 +51,26 @@ So `3 x 10 x 24 = 720` simulated games.
   Objective penalty when the empire falls. Higher values teach the AI that surviving matters more than simply scoring highest.
   Default: `130`
 
+- `--opponent-mix robust|beginner`  
+  Opponent schedule used during training.
+  Default: `robust`
+
+  `robust` is the serious default: about 33% candidate self-play, about 32% saved tuned champions when available, about 28% strong built-in styles, and about 7% oddballs (`random`/`copycat`).
+
+  `beginner` preserves the old easier training mix: 25% candidate self-play, then an even split across `strategic`, `defender`, `usurper`, `profiteer`, `random`, and `copycat`.
+
 - `--self-play-every N`  
-  Every Nth evaluation game uses the candidate policy for all AI seats. This prevents it from only exploiting weaker opponents.
-  Default: `4`
+  Every Nth evaluation game uses the candidate policy for all AI seats. This overrides the selected opponent mix's cadence.
+  Default: `3` with `robust`, `4` with `beginner`
+
+- `--champions N`  
+  Number of saved tuned opponents loaded from the output roster for the robust champion pool.
+  Default: `6`
 
 **Opponent League**
 - `--league a,b,c`  
-  Opponent pool used during training. Current useful values include:
+  Custom non-champion opponent pool used during training. In `beginner` mode it is the full non-self-play league. In `robust` mode it replaces the built-in non-champion bucket while saved champions still participate.
+  Current useful values include:
   `strategic`, `defender`, `usurper`, `profiteer`, `random`, `copycat`, `greedy`, `loyalist`.
 
 Example:
@@ -83,6 +96,12 @@ A good serious run would be:
 
 ```powershell
 npm.cmd run train:ai -- --generations 8 --population 16 --elite 4 --games 40 --fall-penalty 220
+```
+
+A beginner-friendly run with the original opponent proportions:
+
+```powershell
+npm.cmd run train:ai -- --opponent-mix beginner
 ```
 
 A quick test run:

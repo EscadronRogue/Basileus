@@ -203,6 +203,8 @@ test('AI training harness evaluates strategy weight profiles', () => {
   });
 
   assert.equal(result.generations.length, 1);
+  assert.equal(result.options.opponentMix, 'robust');
+  assert.equal(result.options.selfPlayEvery, 3);
   assert.deepEqual(result.options.playerCounts, [3, 4, 5]);
   assert.deepEqual(result.options.deckSizes, [1, 2]);
   assert.notEqual(result.options.seed, second.options.seed);
@@ -211,6 +213,24 @@ test('AI training harness evaluates strategy weight profiles', () => {
   assert.equal(typeof result.best.weights.appointmentUnlockBonus, 'number');
   assert.equal(typeof result.best.metrics.appointmentUnlockRate, 'number');
   assert.equal(result.saved, undefined);
+});
+
+test('AI training beginner mix preserves the original opponent proportions', () => {
+  const result = trainStrategyWeights({
+    opponentMix: 'beginner',
+    generations: 1,
+    population: 2,
+    elite: 1,
+    games: 1,
+    playerCounts: [3],
+    deckSizes: [1],
+    save: false,
+  });
+
+  assert.equal(result.options.selfPlayEvery, 4);
+  assert.equal(result.options.opponentSummary.exposure.selfPlay, 0.25);
+  assert.equal(result.options.opponentSummary.exposure.random, 0.125);
+  assert.equal(result.options.opponentSummary.exposure.copycat, 0.125);
 });
 
 test('AI training can save a Greek-named tuned opponent', () => {

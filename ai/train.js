@@ -21,11 +21,44 @@ const DEFAULT_OPTIONS = {
   maxSteps: 500,
   mutation: 0.35,
   fallPenalty: 130,
-  selfPlayEvery: 4,
+  opponentMix: 'robust',
+  selfPlayEvery: null,
+  championPoolSize: 6,
   save: true,
   outputPath: fileURLToPath(new URL('./tunedOpponents.json', import.meta.url)),
   league: ['strategic', 'defender', 'usurper', 'profiteer', 'random', 'copycat'],
 };
+
+const TRAINING_OPPONENT_MIXES = Object.freeze({
+  beginner: {
+    label: 'Beginner',
+    selfPlayEvery: 4,
+    championWeight: 0,
+    nonChampionWeight: 6,
+    builtInWeights: [
+      ['strategic', 1],
+      ['defender', 1],
+      ['usurper', 1],
+      ['profiteer', 1],
+      ['random', 1],
+      ['copycat', 1],
+    ],
+  },
+  robust: {
+    label: 'Robust',
+    selfPlayEvery: 3,
+    championWeight: 9,
+    nonChampionWeight: 10,
+    builtInWeights: [
+      ['strategic', 2],
+      ['defender', 2],
+      ['usurper', 2],
+      ['profiteer', 2],
+      ['random', 1],
+      ['copycat', 1],
+    ],
+  },
+});
 
 export const STRATEGY_WEIGHT_BOUNDS = Object.freeze({
   ownRecipientBonus: [0, 8],
@@ -110,6 +143,22 @@ function toIntList(value, fallback, min, max) {
   return normalized.length ? normalized : fallbackValues.slice();
 }
 
+function toPolicyList(value, fallback) {
+  const fallbackValues = Array.isArray(fallback) ? fallback : [fallback];
+  const rawValues = Array.isArray(value)
+    ? value
+    : String(value ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  return rawValues.length ? rawValues : fallbackValues.slice();
+}
+
+function normalizeOpponentMix(value) {
+  const key = String(value || DEFAULT_OPTIONS.opponentMix).trim().toLowerCase();
+  return TRAINING_OPPONENT_MIXES[key] ? key : DEFAULT_OPTIONS.opponentMix;
+}
+
 function pickScheduledValue(values, index, offset = 0) {
   const list = Array.isArray(values) && values.length ? values : [values];
   return list[Math.abs(index + offset) % list.length];
@@ -166,6 +215,103 @@ function seedPopulation(options, rng) {
   return population.slice(0, options.population);
 }
 
+function repeatPolicy(policy, count) {
+  return Array.from({ length: Math.max(0, Math.floor(Number(count) || 0)) }, () => policy);
+}
+
+function cyclePolicies(policies, count) {
+  const list = Array.isArray(policies) ? policies.filter(Boolean) : [];
+  if (!list.length || count <= 0) return [];
+  return Array.from({ length: count }, (_, index) => list[index % list.length]);
+}
+
+function expandWeightedPolicies(weightedPolicies) {
+  const expanded = [];
+  for (const [policy, weight] of weightedPolicies || []) {
+    expanded.push(...repeatPolicy(policy, weight));
+  }
+  return expanded;
+}
+
+function policyLabel(policy) {
+  if (typeof policy === 'string') return policy;
+  return String(policy?.label || policy?.firstName || policy?.id || policy?.policyId || policy?.policy?.policyId || 'opponent');
+}
+
+function policyKey(policy) {
+  if (typeof policy === 'string') return policy;
+  return String(policy?.id || policy?.policyId || policy?.policy?.policyId || policyLabel(policy));
+}
+
+function opponentPolicy(entry) {
+  if (!entry || typeof entry !== 'object') return entry;
+  return {
+    id: entry.id,
+    label: entry.firstName || entry.label || entry.id,
+    policyId: entry.policy?.policyId || entry.policyId || 'tuned',
+    strategyWeights: entry.policy?.strategyWeights || entry.strategyWeights || entry.weights || {},
+  };
+}
+
+function buildOpponentExposure(selfPlayEvery, opponentPool) {
+  const selfPlayShare = selfPlayEvery > 0 ? 1 / selfPlayEvery : 0;
+  const nonSelfShare = 1 - selfPlayShare;
+  const poolSize = Math.max(1, opponentPool.length);
+  const exposure = { selfPlay: selfPlayShare };
+  for (const policy of opponentPool) {
+    const key = policyKey(policy);
+    exposure[key] = (exposure[key] || 0) + nonSelfShare / poolSize;
+  }
+  return Object.fromEntries(Object.entries(exposure).map(([key, value]) => [key, round(value, 3)]));
+}
+
+function buildTrainingOpponentPool(options) {
+  const preset = TRAINING_OPPONENT_MIXES[options.opponentMix] || TRAINING_OPPONENT_MIXES[DEFAULT_OPTIONS.opponentMix];
+  const savedOpponents = options.opponentMix === 'robust'
+    ? readSavedOpponents(options.outputPath).slice(0, options.championPoolSize)
+    : [];
+  const champions = savedOpponents.map(opponentPolicy);
+
+  const builtIns = options.leagueWasExplicit
+    ? (options.opponentMix === 'beginner' ? options.league : cyclePolicies(options.league, preset.nonChampionWeight))
+    : expandWeightedPolicies(preset.builtInWeights);
+  const championEntries = cyclePolicies(champions, champions.length ? preset.championWeight : 0);
+  const opponentPool = [...championEntries, ...builtIns];
+  const finalPool = opponentPool.length ? opponentPool : ['strategic'];
+  const exposure = buildOpponentExposure(options.selfPlayEvery, finalPool);
+
+  return {
+    opponentPool: finalPool,
+    opponentSummary: {
+      preset: options.opponentMix,
+      label: preset.label,
+      selfPlayEvery: options.selfPlayEvery,
+      championOpponentIds: savedOpponents.map((entry) => entry.id),
+      championOpponentCount: savedOpponents.length,
+      nonSelfPool: Object.entries(
+        finalPool.reduce((counts, policy) => {
+          const key = policyKey(policy);
+          counts[key] = (counts[key] || 0) + 1;
+          return counts;
+        }, {}),
+      ).map(([id, weight]) => ({ id, weight, label: policyLabel(finalPool.find((policy) => policyKey(policy) === id)) })),
+      exposure,
+    },
+  };
+}
+
+function finalizeTrainingOptions(rawOptions = {}) {
+  const options = normalizeOptions(rawOptions);
+  const { opponentPool, opponentSummary } = buildTrainingOpponentPool(options);
+  options.opponentSummary = opponentSummary;
+  Object.defineProperty(options, 'trainingOpponentPool', {
+    value: opponentPool,
+    enumerable: false,
+    configurable: true,
+  });
+  return options;
+}
+
 function buildTrainingScenario(options, gameIndex, profileIndex) {
   return {
     playerCount: pickScheduledValue(options.playerCounts, gameIndex, profileIndex),
@@ -177,13 +323,14 @@ function buildTrainingScenario(options, gameIndex, profileIndex) {
 function buildPoliciesForGame(weights, options, gameIndex, profileIndex, playerCount) {
   const candidateSeat = gameIndex % playerCount;
   const selfPlay = options.selfPlayEvery > 0 && gameIndex % options.selfPlayEvery === 0;
+  const opponentPool = options.trainingOpponentPool || options.league || DEFAULT_OPTIONS.league;
   const policies = [];
   for (let seatId = 0; seatId < playerCount; seatId += 1) {
     if (selfPlay || seatId === candidateSeat) {
       policies.push({ policyId: 'tuned', label: 'candidate', strategyWeights: weights });
     } else {
-      const leagueIndex = (gameIndex + seatId + profileIndex) % options.league.length;
-      policies.push(options.league[leagueIndex] || 'strategic');
+      const leagueIndex = (gameIndex + seatId + profileIndex) % opponentPool.length;
+      policies.push(opponentPool[leagueIndex] || 'strategic');
     }
   }
   return { candidateSeat, policies };
@@ -226,7 +373,7 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
 }
 
 export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex = 0) {
-  const options = normalizeOptions(rawOptions);
+  const options = rawOptions?.trainingOpponentPool ? rawOptions : finalizeTrainingOptions(rawOptions);
   let total = 0;
   let wins = 0;
   let rankTotal = 0;
@@ -298,6 +445,19 @@ function uniqueTunedId(name, existing) {
   return `${base}-${suffix}`;
 }
 
+function formatExposure(exposure = {}) {
+  return Object.entries(exposure)
+    .map(([key, value]) => `${key} ${percent(value)}`)
+    .join(', ');
+}
+
+function trainingDescription(options) {
+  const preset = options.opponentSummary?.label || options.opponentMix;
+  const champions = options.opponentSummary?.championOpponentCount || 0;
+  const championText = champions ? `, including ${champions} saved champion${champions === 1 ? '' : 's'}` : '';
+  return `Tuned with the ${preset} opponent mix${championText}.`;
+}
+
 function saveBestOpponent(result) {
   const existing = readSavedOpponents(result.options.outputPath);
   const firstName = pickGreekFirstName(`${result.options.seed}:${Date.now()}:${result.best.metrics.objective}`);
@@ -305,7 +465,7 @@ function saveBestOpponent(result) {
     id: uniqueTunedId(firstName, existing),
     firstName,
     label: 'Tuned AI',
-    description: `Tuned against ${result.options.league.join(', ')}.`,
+    description: trainingDescription(result.options),
     policy: {
       policyId: 'tuned',
       strategyWeights: result.best.weights,
@@ -321,6 +481,9 @@ function saveBestOpponent(result) {
       deckSizes: result.options.deckSizes,
       seed: result.options.seed,
       league: result.options.league,
+      opponentMix: result.options.opponentMix,
+      opponentExposure: result.options.opponentSummary?.exposure || null,
+      championOpponentIds: result.options.opponentSummary?.championOpponentIds || [],
       selfPlayEvery: result.options.selfPlayEvery,
       fallPenalty: result.options.fallPenalty,
       appointmentUnlockRate: result.best.metrics.appointmentUnlockRate,
@@ -340,6 +503,9 @@ function normalizeOptions(rawOptions = {}) {
   const population = Math.max(2, toInt(rawOptions.population, DEFAULT_OPTIONS.population));
   const rawPlayerCounts = rawOptions.playerCounts ?? rawOptions.playerCount ?? DEFAULT_OPTIONS.playerCounts;
   const rawDeckSizes = rawOptions.deckSizes ?? rawOptions.deckSize ?? DEFAULT_OPTIONS.deckSizes;
+  const opponentMix = normalizeOpponentMix(rawOptions.opponentMix ?? rawOptions.trainingProfile ?? rawOptions.trainingPreset);
+  const preset = TRAINING_OPPONENT_MIXES[opponentMix] || TRAINING_OPPONENT_MIXES[DEFAULT_OPTIONS.opponentMix];
+  const rawSelfPlayEvery = rawOptions.selfPlayEvery ?? rawOptions.selfPlay;
   return {
     ...DEFAULT_OPTIONS,
     ...rawOptions,
@@ -353,10 +519,15 @@ function normalizeOptions(rawOptions = {}) {
     maxSteps: Math.max(20, toInt(rawOptions.maxSteps, DEFAULT_OPTIONS.maxSteps)),
     mutation: Math.max(0.01, Math.min(1.5, toFloat(rawOptions.mutation, DEFAULT_OPTIONS.mutation))),
     fallPenalty: Math.max(0, toFloat(rawOptions.fallPenalty, DEFAULT_OPTIONS.fallPenalty)),
-    selfPlayEvery: Math.max(0, toInt(rawOptions.selfPlayEvery, DEFAULT_OPTIONS.selfPlayEvery)),
+    opponentMix,
+    selfPlayEvery: rawSelfPlayEvery == null
+      ? preset.selfPlayEvery
+      : Math.max(0, toInt(rawSelfPlayEvery, preset.selfPlayEvery)),
+    championPoolSize: Math.max(0, toInt(rawOptions.championPoolSize ?? rawOptions.champions, DEFAULT_OPTIONS.championPoolSize)),
     save: rawOptions.save !== false,
     outputPath: rawOptions.outputPath || DEFAULT_OPTIONS.outputPath,
-    league: Array.isArray(rawOptions.league) && rawOptions.league.length ? rawOptions.league : DEFAULT_OPTIONS.league,
+    league: toPolicyList(rawOptions.league, DEFAULT_OPTIONS.league),
+    leagueWasExplicit: rawOptions.league != null,
   };
 }
 
@@ -365,7 +536,7 @@ function emitProgress(options, event) {
 }
 
 export function trainStrategyWeights(rawOptions = {}) {
-  const options = { ...normalizeOptions(rawOptions), seed: randomTrainingSeed() };
+  const options = finalizeTrainingOptions({ ...rawOptions, seed: randomTrainingSeed() });
   const rng = makeRng(options.seed);
   let population = seedPopulation(options, rng);
   const generations = [];
@@ -381,6 +552,8 @@ export function trainStrategyWeights(rawOptions = {}) {
     playerCounts: options.playerCounts,
     deckSizes: options.deckSizes,
     league: options.league,
+    opponentMix: options.opponentMix,
+    opponentSummary: options.opponentSummary,
     seed: options.seed,
     elapsedMs: 0,
   });
@@ -501,6 +674,14 @@ function parseArgs(argv) {
       options.quiet = true;
       continue;
     }
+    if (key === 'beginner') {
+      options.opponentMix = 'beginner';
+      continue;
+    }
+    if (key === 'robust') {
+      options.opponentMix = 'robust';
+      continue;
+    }
     const value = argv[index + 1];
     index += 1;
     if (key === 'generations') options.generations = toInt(value, DEFAULT_OPTIONS.generations);
@@ -512,6 +693,8 @@ function parseArgs(argv) {
     else if (key === 'mutation') options.mutation = toFloat(value, DEFAULT_OPTIONS.mutation);
     else if (key === 'fall-penalty') options.fallPenalty = toFloat(value, DEFAULT_OPTIONS.fallPenalty);
     else if (key === 'self-play-every') options.selfPlayEvery = toInt(value, DEFAULT_OPTIONS.selfPlayEvery);
+    else if (key === 'opponent-mix' || key === 'training-profile' || key === 'training-preset') options.opponentMix = value;
+    else if (key === 'champions' || key === 'champion-pool-size') options.championPoolSize = toInt(value, DEFAULT_OPTIONS.championPoolSize);
     else if (key === 'output') options.outputPath = resolve(String(value || DEFAULT_OPTIONS.outputPath));
     else if (key === 'league') options.league = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
   }
@@ -534,6 +717,7 @@ function createCliProgressLogger() {
   return (event) => {
     if (event.type === 'training-start') {
       console.log(`[train ${seconds(event.elapsedMs)}] Starting ${event.generations} generations x ${event.population} profiles x ${event.games} games (${event.totalGames} games total), seed ${event.seed}. Players ${event.playerCounts.join('/')}, decks ${event.deckSizes.join('/')}.`);
+      console.log(`[train ${seconds(event.elapsedMs)}] Opponent mix: ${event.opponentMix}; expected exposure ${formatExposure(event.opponentSummary?.exposure)}.`);
     } else if (event.type === 'generation-start') {
       console.log(`[train ${seconds(event.elapsedMs)}] Generation ${event.generation}/${event.generations} started.`);
     } else if (event.type === 'candidate-start') {
@@ -554,7 +738,7 @@ function formatTrainingReport(result) {
   const lines = [
     `AI training: ${result.options.generations} generations, ${result.options.population} profiles, ${result.options.games} games/profile`,
     `Players: ${result.options.playerCounts.join(', ')}; decks: ${result.options.deckSizes.join(', ')}; random seed ${result.options.seed}`,
-    `League: ${result.options.league.join(', ')}; self-play every ${result.options.selfPlayEvery || 'never'} games`,
+    `Opponent mix: ${result.options.opponentMix}; exposure ${formatExposure(result.options.opponentSummary?.exposure)}`,
     `Best: ${result.best.name}, objective ${result.best.metrics.objective}, win ${Math.round(result.best.metrics.winRate * 100)}%, rank ${result.best.metrics.averageRank}, fall ${Math.round(result.best.metrics.fallRate * 100)}%, unlock ${Math.round(result.best.metrics.appointmentUnlockRate * 100)}%`,
     'Generation winners:',
     ...result.generations.map((entry) => (
