@@ -1,10 +1,14 @@
 // ui/balancePanel.js - Balance of Power sidebar panel.
 //
 // Renders scoring-category pies together with a live ranking based on the
-// official scoring rule: 1 point per 25% share of each scoring category,
-// capped at 3 points per category.
+// official scoring rule: 1 point per 10% share of each scoring category,
+// capped at 10 points per category.
 
-import { buildBalanceOfPower } from '../engine/scoring.js';
+import {
+  buildBalanceOfPower,
+  SCORE_MAX_POINTS_PER_CATEGORY,
+  SCORE_SHARE_STEP_PERCENT,
+} from '../engine/scoring.js';
 import { buildIncomeFlow } from '../engine/cascade.js';
 import { getPlayerStyleAttr, renderPlayerRoleName, renderTitleBadge } from './labels.js';
 import { formatPlayerLabel, getOfficeDisplayName, getOfficeHolder, getPlayer } from '../engine/state.js';
@@ -184,7 +188,7 @@ function renderLegend(state, category) {
         <span class="balance-legend-dot" style="background:var(--player-color)"></span>
         <span class="balance-legend-name">${name}</span>
         <span class="balance-legend-share">${formatShare(slice.share)}</span>
-        <span class="balance-legend-points" title="Each 25% of this category scores 1 point (max 3).">${slice.points}</span>
+        <span class="balance-legend-points" title="Each ${SCORE_SHARE_STEP_PERCENT}% of this category scores 1 point (max ${SCORE_MAX_POINTS_PER_CATEGORY}).">${slice.points}</span>
       </div>
     `;
   }).join('');

@@ -6,7 +6,13 @@ import { createGameState, getPlayer, getOfficeHolder } from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
 import { applyInvasionResult } from './combat.js';
 import { buildPrivateNotifications } from './notifications.js';
-import { buildBalanceOfPower, buildFinalScores } from './scoring.js';
+import {
+  buildBalanceOfPower,
+  buildFinalScores,
+  getScorePointsForShare,
+  SCORE_MAX_POINTS_PER_CATEGORY,
+  SCORE_SHARE_THRESHOLDS,
+} from './scoring.js';
 import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from './deployment.js';
 import {
   applyCourtAction,
@@ -45,6 +51,18 @@ function enterCourt(state) {
   state.phase = 'income';
   phaseCourt(state);
 }
+
+test('score shares award one point per 10 percent threshold', () => {
+  assert.deepEqual(
+    SCORE_SHARE_THRESHOLDS.map((threshold) => Math.round(threshold * 100)),
+    [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+  );
+  assert.equal(getScorePointsForShare(0.09), 0);
+  assert.equal(getScorePointsForShare(0.1), 1);
+  assert.equal(getScorePointsForShare(0.25), 2);
+  assert.equal(getScorePointsForShare(0.5), 5);
+  assert.equal(getScorePointsForShare(1), SCORE_MAX_POINTS_PER_CATEGORY);
+});
 
 test('province table uses profit, troop, and church values with capital excluded', () => {
   const state = makeState();

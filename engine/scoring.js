@@ -22,7 +22,12 @@ export const SCORE_CATEGORIES = [
   },
 ];
 
-export const SCORE_SHARE_THRESHOLDS = [0.25, 0.5, 0.75];
+export const SCORE_SHARE_STEP_PERCENT = 10;
+export const SCORE_MAX_POINTS_PER_CATEGORY = 10;
+export const SCORE_SHARE_THRESHOLDS = Array.from(
+  { length: SCORE_MAX_POINTS_PER_CATEGORY },
+  (_, index) => Number(((index + 1) * SCORE_SHARE_STEP_PERCENT / 100).toFixed(10)),
+);
 const SCORE_EPSILON = 1e-9;
 
 const SCORE_INCOME_RESOURCES_BY_CATEGORY = {

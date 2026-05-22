@@ -103,7 +103,7 @@ Render notes:
 
 ## Game Overview
 
-Players are rival noble houses inside the Byzantine Empire. Each round draws an invasion, lets the Basileus confirm the major titles, opens Court where each office may make up to two appointments or revocations in any mix, pays estate and church income, auctions free estates, and resolves simultaneous Deployment. During Deployment, all Strategos troops controlled by one player deploy together as one Strategoi army. After the last played turn, the Basileus redistributes major titles one last time, Court resolves, and a final income phase runs. Win by earning points for each 25% share of gold reserves, profit income, and combined office income (church plus troop income) from that last income phase while surviving the political fallout.
+Players are rival noble houses inside the Byzantine Empire. Each round draws an invasion, lets the Basileus confirm the major titles, opens Court where each office may make up to two appointments or revocations in any mix, pays estate and church income, auctions free estates, and resolves simultaneous Deployment. During Deployment, all Strategos troops controlled by one player deploy together as one Strategoi army. After the last played turn, the Basileus redistributes major titles one last time, Court resolves, and a final income phase runs. Win by earning points for each 10% share of gold reserves, profit income, and combined office income (church plus troop income) from that last income phase while surviving the political fallout.
 
 The full rule set lives in the engine. Read `engine/turnflow.js` and `engine/cascade.js` for the canonical source.
 
@@ -120,7 +120,7 @@ Useful entry points:
 
 ## AI Layer
 
-AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 25%/50%/75% thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, title redistribution, and defender rewards.
+AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 10% scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, title redistribution, and defender rewards.
 
 Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights, re-ranks a finalist pool, saves the top tuned champions to `ai/tunedOpponents.json`, and gives each one a Greek first name from `ai/greekNames.js`.
 

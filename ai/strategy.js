@@ -1,7 +1,7 @@
 import { runIncome } from '../engine/cascade.js';
 import { resolveInvasion } from '../engine/combat.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
-import { buildFinalScores, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
+import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
 import { getPlayer } from '../engine/state.js';
 import {
   getDeploymentArmyTroopEntry,
@@ -238,7 +238,7 @@ function scoreResourceGain(final, playerId, categoryKey, amount) {
     value: nextValue,
     totalValue: nextTotal,
     share: nextShare,
-    points: SCORE_SHARE_THRESHOLDS.filter((threshold) => nextShare >= threshold).length,
+    points: getScorePointsForShare(nextShare),
   };
   const after = thresholdPressure(nextCategory) + nextCategory.points * 20;
   return after - before + amount * 0.8;

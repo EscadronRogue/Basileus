@@ -433,6 +433,7 @@ test('final scoring view uses income-share scoring categories', () => {
   const html = renderScoringHtml(state);
 
   assert.match(html, /Final Reckoning/);
+  assert.match(html, /Each 10% share/);
   assert.match(html, /Profit income/);
   assert.match(html, /Office income/);
   assert.match(html, /icon-church/);
