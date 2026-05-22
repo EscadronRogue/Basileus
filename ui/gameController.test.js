@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createGameState } from '../engine/state.js';
 import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
+import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
 import { renderProvinceBadge, formatProvinceValuesText } from './labels.js';
 import {
   renderCourtPanel,
@@ -259,6 +260,35 @@ test('fresh deployment panel requires explicit funding, destination, and claiman
   assert.doesNotMatch(container.innerHTML, /class="candidate-row selected/);
   assert.match(container.innerHTML, /Finish Deployment/);
   assert.match(container.innerHTML, /data-action="lock-orders" disabled/);
+});
+
+test('deployment panel bundles strategos commands and does not require idle mercenary destination', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.themes.OPS.strategos = 1;
+  state.themes.KAP.strategos = 1;
+  state.currentTroops = {
+    STRAT_OPS: { normal: 1, capitalLocked: 0 },
+    STRAT_KAP: { normal: 2, capitalLocked: 0 },
+  };
+  const container = makePanelContainer();
+  const uiState = createDefaultUiState();
+  uiState.drafts[`deployment:${state.round}:1`] = {
+    armies: {
+      [STRATEGOS_DEPLOYMENT_ARMY_KEY]: { funded: 3, destination: 'capital' },
+    },
+    mercenaries: { count: 0, destination: null },
+    candidate: 1,
+  };
+
+  renderOrdersPanel(container, state, 1, {}, { uiState });
+
+  assert.match(container.innerHTML, /data-army-card="STRAT_ALL"/);
+  assert.match(container.innerHTML, /Strategoi/);
+  assert.match(container.innerHTML, /2 Strategos commands combined/);
+  assert.doesNotMatch(container.innerHTML, /data-army-card="STRAT_OPS"/);
+  assert.doesNotMatch(container.innerHTML, /data-army-card="STRAT_KAP"/);
+  assert.match(container.innerHTML, /data-action="lock-orders" >Lock Deployment/);
 });
 
 test('deployment panel surfaces deal-forced coup support before lock-in', () => {

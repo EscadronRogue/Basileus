@@ -2,11 +2,11 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { setDealParticipantIds } from '../engine/deals.js';
-import { createGameState, getOfficeHolder } from '../engine/state.js';
+import { createGameState } from '../engine/state.js';
 import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../engine/runtime.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
-import { readTroopEntry } from '../engine/cascade.js';
+import { getDeploymentArmyTroopEntry, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { createAIMeta } from './brain.js';
 
 const DEFAULT_OPTIONS = {
@@ -119,9 +119,7 @@ function ensurePlayerStats(stats, playerId) {
 }
 
 function getOrderOfficeKeys(state, playerId) {
-  return Object.keys(state.currentTroops || {})
-    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
-    .sort((left, right) => left.localeCompare(right));
+  return getPlayerDeploymentArmyKeys(state, playerId);
 }
 
 function summarizeOrders(state, playerId) {
@@ -132,7 +130,7 @@ function summarizeOrders(state, playerId) {
   let fundedTroops = 0;
 
   for (const officeKey of getOrderOfficeKeys(state, playerId)) {
-    const pool = readTroopEntry(state.currentTroops?.[officeKey]);
+    const pool = getDeploymentArmyTroopEntry(state, playerId, officeKey);
     const total = pool.normal + pool.capitalLocked;
     const order = orders.armies?.[officeKey] || {};
     const funded = Math.max(0, Math.min(total, Number(order.funded) || 0));

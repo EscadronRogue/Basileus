@@ -17,7 +17,7 @@ import { getMercenaryHireCost } from '../engine/rules.js';
 import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/turnflow.js';
 import { getFreeThemes, getPlayer } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
-import { readTroopEntry } from '../engine/cascade.js';
+import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
 export const AI_DEALS_ENABLED = false;
@@ -233,8 +233,7 @@ export function listLegalEstateActions(state, playerId) {
 function fullFundingArmies(state, playerId, destination = 'frontier') {
   const armies = {};
   for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    const max = entry.normal + entry.capitalLocked;
+    const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     armies[officeKey] = { funded: max, destination };
   }
   return armies;
@@ -243,8 +242,7 @@ function fullFundingArmies(state, playerId, destination = 'frontier') {
 function partialFundingArmies(state, playerId, ratio, destination = 'frontier') {
   const armies = {};
   for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    const max = entry.normal + entry.capitalLocked;
+    const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     armies[officeKey] = { funded: Math.ceil(max * ratio), destination };
   }
   return armies;
@@ -261,8 +259,7 @@ function idleArmies(state, playerId) {
 function mixedFundingArmies(state, playerId, pivotOfficeKey, pivotDestination, otherDestination) {
   const armies = {};
   for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    const max = entry.normal + entry.capitalLocked;
+    const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     armies[officeKey] = {
       funded: max,
       destination: officeKey === pivotOfficeKey ? pivotDestination : otherDestination,
@@ -274,8 +271,7 @@ function mixedFundingArmies(state, playerId, pivotOfficeKey, pivotDestination, o
 function sparseFundingArmies(state, playerId, activeOfficeKey, destination) {
   const armies = {};
   for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    const max = entry.normal + entry.capitalLocked;
+    const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     armies[officeKey] = {
       funded: officeKey === activeOfficeKey ? max : 0,
       destination,
@@ -284,10 +280,9 @@ function sparseFundingArmies(state, playerId, activeOfficeKey, destination) {
   return armies;
 }
 
-function getUnfundedGoldFromArmies(state, armies) {
+function getUnfundedGoldFromArmies(state, playerId, armies) {
   return Object.entries(armies || {}).reduce((total, [officeKey, order]) => {
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    const max = entry.normal + entry.capitalLocked;
+    const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     return total + Math.max(0, max - (Number(order?.funded) || 0));
   }, 0);
 }
@@ -300,7 +295,7 @@ function getMaxMercenariesForBudget(budget) {
 
 function buildMercenaryPlans(state, playerId, armies) {
   const spendable = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
-  const budget = spendable + getUnfundedGoldFromArmies(state, armies);
+  const budget = spendable + getUnfundedGoldFromArmies(state, playerId, armies);
   const maxAffordable = getMaxMercenariesForBudget(budget);
   const counts = [...new Set([0, Math.min(2, maxAffordable), Math.floor(maxAffordable / 2), maxAffordable])]
     .filter((count) => count >= 0 && count <= maxAffordable)

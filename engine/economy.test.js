@@ -7,6 +7,7 @@ import { readTroopEntry, runIncome } from './cascade.js';
 import { applyInvasionResult } from './combat.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { buildBalanceOfPower, buildFinalScores } from './scoring.js';
+import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from './deployment.js';
 import {
   applyCourtAction,
   applyEstateAction,
@@ -351,6 +352,32 @@ test('deployment schema funds armies, pays unfunded troops, and stores mercenary
   assert.equal(getPlayer(state, 0).gold, 0);
   assert.deepEqual(state.mercenaryOrders[0], { count: 2, destination: 'capital' });
   assert.equal(state.allOrders[0].armies.BASILEUS.funded, 1);
+});
+
+test("deployment bundles a player's strategos troops into one army", () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.themes.OPS.strategos = 1;
+  state.themes.KAP.strategos = 1;
+  state.currentTroops = {
+    STRAT_OPS: { normal: 1, capitalLocked: 0 },
+    STRAT_KAP: { normal: 2, capitalLocked: 0 },
+  };
+  getPlayer(state, 1).gold = 0;
+
+  const result = submitHumanOrders(state, 1, {
+    armies: {
+      [STRATEGOS_DEPLOYMENT_ARMY_KEY]: { funded: 2, destination: 'frontier' },
+    },
+    mercenaries: { count: 0 },
+    candidate: 1,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(getPlayer(state, 1).gold, 1);
+  assert.deepEqual(state.allOrders[1].armies, {
+    [STRATEGOS_DEPLOYMENT_ARMY_KEY]: { funded: 2, destination: 'frontier' },
+  });
 });
 
 test('coup resolution records every claimant pick and positive supporter contribution', () => {

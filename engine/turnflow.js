@@ -4,9 +4,15 @@ import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
-import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
+import { getOfficeDisplayName, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
 import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
+import {
+  getDeploymentArmyDisplayName,
+  getDeploymentArmyTroopEntry,
+  getDeploymentArmyTroopTotal,
+  getPlayerDeploymentArmyKeys,
+} from './deployment.js';
 
 export const PHASES = ['invasion', 'title_redistribution', 'court', 'income', 'estates', 'deployment', 'resolution', 'cleanup'];
 export const STARTING_INCOME_GOLD = 4;
@@ -29,14 +35,11 @@ function officeName(state, officeKey) {
 }
 
 function getOrderArmyKeys(state, playerId) {
-  return Object.keys(state.currentTroops || {})
-    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
-    .sort((left, right) => left.localeCompare(right));
+  return getPlayerDeploymentArmyKeys(state, playerId);
 }
 
-function getArmySize(state, officeKey) {
-  const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-  return entry.normal + entry.capitalLocked;
+function getArmySize(state, playerId, officeKey) {
+  return getDeploymentArmyTroopTotal(state, playerId, officeKey);
 }
 
 function normalizeDestination(value) {
@@ -49,7 +52,7 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
   let frontierTroops = 0;
 
   for (const officeKey of getOrderArmyKeys(state, player.id)) {
-    const pool = readTroopEntry(state.currentTroops?.[officeKey]);
+    const pool = getDeploymentArmyTroopEntry(state, player.id, officeKey);
     const totalTroops = pool.normal + pool.capitalLocked;
     if (totalTroops <= 0) continue;
     const order = orders.armies?.[officeKey] || {};
@@ -64,7 +67,7 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
     frontierTroops += officeFrontier;
     offices.push({
       officeKey,
-      officeName: officeName(state, officeKey),
+      officeName: getDeploymentArmyDisplayName(state, player.id, officeKey),
       totalTroops,
       fundedTroops: funded,
       unfundedTroops: totalTroops - funded,
@@ -262,7 +265,7 @@ export function submitOrders(state, playerId, orders) {
 
   let unfundedGold = 0;
   for (const officeKey of getOrderArmyKeys(state, playerId)) {
-    const total = getArmySize(state, officeKey);
+    const total = getArmySize(state, playerId, officeKey);
     const funded = Math.max(0, Math.min(total, Number(orders.armies?.[officeKey]?.funded) || 0));
     unfundedGold += total - funded;
   }

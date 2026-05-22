@@ -1,11 +1,14 @@
 import { recordHistoryEvent } from './history.js';
 import {
   formatPlayerLabel,
-  getOfficeDisplayName,
   getPlayer,
-  getOfficeHolder,
 } from './state.js';
-import { getTroopEntryTotal, readTroopEntry } from './cascade.js';
+import {
+  getDeploymentArmyDisplayName,
+  getDeploymentArmyTroopEntry,
+  getDeploymentArmyTroopTotal,
+  getPlayerDeploymentArmyKeys,
+} from './deployment.js';
 
 export const DEAL_THREAD_STATUS = {
   OPEN: 'open',
@@ -184,14 +187,13 @@ function normalizeClauseDirection(actorId, counterpartyId, rawClause = {}) {
 }
 
 function getPlayerOrderChunks(state, playerId) {
-  return Object.keys(state.currentTroops || {})
-    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
+  return getPlayerDeploymentArmyKeys(state, playerId)
     .map((officeKey) => {
-      const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-      const troops = getTroopEntryTotal(entry);
+      const entry = getDeploymentArmyTroopEntry(state, playerId, officeKey);
+      const troops = entry.normal + entry.capitalLocked;
       return {
         officeKey,
-        officeName: getOfficeDisplayName(state, officeKey),
+        officeName: getDeploymentArmyDisplayName(state, playerId, officeKey),
         troops,
         capitalOnly: entry.normal <= 0 && entry.capitalLocked > 0,
       };
@@ -1178,8 +1180,7 @@ export function normalizeOrdersWithDealLocks(state, playerId, orders, options = 
     nextOrders.candidate = locks.candidateId;
   }
   for (const [officeKey, destination] of Object.entries(locks.committedOfficeKeys || {})) {
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    const max = entry.normal + entry.capitalLocked;
+    const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     nextOrders.armies[officeKey] = {
       funded: max,
       destination,

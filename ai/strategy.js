@@ -1,8 +1,13 @@
-import { runIncome, readTroopEntry } from '../engine/cascade.js';
+import { runIncome } from '../engine/cascade.js';
 import { resolveInvasion } from '../engine/combat.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
-import { getOfficeHolder, getPlayer } from '../engine/state.js';
+import { getPlayer } from '../engine/state.js';
+import {
+  getDeploymentArmyTroopEntry,
+  getDeploymentArmyTroopTotal,
+  getPlayerDeploymentArmyKeys,
+} from '../engine/deployment.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import {
   applyLegalAction,
@@ -435,9 +440,7 @@ export function chooseStrategicCourtAction(state, meta, playerId) {
 }
 
 function orderOfficeKeys(state, playerId) {
-  return Object.keys(state.currentTroops || {})
-    .filter((officeKey) => getOfficeHolder(state, officeKey) === playerId)
-    .sort((left, right) => left.localeCompare(right));
+  return getPlayerDeploymentArmyKeys(state, playerId);
 }
 
 function summarizeOrders(state, playerId, orders = {}) {
@@ -447,7 +450,7 @@ function summarizeOrders(state, playerId, orders = {}) {
   let idleTroops = 0;
 
   for (const officeKey of orderOfficeKeys(state, playerId)) {
-    const pool = readTroopEntry(state.currentTroops?.[officeKey]);
+    const pool = getDeploymentArmyTroopEntry(state, playerId, officeKey);
     const total = pool.normal + pool.capitalLocked;
     const order = orders.armies?.[officeKey] || {};
     const funded = Math.max(0, Math.min(total, Number(order.funded) || 0));
@@ -483,8 +486,7 @@ function getMaxMercenariesForBudget(budget) {
 
 function estimatePotentialCapitalTroops(state, playerId) {
   const officeTroops = orderOfficeKeys(state, playerId).reduce((sum, officeKey) => {
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    return sum + entry.normal + entry.capitalLocked;
+    return sum + getDeploymentArmyTroopTotal(state, playerId, officeKey);
   }, 0);
   const gold = Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
   return officeTroops + getMaxMercenariesForBudget(gold);
@@ -529,8 +531,7 @@ function estimateOtherDeployment(state, playerId, memory = null) {
     if (player.id === playerId) continue;
     const ratios = patternAdjustedDeploymentRatios(state, player.id, getPlayerMemory(memory, player.id), memory?.table);
     const total = orderOfficeKeys(state, player.id).reduce((sum, officeKey) => {
-      const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-      return sum + entry.normal + entry.capitalLocked;
+      return sum + getDeploymentArmyTroopTotal(state, player.id, officeKey);
     }, 0);
     if (total <= 0) continue;
     contributingPlayers += 1;
