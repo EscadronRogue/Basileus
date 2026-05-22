@@ -32,6 +32,9 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     throneBase: 12,
     mercenaryCostPenalty: 0.08,
     defenseContextWeight: 1.45,
+    surplusDefensePenalty: 0.05,
+    coupOpportunityWeight: 0.12,
+    allyDefenseReliance: 0.68,
   },
   usurper: {
     throneBase: 44,
@@ -42,6 +45,8 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     capitalRiskPenalty: 80,
     reserveValue: 0.12,
     coalitionWillingness: 0.55,
+    surplusDefensePenalty: 0.28,
+    coupOpportunityWeight: 0.9,
   },
   profiteer: {
     estateProfit: 7.2,
@@ -51,6 +56,8 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     mercenaryCostPenalty: 0.22,
     selfClaim: 0.92,
     invasionMargin: 0.74,
+    surplusDefensePenalty: 0.32,
+    coupOpportunityWeight: 0.28,
   },
   greedy: {
     ownRecipientBonus: 4.8,
@@ -63,6 +70,7 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     capitalFallPenalty: 300,
     reciprocityWeight: 0.35,
     favorSeekingWeight: 0.25,
+    surplusDefensePenalty: 0.25,
   },
   loyalist: {
     selfClaim: 0.25,
@@ -71,6 +79,9 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     invasionMargin: 1.2,
     capitalFallPenalty: 720,
     coalitionWillingness: 0.45,
+    surplusDefensePenalty: 0.08,
+    coupOpportunityWeight: 0.18,
+    allyDefenseReliance: 0.72,
   },
   copycat: {
     selfClaim: 0.9,

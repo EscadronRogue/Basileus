@@ -94,6 +94,11 @@ export const STRATEGY_WEIGHT_BOUNDS = Object.freeze({
   coalitionWillingness: [0, 2.4],
   relationshipCoupWeight: [0, 1.8],
   coalitionDefectionPenalty: [0, 2.4],
+  surplusDefensePenalty: [0, 2.4],
+  frontierSurplusValue: [0, 1],
+  frontierSurplusCap: [0, 24],
+  coupOpportunityWeight: [0, 2.4],
+  allyDefenseReliance: [0.55, 1],
   selfClaimThreshold: [0.7, 1.8],
   kingmakerPenalty: [0, 1.2],
 });
@@ -341,8 +346,13 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
   const rank = rankIndex >= 0 ? rankIndex + 1 : playerCount;
   const entry = game.finalScores[rankIndex] || { points: 0, gold: 0, projectedIncome: 0 };
   const resolutions = Math.max(1, Number(game.stats?.resolutions) || 0);
+  const orders = Math.max(1, Number(game.stats?.deployment?.orders) || 0);
   const victoryRate = (Number(game.stats?.wars?.victory) || 0) / resolutions;
   const defeatRate = (Number(game.stats?.wars?.defeat) || 0) / resolutions;
+  const averageWarMargin = (Number(game.stats?.wars?.marginTotal) || 0) / resolutions;
+  const selfClaimRate = (Number(game.stats?.coups?.selfClaims) || 0) / orders;
+  const capitalTroopsPerOrder = (Number(game.stats?.deployment?.capitalTroops) || 0) / orders;
+  const fundedTroopsPerOrder = (Number(game.stats?.deployment?.fundedTroops) || 0) / orders;
   const appointmentStats = game.appointmentStatsByPlayer?.[candidateSeat] || {};
   const appointmentUnlocks = Number(appointmentStats.unlockAppointments) || 0;
   const unresolvedAppointmentLock = appointmentStats.finalSelfLocked ? 1 : 0;
@@ -355,6 +365,13 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
   objective += (Number(entry.projectedIncome) || 0) * 0.5;
   objective += victoryRate * 24;
   objective -= defeatRate * 34;
+  objective -= Math.max(0, averageWarMargin - 7) * 3.2;
+  objective -= Math.max(0, victoryRate - 0.88) * 24;
+  objective -= Math.max(0, 0.12 - selfClaimRate) * 54;
+  objective += Math.min(0.3, selfClaimRate) * 18;
+  if (capitalTroopsPerOrder < 1 && selfClaimRate < 0.14) {
+    objective -= (1 - capitalTroopsPerOrder) * 7;
+  }
   objective += appointmentUnlocks * 10;
   objective -= unresolvedAppointmentLock * 18;
   if (game.fall) objective -= options.fallPenalty;
@@ -366,6 +383,10 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
     rank,
     points: Number(entry.points) || 0,
     fall: Boolean(game.fall),
+    averageWarMargin,
+    selfClaimRate,
+    capitalTroopsPerOrder,
+    fundedTroopsPerOrder,
     appointmentUnlocks,
     unresolvedAppointmentLock,
     selfAppointments: Number(appointmentStats.selfAppointments) || 0,
@@ -383,6 +404,10 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
   let appointmentUnlocks = 0;
   let selfAppointments = 0;
   let unresolvedAppointmentLocks = 0;
+  let averageWarMargin = 0;
+  let selfClaimRate = 0;
+  let capitalTroopsPerOrder = 0;
+  let fundedTroopsPerOrder = 0;
 
   for (let gameIndex = 0; gameIndex < options.games; gameIndex += 1) {
     const scenario = buildTrainingScenario(options, gameIndex, profileIndex);
@@ -403,6 +428,10 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     pointTotal += score.points;
     falls += score.fall ? 1 : 0;
     stuck += game.reason === 'stuck' ? 1 : 0;
+    averageWarMargin += score.averageWarMargin;
+    selfClaimRate += score.selfClaimRate;
+    capitalTroopsPerOrder += score.capitalTroopsPerOrder;
+    fundedTroopsPerOrder += score.fundedTroopsPerOrder;
     appointmentUnlocks += score.appointmentUnlocks;
     selfAppointments += score.selfAppointments;
     unresolvedAppointmentLocks += score.unresolvedAppointmentLock;
@@ -414,6 +443,10 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     averageRank: round(rankTotal / options.games),
     averagePoints: round(pointTotal / options.games),
     fallRate: round(falls / options.games),
+    averageWarMargin: round(averageWarMargin / options.games),
+    selfClaimRate: round(selfClaimRate / options.games),
+    capitalTroopsPerOrder: round(capitalTroopsPerOrder / options.games),
+    fundedTroopsPerOrder: round(fundedTroopsPerOrder / options.games),
     appointmentUnlockRate: round(appointmentUnlocks / Math.max(1, selfAppointments)),
     unresolvedAppointmentLocks: round(unresolvedAppointmentLocks / options.games),
     stuck,
@@ -710,7 +743,7 @@ function seconds(ms) {
 }
 
 function compactMetrics(metrics) {
-  return `objective ${metrics.objective}, win ${percent(metrics.winRate)}, rank ${metrics.averageRank}, fall ${percent(metrics.fallRate)}, unlock ${percent(metrics.appointmentUnlockRate)}`;
+  return `objective ${metrics.objective}, win ${percent(metrics.winRate)}, rank ${metrics.averageRank}, fall ${percent(metrics.fallRate)}, margin ${metrics.averageWarMargin}, self-claim ${percent(metrics.selfClaimRate)}, unlock ${percent(metrics.appointmentUnlockRate)}`;
 }
 
 function createCliProgressLogger() {
@@ -739,7 +772,7 @@ function formatTrainingReport(result) {
     `AI training: ${result.options.generations} generations, ${result.options.population} profiles, ${result.options.games} games/profile`,
     `Players: ${result.options.playerCounts.join(', ')}; decks: ${result.options.deckSizes.join(', ')}; random seed ${result.options.seed}`,
     `Opponent mix: ${result.options.opponentMix}; exposure ${formatExposure(result.options.opponentSummary?.exposure)}`,
-    `Best: ${result.best.name}, objective ${result.best.metrics.objective}, win ${Math.round(result.best.metrics.winRate * 100)}%, rank ${result.best.metrics.averageRank}, fall ${Math.round(result.best.metrics.fallRate * 100)}%, unlock ${Math.round(result.best.metrics.appointmentUnlockRate * 100)}%`,
+    `Best: ${result.best.name}, objective ${result.best.metrics.objective}, win ${Math.round(result.best.metrics.winRate * 100)}%, rank ${result.best.metrics.averageRank}, fall ${Math.round(result.best.metrics.fallRate * 100)}%, margin ${result.best.metrics.averageWarMargin}, self-claim ${Math.round(result.best.metrics.selfClaimRate * 100)}%, unlock ${Math.round(result.best.metrics.appointmentUnlockRate * 100)}%`,
     'Generation winners:',
     ...result.generations.map((entry) => (
       `- g${entry.generation}: ${entry.best.name}, objective ${entry.best.metrics.objective}, win ${Math.round(entry.best.metrics.winRate * 100)}%, rank ${entry.best.metrics.averageRank}`

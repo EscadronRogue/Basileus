@@ -45,6 +45,11 @@
           "coalitionWillingness": 0.3141267441928292,
           "relationshipCoupWeight": 0.31294053312187564,
           "coalitionDefectionPenalty": 1.0230913387999987,
+          "surplusDefensePenalty": 0.4,
+          "frontierSurplusValue": 0.35,
+          "frontierSurplusCap": 6,
+          "coupOpportunityWeight": 0.75,
+          "allyDefenseReliance": 0.82,
           "selfClaimThreshold": 1.3639717409047605,
           "kingmakerPenalty": 0.012637977268916866
         }
@@ -85,6 +90,11 @@
         "coalitionWillingness": 0.3141267441928292,
         "relationshipCoupWeight": 0.31294053312187564,
         "coalitionDefectionPenalty": 1.0230913387999987,
+        "surplusDefensePenalty": 0.4,
+        "frontierSurplusValue": 0.35,
+        "frontierSurplusCap": 6,
+        "coupOpportunityWeight": 0.75,
+        "allyDefenseReliance": 0.82,
         "selfClaimThreshold": 1.3639717409047605,
         "kingmakerPenalty": 0.012637977268916866
       },

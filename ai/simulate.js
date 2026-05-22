@@ -479,11 +479,16 @@ function buildDiagnostics(stats, games, resolutions, orders) {
   const estateBidsPerGame = stats.estates.bids / games;
   const idlePerOrder = stats.deployment.idleTroops / Math.max(1, orders);
   const capitalPerOrder = stats.deployment.capitalTroops / Math.max(1, orders);
+  const fundedPerOrder = stats.deployment.fundedTroops / Math.max(1, orders);
+  const frontierPerOrder = stats.deployment.frontierTroops / Math.max(1, orders);
+  const averageMargin = stats.wars.marginTotal / Math.max(1, resolutions);
 
   if (fallRate > 0.12) diagnostics.push('High empire-fall rate: deployment is under-defending Constantinople routes.');
   if (defeatRate > 0.45) diagnostics.push('Frequent invasion defeats: frontier valuation is probably too low.');
+  if (fallRate < 0.04 && averageMargin > 9) diagnostics.push('High surplus war margins: AI is probably over-defending instead of converting troops into coups or gold.');
   if (selfClaimRate < 0.08) diagnostics.push('Low self-claim rate: AI may be too loyal to incumbents and missing coup windows.');
   if (estateBidsPerGame < stats.options.playerCount) diagnostics.push('Low estate bidding: AI is leaving cheap profit-share tools untouched.');
+  if (fundedPerOrder > frontierPerOrder + capitalPerOrder - 0.5 && idlePerOrder < 0.4 && averageMargin > 8) diagnostics.push('Low idle conversion with safe frontiers: AI may be over-funding troops.');
   if (idlePerOrder > capitalPerOrder + 2) diagnostics.push('High idle troop conversion: AI may be overvaluing gold reserves over power projection.');
   if (!diagnostics.length) diagnostics.push('No obvious aggregate pathology detected; inspect sample games or compare against tuned variants.');
   return diagnostics;

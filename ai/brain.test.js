@@ -353,6 +353,57 @@ test('AI coup coalition planning can support a human claimant with good relation
   assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.candidate]), [[1, 3], [2, 3]]);
 });
 
+test('tuned deployment turns safe frontier surplus into coup pressure', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.currentInvasion = {
+    id: 'test_invasion',
+    name: 'Test invasion',
+    strength: [4, 6],
+    route: ['OPS', 'OPT', 'CPL'],
+  };
+  state.currentTroops = {
+    BASILEUS: { normal: 6, capitalLocked: 0 },
+    DOM_EAST: { normal: 6, capitalLocked: 0 },
+    DOM_WEST: { normal: 6, capitalLocked: 0 },
+    ADMIRAL: { normal: 6, capitalLocked: 0 },
+  };
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0, 2, 3],
+    aiPlayers: {
+      1: {
+        policy: {
+          policyId: 'tuned',
+          strategyWeights: {
+            invasionMargin: 2.4,
+            capitalFallPenalty: 665.876428553347,
+            capitalRiskPenalty: 48.353426978309265,
+            throneBase: 13.837714739693313,
+            selfClaim: 0.19356171899110766,
+            supportOtherClaimant: 0.12764954809536314,
+            relationshipCoupWeight: 0.31294053312187564,
+            surplusDefensePenalty: 0.4,
+            frontierSurplusValue: 0.35,
+            frontierSurplusCap: 6,
+            coupOpportunityWeight: 0.75,
+            allyDefenseReliance: 0.82,
+          },
+        },
+      },
+    },
+  });
+
+  const orders = buildAIOrders(state, meta, 1);
+  const fundedFrontier = Object.values(orders.armies)
+    .filter((entry) => entry.destination === 'frontier')
+    .reduce((total, entry) => total + entry.funded, 0);
+  const capitalMercs = orders.mercenaries.destination === 'capital' ? orders.mercenaries.count : 0;
+
+  assert.equal(orders.candidate, 1);
+  assert.equal(fundedFrontier < state.currentTroops.DOM_EAST.normal, true);
+  assert.equal(capitalMercs > 0 || Object.values(orders.armies).some((entry) => entry.destination === 'capital' && entry.funded > 0), true);
+});
+
 test('AI title planning returns a legal title redistribution action', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0] });

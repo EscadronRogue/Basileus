@@ -61,6 +61,11 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   coalitionWillingness: 0.65,
   relationshipCoupWeight: 0.6,
   coalitionDefectionPenalty: 1,
+  surplusDefensePenalty: 0,
+  frontierSurplusValue: 1,
+  frontierSurplusCap: 24,
+  coupOpportunityWeight: 0.15,
+  allyDefenseReliance: 1,
   selfClaimThreshold: 1.1,
   kingmakerPenalty: 0.25,
 });
@@ -518,6 +523,61 @@ function estimateInvasionStrength(invasion) {
   return Math.ceil((Number(invasion.strength[0]) + Number(invasion.strength[1])) / 2);
 }
 
+function estimateHighInvasionStrength(invasion) {
+  const expected = estimateInvasionStrength(invasion);
+  return Math.max(expected, Number(invasion?.strength?.[1]) || expected);
+}
+
+function estimateRecoveryCost(state, invasion) {
+  if (!Array.isArray(invasion?.route)) return 0;
+  const occupied = new Set(
+    Object.values(state.themes || {})
+      .filter((theme) => theme?.occupied)
+      .map((theme) => theme.id),
+  );
+  let cost = 0;
+  let nextCost = 1;
+  for (const themeId of invasion.route.slice().reverse()) {
+    if (themeId === 'CPL') continue;
+    if (!occupied.has(themeId)) continue;
+    cost += nextCost;
+    nextCost += 1;
+  }
+  return cost;
+}
+
+function usefulFrontierTarget(state, invasion, highStrength) {
+  return highStrength + Math.min(6, estimateRecoveryCost(state, invasion));
+}
+
+function reliableEstimatedFrontier(estimates, weights) {
+  const reliance = clamp(
+    Number(weights.allyDefenseReliance) || DEFAULT_STRATEGY_WEIGHTS.allyDefenseReliance,
+    0.45,
+    1,
+  );
+  return Math.max(0, Number(estimates?.frontierTroops) || 0) * reliance;
+}
+
+function scoreInvasionMargin(margin, weights) {
+  const shortfall = Math.min(0, margin);
+  const surplus = Math.max(0, margin);
+  const rawSurplusValue = Number(weights.frontierSurplusValue);
+  const rawSurplusCap = Number(weights.frontierSurplusCap);
+  const surplusValue = clamp(
+    Number.isFinite(rawSurplusValue) ? rawSurplusValue : DEFAULT_STRATEGY_WEIGHTS.frontierSurplusValue,
+    0,
+    1,
+  );
+  const surplusCap = clamp(
+    Number.isFinite(rawSurplusCap) ? rawSurplusCap : DEFAULT_STRATEGY_WEIGHTS.frontierSurplusCap,
+    0,
+    24,
+  );
+  return Math.max(-28, shortfall) * weights.invasionMargin
+    + Math.min(surplusCap, surplus) * weights.invasionMargin * surplusValue;
+}
+
 function themeStake(state, playerId, themeId) {
   const theme = state.themes?.[themeId];
   if (!theme) return 0;
@@ -534,14 +594,16 @@ function themeStake(state, playerId, themeId) {
 function scoreWarPlan(state, playerId, summary, estimates, weights, context = {}) {
   const invasion = state.currentInvasion;
   if (!invasion) return 0;
-  const totalFrontier = summary.frontierTroops + estimates.frontierTroops;
+  const totalFrontier = summary.frontierTroops + reliableEstimatedFrontier(estimates, weights);
   const expectedStrength = estimateInvasionStrength(invasion);
-  const highStrength = Math.max(expectedStrength, Number(invasion.strength?.[1]) || expectedStrength);
+  const highStrength = estimateHighInvasionStrength(invasion);
   const expected = resolveInvasion(state, totalFrontier, expectedStrength, invasion);
   const high = resolveInvasion(state, totalFrontier, highStrength, invasion);
   const margin = totalFrontier - expectedStrength;
+  const surplusFrontier = Math.max(0, totalFrontier - usefulFrontierTarget(state, invasion, highStrength));
 
-  let value = Math.max(-28, Math.min(24, margin)) * weights.invasionMargin;
+  let value = scoreInvasionMargin(margin, weights);
+  value -= surplusFrontier * weights.surplusDefensePenalty;
   if (expected.reachedCPL) value -= weights.capitalFallPenalty;
   else if (high.reachedCPL) value -= weights.capitalRiskPenalty;
   if (expected.outcome === 'victory') value += weights.invasionVictoryBonus;
@@ -556,7 +618,7 @@ function scoreWarPlan(state, playerId, summary, estimates, weights, context = {}
   }
   const table = context.memory?.table || {};
   value += summary.frontierTroops * (table.underDefense || 0) * weights.defenseContextWeight;
-  value -= summary.frontierTroops * (table.overDefense || 0) * weights.defenseContextWeight * 0.4;
+  value -= summary.frontierTroops * (table.overDefense || 0) * weights.defenseContextWeight * 0.8;
   if ((table.underDefense || 0) > 0.2 || (table.underFunding || 0) > 0.2) {
     value -= summary.idleTroops * ((table.underDefense || 0) + (table.underFunding || 0)) * weights.fundingContextWeight;
   }
@@ -723,6 +785,17 @@ function scoreCoalitionFit(state, playerId, summary, leaderId, weights, context 
   return -summary.capitalTroops * weights.coalitionDefectionPenalty;
 }
 
+function frontierSafetyScale(state, summary, estimates, weights = DEFAULT_STRATEGY_WEIGHTS) {
+  const invasion = state.currentInvasion;
+  if (!invasion) return 1;
+  const expectedStrength = estimateInvasionStrength(invasion);
+  const highStrength = estimateHighInvasionStrength(invasion);
+  const totalFrontier = summary.frontierTroops + reliableEstimatedFrontier(estimates, weights);
+  const low = Math.max(0, expectedStrength - 2);
+  const high = Math.max(low + 1, highStrength);
+  return clamp((totalFrontier - low) / (high - low), 0.25, 1);
+}
+
 function scoreSupportRelationship(state, playerId, candidateId, capitalTroops, leaderId, weights, context = {}) {
   if (!Number.isInteger(candidateId) || candidateId === playerId || capitalTroops <= 0) return 0;
   const relScore = relationshipScore(context.memory, playerId, candidateId);
@@ -738,16 +811,25 @@ function scoreSupportRelationship(state, playerId, candidateId, capitalTroops, l
 
 function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLeaderId(state, playerId), weights = DEFAULT_STRATEGY_WEIGHTS, context = {}) {
   const throneValue = weights.throneBase;
+  const safetyScale = frontierSafetyScale(state, summary, estimates, weights);
+  const table = context.memory?.table || {};
 
   if (summary.candidate === playerId) {
     const rivalCapital = Math.max(estimates.maxCapitalTroops, estimates.incumbentCapitalTroops);
+    const claimLeverage = summary.capitalTroops > rivalCapital + 0.5
+      ? 1
+      : clamp(summary.capitalTroops / (rivalCapital + 1), 0, 1);
     let value = 0;
     if (summary.capitalTroops > rivalCapital + 0.5) value = throneValue * weights.selfClaim;
     else if (summary.capitalTroops > 0) value = (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.45 * weights.selfClaim;
     else value = -5;
+    value += summary.capitalTroops
+      * weights.coupOpportunityWeight
+      * safetyScale
+      * (0.35 + claimLeverage + (table.underCouping || 0) * 0.35);
     value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
-    value += summary.capitalTroops * (context.memory?.table?.underCouping || 0) * weights.coalitionWillingness * 0.18;
-    value -= summary.capitalTroops * (context.memory?.table?.overCouping || 0) * weights.coalitionWillingness * 0.12;
+    value += summary.capitalTroops * (table.underCouping || 0) * weights.coalitionWillingness * 0.18;
+    value -= summary.capitalTroops * (table.overCouping || 0) * weights.coalitionWillingness * 0.12;
     return value;
   }
 
@@ -756,6 +838,9 @@ function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLe
     if (playerId === state.basileusId) value = summary.capitalTroops * 1.5 * weights.incumbentDefense;
     else if (state.basileusId === leaderId) value = -summary.capitalTroops * weights.supportLeaderPenalty;
     else value = summary.capitalTroops * 0.25 * weights.incumbentDefense;
+    if (playerId === state.basileusId) {
+      value += summary.capitalTroops * weights.coupOpportunityWeight * safetyScale * 0.45;
+    }
     value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops, leaderId, weights, context);
     value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
     return value;
@@ -764,10 +849,16 @@ function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLe
   let value = summary.candidate === leaderId
     ? -summary.capitalTroops * weights.supportLeaderPenalty * 1.35
     : summary.capitalTroops * weights.supportOtherClaimant;
+  if (summary.candidate !== leaderId) {
+    value += summary.capitalTroops
+      * weights.coupOpportunityWeight
+      * safetyScale
+      * (0.45 + (table.underCouping || 0) * 0.25);
+  }
   value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops, leaderId, weights, context);
   value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
-  value += summary.capitalTroops * (context.memory?.table?.underCouping || 0) * weights.coalitionWillingness * 0.1;
-  value -= summary.capitalTroops * (context.memory?.table?.overCouping || 0) * weights.coalitionWillingness * 0.12;
+  value += summary.capitalTroops * (table.underCouping || 0) * weights.coalitionWillingness * 0.1;
+  value -= summary.capitalTroops * (table.overCouping || 0) * weights.coalitionWillingness * 0.12;
   return value;
 }
 

@@ -20,6 +20,7 @@ import { readTroopEntry } from '../engine/cascade.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
 export const AI_DEALS_ENABLED = false;
+const MAX_ORDER_ACTIONS = 520;
 
 function cloneValueForValidation(value) {
   if (value == null) return value;
@@ -231,12 +232,12 @@ function fullFundingArmies(state, playerId, destination = 'frontier') {
   return armies;
 }
 
-function leanFundingArmies(state, playerId) {
+function partialFundingArmies(state, playerId, ratio, destination = 'frontier') {
   const armies = {};
   for (const officeKey of getPlayerOrderOfficeKeys(state, playerId)) {
     const entry = readTroopEntry(state.currentTroops?.[officeKey]);
     const max = entry.normal + entry.capitalLocked;
-    armies[officeKey] = { funded: Math.ceil(max / 2), destination: 'frontier' };
+    armies[officeKey] = { funded: Math.ceil(max * ratio), destination };
   }
   return armies;
 }
@@ -309,7 +310,12 @@ function buildArmyPlans(state, playerId) {
   const plans = [
     fullFundingArmies(state, playerId, 'frontier'),
     fullFundingArmies(state, playerId, 'capital'),
-    leanFundingArmies(state, playerId),
+    partialFundingArmies(state, playerId, 2 / 3, 'frontier'),
+    partialFundingArmies(state, playerId, 2 / 3, 'capital'),
+    partialFundingArmies(state, playerId, 1 / 2, 'frontier'),
+    partialFundingArmies(state, playerId, 1 / 2, 'capital'),
+    partialFundingArmies(state, playerId, 1 / 3, 'frontier'),
+    partialFundingArmies(state, playerId, 1 / 3, 'capital'),
     idleArmies(state, playerId),
   ];
   for (const officeKey of officeKeys) {
@@ -337,7 +343,7 @@ export function listLegalOrderActions(state, playerId) {
         if (seen.has(key)) continue;
         seen.add(key);
         actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
-        if (actions.length >= 260) return actions;
+        if (actions.length >= MAX_ORDER_ACTIONS) return actions;
       }
     }
   }
