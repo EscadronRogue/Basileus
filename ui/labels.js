@@ -134,6 +134,13 @@ export function getProvinceStyleAttr(state, theme) {
   return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; ${getProvincePaletteStyleAttr(theme)}`;
 }
 
+function getProvinceOwnerLabel(state, theme) {
+  if (!theme || theme.owner == null) return '';
+  if (theme.owner === 'church') return 'Church land';
+  const player = getPlayer(state, theme.owner);
+  return formatPlayerLabel(player) || `Player ${Number(theme.owner) + 1}`;
+}
+
 // Plain-text value codes stay available for history summaries, ARIA labels,
 // tooltips, and tests even though visible DOM uses icon cartouches.
 export function formatProvinceValuesText(theme) {
@@ -191,6 +198,19 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
     ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
     : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
   return `<span class="${classes}" data-province-token="${theme.id}" style="${getProvinceStyleAttr(state, theme)}" title="${tooltip}">${theme.name}${values}</span>`;
+}
+
+export function renderProvinceOwnerMarker(state, themeOrId, options = {}) {
+  const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
+  if (!theme || theme.owner == null) return options.fallback || '';
+  const ownerLabel = getProvinceOwnerLabel(state, theme);
+  const markerLabel = theme.owner === 'church' ? ownerLabel : `Estate owner: ${ownerLabel}`;
+  const classes = [
+    'province-owner-marker',
+    options.compact ? 'compact' : '',
+    theme.owner === 'church' ? 'church' : '',
+  ].filter(Boolean).join(' ');
+  return `<span class="${classes}" style="--province-owner-color: ${getProvinceOwnerColor(state, theme)};" title="${markerLabel}" aria-label="${markerLabel}"></span>`;
 }
 
 export function renderProvinceBadgeList(state, themeIds = []) {

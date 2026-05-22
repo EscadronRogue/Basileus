@@ -89,6 +89,27 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
 });
 
+test('court estate revocations show owner color without the old separator', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  state.themes.OPS.owner = 2;
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
+  assert.match(container.innerHTML, /province-owner-marker compact/);
+  assert.equal(container.innerHTML.includes(`--province-owner-color: ${state.players[2].color};`), true);
+  assert.equal(container.innerHTML.includes('Estate —'), false);
+  assert.equal(container.innerHTML.includes('Estate â€”'), false);
+});
+
 test('estates panel lists free land bids before deployment', () => {
   const state = makeState();
   state.phase = 'estates';

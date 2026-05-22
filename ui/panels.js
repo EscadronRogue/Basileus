@@ -21,6 +21,7 @@ import {
   getPlayerStyleAttr,
   renderPlayerRoleName,
   renderProvinceBadge,
+  renderProvinceOwnerMarker,
   renderThemeOfficeBadge,
   renderTitleBadge,
 } from './labels.js';
@@ -552,7 +553,7 @@ function renderCourtRevocations(state, playerId, draft) {
       const theme = state.themes[themeId];
       if (theme) {
         const ownerLabel = theme.owner === 'church' ? 'Church land' : 'Estate';
-        badge = `<span class="muted">${ownerLabel} —</span> ${renderProvinceBadge(state, theme, { compact: true })}`;
+        badge = `<span class="muted">${ownerLabel}</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
       }
     } else if (target.value === 'court:EMPRESS') {
       badge = renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true });
@@ -614,7 +615,7 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
     const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
     const ready = Boolean(target && appointee);
     const preview = ready
-      ? `${renderPlayerRoleName(state, appointee)} â†’ ${renderTitleBadge(state, target.kind, { holderId: appointee.id, label: target.label, compact: true })}`
+      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, target.kind, { holderId: appointee.id, label: target.label, compact: true })}`
       : null;
     return renderAppointmentSection({
       kind: 'court',
@@ -636,7 +637,7 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
     const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
     const ready = Boolean(target && appointee && bishops.some((theme) => theme.id === target.id));
     const preview = ready
-      ? `${renderPlayerRoleName(state, appointee)} â†’ ${renderTitleBadge(state, 'BISHOP', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
+      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'BISHOP', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
       : null;
     return renderAppointmentSection({
       kind: 'bishop',
@@ -657,7 +658,7 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
   const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
   const ready = Boolean(target && appointee && strategoi.some((theme) => theme.id === target.id));
   const preview = ready
-    ? `${renderPlayerRoleName(state, appointee)} â†’ ${renderTitleBadge(state, 'STRATEGOS', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
+    ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'STRATEGOS', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
     : null;
   return renderAppointmentSection({
     kind: 'strategos',
@@ -687,7 +688,7 @@ function decorateRevocationTargets(state, targets) {
       const theme = state.themes[themeId];
       if (theme) {
         const ownerLabel = theme.owner === 'church' ? 'Church land' : 'Estate';
-        badge = `<span class="muted">${ownerLabel} â€”</span> ${renderProvinceBadge(state, theme, { compact: true })}`;
+        badge = `<span class="muted">${ownerLabel}</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
       }
     } else if (target.value === 'court:EMPRESS') {
       badge = renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true });

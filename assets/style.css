@@ -2468,6 +2468,27 @@ body::before {
   --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
 }
 
+.province-owner-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--province-owner-color, #5a3810);
+  border: 1.5px solid rgba(20,8,0,0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,250,228,0.36),
+    0 1px 1px rgba(46,30,15,0.22);
+  vertical-align: middle;
+}
+
+.province-owner-marker.compact {
+  width: 11px;
+  height: 11px;
+}
+
 /* Title cartouches (Basileus, Strategos of X, Bishop of Y, …).
    Outline encodes the role's region; background is the holder's dynasty
    color, or parchment-cream when the title is vacant. */
