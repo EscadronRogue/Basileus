@@ -25,6 +25,8 @@ const setupStartError = document.getElementById('setupStartError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
 
+const RANDOM_TRAINED_OPPONENT_ID = '__random-trained-opponent__';
+
 let multiplayerLaunchInFlight = false;
 let gameLaunchInFlight = false;
 let aiOpponentRoster = [];
@@ -43,6 +45,28 @@ function escapeHtml(value) {
 function seatCartoucheStyle(seat) {
   const color = DYNASTY_COLORS[(Math.max(1, Number(seat) || 1) - 1) % DYNASTY_COLORS.length] || '#5a3810';
   return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
+}
+
+function getTrainedAiOpponents() {
+  return aiOpponentRoster.filter((opponent) => opponent.source === 'tuned');
+}
+
+function randomItemFromPool(pool, rng = Math.random) {
+  if (!pool.length) return null;
+  const index = Math.floor(rng() * pool.length);
+  return pool.splice(index, 1)[0] || pool[0] || null;
+}
+
+function makeRandomOpponentBag(opponents) {
+  return {
+    source: opponents.slice(),
+    bag: opponents.slice(),
+    take(rng) {
+      if (!this.source.length) return null;
+      if (!this.bag.length) this.bag = this.source.slice();
+      return randomItemFromPool(this.bag, rng);
+    },
+  };
 }
 
 function renderSetupChoiceControl(select) {
@@ -180,30 +204,45 @@ function renderAiRoster() {
   if (seatAssignmentUnresolved) {
     setupAiRoster.innerHTML = `
       <div class="setup-ai-seat setup-ai-seat-empty">
-        <strong>AI names assigned at start</strong>
-        <span>Random setup will resolve your seat first, then fill the remaining seats with Greek AI names.</span>
+        <strong>AI seats assigned at start</strong>
+        <span>Random setup will resolve your seat first, then fill the remaining seats with available AI strategies.</span>
       </div>
     `;
-    setupAiRosterHint.textContent = 'Choose a fixed player count and seat to customize individual AI names.';
+    setupAiRosterHint.textContent = 'Choose a fixed player count and seat to customize individual AI opponents.';
     updateStartAvailability();
     return;
   }
 
   setupAiRoster.innerHTML = aiSeats.map((seat, index) => {
+    const trainedOpponents = getTrainedAiOpponents();
     const existing = selectedAiOpponentBySeat.get(seat);
-    const selectedId = aiOpponentRoster.some((opponent) => opponent.id === existing)
+    const selectedId = existing === RANDOM_TRAINED_OPPONENT_ID || aiOpponentRoster.some((opponent) => opponent.id === existing)
       ? existing
-      : aiOpponentRoster[index % aiOpponentRoster.length]?.id;
+      : trainedOpponents.length
+        ? RANDOM_TRAINED_OPPONENT_ID
+        : aiOpponentRoster[index % aiOpponentRoster.length]?.id;
     selectedAiOpponentBySeat.set(seat, selectedId);
     const selectedOpponent = aiOpponentRoster.find((opponent) => opponent.id === selectedId);
+    const displayName = selectedId === RANDOM_TRAINED_OPPONENT_ID
+      ? 'Random trained AI'
+      : selectedOpponent?.firstName || selectedOpponent?.id || 'Choose opponent';
+    const randomTrainedButton = trainedOpponents.length ? `
+      <button type="button"
+        class="setup-ai-opponent-btn${selectedId === RANDOM_TRAINED_OPPONENT_ID ? ' selected' : ''}"
+        data-seat="${seat}"
+        data-ai-opponent="${RANDOM_TRAINED_OPPONENT_ID}">
+        Random trained
+      </button>
+    ` : '';
     return `
       <div class="setup-ai-seat" style="${seatCartoucheStyle(seat)}" data-seat="${seat}">
         <span class="choice-crest">S${seat}</span>
         <span class="setup-ai-copy">
           <strong>Seat ${seat}</strong>
-          <span>${escapeHtml(selectedOpponent?.firstName || selectedOpponent?.id || 'Choose opponent')}</span>
+          <span>${escapeHtml(displayName)}</span>
         </span>
         <span class="setup-ai-choice-row">
+          ${randomTrainedButton}
           ${aiOpponentRoster.map((opponent) => {
             const label = opponent.firstName || opponent.id;
             const selected = opponent.id === selectedId;
@@ -229,7 +268,9 @@ function renderAiRoster() {
     });
   });
 
-  setupAiRosterHint.textContent = 'Choose a Greek name for each strategic AI seat.';
+  setupAiRosterHint.textContent = getTrainedAiOpponents().length
+    ? 'AI seats use random trained opponents by default.'
+    : 'No trained opponents found yet; built-in strategies will be used.';
   updateStartAvailability();
 }
 
@@ -253,20 +294,30 @@ async function readSelectedMultiplayerSave() {
   }
 }
 
-function buildAiOpponentSelections(playerCount, humanSeat) {
+function buildAiOpponentSelections(playerCount, humanSeat, rng = Math.random) {
   const selections = [];
   if (!aiOpponentRoster.length) return selections;
+  const trainedOpponents = getTrainedAiOpponents();
+  const randomTrainedBag = makeRandomOpponentBag(trainedOpponents);
   for (let playerId = 0; playerId < playerCount; playerId += 1) {
     if (playerId === humanSeat) continue;
     const seat = playerId + 1;
-    const selectedId = selectedAiOpponentBySeat.get(seat) || aiOpponentRoster[selections.length % aiOpponentRoster.length]?.id;
-    const opponent = aiOpponentRoster.find((entry) => entry.id === selectedId) || aiOpponentRoster[0];
+    const selectedId = selectedAiOpponentBySeat.get(seat);
+    const selectedOpponent = selectedId && selectedId !== RANDOM_TRAINED_OPPONENT_ID
+      ? aiOpponentRoster.find((entry) => entry.id === selectedId)
+      : null;
+    const opponent = selectedOpponent
+      || randomTrainedBag.take(rng)
+      || aiOpponentRoster[selections.length % aiOpponentRoster.length]
+      || aiOpponentRoster[0];
     if (!opponent) continue;
     selections.push({
       playerId,
       id: opponent.id,
       firstName: opponent.firstName,
       label: opponent.label,
+      policy: opponent.policy || null,
+      strategyWeights: opponent.strategyWeights || opponent.policy?.strategyWeights || null,
     });
   }
   return selections;
@@ -357,7 +408,7 @@ btnStart.addEventListener('click', async () => {
 
   try {
     const aiOpponentSelections = mode === 'single'
-      ? buildAiOpponentSelections(playerCount, seat)
+      ? buildAiOpponentSelections(playerCount, seat, setupRng)
       : [];
     if (mode === 'single' && aiOpponentSelections.length !== playerCount - 1) {
       throw new Error('Choose an AI opponent for every AI seat.');

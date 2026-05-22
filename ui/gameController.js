@@ -90,11 +90,13 @@ export class GameController {
     for (const selection of selections) {
       const playerId = Number(selection.playerId);
       if (!Number.isInteger(playerId)) continue;
-      const opponent = hydrateAiOpponent(selection.id || selection.opponentId, playerId);
+      const opponent = hydrateAiOpponent(selection, playerId);
       aiPlayers[playerId] = {
         opponent,
         displayName: selection.firstName || selection.name || opponent?.firstName || null,
         opponentId: opponent?.id || selection.id || null,
+        policy: selection.policy || opponent?.policy || null,
+        strategyWeights: selection.strategyWeights || opponent?.strategyWeights || null,
       };
     }
     return aiPlayers;

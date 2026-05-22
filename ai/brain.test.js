@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import { createGameState } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
@@ -16,6 +19,8 @@ import {
 } from './brain.js';
 import { applyLegalAction, listLegalEstateActions } from './legalActions.js';
 import { simulateGames } from './simulate.js';
+import { trainStrategyWeights } from './train.js';
+import { GREEK_FIRST_NAMES } from './greekNames.js';
 
 function makeState() {
   const state = createGameState({ playerCount: 4, deckSize: 2, seed: 13, historyEnabled: true });
@@ -104,12 +109,63 @@ test('legal estate actions dispatch through the shared AI action path', () => {
 });
 
 test('AI simulation runner completes deterministic all-AI games', () => {
-  const result = simulateGames({ games: 3, playerCount: 4, deckSize: 2, seed: 91, samples: 2 });
+  const result = simulateGames({
+    games: 3,
+    playerCount: 4,
+    deckSize: 2,
+    seed: 91,
+    samples: 2,
+    policies: ['strategic', 'random', 'defender', 'profiteer'],
+  });
 
   assert.equal(result.games, 3);
   assert.equal(result.completed + result.stuck, 3);
   assert.equal(result.resolutions > 0, true);
   assert.equal(Number.isFinite(result.scoring.winnerScore), true);
+});
+
+test('AI training harness evaluates strategy weight profiles', () => {
+  const result = trainStrategyWeights({
+    generations: 1,
+    population: 2,
+    elite: 1,
+    games: 2,
+    playerCount: 4,
+    deckSize: 2,
+    seed: 133,
+    save: false,
+  });
+
+  assert.equal(result.generations.length, 1);
+  assert.equal(Number.isFinite(result.best.metrics.objective), true);
+  assert.equal(typeof result.best.weights.invasionMargin, 'number');
+  assert.equal(result.saved, undefined);
+});
+
+test('AI training can save a Greek-named tuned opponent', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'basileus-ai-'));
+  const outputPath = join(dir, 'tunedOpponents.json');
+  try {
+    const result = trainStrategyWeights({
+      generations: 1,
+      population: 2,
+      elite: 1,
+      games: 1,
+      playerCount: 4,
+      deckSize: 1,
+      seed: 144,
+      outputPath,
+    });
+    const payload = JSON.parse(readFileSync(outputPath, 'utf8'));
+
+    assert.equal(result.saved.path, outputPath);
+    assert.equal(payload.opponents.length, 1);
+    assert.equal(GREEK_FIRST_NAMES.includes(payload.opponents[0].firstName), true);
+    assert.equal(payload.opponents[0].policy.policyId, 'tuned');
+    assert.equal(typeof payload.opponents[0].strategyWeights.invasionMargin, 'number');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('simultaneous AI planning ignores already submitted human deployment orders', () => {

@@ -19,6 +19,39 @@ const COURT_GAIN_FLOOR = 0.35;
 const ESTATE_GAIN_FLOOR = 0.2;
 const MAX_ESTATE_BIDS_PER_AI = 3;
 
+export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
+  ownRecipientBonus: 3,
+  leaderDenial: 1.2,
+  rivalDenial: 0.35,
+  courtGainFloor: COURT_GAIN_FLOOR,
+  estateGainFloor: ESTATE_GAIN_FLOOR,
+  estateProfit: 4,
+  estateBidCost: 1.15,
+  estateThreatPenalty: 1.5,
+  invasionMargin: 0.9,
+  capitalFallPenalty: 420,
+  capitalRiskPenalty: 120,
+  invasionVictoryBonus: 6,
+  invasionDefeatPenalty: 8,
+  recoveryBonus: 0.8,
+  throneBase: 18,
+  throneProgress: 34,
+  selfClaim: 1,
+  incumbentDefense: 1,
+  supportLeaderPenalty: 0.9,
+  supportOtherClaimant: 0.6,
+  reserveValue: 0.25,
+  mercenaryCostPenalty: 0.12,
+});
+
+function getStrategyWeights(meta, playerId) {
+  return {
+    ...DEFAULT_STRATEGY_WEIGHTS,
+    ...(meta?.strategyWeights || {}),
+    ...(meta?.players?.[playerId]?.strategyWeights || {}),
+  };
+}
+
 function cloneStateForAI(state) {
   let clone;
   try {
@@ -145,24 +178,24 @@ function scoreResourceGain(final, playerId, categoryKey, amount) {
   return after - before + amount * 0.8;
 }
 
-function scoreRecipientGain(final, playerId, recipientId, leaderId, categoryKey, amount) {
+function scoreRecipientGain(final, playerId, recipientId, leaderId, categoryKey, amount, weights = DEFAULT_STRATEGY_WEIGHTS) {
   const value = scoreResourceGain(final, recipientId, categoryKey, amount);
-  if (recipientId === playerId) return value + 3;
-  if (recipientId === leaderId) return -value * 1.2 - 4;
-  return -value * 0.35;
+  if (recipientId === playerId) return value + weights.ownRecipientBonus;
+  if (recipientId === leaderId) return -value * weights.leaderDenial - 4;
+  return -value * weights.rivalDenial;
 }
 
-function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderIdFromScores(final, playerId)) {
+function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderIdFromScores(final, playerId), weights = DEFAULT_STRATEGY_WEIGHTS) {
   const payloadAction = String(action?.payload?.action || '');
   const targetId = getActionTargetPlayerId(state, action);
   const themeId = getActionThemeId(action);
   const theme = themeId ? state.themes?.[themeId] : null;
 
   if (payloadAction === 'appoint-strategos') {
-    return scoreRecipientGain(final, playerId, targetId, leaderId, 'strategos', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1));
+    return scoreRecipientGain(final, playerId, targetId, leaderId, 'strategos', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1), weights);
   }
   if (payloadAction === 'appoint-bishop') {
-    return scoreRecipientGain(final, playerId, targetId, leaderId, 'church', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1));
+    return scoreRecipientGain(final, playerId, targetId, leaderId, 'church', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1), weights);
   }
   if (payloadAction === 'appoint-court') {
     if (targetId === playerId) return 4;
@@ -180,8 +213,8 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
     } else if (action.payload?.value?.startsWith('theme:')) {
       deniedValue += scoreResourceGain(final, targetId, 'estate', Math.max(1, Number(theme?.P ?? theme?.origin?.P) || 1));
     }
-    if (targetId === leaderId) return deniedValue * 1.1 + 3;
-    return deniedValue * 0.35;
+    if (targetId === leaderId) return deniedValue * weights.leaderDenial + 3;
+    return deniedValue * weights.rivalDenial;
   }
   return 0;
 }
@@ -212,8 +245,9 @@ export function chooseStrategicTitleAssignment(state, meta, basileusId = state?.
   const actions = listLegalTitleAssignments(state, basileusId);
   const final = projectedScoring(state);
   const leaderId = getLeaderIdFromScores(final, basileusId);
+  const weights = getStrategyWeights(meta, basileusId);
   return actions
-    .map((action) => ({ action, score: scoreTitleAssignment(state, final, basileusId, leaderId, action) }))
+    .map((action) => ({ action, score: scoreTitleAssignment(state, final, basileusId, leaderId, action, weights) }))
     .sort((left, right) => (
       (right.score - left.score)
       || String(left.action.id).localeCompare(String(right.action.id))
@@ -236,12 +270,12 @@ function estimateTitleYield(state, titleKey) {
   return Math.ceil(pool * 2 / 3);
 }
 
-function scoreTitleAssignment(state, final, basileusId, leaderId, action) {
+function scoreTitleAssignment(state, final, basileusId, leaderId, action, weights) {
   let score = 0;
   for (const [titleKey, holderId] of Object.entries(action.assignments || {})) {
     const categoryKey = titleKey === 'PATRIARCH' ? 'church' : 'strategos';
     const amount = estimateTitleYield(state, titleKey);
-    score += scoreRecipientGain(final, basileusId, Number(holderId), leaderId, categoryKey, amount);
+    score += scoreRecipientGain(final, basileusId, Number(holderId), leaderId, categoryKey, amount, weights);
     if (Number(holderId) === leaderId) score -= 5;
   }
   return score;
@@ -261,13 +295,14 @@ export function chooseStrategicCourtAction(state, meta, playerId) {
 
   const final = projectedScoring(state);
   const leaderId = getLeaderIdFromScores(final, playerId);
+  const weights = getStrategyWeights(meta, playerId);
   const best = candidates
-    .map((action) => ({ action, score: scoreCourtIntent(state, final, playerId, action, leaderId) }))
+    .map((action) => ({ action, score: scoreCourtIntent(state, final, playerId, action, leaderId, weights) }))
     .sort((left, right) => (
       (right.score - left.score)
       || String(left.action.id).localeCompare(String(right.action.id))
     ))[0] || null;
-  if (best && best.score > COURT_GAIN_FLOOR) return best.action;
+  if (best && best.score > weights.courtGainFloor) return best.action;
   return confirmation;
 }
 
@@ -364,7 +399,7 @@ function themeStake(state, playerId, themeId) {
   return value;
 }
 
-function scoreWarPlan(state, playerId, summary, estimates) {
+function scoreWarPlan(state, playerId, summary, estimates, weights) {
   const invasion = state.currentInvasion;
   if (!invasion) return 0;
   const totalFrontier = summary.frontierTroops + estimates.frontierTroops;
@@ -374,57 +409,58 @@ function scoreWarPlan(state, playerId, summary, estimates) {
   const high = resolveInvasion(state, totalFrontier, highStrength, invasion);
   const margin = totalFrontier - expectedStrength;
 
-  let value = Math.max(-28, Math.min(24, margin)) * 0.9;
-  if (expected.reachedCPL) value -= 420;
-  else if (high.reachedCPL) value -= 120;
-  if (expected.outcome === 'victory') value += 6;
-  if (expected.outcome === 'defeat') value -= 8;
+  let value = Math.max(-28, Math.min(24, margin)) * weights.invasionMargin;
+  if (expected.reachedCPL) value -= weights.capitalFallPenalty;
+  else if (high.reachedCPL) value -= weights.capitalRiskPenalty;
+  if (expected.outcome === 'victory') value += weights.invasionVictoryBonus;
+  if (expected.outcome === 'defeat') value -= weights.invasionDefeatPenalty;
 
   for (const themeId of expected.themesLost || []) value -= themeStake(state, playerId, themeId);
   for (const themeId of expected.themesRecovered || []) value += Math.max(0.5, themeStake(state, playerId, themeId) * 0.5);
 
   if (summary.frontierTroops > 0 && expected.themesRecovered?.length) {
-    value += Math.min(summary.frontierTroops, 8) * 0.8;
+    value += Math.min(summary.frontierTroops, 8) * weights.recoveryBonus;
     if (summary.frontierTroops >= estimates.averageFrontierTroops) value += expected.themesRecovered.length * 3;
   }
   return value;
 }
 
-function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLeaderId(state, playerId)) {
+function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLeaderId(state, playerId), weights = DEFAULT_STRATEGY_WEIGHTS) {
   const progress = Math.max(0, Math.min(1, (Number(state.round) || 0) / Math.max(1, Number(state.maxRounds) || 1)));
-  const throneValue = 18 + progress * 34;
+  const throneValue = weights.throneBase + progress * weights.throneProgress;
 
   if (summary.candidate === playerId) {
     const rivalCapital = Math.max(estimates.maxCapitalTroops, estimates.incumbentCapitalTroops);
-    if (summary.capitalTroops > rivalCapital + 0.5) return throneValue;
-    if (summary.capitalTroops > 0) return (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.45;
+    if (summary.capitalTroops > rivalCapital + 0.5) return throneValue * weights.selfClaim;
+    if (summary.capitalTroops > 0) return (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.45 * weights.selfClaim;
     return -5;
   }
 
   if (summary.candidate === state.basileusId) {
-    if (playerId === state.basileusId) return summary.capitalTroops * (1.5 + progress);
-    if (state.basileusId === leaderId) return -summary.capitalTroops * 0.9;
-    return summary.capitalTroops * 0.25;
+    if (playerId === state.basileusId) return summary.capitalTroops * (1.5 + progress) * weights.incumbentDefense;
+    if (state.basileusId === leaderId) return -summary.capitalTroops * weights.supportLeaderPenalty;
+    return summary.capitalTroops * 0.25 * weights.incumbentDefense;
   }
 
-  if (summary.candidate === leaderId) return -summary.capitalTroops * 1.2;
-  return summary.capitalTroops * 0.6;
+  if (summary.candidate === leaderId) return -summary.capitalTroops * weights.supportLeaderPenalty * 1.35;
+  return summary.capitalTroops * weights.supportOtherClaimant;
 }
 
 function scoreDeploymentTactics(state, playerId, action, context = {}) {
   const summary = summarizeOrders(state, playerId, action.orders);
   const estimates = estimateOtherDeployment(state, playerId);
-  let value = scoreWarPlan(state, playerId, summary, estimates);
-  value += scoreCoupPlan(state, playerId, summary, estimates, context.leaderId);
-  value += Math.min(summary.idleTroops, 10) * 0.25;
-  value -= summary.mercCost * 0.12;
+  const weights = context.weights || DEFAULT_STRATEGY_WEIGHTS;
+  let value = scoreWarPlan(state, playerId, summary, estimates, weights);
+  value += scoreCoupPlan(state, playerId, summary, estimates, context.leaderId, weights);
+  value += Math.min(summary.idleTroops, 10) * weights.reserveValue;
+  value -= summary.mercCost * weights.mercenaryCostPenalty;
   return value;
 }
 
 export function chooseStrategicOrderAction(state, meta, playerId) {
   void meta;
   const actions = listLegalOrderActions(state, playerId);
-  const context = { leaderId: currentLeaderId(state, playerId) };
+  const context = { leaderId: currentLeaderId(state, playerId), weights: getStrategyWeights(meta, playerId) };
   return actions
     .map((action) => ({ action, score: scoreDeploymentTactics(state, playerId, action, context) }))
     .sort((left, right) => (
@@ -469,13 +505,14 @@ export function chooseStrategicEstateActions(state, meta, playerId) {
     const actions = listLegalEstateActions(planningState, playerId);
     if (!actions.length) break;
     const final = projectedScoring(planningState);
+    const weights = getStrategyWeights(meta, playerId);
     const best = actions
-      .map((action) => ({ action, score: scoreEstateAction(planningState, final, playerId, action) }))
+      .map((action) => ({ action, score: scoreEstateAction(planningState, final, playerId, action, weights) }))
       .sort((left, right) => (
         (right.score - left.score)
         || String(left.action.id).localeCompare(String(right.action.id))
       ))[0] || null;
-    if (!best || best.score <= ESTATE_GAIN_FLOOR) break;
+    if (!best || best.score <= weights.estateGainFloor) break;
     chosen.push(best.action);
     const result = applyLegalAction(planningState, best.action, null);
     if (!result.ok) break;
@@ -483,14 +520,14 @@ export function chooseStrategicEstateActions(state, meta, playerId) {
   return chosen;
 }
 
-function scoreEstateAction(state, final, playerId, action) {
+function scoreEstateAction(state, final, playerId, action, weights) {
   const theme = state.themes?.[action.payload?.themeId];
   if (!theme) return -Infinity;
   const bid = Math.max(0, Number(action.payload?.amount) || 0);
   const profit = Math.max(1, Number(theme.P ?? theme.origin?.P) || 1);
   const threatened = Array.isArray(state.currentInvasion?.route)
     && state.currentInvasion.route.includes(theme.id);
-  return scoreResourceGain(final, playerId, 'estate', profit) + profit * 4 - bid * 1.15 - (threatened ? 1.5 : 0);
+  return scoreResourceGain(final, playerId, 'estate', profit) + profit * weights.estateProfit - bid * weights.estateBidCost - (threatened ? weights.estateThreatPenalty : 0);
 }
 
 export function chooseStrategicRewardChoice(state, meta, reward) {

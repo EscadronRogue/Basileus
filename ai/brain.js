@@ -1,15 +1,22 @@
 import {
   applyLegalAction,
 } from './legalActions.js';
-import { loadOpponentByIdSync, loadOpponentRosterSync } from './opponentRoster.js';
 import {
-  applyStrategicEstateActions,
-  chooseStrategicCourtAction,
-  chooseStrategicOrderAction,
-  chooseStrategicRewardChoice,
-  chooseStrategicTitleAssignment,
-  describeOrderChoice,
-} from './strategy.js';
+  loadOpponentByIdSync,
+  loadOpponentRosterSync,
+  mergeOpponentRosters,
+  normalizeTunedOpponentRoster,
+  TUNED_OPPONENT_ROSTER_URL,
+} from './opponentRoster.js';
+import {
+  applyPolicyEstateActions,
+  choosePolicyCourtAction,
+  choosePolicyOrderAction,
+  choosePolicyRewardChoice,
+  choosePolicyTitleAssignment,
+  describePolicyOrderChoice,
+  normalizePolicyConfig,
+} from './policies.js';
 
 export const AI_OPPONENT_MISSING_MESSAGE = 'AI opponent not found.';
 export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
@@ -33,7 +40,10 @@ function createDecisionLog() {
 function normalizeOpponent(rawOpponent, seatId = 0) {
   if (!rawOpponent) return loadOpponentByIdSync(null, seatId);
   if (typeof rawOpponent === 'string') return loadOpponentByIdSync(rawOpponent, seatId);
-  return loadOpponentByIdSync(rawOpponent.id || rawOpponent.opponentId || null, seatId);
+  return {
+    ...loadOpponentByIdSync(rawOpponent.id || rawOpponent.opponentId || null, seatId),
+    ...rawOpponent,
+  };
 }
 
 export function hydrateAiOpponent(rawOpponent, seatId = 0) {
@@ -50,12 +60,21 @@ function createPlayerMeta(player, humanPlayerIds, aiPlayer = null) {
     ? normalizeOpponent(aiPlayer?.opponent || aiPlayer?.opponentId || aiPlayer?.id, player.id)
     : null;
   const displayName = aiPlayer?.displayName || aiPlayer?.firstName || opponentDisplayName(opponent);
+  const policy = isAI
+    ? normalizePolicyConfig(aiPlayer?.policy ?? opponent?.policy ?? {
+      policyId: aiPlayer?.policyId || opponent?.policyId,
+      strategyWeights: aiPlayer?.strategyWeights || aiPlayer?.weights || opponent?.strategyWeights || opponent?.weights,
+    })
+    : null;
   return {
     playerId: player.id,
     isAI,
     displayName: isAI ? displayName : null,
     opponent: isAI ? opponent : null,
     opponentId: isAI ? (opponent?.id || aiPlayer?.opponentId || null) : null,
+    policyId: isAI ? policy.policyId : null,
+    policyLabel: isAI ? policy.label : null,
+    strategyWeights: isAI ? policy.strategyWeights : null,
     stats: {},
   };
 }
@@ -63,6 +82,15 @@ function createPlayerMeta(player, humanPlayerIds, aiPlayer = null) {
 export async function loadBrowserAiOpponentRoster(url = null, options = {}) {
   const required = Boolean(options.required);
   const remoteUrl = url || (options.remote ? DEFAULT_BROWSER_OPPONENT_ROSTER_URL : null);
+  let tunedOpponents = [];
+  if (!remoteUrl && typeof window !== 'undefined' && typeof fetch === 'function') {
+    try {
+      const response = await fetch(TUNED_OPPONENT_ROSTER_URL, { cache: 'no-store' });
+      if (response.ok) tunedOpponents = normalizeTunedOpponentRoster(await response.json());
+    } catch {
+      tunedOpponents = [];
+    }
+  }
   if (remoteUrl && typeof fetch === 'function') {
     try {
       const response = await fetch(remoteUrl, { cache: 'no-store' });
@@ -76,7 +104,7 @@ export async function loadBrowserAiOpponentRoster(url = null, options = {}) {
       if (required) throw error;
     }
   }
-  return loadOpponentRosterSync();
+  return mergeOpponentRosters(tunedOpponents, loadOpponentRosterSync());
 }
 
 export function createAIMeta(state, options = {}) {
@@ -91,7 +119,6 @@ export function createAIMeta(state, options = {}) {
     humanPlayerIds,
     players,
     opponentAvailable: true,
-    placeholderOnly: false,
     publicLog: [],
     decisionLog: createDecisionLog(),
   };
@@ -139,12 +166,12 @@ export function runAICourtAutomation(state, meta, options = {}) {
     let safety = 0;
     while (!state.courtActions?.playerConfirmed?.has(player.id) && safety < 8) {
       safety += 1;
-      const action = chooseStrategicCourtAction(state, meta, player.id);
+      const action = choosePolicyCourtAction(state, meta, player.id);
       if (!action) break;
       const result = applyLegalAction(state, action, meta);
       if (!result.ok) break;
       applied += 1;
-      meta?.decisionLog?.push?.(`court:${player.id}:strategic:${action.label || action.kind}`);
+      meta?.decisionLog?.push?.(`court:${player.id}:${meta.players?.[player.id]?.policyId || 'strategic'}:${action.label || action.kind}`);
       if (action.kind === 'court-confirm' || action.payload?.action === 'skip') break;
     }
   }
@@ -153,15 +180,15 @@ export function runAICourtAutomation(state, meta, options = {}) {
 }
 
 export function buildAIOrders(state, meta, playerId) {
-  const action = chooseStrategicOrderAction(state, meta, playerId);
-  if (!action) throw new Error(`No legal strategic order available for AI player ${playerId}.`);
+  const action = choosePolicyOrderAction(state, meta, playerId);
+  if (!action) throw new Error(`No legal order available for AI player ${playerId}.`);
   const playerMeta = meta?.players?.[playerId];
   return {
     ...action.orders,
     debug: {
       decision: {
-        ...describeOrderChoice(state, playerId, action),
-        title: `${playerMeta?.displayName || 'AI'} strategic order`,
+        ...describePolicyOrderChoice(state, playerId, action),
+        title: `${playerMeta?.displayName || 'AI'} ${playerMeta?.policyId || 'strategic'} order`,
       },
     },
   };
@@ -203,18 +230,18 @@ export function buildSimultaneousAIOrders(state, meta) {
 }
 
 export function chooseAIDefenderRewardChoice(state, meta, reward) {
-  return chooseStrategicRewardChoice(state, meta, reward);
+  return choosePolicyRewardChoice(state, meta, reward);
 }
 
 export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nextBasileusId) {
-  return chooseStrategicTitleAssignment(state, meta, newBasileusId);
+  return choosePolicyTitleAssignment(state, meta, newBasileusId);
 }
 
 export function runAIEstateAutomation(state, meta, playerId) {
   if (!state || state.phase !== 'estates' || !meta || !isAIPlayer(meta, playerId)) return [];
-  const actions = applyStrategicEstateActions(state, meta, playerId);
+  const actions = applyPolicyEstateActions(state, meta, playerId);
   for (const action of actions) {
-    meta?.decisionLog?.push?.(`estates:${playerId}:strategic:${action.payload?.themeId || 'bid'}`);
+    meta?.decisionLog?.push?.(`estates:${playerId}:${meta.players?.[playerId]?.policyId || 'strategic'}:${action.payload?.themeId || 'bid'}`);
   }
   return actions;
 }

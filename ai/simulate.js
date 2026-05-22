@@ -16,6 +16,8 @@ const DEFAULT_OPTIONS = {
   seed: 1,
   maxSteps: 500,
   samples: 5,
+  historyEnabled: true,
+  policies: null,
 };
 
 function toInt(value, fallback) {
@@ -236,15 +238,25 @@ function rememberSample(stats, game) {
   if (replaceIndex >= 0) stats.samples[replaceIndex] = compactGameSample(game);
 }
 
+function resolveSeatPolicy(options, seatId) {
+  const policies = options.policies;
+  if (!policies) return 'strategic';
+  if (Array.isArray(policies)) return policies[seatId % policies.length] || 'strategic';
+  return policies;
+}
+
 function createAllAiGame(options, seed) {
   const state = createGameState({
     playerCount: options.playerCount,
     deckSize: options.deckSize,
     seed,
-    historyEnabled: true,
+    historyEnabled: options.historyEnabled !== false,
   });
   setDealParticipantIds(state, state.players.map((player) => player.id));
-  const meta = createAIMeta(state, { humanPlayerIds: [] });
+  const aiPlayers = Object.fromEntries(
+    state.players.map((player) => [player.id, { policy: resolveSeatPolicy(options, player.id) }]),
+  );
+  const meta = createAIMeta(state, { humanPlayerIds: [], aiPlayers });
   const context = {};
   return { state, meta, context };
 }
@@ -292,6 +304,13 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
     phase: state.phase,
     rounds: state.round,
     fall: state.gameOver?.type === 'fall',
+    policyIds: Object.fromEntries(Object.entries(meta.players || {}).map(([playerId, entry]) => [playerId, entry.policyId || 'strategic'])),
+    finalScores: final.scores.map((entry) => ({
+      playerId: entry.playerId,
+      points: entry.points,
+      gold: entry.gold,
+      projectedIncome: entry.projectedIncome,
+    })),
     winnerIds: final.winners.map((entry) => entry.playerId),
     topScore: final.topScore,
     stats: localStats,
@@ -335,6 +354,8 @@ export function simulateGames(rawOptions = {}) {
     seed: toInt(rawOptions.seed, DEFAULT_OPTIONS.seed),
     maxSteps: Math.max(20, toInt(rawOptions.maxSteps, DEFAULT_OPTIONS.maxSteps)),
     samples: Math.max(0, toInt(rawOptions.samples, DEFAULT_OPTIONS.samples)),
+    historyEnabled: rawOptions.historyEnabled !== false,
+    policies: rawOptions.policies || null,
   };
   const stats = emptyStats(options);
   for (let gameIndex = 0; gameIndex < options.games; gameIndex += 1) {
@@ -436,6 +457,10 @@ function parseArgs(argv) {
       options.json = true;
       continue;
     }
+    if (key === 'no-history') {
+      options.historyEnabled = false;
+      continue;
+    }
     const value = argv[index + 1];
     index += 1;
     if (key === 'games') options.games = toInt(value, DEFAULT_OPTIONS.games);
@@ -444,6 +469,7 @@ function parseArgs(argv) {
     else if (key === 'seed') options.seed = toInt(value, DEFAULT_OPTIONS.seed);
     else if (key === 'samples') options.samples = toInt(value, DEFAULT_OPTIONS.samples);
     else if (key === 'max-steps') options.maxSteps = toInt(value, DEFAULT_OPTIONS.maxSteps);
+    else if (key === 'policies') options.policies = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
   }
   return options;
 }
@@ -460,6 +486,10 @@ function formatReport(result) {
     'Diagnostics:',
     ...result.diagnostics.map((entry) => `- ${entry}`),
   ];
+  if (result.options.policies) {
+    const policies = Array.isArray(result.options.policies) ? result.options.policies.join(', ') : result.options.policies;
+    lines.splice(1, 0, `Policies: ${policies}`);
+  }
   if (result.samples.length) {
     lines.push('Samples:');
     for (const sample of result.samples) {
