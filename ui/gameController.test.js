@@ -59,6 +59,8 @@ test('title redistribution panel is its own phase panel', () => {
 
   assert.match(container.innerHTML, /Redistribute Major Titles/);
   assert.match(container.innerHTML, /data-title-assignment="DOM_EAST"/);
+  assert.match(container.innerHTML, /data-title-assignment="DOM_EAST" value=""/);
+  assert.match(container.innerHTML, /data-action="confirm-title-redistribution" disabled/);
   assert.match(container.innerHTML, /Confirm Titles/);
 });
 
@@ -213,6 +215,24 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.match(container.innerHTML, /capital locked/);
   assert.match(container.innerHTML, /Mercenaries/);
   assert.match(container.innerHTML, /Lock Deployment/);
+});
+
+test('fresh deployment panel requires explicit funding, destination, and claimant', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.players[state.basileusId].gold = 1;
+  state.currentTroops = {
+    BASILEUS: { normal: 2, capitalLocked: 0 },
+  };
+  const container = makePanelContainer();
+
+  renderOrdersPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /army-card unresolved/);
+  assert.match(container.innerHTML, /data-funded-readout="BASILEUS"[^>]*>Pick</);
+  assert.doesNotMatch(container.innerHTML, /class="candidate-row selected/);
+  assert.match(container.innerHTML, /Finish Deployment/);
+  assert.match(container.innerHTML, /data-action="lock-orders" disabled/);
 });
 
 test('deployment panel surfaces deal-forced coup support before lock-in', () => {

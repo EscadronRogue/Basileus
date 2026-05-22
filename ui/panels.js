@@ -14,7 +14,7 @@ import {
   isCourtPowerExhausted,
   isCourtPowerUsed,
   getMinimumLandBid,
-  suggestMajorTitleAssignments,
+  validateMajorTitleAssignments,
 } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
 import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey, getBishopThemes } from '../engine/state.js';
@@ -284,9 +284,19 @@ function renderArmyOfficeBadge(state, officeKey) {
 export function renderTitleRedistributionPanel(container, state, playerId, callbacks = {}, options = {}) {
   const isBasileus = playerId === state.basileusId;
   const draft = getDraftBucket(options.uiState, state, 'title-redist', playerId);
-  const initial = options.assignments || suggestMajorTitleAssignments(state, state.basileusId);
+  const initial = options.assignments || {};
   if (!draft.assignments) draft.assignments = { ...initial };
+  const titleKeys = Object.keys(MAJOR_TITLES);
   const eligible = state.players.filter((player) => player.id !== state.basileusId);
+  const hasAssignment = (titleKey) => {
+    const value = draft.assignments[titleKey];
+    return value != null && value !== '' && Number.isInteger(Number(value));
+  };
+  const complete = titleKeys.every(hasAssignment);
+  const validation = complete
+    ? validateMajorTitleAssignments(state, state.basileusId, draft.assignments)
+    : { ok: false, reason: 'Assign every major office before confirming.' };
+  const canConfirm = isBasileus && validation.ok;
   const rerender = () => renderTitleRedistributionPanel(container, state, playerId, callbacks, options);
 
   container.innerHTML = `
@@ -295,8 +305,8 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
       <p class="section-hint">${isBasileus ? 'Assign each major office to an eligible player before Court opens.' : 'Waiting for the Basileus to assign the major titles.'}</p>
       <div class="title-redist-stack">
         ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => {
-          const assigned = Number(draft.assignments[titleKey]);
-          const assignedPlayer = Number.isFinite(assigned) ? getPlayer(state, assigned) : null;
+          const assigned = hasAssignment(titleKey) ? Number(draft.assignments[titleKey]) : null;
+          const assignedPlayer = Number.isInteger(assigned) ? getPlayer(state, assigned) : null;
           return `
             <section class="title-redist-row">
               <header class="title-redist-row-head">
@@ -314,15 +324,15 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
           `;
         }).join('')}
       </div>
-      <p class="form-error" data-role="title-reassignment-error"></p>
+      <p class="form-error" data-role="title-reassignment-error">${complete && !validation.ok ? escapeHtml(validation.reason || '') : ''}</p>
       <div class="panel-actions">
-        <button type="button" class="btn-primary" data-action="confirm-title-redistribution" ${isBasileus ? '' : 'disabled'}>Confirm Titles</button>
+        <button type="button" class="btn-primary" data-action="confirm-title-redistribution" ${canConfirm ? '' : 'disabled'}>Confirm Titles</button>
       </div>
     </section>
   `;
 
   if (isBasileus) {
-    Object.keys(MAJOR_TITLES).forEach((titleKey) => {
+    titleKeys.forEach((titleKey) => {
       const scope = container.querySelector(`.title-redist-grid-${titleKey}`);
       if (!scope) return;
       scope.querySelectorAll('[data-title-redist-pick]').forEach((btn) => {
@@ -1114,13 +1124,35 @@ function getArmyMaxTroops(state, officeKey) {
 
 function ensureDeploymentDraft(state, draft, armyKeys) {
   for (const officeKey of armyKeys) {
-    if (!draft.armies[officeKey]) {
-      draft.armies[officeKey] = {
-        funded: getArmyMaxTroops(state, officeKey),
-        destination: 'frontier',
-      };
-    }
+    if (!draft.armies[officeKey]) draft.armies[officeKey] = {};
   }
+}
+
+function isDeploymentDestination(value) {
+  return value === 'frontier' || value === 'capital';
+}
+
+function normalizedFunded(value, max) {
+  if (value == null || value === '') return null;
+  if (!Number.isInteger(Number(value))) return null;
+  return Math.max(0, Math.min(max, Number(value)));
+}
+
+function getDeploymentReadiness(state, draft, armyKeys) {
+  const missing = [];
+  for (const officeKey of armyKeys) {
+    const max = getArmyMaxTroops(state, officeKey);
+    if (max <= 0) continue;
+    const order = draft.armies?.[officeKey] || {};
+    if (normalizedFunded(order.funded, max) == null) missing.push(`${officeKey}:funding`);
+    if (!isDeploymentDestination(order.destination)) missing.push(`${officeKey}:destination`);
+  }
+  const mercenaryCount = Math.max(0, Number(draft.mercenaries?.count) || 0);
+  if (mercenaryCount > 0 && !isDeploymentDestination(draft.mercenaries?.destination)) {
+    missing.push('mercenaries:destination');
+  }
+  if (draft.candidate == null || draft.candidate === '' || !Number.isInteger(Number(draft.candidate))) missing.push('candidate');
+  return { ready: missing.length === 0, missing };
 }
 
 function getActiveOrderLocks(options = {}) {
@@ -1147,10 +1179,10 @@ function getDraftArmyBreakdown(state, draft, armyKeys) {
     const pool = readTroopEntry(state.currentTroops?.[officeKey]);
     const totalTroops = pool.normal + pool.capitalLocked;
     const order = draft.armies?.[officeKey] || {};
-    const funded = Math.max(0, Math.min(totalTroops, Number(order.funded) || 0));
+    const funded = normalizedFunded(order.funded, totalTroops) ?? 0;
     const fundedLocked = Math.min(pool.capitalLocked, funded);
     const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
-    const destination = order.destination === 'capital' ? 'capital' : 'frontier';
+    const destination = isDeploymentDestination(order.destination) ? order.destination : null;
 
     capitalTroops += fundedLocked + (destination === 'capital' ? fundedNormal : 0);
     frontierTroops += destination === 'frontier' ? fundedNormal : 0;
@@ -1159,7 +1191,7 @@ function getDraftArmyBreakdown(state, draft, armyKeys) {
 
   const mercenaryCount = Math.max(0, Number(draft.mercenaries?.count) || 0);
   if (draft.mercenaries?.destination === 'capital') capitalTroops += mercenaryCount;
-  else frontierTroops += mercenaryCount;
+  else if (draft.mercenaries?.destination === 'frontier') frontierTroops += mercenaryCount;
 
   return { capitalTroops, frontierTroops, unfundedTroops };
 }
@@ -1211,8 +1243,10 @@ function renderOrderLockNotice(state, orderLocks) {
 
 function renderDeploymentPreview(state, draft, armyKeys) {
   const breakdown = getDraftArmyBreakdown(state, draft, armyKeys);
-  const candidate = getPlayer(state, Number(draft.candidate));
-  const candidateLabel = escapeHtml(playerDisplayLabel(candidate));
+  const candidate = draft.candidate != null && draft.candidate !== '' && Number.isInteger(Number(draft.candidate))
+    ? getPlayer(state, Number(draft.candidate))
+    : null;
+  const candidateLabel = candidate ? escapeHtml(playerDisplayLabel(candidate)) : 'Pick claimant';
   return `
     <div class="deployment-preview" data-deployment-preview>
       <div class="deployment-preview-row">
@@ -1228,7 +1262,9 @@ function renderDeploymentPreview(state, draft, armyKeys) {
         <span class="deployment-preview-value">${formatGoldHtml(breakdown.unfundedTroops, { signed: true, tone: 'income' })}</span>
       </div>
       <p class="deployment-preview-note">
-        ${breakdown.capitalTroops > 0
+        ${!candidate
+          ? 'Pick a claimant before locking deployment.'
+          : breakdown.capitalTroops > 0
           ? 'Only funded Capital troops and Capital mercenaries count in the coup.'
           : 'No troops are backing this claimant yet. Move funded troops or mercenaries to Capital to make them count in the coup.'}
       </p>
@@ -1240,8 +1276,8 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   if (!container || !state) return;
   const draft = getDraftBucket(options.uiState, state, 'deployment', playerId);
   if (!draft.armies) draft.armies = {};
-  if (!draft.mercenaries) draft.mercenaries = { count: 0, destination: 'frontier' };
-  if (draft.candidate == null) draft.candidate = state.basileusId;
+  if (!draft.mercenaries) draft.mercenaries = { count: 0, destination: null };
+  if (!Object.prototype.hasOwnProperty.call(draft.mercenaries, 'destination')) draft.mercenaries.destination = null;
   const alreadyLocked = state.allOrders?.[playerId] != null;
   const armyKeys = getPlayerArmyKeys(state, playerId);
   const player = getPlayer(state, playerId);
@@ -1250,6 +1286,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   const orderLocks = getActiveOrderLocks(options);
   applyOrderLocksToDraft(state, draft, orderLocks);
   const totals = getDeploymentTotals(state, draft, armyKeys, reserve);
+  const readiness = getDeploymentReadiness(state, draft, armyKeys);
   const candidateLockedId = orderLocks?.ok && orderLocks.candidateId != null ? Number(orderLocks.candidateId) : null;
   const lockedDestinations = orderLocks?.ok ? (orderLocks.committedOfficeKeys || {}) : {};
   const deploymentPreview = renderDeploymentPreview(state, draft, armyKeys);
@@ -1257,7 +1294,9 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
 
   const candidateRows = state.players.map((candidate) => {
     const isCurrent = candidate.id === state.basileusId;
-    const isSelected = Number(draft.candidate) === candidate.id;
+    const isSelected = draft.candidate != null
+      && draft.candidate !== ''
+      && Number(draft.candidate) === candidate.id;
     const isLockedCandidate = candidateLockedId === candidate.id;
     const isDisabled = candidateLockedId != null && !isLockedCandidate;
     const tag = isLockedCandidate ? 'Deal lock' : (isSelected ? 'Your pick' : (isCurrent ? 'Current' : 'Claimant'));
@@ -1295,11 +1334,15 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
             const entry = readTroopEntry(state.currentTroops?.[officeKey]);
             const max = getArmyMaxTroops(state, officeKey);
             const current = draft.armies[officeKey];
-            const idleGold = Math.max(0, max - (Number(current.funded) || 0));
+            const currentFunded = normalizedFunded(current.funded, max);
+            const sliderValue = currentFunded ?? 0;
+            const idleGold = currentFunded == null ? null : Math.max(0, max - currentFunded);
             const lockedDestination = lockedDestinations[officeKey] || null;
             const lockedLabel = lockedDestination === 'capital' ? 'Capital' : lockedDestination === 'frontier' ? 'Frontier' : null;
+            const needsFunding = currentFunded == null;
+            const needsDestination = !isDeploymentDestination(current.destination);
             return `
-              <article class="army-card" data-army-card="${officeKey}">
+              <article class="army-card${needsFunding || needsDestination ? ' unresolved' : ''}" data-army-card="${officeKey}">
                 <header class="army-card-head">
                   <span class="army-card-title">${renderArmyOfficeBadge(state, officeKey)}</span>
                   <span class="army-card-count">${formatTroopsHtml(max, { label: 'Troops' })}</span>
@@ -1308,10 +1351,10 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
                 ${lockedLabel ? `<p class="army-card-sub order-locked-sub">Deal lock: must deploy to ${lockedLabel}.</p>` : ''}
                 <label class="army-card-slider">
                   <span class="army-slider-label">Fund</span>
-                  <input type="range" min="0" max="${max}" value="${current.funded}" data-army-funded="${officeKey}" ${lockedDestination ? 'disabled' : ''}>
+                  <input type="range" min="0" max="${max}" value="${sliderValue}" data-army-funded="${officeKey}" ${lockedDestination ? 'disabled' : ''}>
                   <span class="army-slider-readout">
-                    <span class="army-slider-num" data-funded-readout="${officeKey}">${current.funded}</span>
-                    <span class="army-slider-cost" data-funded-cost="${officeKey}" title="Gold from idle troops">${formatGoldHtml(idleGold, { signed: true, tone: 'income' })}</span>
+                    <span class="army-slider-num${needsFunding ? ' unresolved' : ''}" data-funded-readout="${officeKey}">${needsFunding ? 'Pick' : currentFunded}</span>
+                    <span class="army-slider-cost" data-funded-cost="${officeKey}" title="Gold from idle troops">${idleGold == null ? '<span class="muted">Pick</span>' : formatGoldHtml(idleGold, { signed: true, tone: 'income' })}</span>
                   </span>
                 </label>
                 <div class="segmented-control">
@@ -1336,7 +1379,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
               </span>
             </label>
             <div class="segmented-control">
-              <button type="button" class="${draft.mercenaries.destination !== 'capital' ? 'active' : ''}" data-mercenary-destination="frontier">Frontier</button>
+              <button type="button" class="${draft.mercenaries.destination === 'frontier' ? 'active' : ''}" data-mercenary-destination="frontier">Frontier</button>
               <button type="button" class="${draft.mercenaries.destination === 'capital' ? 'active' : ''}" data-mercenary-destination="capital">Capital</button>
             </div>
           </article>
@@ -1350,7 +1393,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
         </div>
 
         <div class="panel-actions">
-          <button type="button" class="btn-primary" data-action="lock-orders" ${totals.overBudget ? 'disabled' : ''}>${totals.overBudget ? 'Need More Gold' : 'Lock Deployment'}</button>
+          <button type="button" class="btn-primary" data-action="lock-orders" ${totals.overBudget || !readiness.ready ? 'disabled' : ''}>${totals.overBudget ? 'Need More Gold' : readiness.ready ? 'Lock Deployment' : 'Finish Deployment'}</button>
         </div>
       `}
     </section>
@@ -1359,6 +1402,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   const rerender = () => renderOrdersPanel(container, state, playerId, callbacks, options);
   const updateBudgetReadout = () => {
     const nextTotals = getDeploymentTotals(state, draft, armyKeys, reserve);
+    const nextReadiness = getDeploymentReadiness(state, draft, armyKeys);
     const budget = container.querySelector('[data-orders-budget]');
     budget?.classList.toggle('over', nextTotals.overBudget);
     const mercCost = container.querySelector('[data-orders-merc-cost]');
@@ -1367,32 +1411,35 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
     if (reserveEl) reserveEl.innerHTML = formatGoldHtml(reserve + nextTotals.unfundedGold, { signed: false });
     const lockButton = container.querySelector('[data-action="lock-orders"]');
     if (lockButton) {
-      lockButton.disabled = nextTotals.overBudget;
-      lockButton.textContent = nextTotals.overBudget ? 'Need More Gold' : 'Lock Deployment';
+      lockButton.disabled = nextTotals.overBudget || !nextReadiness.ready;
+      lockButton.textContent = nextTotals.overBudget ? 'Need More Gold' : nextReadiness.ready ? 'Lock Deployment' : 'Finish Deployment';
     }
     const preview = container.querySelector('[data-deployment-preview]');
     if (preview) preview.outerHTML = renderDeploymentPreview(state, draft, armyKeys);
   };
 
+  const commitArmyFunding = (input) => {
+    const officeKey = input.dataset.armyFunded;
+    if (!draft.armies[officeKey]) draft.armies[officeKey] = {};
+    const next = Number(input.value) || 0;
+    draft.armies[officeKey].funded = next;
+    const max = getArmyMaxTroops(state, officeKey);
+    const readout = container.querySelector(`[data-funded-readout="${officeKey}"]`);
+    if (readout) readout.textContent = next;
+    const costEl = container.querySelector(`[data-funded-cost="${officeKey}"]`);
+    if (costEl) costEl.innerHTML = formatGoldHtml(Math.max(0, max - next), { signed: true, tone: 'income' });
+    updateBudgetReadout();
+  };
   container.querySelectorAll('[data-army-funded]').forEach((input) => {
-    input.addEventListener('input', () => {
-      const officeKey = input.dataset.armyFunded;
-      if (!draft.armies[officeKey]) draft.armies[officeKey] = { funded: 0, destination: 'frontier' };
-      const next = Number(input.value) || 0;
-      draft.armies[officeKey].funded = next;
-      const max = getArmyMaxTroops(state, officeKey);
-      const readout = container.querySelector(`[data-funded-readout="${officeKey}"]`);
-      if (readout) readout.textContent = next;
-      const costEl = container.querySelector(`[data-funded-cost="${officeKey}"]`);
-      if (costEl) costEl.innerHTML = formatGoldHtml(Math.max(0, max - next), { signed: true, tone: 'income' });
-      updateBudgetReadout();
-    });
+    input.addEventListener('pointerdown', () => commitArmyFunding(input));
+    input.addEventListener('keydown', () => commitArmyFunding(input));
+    input.addEventListener('input', () => commitArmyFunding(input));
     input.addEventListener('change', rerender);
   });
   container.querySelectorAll('[data-army-destination]').forEach((button) => {
     button.addEventListener('click', () => {
       const officeKey = button.dataset.armyDestination;
-      if (!draft.armies[officeKey]) draft.armies[officeKey] = { funded: 0, destination: 'frontier' };
+      if (!draft.armies[officeKey]) draft.armies[officeKey] = {};
       draft.armies[officeKey].destination = button.dataset.destination;
       rerender();
     });
@@ -1422,7 +1469,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
     callbacks.lockOrders?.({
       armies: draft.armies,
       mercenaries: draft.mercenaries,
-      candidate: Number(draft.candidate ?? state.basileusId),
+      candidate: draft.candidate == null ? null : Number(draft.candidate),
     });
   });
 }

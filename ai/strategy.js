@@ -24,6 +24,7 @@ import {
 const COURT_GAIN_FLOOR = 0.35;
 const ESTATE_GAIN_FLOOR = 0.2;
 const MAX_ESTATE_BIDS_PER_AI = 3;
+const SCORE_TIE_EPSILON = 0.001;
 
 export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   ownRecipientBonus: 3,
@@ -76,6 +77,41 @@ function getStrategyWeights(meta, playerId) {
     ...(meta?.strategyWeights || {}),
     ...(meta?.players?.[playerId]?.strategyWeights || {}),
   };
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function tieSeed(state, playerId, salt = '') {
+  const rngState = typeof state?.rng?.getState === 'function' ? state.rng.getState() : 0;
+  return `${state?.round ?? 0}:${state?.phase || ''}:${playerId}:${rngState}:${salt}`;
+}
+
+export function actionTieBreakValue(state, playerId, action, salt = '') {
+  const identity = action?.id || JSON.stringify(action || {});
+  return hashString(`${tieSeed(state, playerId, salt)}:${identity}`) / 0x100000000;
+}
+
+function neutralTieBreakValue(state, playerId, identity, salt = '') {
+  return hashString(`${tieSeed(state, playerId, salt)}:${identity}`) / 0x100000000;
+}
+
+export function compareActionTieBreak(state, playerId, leftAction, rightAction, salt = '') {
+  const left = actionTieBreakValue(state, playerId, leftAction, salt);
+  const right = actionTieBreakValue(state, playerId, rightAction, salt);
+  return (left - right) || String(leftAction?.id || '').localeCompare(String(rightAction?.id || ''));
+}
+
+function compareScoredActions(state, playerId, left, right, salt = '') {
+  const diff = right.score - left.score;
+  if (Math.abs(diff) > SCORE_TIE_EPSILON) return diff;
+  return compareActionTieBreak(state, playerId, left.action, right.action, salt);
 }
 
 function cloneStateForAI(state) {
@@ -330,10 +366,7 @@ function chooseScoredAction(state, playerId, actions, options = {}) {
   const scored = actions
     .map((action) => scoreAppliedAction(state, playerId, action, options))
     .filter(Boolean)
-    .sort((left, right) => (
-      (right.score - left.score)
-      || String(left.action.id).localeCompare(String(right.action.id))
-    ));
+    .sort((left, right) => compareScoredActions(state, playerId, left, right, options.tieSalt || 'scored'));
   return scored[0] || null;
 }
 
@@ -346,10 +379,7 @@ export function chooseStrategicTitleAssignment(state, meta, basileusId = state?.
   const context = { memory };
   return actions
     .map((action) => ({ action, score: scoreTitleAssignment(state, final, basileusId, leaderId, action, weights, context) }))
-    .sort((left, right) => (
-      (right.score - left.score)
-      || String(left.action.id).localeCompare(String(right.action.id))
-    ))[0]?.action || actions[0] || null;
+    .sort((left, right) => compareScoredActions(state, basileusId, left, right, 'title-assignment'))[0]?.action || actions[0] || null;
 }
 
 function estimateTitleYield(state, titleKey) {
@@ -396,10 +426,7 @@ export function chooseStrategicCourtAction(state, meta, playerId) {
   const context = { memory };
   const best = candidates
     .map((action) => ({ action, score: scoreCourtIntent(state, final, playerId, action, leaderId, weights, context) }))
-    .sort((left, right) => (
-      (right.score - left.score)
-      || String(left.action.id).localeCompare(String(right.action.id))
-    ))[0] || null;
+    .sort((left, right) => compareScoredActions(state, playerId, left, right, 'court'))[0] || null;
   if (best && best.score > weights.courtGainFloor) return best.action;
   return confirmation;
 }
@@ -726,11 +753,14 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
     candidates.push({ candidateId, expectedVotes, supporters, score });
   }
 
-  candidates.sort((left, right) => (
-    (right.score - left.score)
-    || (right.expectedVotes - left.expectedVotes)
-    || (left.candidateId - right.candidateId)
-  ));
+  candidates.sort((left, right) => {
+    const scoreDiff = right.score - left.score;
+    if (Math.abs(scoreDiff) > SCORE_TIE_EPSILON) return scoreDiff;
+    const voteDiff = right.expectedVotes - left.expectedVotes;
+    if (Math.abs(voteDiff) > SCORE_TIE_EPSILON) return voteDiff;
+    return neutralTieBreakValue(state, 'coalition', left.candidateId, 'candidate')
+      - neutralTieBreakValue(state, 'coalition', right.candidateId, 'candidate');
+  });
 
   const recommendations = {};
   for (const supporterId of aiPlayerIds) {
@@ -746,11 +776,14 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
           personalScore: (supporter?.willingness || 0) * weights.coalitionWillingness + candidate.score * 0.18,
         };
       })
-      .sort((left, right) => (
-        (right.personalScore - left.personalScore)
-        || (right.expectedVotes - left.expectedVotes)
-        || (left.candidateId - right.candidateId)
-      ))[0] || null;
+      .sort((left, right) => {
+        const personalDiff = right.personalScore - left.personalScore;
+        if (Math.abs(personalDiff) > SCORE_TIE_EPSILON) return personalDiff;
+        const voteDiff = right.expectedVotes - left.expectedVotes;
+        if (Math.abs(voteDiff) > SCORE_TIE_EPSILON) return voteDiff;
+        return neutralTieBreakValue(state, supporterId, left.candidateId, 'supporter-candidate')
+          - neutralTieBreakValue(state, supporterId, right.candidateId, 'supporter-candidate');
+      })[0] || null;
     if (best && best.personalScore > 0.25) {
       recommendations[supporterId] = {
         candidateId: best.candidateId,
@@ -925,10 +958,7 @@ export function chooseStrategicOrderAction(state, meta, playerId, options = {}) 
   };
   return actions
     .map((action) => ({ action, score: scoreDeploymentTactics(state, playerId, action, context) }))
-    .sort((left, right) => (
-      (right.score - left.score)
-      || String(left.action.id).localeCompare(String(right.action.id))
-    ))[0]?.action || null;
+    .sort((left, right) => compareScoredActions(state, playerId, left, right, 'orders'))[0]?.action || null;
 }
 
 export function describeOrderChoice(state, playerId, action) {
@@ -970,10 +1000,7 @@ export function chooseStrategicEstateActions(state, meta, playerId) {
     const weights = getStrategyWeights(meta, playerId);
     const best = actions
       .map((action) => ({ action, score: scoreEstateAction(planningState, final, playerId, action, weights) }))
-      .sort((left, right) => (
-        (right.score - left.score)
-        || String(left.action.id).localeCompare(String(right.action.id))
-      ))[0] || null;
+      .sort((left, right) => compareScoredActions(planningState, playerId, left, right, `estate-${step}`))[0] || null;
     if (!best || best.score <= weights.estateGainFloor) break;
     chosen.push(best.action);
     const result = applyLegalAction(planningState, best.action, null);

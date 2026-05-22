@@ -96,6 +96,36 @@ test('strategic orders use the deployment schema and include decision metadata',
   assert.equal(orders.debug.decision.factors[0].label, 'frontier');
 });
 
+test('deployment submission rejects implicit army, claimant, and mercenary defaults', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.currentTroops = {
+    BASILEUS: { normal: 2, capitalLocked: 0 },
+  };
+
+  const missingArmy = submitHumanOrders(state, 0, {
+    mercenaries: { count: 0, destination: 'frontier' },
+    candidate: 0,
+  });
+  assert.equal(missingArmy.ok, false);
+  assert.match(missingArmy.reason, /funding/);
+
+  const missingCandidate = submitHumanOrders(state, 0, {
+    armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
+    mercenaries: { count: 0, destination: 'frontier' },
+  });
+  assert.equal(missingCandidate.ok, false);
+  assert.match(missingCandidate.reason, /candidate/);
+
+  const missingMercenaryDestination = submitHumanOrders(state, 0, {
+    armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
+    mercenaries: { count: 1 },
+    candidate: 0,
+  });
+  assert.equal(missingMercenaryDestination.ok, false);
+  assert.match(missingMercenaryDestination.reason, /mercenaries/);
+});
+
 test('legal estate actions dispatch through the shared AI action path', () => {
   const state = makeState();
   state.phase = 'estates';

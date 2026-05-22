@@ -1169,7 +1169,9 @@ export function normalizeOrdersWithDealLocks(state, playerId, orders, options = 
     },
     mercenaries: {
       count: Math.max(0, Number(orders.mercenaries?.count) || 0),
-      destination: orders.mercenaries?.destination === 'capital' ? 'capital' : 'frontier',
+      destination: ['capital', 'frontier'].includes(orders.mercenaries?.destination)
+        ? orders.mercenaries.destination
+        : null,
     },
   };
   if (locks.candidateId != null) {

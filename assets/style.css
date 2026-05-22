@@ -4715,6 +4715,10 @@ textarea {
   background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
   box-shadow: var(--shadow-card);
 }
+.army-card.unresolved {
+  border-color: rgba(168,116,32,0.36);
+  background: linear-gradient(180deg, rgba(255,252,242,0.98) 0%, rgba(245,233,200,0.58) 100%);
+}
 .army-card-head {
   display: flex;
   align-items: center;
@@ -4769,6 +4773,12 @@ textarea {
   font-weight: 700;
   color: var(--umber-0);
   font-variant-numeric: tabular-nums;
+}
+.army-slider-num.unresolved {
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--umber-3);
 }
 .army-slider-cost .value,
 .army-slider-cost .icon { color: var(--crimson-1); }

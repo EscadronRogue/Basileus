@@ -8,6 +8,7 @@ import {
 } from './legalActions.js';
 import {
   buildCoupCoalitionContext,
+  compareActionTieBreak,
   chooseStrategicCourtAction,
   chooseStrategicEstateActions,
   chooseStrategicOrderAction,
@@ -150,7 +151,7 @@ function chooseCopycatOrderAction(state, meta, playerId) {
     .map((action) => ({ action, score: scoreCopycatOrder(source, action) }))
     .sort((left, right) => (
       (right.score - left.score)
-      || String(left.action.id).localeCompare(String(right.action.id))
+      || compareActionTieBreak(state, playerId, left.action, right.action, 'copycat')
     ))[0]?.action || null;
 }
 
