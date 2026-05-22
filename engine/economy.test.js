@@ -151,6 +151,7 @@ test('title redistribution opens court before starting income', () => {
 
 test('court actions are role-filtered and appointment-capped per major title', () => {
   const state = makeState();
+  state.themes.SAM.owner = 2;
   enterCourt(state);
 
   const badStrategos = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
@@ -217,6 +218,45 @@ test('court powers may spend both actions on revocations', () => {
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
   assert.equal(appointment.ok, false);
   assert.match(appointment.reason, /already completed its 2 court actions/);
+});
+
+test('basileus court power is revocation-only and allows four revocations', () => {
+  const state = makeState();
+  state.themes.OPS.strategos = 1;
+  state.themes.KAP.strategos = 2;
+  state.themes.CIL.bishop = 2;
+  state.themes.SAM.owner = 3;
+  state.themes.ITA.owner = 1;
+  enterCourt(state);
+
+  const appointment = applyCourtAction(state, 0, { action: 'basileus-appoint', titleType: 'STRATEGOS', appointeeId: 1 });
+  assert.equal(appointment.ok, false);
+  assert.match(appointment.reason, /can no longer appoint minor titles/);
+
+  const bishopRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:CIL:bishop' });
+  assert.equal(bishopRevocation.ok, false);
+  assert.match(bishopRevocation.reason, /Only the Patriarch/);
+  assert.equal(state.themes.CIL.bishop, 2);
+
+  const firstRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:OPS:strategos' });
+  assert.equal(firstRevocation.ok, true);
+  assert.equal(state.themes.OPS.strategos, null);
+
+  const secondRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:KAP:strategos' });
+  assert.equal(secondRevocation.ok, true);
+  assert.equal(state.themes.KAP.strategos, null);
+
+  const thirdRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:SAM' });
+  assert.equal(thirdRevocation.ok, true);
+  assert.equal(state.themes.SAM.owner, null);
+
+  const fourthRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:ITA' });
+  assert.equal(fourthRevocation.ok, true);
+  assert.equal(state.themes.ITA.owner, null);
+  assert.equal(getCourtPowerActionCount(state, 0, 'BASILEUS'), 4);
+  assert.equal(getCourtPowerRevocationCount(state, 0, 'BASILEUS'), 4);
+  assert.equal(isCourtPowerExhausted(state, 0, 'BASILEUS'), true);
+  assert.equal(state.courtActions.playerConfirmed.has(0), true);
 });
 
 test('court powers can pass remaining appointments and revocations without counting either', () => {
@@ -297,23 +337,7 @@ test('same-turn office appointments do not block private estate revocation', () 
   assert.equal(state.themes.OPS.strategos, 3);
 });
 
-test('church land revocation notifies an unseated bishop', () => {
-  const state = makeState();
-  state.themes.OPS.owner = 'church';
-  state.themes.OPS.bishop = 2;
-  enterCourt(state);
-
-  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
-
-  assert.equal(result.ok, true);
-  assert.equal(state.themes.OPS.owner, null);
-  assert.equal(state.themes.OPS.bishop, null);
-  const bishopNotice = buildPrivateNotifications(state, 2).notifications.find((notice) => notice.kind === 'revocation');
-  assert.ok(bishopNotice);
-  assert.match(bishopNotice.body, /unseats .* as bishop/);
-});
-
-test('court no longer allows gifting private land to the church', () => {
+test('court no longer allows gifting private land', () => {
   const state = makeState();
   enterCourt(state);
   state.themes.SAM.owner = 2;

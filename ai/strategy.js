@@ -329,15 +329,6 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
     return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1), weights, context)
       + scoreAppointmentUnlock(state, playerId, targetId, leaderId, weights);
   }
-  if (payloadAction === 'appoint-court') {
-    const unlockValue = scoreAppointmentUnlock(state, playerId, targetId, leaderId, weights);
-    if (targetId === playerId) return 4;
-    const relationship = scoreRelationshipModifier(context.memory, playerId, targetId, weights, 0.7);
-    const investment = scoreFavorInvestment(context.memory, targetId, weights, 1.1);
-    if (targetId === leaderId) return -5 + unlockValue + relationship + investment * 0.25;
-    return -0.5 + unlockValue + relationship + investment;
-  }
-
   if (payloadAction === 'revoke') {
     if (targetId === playerId) return -100;
     let deniedValue = 1.5;

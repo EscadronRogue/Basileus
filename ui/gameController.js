@@ -310,12 +310,6 @@ export class GameController {
         this.ensureHumanFocus();
         this.render();
       },
-      'basileus-appoint': (titleType, appointeeId, themeId) => dispatch({
-        action: 'basileus-appoint', titleType, appointeeId, themeId,
-      }),
-      'appoint-court': (titleType, appointeeId) => dispatch({
-        action: 'appoint-court', titleType, appointeeId,
-      }),
       'appoint-strategos': (titleKey, themeId, appointeeId) => dispatch({
         action: 'appoint-strategos', titleKey, themeId, appointeeId,
       }),

@@ -103,7 +103,7 @@ Render notes:
 
 ## Game Overview
 
-Players are rival noble houses inside the Byzantine Empire. Each round draws an invasion, lets the Basileus confirm the major titles, opens Court where each office may make up to two appointments or revocations in any mix, pays estate and church income, auctions free estates, and resolves simultaneous Deployment. During Deployment, all Strategos troops controlled by one player deploy together as one Strategoi army. After the last played turn, the Basileus redistributes major titles one last time, Court resolves, and a final income phase runs. Win by earning points for each 10% share of gold reserves, profit income, and combined office income (church plus troop income) from that last income phase while surviving the political fallout.
+Players are rival noble houses inside the Byzantine Empire. Each round draws an invasion, lets the Basileus confirm the major titles, opens Court where major offices may make up to two appointments or revocations in any mix while the Basileus may make up to four revocations of strategoi or private estates, pays estate and church income, auctions free estates, and resolves simultaneous Deployment. During Deployment, all Strategos troops controlled by one player deploy together as one Strategoi army. After the last played turn, the Basileus redistributes major titles one last time, Court resolves, and a final income phase runs. Win by earning points for each 10% share of gold reserves, profit income, and combined office income (church plus troop income) from that last income phase while surviving the political fallout.
 
 The full rule set lives in the engine. Read `engine/turnflow.js` and `engine/cascade.js` for the canonical source.
 

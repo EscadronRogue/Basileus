@@ -111,7 +111,6 @@ function openStrategosThemes(state, region) {
   return Object.values(state.themes || {}).filter((theme) => (
     theme.id !== 'CPL'
     && !theme.occupied
-    && theme.owner !== 'church'
     && theme.strategos == null
     && theme.region === region
   ));
@@ -136,13 +135,6 @@ function appendAppointmentActions(actions, state, playerId) {
   const player = getPlayer(state, playerId);
   if (!player) return;
   const appointees = appointmentPlayerIds(state, playerId);
-
-  if (playerId === state.basileusId) {
-    for (const appointeeId of appointees) {
-      if (state.empress == null) pushCourt(actions, state, playerId, { action: 'appoint-court', titleType: 'EMPRESS', appointeeId }, 'appoint empress');
-      if (state.chiefEunuchs == null) pushCourt(actions, state, playerId, { action: 'appoint-court', titleType: 'CHIEF_EUNUCHS', appointeeId }, 'appoint chief eunuchs');
-    }
-  }
 
   for (const titleKey of player.majorTitles || []) {
     if (titleKey === 'PATRIARCH') {
@@ -174,21 +166,18 @@ function appendRevocationActions(actions, state, playerId) {
         : theme.region === MAJOR_TITLES.ADMIRAL.region
           ? 'ADMIRAL'
           : null;
-    if (theme.strategos != null && requiredStrategosTitle && player.majorTitles.includes(requiredStrategosTitle)) {
+    if (theme.strategos != null && (
+      playerId === state.basileusId
+      || (requiredStrategosTitle && player.majorTitles.includes(requiredStrategosTitle))
+    )) {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `minor:${theme.id}:strategos` }, 'revoke strategos');
     }
     if (theme.bishop != null && player.majorTitles.includes('PATRIARCH')) {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `minor:${theme.id}:bishop` }, 'revoke bishop');
     }
-    if (playerId === state.basileusId && theme.owner != null && !theme.occupied && theme.id !== 'CPL') {
+    if (playerId === state.basileusId && Number.isInteger(theme.owner) && !theme.occupied && theme.id !== 'CPL') {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `theme:${theme.id}` }, 'revoke estate');
     }
-  }
-  if (playerId === state.basileusId && state.empress != null) {
-    pushCourt(actions, state, playerId, { action: 'revoke', value: 'court:EMPRESS' }, 'revoke empress');
-  }
-  if (playerId === state.basileusId && state.chiefEunuchs != null) {
-    pushCourt(actions, state, playerId, { action: 'revoke', value: 'court:CHIEF_EUNUCHS' }, 'revoke chief eunuchs');
   }
 }
 
@@ -440,7 +429,7 @@ export function getActionTargetPlayerId(state, action) {
       return titleType === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
     }
     if (kind === 'theme') return state.themes?.[id]?.owner ?? null;
-    if (kind === 'court') return id === 'EMPRESS' ? state.empress : state.chiefEunuchs;
+    if (kind === 'court') return null;
   }
   return null;
 }

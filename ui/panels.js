@@ -3,7 +3,7 @@ import { MAJOR_TITLES } from '../data/titles.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
 import { applyCourtAction } from '../engine/commands.js';
 import {
-  COURT_POWER_ACTION_LIMIT,
+  getCourtPowerActionLimit,
   getCourtPowerActionCount,
   getCourtPowerAppointmentCount,
   getCourtPowerActionKinds,
@@ -131,7 +131,6 @@ function getStrategosTargets(state, playerId, powerKey = null) {
   return Object.values(state.themes || {}).filter((theme) => (
     theme.id !== 'CPL'
     && !theme.occupied
-    && theme.owner !== 'church'
     && theme.strategos == null
     && roles.has(regionTitleFor(theme))
   ));
@@ -150,20 +149,25 @@ function getBishopTargets(state, playerId) {
 function getRevocationTargets(state, playerId, powerKey = null) {
   const roles = new Set(powerKey ? [powerKey] : roleKeysForCourt(state, playerId));
   const targets = [];
+  const seen = new Set();
+  const isBasileusPower = (powerKey == null || powerKey === 'BASILEUS') && playerId === state.basileusId;
+  const pushTarget = (target) => {
+    if (!target?.value || seen.has(target.value)) return;
+    seen.add(target.value);
+    targets.push(target);
+  };
   for (const theme of Object.values(state.themes || {})) {
     if (theme.id === 'CPL') continue;
-    if (theme.strategos != null && roles.has(regionTitleFor(theme))) {
-      targets.push({ value: `minor:${theme.id}:strategos`, label: `Strategos of ${theme.name}` });
+    if (theme.strategos != null && (roles.has(regionTitleFor(theme)) || isBasileusPower)) {
+      pushTarget({ value: `minor:${theme.id}:strategos`, label: `Strategos of ${theme.name}` });
     }
     if (theme.bishop != null && roles.has('PATRIARCH')) {
-      targets.push({ value: `minor:${theme.id}:bishop`, label: `Bishop of ${theme.name}` });
+      pushTarget({ value: `minor:${theme.id}:bishop`, label: `Bishop of ${theme.name}` });
     }
-    if ((powerKey == null || powerKey === 'BASILEUS') && playerId === state.basileusId && theme.owner != null && !theme.occupied) {
-      targets.push({ value: `theme:${theme.id}`, label: `${theme.owner === 'church' ? 'Church land' : 'Estate'} in ${theme.name}` });
+    if (isBasileusPower && Number.isInteger(theme.owner) && !theme.occupied) {
+      pushTarget({ value: `theme:${theme.id}`, label: `Estate in ${theme.name}` });
     }
   }
-  if ((powerKey == null || powerKey === 'BASILEUS') && playerId === state.basileusId && state.empress != null) targets.push({ value: 'court:EMPRESS', label: 'Empress' });
-  if ((powerKey == null || powerKey === 'BASILEUS') && playerId === state.basileusId && state.chiefEunuchs != null) targets.push({ value: 'court:CHIEF_EUNUCHS', label: 'Chief of Eunuchs' });
   return targets;
 }
 
@@ -534,36 +538,9 @@ function renderAppointmentSection({
 function renderCourtAppointments(state, playerId, draft) {
   const strategoi = getStrategosTargets(state, playerId);
   const bishops = getBishopTargets(state, playerId);
-  const courtTargets = playerId === state.basileusId
-    ? [
-      state.empress == null ? { key: 'EMPRESS', kind: 'EMPRESS', label: 'Empress' } : null,
-      state.chiefEunuchs == null ? { key: 'CHIEF_EUNUCHS', kind: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs' } : null,
-    ].filter(Boolean)
-    : [];
-  if (!strategoi.length && !bishops.length && !courtTargets.length) return '';
+  if (!strategoi.length && !bishops.length) return '';
 
   const sections = [];
-
-  // Court titles (Empress / Chief of Eunuchs) — only the Basileus can fill.
-  if (courtTargets.length) {
-    const appoint = draft.appointCourt || {};
-    const target = courtTargets.find((entry) => entry.key === appoint.title) || null;
-    const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
-    const ready = Boolean(target && appointee);
-    const preview = ready
-      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, target.kind, { holderId: appointee.id, label: target.label, compact: true })}`
-      : null;
-    sections.push(renderAppointmentSection({
-      kind: 'court',
-      title: 'Court title',
-      targetPicker: renderTitleChoiceGrid(state, courtTargets, { attr: 'court-title-pick', selectedKey: appoint.title }),
-      playerPicker: renderPlayerChoiceGrid(state, { attr: 'court-player-pick', selectedId: appoint.playerId }),
-      preview,
-      buttonLabel: 'Appoint',
-      buttonAttr: 'appoint-court',
-      disabled: !ready,
-    }));
-  }
 
   // Strategoi (regional governors)
   if (strategoi.length) {
@@ -634,13 +611,8 @@ function renderCourtRevocations(state, playerId, draft) {
       const themeId = target.value.split(':')[1];
       const theme = state.themes[themeId];
       if (theme) {
-        const ownerLabel = theme.owner === 'church' ? 'Church land' : 'Estate';
-        badge = `<span class="muted">${ownerLabel}</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
+        badge = `<span class="muted">Estate</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
       }
-    } else if (target.value === 'court:EMPRESS') {
-      badge = renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true });
-    } else if (target.value === 'court:CHIEF_EUNUCHS') {
-      badge = renderTitleBadge(state, 'CHIEF_EUNUCHS', { holderId: state.chiefEunuchs, compact: true });
     }
     return { ...target, badge };
   });
@@ -666,15 +638,6 @@ function renderCourtRevocations(state, playerId, draft) {
   `;
 }
 
-function getCourtTitleTargets(state, playerId) {
-  return playerId === state.basileusId
-    ? [
-      state.empress == null ? { key: 'EMPRESS', kind: 'EMPRESS', label: 'Empress' } : null,
-      state.chiefEunuchs == null ? { key: 'CHIEF_EUNUCHS', kind: 'CHIEF_EUNUCHS', label: 'Chief of Eunuchs' } : null,
-    ].filter(Boolean)
-    : [];
-}
-
 function getCourtPowerLabel(powerKey) {
   if (powerKey === 'BASILEUS') return 'Basileus';
   return MAJOR_TITLES[powerKey]?.name || powerKey;
@@ -685,7 +648,7 @@ function getAppointmentPayload(powerKey, targetKey, appointeeId) {
   const normalizedAppointeeId = Number(appointeeId);
   if (!Number.isInteger(normalizedAppointeeId)) return null;
   if (powerKey === 'BASILEUS') {
-    return { action: 'appoint-court', titleType: targetKey, appointeeId: normalizedAppointeeId };
+    return null;
   }
   if (powerKey === 'PATRIARCH') {
     return { action: 'appoint-bishop', themeId: targetKey, appointeeId: normalizedAppointeeId };
@@ -734,38 +697,10 @@ function renderCourtPowerBadge(state, playerId, powerKey) {
 
 function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
   if (powerKey === 'BASILEUS') {
-    const courtTargets = getCourtTitleTargets(state, playerId);
-    if (!courtTargets.length) return '';
-    const appoint = draft.appointCourt || {};
-    const target = courtTargets.find((entry) => entry.key === appoint.title) || null;
-    const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
-    const selectedReason = target && appointee
-      ? getAppointmentDisabledReason(state, playerId, powerKey, target.key, appointee.id)
-      : '';
-    const ready = Boolean(target && appointee && !selectedReason);
-    const preview = ready
-      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, target.kind, { holderId: appointee.id, label: target.label, compact: true })}`
-      : selectedReason
-        ? `<span class="muted">Cannot appoint: ${escapeHtml(selectedReason)}</span>`
-        : null;
-    return renderAppointmentSection({
-      kind: 'court',
-      title: 'Appoint',
-      targetPicker: renderTitleChoiceGrid(state, courtTargets, {
-        attr: 'court-title-pick',
-        selectedKey: appoint.title,
-        getDisabledReason: (entry) => getTargetDisabledReason(state, playerId, powerKey, entry.key),
-      }),
-      playerPicker: renderPlayerChoiceGrid(state, {
-        attr: 'court-player-pick',
-        selectedId: appoint.playerId,
-        getDisabledReason: (player) => getAppointeeDisabledReason(state, playerId, powerKey, courtTargets, player.id, target?.key || null),
-      }),
-      preview,
-      buttonLabel: 'Appoint',
-      buttonAttr: 'appoint-court',
-      disabled: !ready,
-    });
+    void state;
+    void playerId;
+    void draft;
+    return '';
   }
 
   if (powerKey === 'PATRIARCH') {
@@ -852,13 +787,8 @@ function decorateRevocationTargets(state, targets) {
       const themeId = target.value.split(':')[1];
       const theme = state.themes[themeId];
       if (theme) {
-        const ownerLabel = theme.owner === 'church' ? 'Church land' : 'Estate';
-        badge = `<span class="muted">${ownerLabel}</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
+        badge = `<span class="muted">Estate</span> ${renderProvinceOwnerMarker(state, theme, { compact: true })} ${renderProvinceBadge(state, theme, { compact: true })}`;
       }
-    } else if (target.value === 'court:EMPRESS') {
-      badge = renderTitleBadge(state, 'EMPRESS', { holderId: state.empress, compact: true });
-    } else if (target.value === 'court:CHIEF_EUNUCHS') {
-      badge = renderTitleBadge(state, 'CHIEF_EUNUCHS', { holderId: state.chiefEunuchs, compact: true });
     }
     return { ...target, badge };
   });
@@ -902,7 +832,7 @@ function renderCourtRevocationsForPower(state, playerId, draft, powerKey) {
 }
 
 function hasCourtAppointmentOptionsForPower(state, playerId, powerKey) {
-  if (powerKey === 'BASILEUS') return getCourtTitleTargets(state, playerId).length > 0;
+  if (powerKey === 'BASILEUS') return false;
   if (powerKey === 'PATRIARCH') return getBishopTargets(state, playerId).length > 0;
   return getStrategosTargets(state, playerId, powerKey).length > 0;
 }
@@ -938,13 +868,14 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const usedSummary = usedKinds.length ? usedKinds.join(', ') : getCourtPowerActionKind(state, playerId, powerKey);
   const appointHtml = renderCourtAppointmentsForPower(state, playerId, draft, powerKey);
   const revokeHtml = renderCourtRevocationsForPower(state, playerId, draft, powerKey);
-  const remainingActions = Math.max(0, COURT_POWER_ACTION_LIMIT - actionCount);
+  const actionLimit = getCourtPowerActionLimit(powerKey);
+  const remainingActions = Math.max(0, actionLimit - actionCount);
   const usedParts = [
     appointmentCount ? courtPowerCountLabel(appointmentCount, 'appointment') : '',
     revocationCount ? courtPowerCountLabel(revocationCount, 'revocation') : '',
   ].filter(Boolean).join(', ');
   const stateText = actionCount
-    ? `${actionCount}/${COURT_POWER_ACTION_LIMIT} actions${usedParts ? ` (${usedParts})` : ''}`
+    ? `${actionCount}/${actionLimit} actions${usedParts ? ` (${usedParts})` : ''}`
     : passed
       ? 'Passed'
       : 'Choose actions';
@@ -952,8 +883,10 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     ? ''
     : actionCount > 0 && !exhausted
     ? `${courtPowerCountLabel(remainingActions, 'action')} remains for this office.`
+    : !exhausted && powerKey === 'BASILEUS'
+      ? `Up to ${actionLimit} revocations for this office this round.`
     : !exhausted
-      ? `Up to ${COURT_POWER_ACTION_LIMIT} appointments or revocations for this office this round.`
+      ? `Up to ${actionLimit} appointments or revocations for this office this round.`
       : '';
   const doneText = passed
     ? `${getCourtPowerLabel(powerKey)} passed${actionCount ? ` after ${courtPowerCountLabel(actionCount, 'action')}` : ' with no action recorded'}.`
@@ -964,7 +897,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     ? `<div class="panel-empty court-power-done">${doneText}</div>`
     : `
         <div class="court-choice-lane">
-          ${appointHtml || '<div class="choice-grid-empty">No appointments available</div>'}
+          ${powerKey === 'BASILEUS' ? '' : appointHtml || '<div class="choice-grid-empty">No appointments available</div>'}
           ${revokeHtml || '<div class="choice-grid-empty">No revocations available</div>'}
         </div>
         <div class="panel-actions court-pass-actions">
@@ -994,7 +927,6 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
 export function renderCourtPanel(container, state, activePlayerId, callbacks = {}, options = {}) {
   if (!container || !state) return;
   const draft = getDraftBucket(options.uiState, state, 'court', activePlayerId);
-  if (!draft.appointCourt) draft.appointCourt = {};
   if (!draft.appointStrategos) draft.appointStrategos = {};
   if (!draft.appointBishop) draft.appointBishop = {};
   if (!draft.revoke) draft.revoke = {};
@@ -1023,19 +955,12 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
       });
     });
   };
-  onPick('[data-court-title-pick]',     'appointCourt',     'title');
-  onPick('[data-court-player-pick]',    'appointCourt',     'playerId',  (v) => Number(v));
   onPick('[data-strategos-theme-pick]', 'appointStrategos', 'themeId');
   onPick('[data-strategos-player-pick]','appointStrategos', 'playerId',  (v) => Number(v));
   onPick('[data-bishop-theme-pick]',    'appointBishop',    'themeId');
   onPick('[data-bishop-player-pick]',   'appointBishop',    'playerId',  (v) => Number(v));
   onPick('[data-revoke-pick]',          'revoke',           'target');
 
-  bindSelectAction(container, '[data-action="appoint-court"]', () => {
-    const { title, playerId } = draft.appointCourt || {};
-    if (!title || playerId == null) return;
-    callbacks['appoint-court']?.(title, playerId);
-  });
   bindSelectAction(container, '[data-action="appoint-strategos"]', () => {
     const { themeId, playerId } = draft.appointStrategos || {};
     if (!themeId || playerId == null) return;

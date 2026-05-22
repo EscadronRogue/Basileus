@@ -526,7 +526,7 @@ function normalizeDealClause(state, actorId, counterpartyId, rawClause = {}) {
     if (theme.owner !== direction.giverId) {
       return fail(`${playerName(state, direction.giverId)} does not currently own ${themeName(state, themeId)}.`);
     }
-    if (theme.owner === 'church' || theme.owner == null) {
+    if (theme.owner == null) {
       return fail('Only private estates can be traded.');
     }
     return {

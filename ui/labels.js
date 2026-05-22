@@ -16,7 +16,6 @@ import { renderIcon, provinceValueEntries } from './icons.js';
 
 const FREE_FILL = '#6a4a8a';
 const CAPITAL_FILL = '#E49B0F';
-const CHURCH_FILL = '#1a1a1a';
 const OCCUPIED_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
 const DARK_OUTLINE_MIX = '#1f1208';
@@ -124,8 +123,7 @@ export function getProvincePaletteStyleAttr(themeOrRegion) {
 export function getProvinceOwnerColor(state, theme) {
   if (!theme) return FREE_FILL;
   if (theme.occupied) return OCCUPIED_FILL;
-  if (theme.owner === 'church') return CHURCH_FILL;
-  if (theme.owner !== null) return getPlayer(state, theme.owner)?.color || '#5a3810';
+  if (Number.isInteger(theme.owner)) return getPlayer(state, theme.owner)?.color || '#5a3810';
   if (theme.id === 'CPL') return CAPITAL_FILL;
   return FREE_FILL;
 }
@@ -136,7 +134,7 @@ export function getProvinceStyleAttr(state, theme) {
 
 function getProvinceOwnerLabel(state, theme) {
   if (!theme || theme.owner == null) return '';
-  if (theme.owner === 'church') return 'Church land';
+  if (!Number.isInteger(theme.owner)) return '';
   const player = getPlayer(state, theme.owner);
   return formatPlayerLabel(player) || `Player ${Number(theme.owner) + 1}`;
 }
@@ -189,7 +187,6 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
     options.compact ? 'compact' : '',
     churchValue > 0 ? 'has-church' : '',
     theme.occupied ? 'occupied' : '',
-    theme.owner === 'church' ? 'church' : '',
   ].filter(Boolean).join(' ');
   // Keep plain-text value codes in the tooltip so screen-readers and text-only
   // summaries still convey the values.
@@ -202,13 +199,12 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
 
 export function renderProvinceOwnerMarker(state, themeOrId, options = {}) {
   const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
-  if (!theme || theme.owner == null) return options.fallback || '';
+  if (!theme || !Number.isInteger(theme.owner)) return options.fallback || '';
   const ownerLabel = getProvinceOwnerLabel(state, theme);
-  const markerLabel = theme.owner === 'church' ? ownerLabel : `Estate owner: ${ownerLabel}`;
+  const markerLabel = `Estate owner: ${ownerLabel}`;
   const classes = [
     'province-owner-marker',
     options.compact ? 'compact' : '',
-    theme.owner === 'church' ? 'church' : '',
   ].filter(Boolean).join(' ');
   return `<span class="${classes}" style="--province-owner-color: ${getProvinceOwnerColor(state, theme)};" title="${markerLabel}" aria-label="${markerLabel}"></span>`;
 }
@@ -224,7 +220,7 @@ export function renderProvinceBadgeList(state, themeIds = []) {
 //
 // Rules (single source of truth):
 //   • Outline color encodes the role's region:
-//       BASILEUS / EMPRESS / CHIEF_EUNUCHS → Constantinople gold
+//       BASILEUS                            → Constantinople gold
 //       PATRIARCH                          → black
 //       DOM_EAST / DOM_WEST / ADMIRAL      → that region's color
 //       STRATEGOS / BISHOP                 → the linked land's region color
@@ -235,8 +231,6 @@ export function renderProvinceBadgeList(state, themeIds = []) {
 
 const TITLE_OUTLINE_COLORS = {
   BASILEUS: REGION_BORDER_COLORS.cpl,
-  EMPRESS: REGION_BORDER_COLORS.cpl,
-  CHIEF_EUNUCHS: REGION_BORDER_COLORS.cpl,
   PATRIARCH: '#000000',
   DOM_EAST: REGION_BORDER_COLORS.east,
   DOM_WEST: REGION_BORDER_COLORS.west,
@@ -245,8 +239,6 @@ const TITLE_OUTLINE_COLORS = {
 
 const TITLE_DEFAULT_LABELS = {
   BASILEUS: 'Basileus',
-  EMPRESS: 'Empress',
-  CHIEF_EUNUCHS: 'Chief of Eunuchs',
   PATRIARCH: 'Patriarch',
   DOM_EAST: 'Domestic of the East',
   DOM_WEST: 'Domestic of the West',
@@ -265,7 +257,6 @@ function getTitleOutlineColor(state, kind, themeId) {
 
 function getTitleBackgroundColor(state, holderId) {
   if (holderId == null) return null;                 // vacant — parchment fill
-  if (holderId === 'church') return CHURCH_FILL;
   return getPlayer(state, holderId)?.color || '#5a3810';
 }
 

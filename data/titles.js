@@ -8,8 +8,6 @@ export const MAJOR_TITLES = {
 };
 
 export const MINOR_TITLE_TYPES = {
-  EMPRESS:       { id: 'EMPRESS',       name: 'Empress',           location: 'cpl', type: 'minor' },
-  CHIEF_EUNUCHS: { id: 'CHIEF_EUNUCHS', name: 'Chief of Eunuchs', location: 'cpl', type: 'minor' },
   STRATEGOS:     { id: 'STRATEGOS',     name: 'Strategos',         location: 'theme', type: 'minor' },
   BISHOP:        { id: 'BISHOP',        name: 'Bishop',            location: 'theme', type: 'minor' },
 };

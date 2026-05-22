@@ -117,9 +117,7 @@ function buildObligationNotifications(state, viewerId, dealView, notifications) 
 
 const REVOCATION_EVENT_TYPES = new Set([
   'revoke_minor_title',
-  'revoke_court_title',
   'revoke_theme',
-  'church_land_revoked',
 ]);
 
 function normalizePlayerId(value) {
@@ -135,9 +133,6 @@ function getRevokedPlayerIds(event) {
     ids.push(...details.revokedPlayerIds.map(normalizePlayerId));
   }
   ids.push(normalizePlayerId(details.revokedPlayerId));
-  if (event.type === 'church_land_revoked') {
-    ids.push(normalizePlayerId(details.formerBishopId));
-  }
   return [...new Set(ids.filter(Number.isInteger))];
 }
 

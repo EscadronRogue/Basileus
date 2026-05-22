@@ -17,7 +17,6 @@ import {
 } from './deals.js';
 import {
   appointBishop,
-  appointCourtTitle,
   appointStrategos,
   autoConfirmFinishedCourtPlayer,
   buyTheme,
@@ -27,8 +26,6 @@ import {
   hasCourtActionUsed,
   markCourtActionUsed,
   passCourtPower,
-  revokeChurchLand,
-  revokeCourtTitle,
   revokeMinorTitle,
   revokeTheme,
   validateMajorTitleAssignments,
@@ -69,29 +66,11 @@ export function applyCourtAction(state, playerId, payload = {}) {
   }
 
   if (action === 'appoint-court') {
-    const appointeeId = Number(payload.appointeeId);
-    const result = appointCourtTitle(state, payload.titleType, appointeeId, playerId);
-    if (!result?.ok) return fail(result?.reason || 'Could not appoint that court title.');
-    autoConfirmFinishedCourtPlayer(state, playerId);
-    return {
-      ok: true,
-      observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId: null, value: 1.1 },
-    };
+    return fail('Court titles have been removed.');
   }
 
   if (action === 'basileus-appoint') {
-    const titleType = payload.titleType;
-    const appointeeId = Number(payload.appointeeId);
-    if (titleType !== 'EMPRESS' && titleType !== 'CHIEF_EUNUCHS') {
-      return fail('The Basileus may only appoint court titles.');
-    }
-    const result = appointCourtTitle(state, titleType, appointeeId, playerId);
-    if (!result?.ok) return fail(result?.reason || 'Could not complete that appointment.');
-    autoConfirmFinishedCourtPlayer(state, playerId);
-    return {
-      ok: true,
-      observation: { type: 'appointment', actorId: playerId, appointeeId, previousHolderId: null, value: 1.1 },
-    };
+    return fail('The Basileus can no longer appoint minor titles.');
   }
 
   if (action === 'appoint-strategos') {
@@ -131,7 +110,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
-      if (parts[2] === 'strategos' && !canPlayerRevokeStrategos(state, playerId, parts[1])) {
+      if (parts[2] === 'strategos' && playerId !== state.basileusId && !canPlayerRevokeStrategos(state, playerId, parts[1])) {
         return fail('Only the regional Domestic or Admiral can revoke this strategos.');
       }
       if (parts[2] === 'bishop' && !canPlayerRevokeBishop(state, playerId)) {
@@ -140,21 +119,14 @@ export function applyCourtAction(state, playerId, payload = {}) {
       const result = revokeMinorTitle(state, parts[1], parts[2], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
     } else if (kind === 'court') {
-      targetPlayerId = parts[1] === 'EMPRESS' ? state.empress : state.chiefEunuchs;
-      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
-        return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
-      }
-      const result = revokeCourtTitle(state, parts[1], playerId);
-      if (!result?.ok) return fail(result?.reason || 'Could not revoke that court title.');
+      return fail('Court titles have been removed.');
     } else if (kind === 'theme') {
       const theme = state.themes[parts[1]];
       targetPlayerId = theme?.owner ?? null;
-      if (targetPlayerId != null && targetPlayerId !== 'church' && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
+      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
-      const result = theme?.owner === 'church'
-        ? revokeChurchLand(state, parts[1], playerId)
-        : revokeTheme(state, parts[1], playerId);
+      const result = revokeTheme(state, parts[1], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that estate.');
     } else {
       return fail('Choose a valid revocation target.');

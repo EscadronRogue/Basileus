@@ -734,17 +734,6 @@ export class MultiplayerController {
       'deal-accept': (payload) => this.send('court_action', { action: 'deal-accept', ...payload }),
       'deal-refuse': (payload) => this.send('court_action', { action: 'deal-refuse', ...payload }),
       'confirm-court': () => this.send('confirm_court'),
-      'basileus-appoint': (titleType, appointeeId, themeId) => this.send('court_action', {
-        action: 'basileus-appoint',
-        titleType,
-        appointeeId,
-        themeId,
-      }),
-      'appoint-court': (titleType, appointeeId) => this.send('court_action', {
-        action: 'appoint-court',
-        titleType,
-        appointeeId,
-      }),
       'appoint-strategos': (titleKey, themeId, appointeeId) => this.send('court_action', {
         action: 'appoint-strategos',
         titleKey,

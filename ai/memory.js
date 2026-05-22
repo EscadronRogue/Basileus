@@ -172,7 +172,7 @@ function handleAppointment(memory, event, weight) {
   const actorId = Number(event.actorId);
   const appointeeId = Number(event.details?.appointeeId);
   if (!Number.isInteger(actorId) || !Number.isInteger(appointeeId)) return;
-  const amount = (event.type === 'appoint_court_title' ? 1.25 : 1) * weight;
+  const amount = weight;
   addPlayer(memory, actorId, 'appointments', amount);
   if (actorId === appointeeId) addPlayer(memory, actorId, 'selfAppointments', amount);
   else {
@@ -403,8 +403,8 @@ export function buildAiMemory(state) {
   const history = Array.isArray(state?.history) ? state.history : [];
   for (const event of history) {
     const weight = decayedWeight(state, event);
-    if (['appoint_strategos', 'appoint_bishop', 'appoint_court_title'].includes(event.type)) handleAppointment(memory, event, weight);
-    else if (['revoke_minor_title', 'revoke_court_title', 'revoke_theme', 'church_land_revoked'].includes(event.type)) handleRevocation(memory, event, weight);
+    if (['appoint_strategos', 'appoint_bishop'].includes(event.type)) handleAppointment(memory, event, weight);
+    else if (['revoke_minor_title', 'revoke_theme'].includes(event.type)) handleRevocation(memory, event, weight);
     else if (event.type === 'title_redistribution') handleTitleRedistribution(memory, event, weight);
     else if (event.type === 'deal_gold_transfer' || event.type === 'deal_estate_transfer') handleDealTransfer(memory, event, weight);
     else if (event.type === 'deal_obligation_failed') handleDealFailure(memory, event, weight);

@@ -62,9 +62,7 @@ function emptyStats(options) {
     court: {
       appointStrategos: 0,
       appointBishop: 0,
-      appointCourt: 0,
       revokeMinor: 0,
-      revokeCourt: 0,
       revokeTheme: 0,
     },
     estates: {
@@ -220,10 +218,8 @@ function collectHistory(stats, state) {
   for (const event of state.history || []) {
     if (event.type === 'appoint_strategos') stats.court.appointStrategos += 1;
     else if (event.type === 'appoint_bishop') stats.court.appointBishop += 1;
-    else if (event.type === 'appoint_court_title') stats.court.appointCourt += 1;
     else if (event.type === 'revoke_minor_title') stats.court.revokeMinor += 1;
-    else if (event.type === 'revoke_court_title') stats.court.revokeCourt += 1;
-    else if (event.type === 'revoke_theme' || event.type === 'church_land_revoked') stats.court.revokeTheme += 1;
+    else if (event.type === 'revoke_theme') stats.court.revokeTheme += 1;
     else if (event.type === 'land_bid') {
       stats.estates.bids += 1;
       stats.estates.goldSpent += Number(event.details?.bid) || 0;
@@ -249,7 +245,7 @@ function collectAppointmentStatsByPlayer(state) {
   const selfLocked = Object.fromEntries((state.players || []).map((player) => [player.id, false]));
 
   for (const event of state.history || []) {
-    if (!['appoint_strategos', 'appoint_bishop', 'appoint_court_title'].includes(event.type)) continue;
+    if (!['appoint_strategos', 'appoint_bishop'].includes(event.type)) continue;
     const appointerId = Number(event.actorId);
     const appointeeId = Number(event.details?.appointeeId);
     if (!Number.isInteger(appointerId) || !Number.isInteger(appointeeId) || !byPlayer[appointerId]) continue;

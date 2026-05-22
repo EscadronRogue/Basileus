@@ -79,7 +79,6 @@ function createThemeState(province) {
     occupied: Boolean(province.startOccupied),
     strategos: null,
     bishop: null,
-    bishopIsDonor: false,
   };
 }
 
@@ -134,9 +133,6 @@ export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEn
     nextBasileusId: basileusIdx,
     players,
     themes,
-
-    empress: null,
-    chiefEunuchs: null,
 
     invasionDeck: deck,
     currentInvasion: null,
@@ -230,10 +226,6 @@ export function getPlayerThemes(state, playerId) {
   return Object.values(state.themes).filter((t) => t.owner === playerId);
 }
 
-export function getChurchThemes(state) {
-  return Object.values(state.themes).filter((t) => t.owner === 'church');
-}
-
 export function getOccupiedThemes(state) {
   return Object.values(state.themes).filter((t) => t.occupied);
 }
@@ -260,8 +252,6 @@ export function getBishopThemes(state, playerId, options = {}) {
 export function getOfficeDisplayName(state, officeKey) {
   if (officeKey === 'BASILEUS') return 'Basileus';
   if (MAJOR_TITLES[officeKey]) return MAJOR_TITLES[officeKey].name;
-  if (officeKey === 'EMPRESS') return 'Empress';
-  if (officeKey === 'CHIEF_EUNUCHS') return 'Chief of Eunuchs';
   if (String(officeKey).startsWith('STRAT_')) {
     const themeId = String(officeKey).replace('STRAT_', '');
     return `Strategos of ${state?.themes?.[themeId]?.name || themeId}`;
@@ -274,8 +264,6 @@ export function getOfficeHolder(state, officeKey) {
   if (officeKey === 'DOM_EAST' || officeKey === 'DOM_WEST' || officeKey === 'ADMIRAL' || officeKey === 'PATRIARCH') {
     return findTitleHolder(state, officeKey);
   }
-  if (officeKey === 'EMPRESS') return state.empress ?? null;
-  if (officeKey === 'CHIEF_EUNUCHS') return state.chiefEunuchs ?? null;
   if (String(officeKey).startsWith('STRAT_')) {
     const themeId = String(officeKey).replace('STRAT_', '');
     return state.themes[themeId]?.strategos ?? null;

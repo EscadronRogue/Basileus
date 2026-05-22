@@ -74,12 +74,18 @@ test('court panel exposes only role-legal appointments and no legacy army buying
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
+  state.themes.OPS.owner = 2;
+  state.themes.KAP.strategos = 1;
 
   const basileusPanel = makePanelContainer();
   renderCourtPanel(basileusPanel, state, state.basileusId, {}, { uiState: createDefaultUiState() });
-  assert.match(basileusPanel.innerHTML, /Empress/);
+  assert.match(basileusPanel.innerHTML, /Basileus/);
   assert.match(basileusPanel.innerHTML, /Choose actions/);
+  assert.match(basileusPanel.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
+  assert.match(basileusPanel.innerHTML, /data-revoke-pick="theme:OPS"/);
   assert.match(basileusPanel.innerHTML, /data-action="pass-court-power"/);
+  assert.doesNotMatch(basileusPanel.innerHTML, /Empress|Chief of Eunuchs/);
+  assert.doesNotMatch(basileusPanel.innerHTML, />Appoint</);
   assert.doesNotMatch(basileusPanel.innerHTML, /End Court/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Skip Action/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Confirm Court/);

@@ -234,13 +234,6 @@ function normalizeIncomeFlow(flow, state) {
   };
 }
 
-function convertBasileusCourtTitleTroop(troops) {
-  const entry = troops.BASILEUS || emptyTroopEntry();
-  entry.normal = Math.max(0, (Number(entry.normal) || 0) - 1);
-  entry.capitalLocked = (Number(entry.capitalLocked) || 0) + 1;
-  troops.BASILEUS = entry;
-}
-
 export function readTroopEntry(entry) {
   if (typeof entry === 'number') {
     return { normal: Math.max(0, Number(entry) || 0), capitalLocked: 0 };
@@ -330,12 +323,7 @@ export function runIncome(state) {
       continue;
     }
 
-    if (theme.owner === 'church') {
-      routeChurchValue(theme, getThemeChurchValue(theme));
-      continue;
-    }
-
-    if (theme.owner != null) {
+    if (Number.isInteger(theme.owner)) {
       const profit = getThemeOwnerIncome(theme);
       const route = flow.routes.profit.estates;
       addFlowSource(flow, route, profit, { themeId: theme.id });
@@ -382,9 +370,6 @@ export function runIncome(state) {
     addFlowOffice(route, 'PATRIARCH', holderId, amount);
     addCategorizedIncome('church', holderId, amount);
   }
-
-  if (state.empress != null) convertBasileusCourtTitleTroop(troops);
-  if (state.chiefEunuchs != null) convertBasileusCourtTitleTroop(troops);
 
   return { income, incomeBreakdown, troops, flow: normalizeIncomeFlow(flow, state) };
 }

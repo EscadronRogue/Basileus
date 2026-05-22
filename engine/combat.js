@@ -88,11 +88,6 @@ export function applyInvasionResult(state, result) {
     theme.occupied = false;
     if (theme.suspendedOwner != null) {
       theme.owner = theme.suspendedOwner;
-      if (theme.owner === 'church') {
-        theme.P = 0;
-        theme.T = 0;
-        theme.C = (Number(theme.origin?.P) || 0) + (Number(theme.origin?.T) || 0) + (Number(theme.origin?.C) || 0);
-      }
       theme.suspendedOwner = null;
     } else {
       theme.owner = null;

@@ -62,6 +62,7 @@ test('browser AI roster defaults to bundled opponents without probing API', asyn
 test('strategic court automation only controls AI players', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  state.themes.SAM.owner = 1;
   state.phase = 'income';
   phaseCourt(state);
 
@@ -186,7 +187,7 @@ test('AI court planner uses another appointment to unlock future self-appointmen
 
   const result = runAICourtAutomation(state, meta, { mode: 'finish' });
   const firstAppointment = state.history.find((event) => (
-    ['appoint_strategos', 'appoint_bishop', 'appoint_court_title'].includes(event.type)
+    ['appoint_strategos', 'appoint_bishop'].includes(event.type)
     && event.actorId === 1
   ));
 
