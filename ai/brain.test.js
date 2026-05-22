@@ -8,6 +8,7 @@ import { createGameState } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
 import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
 import { validateMajorTitleAssignments } from '../engine/actions.js';
+import { handleManualTitleReassignment } from '../engine/runtime.js';
 import {
   buildAIOrders,
   buildSimultaneousAIOrders,
@@ -74,6 +75,24 @@ test('strategic court automation only controls AI players', () => {
   assert.equal(state.courtActions.playerConfirmed.has(1), true);
   assert.equal(state.courtActions.playerConfirmed.has(2), true);
   assert.equal(state.courtActions.playerConfirmed.has(3), true);
+});
+
+test('human basileus title confirmation runs AI court when basileus has no actions', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  state.round = 1;
+  state.phase = 'title_redistribution';
+
+  const result = handleManualTitleReassignment(state, meta, {}, 0, {
+    DOM_EAST: 1,
+    PATRIARCH: 1,
+    DOM_WEST: 2,
+    ADMIRAL: 3,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(state.phase, 'estates');
+  assert.equal(state.courtActions.playerConfirmed.size, state.players.length);
 });
 
 test('strategic orders use the deployment schema and include decision metadata', () => {

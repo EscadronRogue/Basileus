@@ -339,6 +339,13 @@ export function handleManualTitleReassignment(state, aiMeta, context = {}, playe
   const result = applyManualTitleReassignment(state, aiMeta, playerId, assignments);
   if (!result.ok) return result;
   context.pendingAiTitleAssignment = null;
+  if (state.phase === 'court') {
+    writePending(context, processPostHumanAction(state, aiMeta, {
+      observation: null,
+      courtMode: 'finish',
+      pendingAiTitleAssignment: context.pendingAiTitleAssignment,
+    }));
+  }
   return { ok: true, pendingAiTitleAssignment: null };
 }
 
