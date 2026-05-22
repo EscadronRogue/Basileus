@@ -204,6 +204,29 @@ test('deployment panel surfaces deal-forced coup support before lock-in', () => 
   assert.match(container.innerHTML, /data-candidate-pick="1"[\s\S]*disabled/);
 });
 
+test('war resolution shows frontier contributor details', () => {
+  const state = makeState();
+  state.phase = 'resolution';
+  state.lastWarResult = {
+    outcome: 'victory',
+    frontierTroops: 5,
+    invaderStrength: 3,
+    themesLost: [],
+    themesRecovered: [],
+    contributions: [
+      { playerId: 0, playerName: 'Basileus', troops: 3 },
+      { playerId: 2, playerName: 'Defender', troops: 2 },
+    ],
+  };
+  const container = makePanelContainer();
+
+  renderResolutionPanel(container, state);
+
+  assert.match(container.innerHTML, /Frontier contributions/);
+  assert.match(container.innerHTML, /frontier-troops/);
+  assert.doesNotMatch(container.innerHTML, /No frontier troops were committed/);
+});
+
 test('coup resolution shows supporters and zero-capital claimant picks', () => {
   const state = makeState();
   state.phase = 'resolution';

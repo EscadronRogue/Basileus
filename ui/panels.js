@@ -1285,6 +1285,7 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
   const invaderStrength = Math.max(0, Number(war.invaderStrength) || 0);
   const themesLost = Array.isArray(war.themesLost) ? war.themesLost : [];
   const themesRecovered = Array.isArray(war.themesRecovered) ? war.themesRecovered : [];
+  const frontierBreakdown = renderFrontierContributionBreakdown(state, war.contributions);
 
   return `
     <article class="result-card war-result war-${outcome}${empireFell ? ' empire-fell' : ''}">
@@ -1304,6 +1305,7 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
           <span class="war-tug-value">${formatTroopsHtml(invaderStrength)}</span>
         </div>
       </div>
+      ${frontierBreakdown}
       ${themesLost.length ? `
         <div class="war-result-row lost">
           <span class="war-result-row-label">Lost to the invader</span>
@@ -1317,6 +1319,34 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
         </div>
       ` : ''}
     </article>
+  `;
+}
+
+function renderFrontierContributionBreakdown(state, contributions = []) {
+  const rows = (Array.isArray(contributions) ? contributions : [])
+    .map((entry) => ({
+      playerId: Number(entry.playerId),
+      playerName: entry.playerName,
+      troops: Math.max(0, Number(entry.troops) || 0),
+    }))
+    .filter((entry) => entry.troops > 0)
+    .sort((a, b) => (b.troops - a.troops) || (a.playerId - b.playerId));
+
+  return `
+    <div class="vote-breakdown frontier-breakdown">
+      <div class="frontier-breakdown-title">Frontier contributions</div>
+      ${rows.length ? rows.map((row) => {
+        const player = getPlayer(state, row.playerId);
+        return `
+          <div class="vote-row frontier-row">
+            <span class="vote-candidate">
+              ${renderPlayerRoleName(state, player, row.playerName || `Player ${row.playerId + 1}`)}
+            </span>
+            <span class="vote-troops frontier-troops">${formatTroopsHtml(row.troops)}</span>
+          </div>
+        `;
+      }).join('') : '<p class="muted frontier-empty">No frontier troops were committed.</p>'}
+    </div>
   `;
 }
 
