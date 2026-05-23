@@ -533,7 +533,9 @@ function buildDiagnostics(stats, games, resolutions, orders) {
   const averageMargin = stats.wars.marginTotal / Math.max(1, resolutions);
 
   if (fallRate > 0.75) diagnostics.push('Excessive empire-fall rate: AI is letting Constantinople collapse too often.');
-  else if (fallRate < 0.25 && averageMargin > 5) diagnostics.push('Low empire-fall pressure with safe war margins: AI may be too prudent.');
+  else if (fallRate > 0.55) diagnostics.push('High empire-fall pressure: AI may be too fearless; inspect thin war margins, under-funding, or excessive capital coup pressure.');
+  if (fallRate < 0.25 && averageMargin > 5) diagnostics.push('Low empire-fall pressure with safe war margins: AI may be too prudent.');
+  else if (fallRate < 0.45 && averageMargin > 5) diagnostics.push('Below-target empire-fall pressure: AI may be too prudent; inspect surplus defense, heavy funding, or timid coup pressure.');
   if (defeatRate > 0.45) diagnostics.push('Frequent invasion defeats: frontier valuation is probably too low.');
   if (averageMargin > 9) diagnostics.push('High surplus war margins: AI is probably over-defending instead of converting troops into coups or gold.');
   if (selfClaimRate < 0.08) diagnostics.push('Low self-claim rate: AI may be too loyal to incumbents and missing coup windows.');

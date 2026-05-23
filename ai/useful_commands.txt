@@ -67,9 +67,13 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   Default: `0.35`
 
 - `--fall-penalty X`  
-  Objective pressure around empire collapse. The trainer now prefers a fall rate near 50%,
-  with extra penalties for drifting below 25% or above 75%.
-  Default: `130`
+  Objective pressure around empire collapse. The trainer strongly prefers a fall rate near
+  50%. Below 50%, it sanctions prudent patterns such as safe war margins, heavy frontier
+  funding, and low coup pressure; above 50%, it sanctions fearless patterns such as thin
+  war margins, frequent defeats, and excessive capital/coup pressure. The farther the
+  fall rate drifts from 50%, the more those behavior signals matter, with extra guardrail
+  penalties below 25% or above 75%.
+  Default: `220`
 
 - `--opponent-mix robust|beginner`  
   Opponent schedule used during training.

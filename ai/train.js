@@ -53,7 +53,7 @@ const DEFAULT_OPTIONS = {
   seed: null,
   maxSteps: 500,
   mutation: 0.35,
-  fallPenalty: 130,
+  fallPenalty: 220,
   opponentMix: 'robust',
   selfPlayEvery: null,
   championPoolSize: 6,
@@ -70,6 +70,17 @@ const DEFAULT_OPTIONS = {
 const FALL_RATE_TARGET = 0.5;
 const FALL_RATE_LOW_GUARD = 0.25;
 const FALL_RATE_HIGH_GUARD = 0.75;
+
+const TRAINING_BEHAVIOR_BASELINES = Object.freeze({
+  averageWarMargin: 3,
+  invasionDefeatRate: 0.25,
+  frontierTroopsPerOrder: 2.4,
+  capitalTroopsPerOrder: 0.8,
+  idleTroopsPerOrder: 1,
+  fundedTroopsPerOrder: 4,
+  selfClaimRate: 0.14,
+  credibleSelfClaimRate: 0.18,
+});
 
 const TRAINING_OPPONENT_MIXES = Object.freeze({
   beginner: {
@@ -258,28 +269,68 @@ function smoothMarginScore(value, scale = 8) {
   return Math.tanh((Number(value) || 0) / scale);
 }
 
+function metricValue(metrics, key) {
+  const fallback = TRAINING_BEHAVIOR_BASELINES[key] ?? 0;
+  const value = Number(metrics?.[key]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function excessSignal(value, target, scale) {
+  return Math.max(0, (Number(value) - target) / Math.max(0.001, scale));
+}
+
+function shortfallSignal(value, target, scale) {
+  return Math.max(0, (target - Number(value)) / Math.max(0.001, scale));
+}
+
+function cappedSignal(value, cap = 1.5) {
+  return Math.max(-cap, Math.min(cap, Number(value) || 0));
+}
+
+function scorePrudenceBehavior(metrics) {
+  const averageWarMargin = metricValue(metrics, 'averageWarMargin');
+  const invasionDefeatRate = metricValue(metrics, 'invasionDefeatRate');
+  const frontierTroopsPerOrder = metricValue(metrics, 'frontierTroopsPerOrder');
+  const capitalTroopsPerOrder = metricValue(metrics, 'capitalTroopsPerOrder');
+  const idleTroopsPerOrder = metricValue(metrics, 'idleTroopsPerOrder');
+  const fundedTroopsPerOrder = metricValue(metrics, 'fundedTroopsPerOrder');
+  const selfClaimRate = metricValue(metrics, 'selfClaimRate');
+  const credibleSelfClaimRate = metricValue(metrics, 'credibleSelfClaimRate');
+
+  // Positive values mean prudent/cautious behavior; negative values mean fearless/risky behavior.
+  let score = 0;
+  score += cappedSignal(excessSignal(averageWarMargin, 4.5, 5) - shortfallSignal(averageWarMargin, 1, 5)) * 1.4;
+  score += cappedSignal(shortfallSignal(invasionDefeatRate, 0.18, 0.2) - excessSignal(invasionDefeatRate, 0.38, 0.25)) * 0.9;
+  score += cappedSignal(excessSignal(frontierTroopsPerOrder, 3.2, 2.6) - shortfallSignal(frontierTroopsPerOrder, 1.2, 2)) * 0.9;
+  score += cappedSignal(excessSignal(fundedTroopsPerOrder, 4.8, 2.5) - shortfallSignal(fundedTroopsPerOrder, 3.1, 2.2)) * 0.8;
+  score += cappedSignal(shortfallSignal(capitalTroopsPerOrder, 0.45, 1.2) - excessSignal(capitalTroopsPerOrder, 1.4, 1.6)) * 0.8;
+  score += cappedSignal(shortfallSignal(idleTroopsPerOrder, 0.35, 1.2) - excessSignal(idleTroopsPerOrder, 2.2, 2)) * 0.45;
+  score += cappedSignal(shortfallSignal(selfClaimRate, 0.1, 0.12) - excessSignal(selfClaimRate, 0.28, 0.2)) * 0.8;
+  score += cappedSignal(shortfallSignal(credibleSelfClaimRate, 0.1, 0.1) - excessSignal(credibleSelfClaimRate, 0.28, 0.18)) * 0.7;
+  return cappedSignal(score, 6);
+}
+
 export function scoreAggregateTrainingShape(metrics, options) {
   const fallRate = Number(metrics.fallRate) || 0;
   const selfClaimRate = Number(metrics.selfClaimRate) || 0;
   const credibleSelfClaimRate = Number(metrics.credibleSelfClaimRate) || 0;
-  const averageWarMargin = Number(metrics.averageWarMargin) || 0;
-  const fundedTroopsPerOrder = Number(metrics.fundedTroopsPerOrder) || 0;
   const fallPenalty = Math.max(0, Number(options.fallPenalty) || 0);
 
   let adjustment = 0;
+  const fallMiss = FALL_RATE_TARGET - fallRate;
   const fallTargetGap = Math.abs(fallRate - FALL_RATE_TARGET);
   const lowFallGap = Math.max(0, FALL_RATE_LOW_GUARD - fallRate);
   const highFallGap = Math.max(0, fallRate - FALL_RATE_HIGH_GUARD);
-  adjustment -= fallTargetGap * fallPenalty * 0.9;
-  adjustment -= lowFallGap * fallPenalty * 2.4;
+  const prudenceBehavior = scorePrudenceBehavior(metrics);
+  adjustment -= fallTargetGap * fallPenalty * 2.4;
+  adjustment -= fallMiss * prudenceBehavior * fallPenalty * 1.05;
+  adjustment -= lowFallGap * fallPenalty * 3.2;
   adjustment -= highFallGap * fallPenalty * 4.5;
   adjustment -= lowFallGap * lowFallGap * fallPenalty * 2;
   adjustment -= highFallGap * highFallGap * fallPenalty * 2;
 
   adjustment += scoreBand(credibleSelfClaimRate, 0.12, 0.25, 48, 220, 80);
-  adjustment -= Math.max(0, 0.14 - selfClaimRate) * 90;
-  adjustment -= Math.max(0, averageWarMargin - 5) * 3.2;
-  adjustment -= Math.max(0, fundedTroopsPerOrder - 4.8) * 7.5;
+  adjustment -= Math.max(0, 0.14 - selfClaimRate) * 90 * Math.max(0, fallMiss * 2);
   return adjustment;
 }
 
@@ -464,7 +515,9 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
   const selfClaimWinRate = selfClaimWins / Math.max(1, selfClaims);
   const tokenSelfClaimRate = tokenSelfClaims / Math.max(1, selfClaims);
   const averageSelfClaimTroops = selfClaims > 0 ? (Number(playerStats.selfClaimTroops) || 0) / selfClaims : 0;
+  const frontierTroopsPerOrder = (Number(playerStats.frontierTroops) || 0) / orders;
   const capitalTroopsPerOrder = (Number(playerStats.capitalTroops) || 0) / orders;
+  const idleTroopsPerOrder = (Number(playerStats.idleTroops) || 0) / orders;
   const fundedTroopsPerOrder = (Number(playerStats.fundedTroops) || 0) / orders;
   const appointmentStats = game.appointmentStatsByPlayer?.[candidateSeat] || {};
   const appointmentUnlocks = Number(appointmentStats.unlockAppointments) || 0;
@@ -495,12 +548,16 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
     pointMargin,
     fall: Boolean(game.fall),
     averageWarMargin,
+    invasionDefeatRate: defeatRate,
+    invasionVictoryRate: victoryRate,
     selfClaimRate,
     credibleSelfClaimRate,
     selfClaimWinRate,
     tokenSelfClaimRate,
     averageSelfClaimTroops,
+    frontierTroopsPerOrder,
     capitalTroopsPerOrder,
+    idleTroopsPerOrder,
     fundedTroopsPerOrder,
     appointmentUnlocks,
     unresolvedAppointmentLock,
@@ -521,12 +578,16 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
   let selfAppointments = 0;
   let unresolvedAppointmentLocks = 0;
   let averageWarMargin = 0;
+  let invasionDefeatRate = 0;
+  let invasionVictoryRate = 0;
   let selfClaimRate = 0;
   let credibleSelfClaimRate = 0;
   let selfClaimWinRate = 0;
   let tokenSelfClaimRate = 0;
   let averageSelfClaimTroops = 0;
+  let frontierTroopsPerOrder = 0;
   let capitalTroopsPerOrder = 0;
+  let idleTroopsPerOrder = 0;
   let fundedTroopsPerOrder = 0;
 
   for (let gameIndex = 0; gameIndex < options.games; gameIndex += 1) {
@@ -550,12 +611,16 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     falls += score.fall ? 1 : 0;
     stuck += game.reason === 'stuck' ? 1 : 0;
     averageWarMargin += score.averageWarMargin;
+    invasionDefeatRate += score.invasionDefeatRate;
+    invasionVictoryRate += score.invasionVictoryRate;
     selfClaimRate += score.selfClaimRate;
     credibleSelfClaimRate += score.credibleSelfClaimRate;
     selfClaimWinRate += score.selfClaimWinRate;
     tokenSelfClaimRate += score.tokenSelfClaimRate;
     averageSelfClaimTroops += score.averageSelfClaimTroops;
+    frontierTroopsPerOrder += score.frontierTroopsPerOrder;
     capitalTroopsPerOrder += score.capitalTroopsPerOrder;
+    idleTroopsPerOrder += score.idleTroopsPerOrder;
     fundedTroopsPerOrder += score.fundedTroopsPerOrder;
     appointmentUnlocks += score.appointmentUnlocks;
     selfAppointments += score.selfAppointments;
@@ -571,12 +636,16 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     averagePointMargin: pointMarginTotal / games,
     fallRate: falls / games,
     averageWarMargin: averageWarMargin / games,
+    invasionDefeatRate: invasionDefeatRate / games,
+    invasionVictoryRate: invasionVictoryRate / games,
     selfClaimRate: selfClaimRate / games,
     credibleSelfClaimRate: credibleSelfClaimRate / games,
     selfClaimWinRate: selfClaimWinRate / games,
     tokenSelfClaimRate: tokenSelfClaimRate / games,
     averageSelfClaimTroops: averageSelfClaimTroops / games,
+    frontierTroopsPerOrder: frontierTroopsPerOrder / games,
     capitalTroopsPerOrder: capitalTroopsPerOrder / games,
+    idleTroopsPerOrder: idleTroopsPerOrder / games,
     fundedTroopsPerOrder: fundedTroopsPerOrder / games,
   };
   metrics.objective += scoreAggregateTrainingShape(metrics, options);
@@ -589,12 +658,16 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
     averagePointMargin: round(metrics.averagePointMargin),
     fallRate: round(metrics.fallRate),
     averageWarMargin: round(metrics.averageWarMargin),
+    invasionDefeatRate: round(metrics.invasionDefeatRate),
+    invasionVictoryRate: round(metrics.invasionVictoryRate),
     selfClaimRate: round(metrics.selfClaimRate),
     credibleSelfClaimRate: round(metrics.credibleSelfClaimRate),
     selfClaimWinRate: round(metrics.selfClaimWinRate),
     tokenSelfClaimRate: round(metrics.tokenSelfClaimRate),
     averageSelfClaimTroops: round(metrics.averageSelfClaimTroops),
+    frontierTroopsPerOrder: round(metrics.frontierTroopsPerOrder),
     capitalTroopsPerOrder: round(metrics.capitalTroopsPerOrder),
+    idleTroopsPerOrder: round(metrics.idleTroopsPerOrder),
     fundedTroopsPerOrder: round(metrics.fundedTroopsPerOrder),
     appointmentUnlockRate: round(appointmentUnlocks / Math.max(1, selfAppointments)),
     unresolvedAppointmentLocks: round(unresolvedAppointmentLocks / games),
@@ -655,7 +728,7 @@ function buildSavedOpponent(result, champion, index, existing) {
     metrics: champion.metrics,
     training: {
       trainedAt: new Date().toISOString(),
-      objectiveVersion: 4,
+      objectiveVersion: 6,
       championRank: index + 1,
       generations: result.options.generations,
       population: result.options.population,

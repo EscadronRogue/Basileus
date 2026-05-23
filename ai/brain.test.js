@@ -368,11 +368,13 @@ test('AI training harness evaluates strategy weight profiles', () => {
   assert.equal(typeof result.best.weights.invasionShortfallPenalty, 'number');
   assert.equal(typeof result.best.weights.appointmentUnlockBonus, 'number');
   assert.equal(typeof result.best.metrics.appointmentUnlockRate, 'number');
+  assert.equal(typeof result.best.metrics.frontierTroopsPerOrder, 'number');
+  assert.equal(typeof result.best.metrics.invasionDefeatRate, 'number');
   assert.equal(result.saved, undefined);
 });
 
 test('AI training fall pressure is centered around 50 percent', () => {
-  const options = { fallPenalty: 130 };
+  const options = { fallPenalty: 220 };
   const baseMetrics = {
     selfClaimRate: 0.16,
     credibleSelfClaimRate: 0.16,
@@ -383,8 +385,51 @@ test('AI training fall pressure is centered around 50 percent', () => {
 
   assert.equal(scoreAt(0.5) > scoreAt(0.25), true);
   assert.equal(scoreAt(0.5) > scoreAt(0.75), true);
+  assert.equal(scoreAt(0.5) - scoreAt(0.25) > 100, true);
   assert.equal(scoreAt(0.25) > scoreAt(0.1), true);
   assert.equal(scoreAt(0.75) > scoreAt(0.9), true);
+});
+
+test('AI training fall pressure sanctions directional behavior', () => {
+  const options = { fallPenalty: 220 };
+  const balanced = {
+    averageWarMargin: 3,
+    invasionDefeatRate: 0.25,
+    frontierTroopsPerOrder: 2.4,
+    capitalTroopsPerOrder: 0.8,
+    idleTroopsPerOrder: 1,
+    fundedTroopsPerOrder: 4,
+    selfClaimRate: 0.16,
+    credibleSelfClaimRate: 0.16,
+  };
+  const prudent = {
+    ...balanced,
+    averageWarMargin: 8,
+    invasionDefeatRate: 0.05,
+    frontierTroopsPerOrder: 5,
+    capitalTroopsPerOrder: 0.1,
+    idleTroopsPerOrder: 0.1,
+    fundedTroopsPerOrder: 6,
+    selfClaimRate: 0.12,
+    credibleSelfClaimRate: 0.13,
+  };
+  const fearless = {
+    ...balanced,
+    averageWarMargin: -2,
+    invasionDefeatRate: 0.6,
+    frontierTroopsPerOrder: 0.4,
+    capitalTroopsPerOrder: 2.2,
+    idleTroopsPerOrder: 3,
+    fundedTroopsPerOrder: 2.4,
+    selfClaimRate: 0.32,
+    credibleSelfClaimRate: 0.3,
+  };
+  const score = (fallRate, metrics) => scoreAggregateTrainingShape({ ...metrics, fallRate }, options);
+
+  assert.equal(score(0.3, prudent) < score(0.3, balanced), true);
+  assert.equal(score(0.3, fearless) > score(0.3, balanced), true);
+  assert.equal(score(0.7, fearless) < score(0.7, balanced), true);
+  assert.equal(score(0.7, prudent) > score(0.7, balanced), true);
 });
 
 test('AI training beginner mix includes the built-in curriculum with low noise', () => {
