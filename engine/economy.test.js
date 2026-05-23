@@ -436,8 +436,52 @@ test('private estate revocation preserves seated offices and notifies the estate
 
   const ownerNotices = buildPrivateNotifications(state, 2).notifications;
   assert.equal(ownerNotices.some((notice) => notice.kind === 'revocation' && /private ownership/.test(notice.body)), true);
+  assert.equal(ownerNotices.find((notice) => notice.kind === 'revocation')?.tone, 'negative');
   assert.equal(buildPrivateNotifications(state, 3).notifications.some((notice) => notice.kind === 'revocation'), false);
   assert.equal(buildPrivateNotifications(state, 1).notifications.some((notice) => notice.kind === 'revocation'), false);
+});
+
+test('private notifications cover action prompts and toned chronicle news', () => {
+  const state = makeState();
+  enterCourt(state);
+
+  const courtNotice = buildPrivateNotifications(state, 1).notifications.find((notice) => notice.kind === 'court_action');
+  assert.equal(courtNotice?.urgent, true);
+  assert.equal(courtNotice?.tone, 'neutral');
+  assert.equal(courtNotice?.action, 'open_court');
+
+  const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
+  assert.equal(appointment.ok, true);
+  const appointmentNotice = buildPrivateNotifications(state, 2).notifications.find((notice) => notice.kind === 'appointment');
+  assert.equal(appointmentNotice?.tone, 'positive');
+  assert.match(appointmentNotice?.title || '', /appointed strategos/);
+
+  state.history.push({
+    id: 'history-auction-test',
+    round: state.round,
+    phase: 'deployment',
+    type: 'buy_theme',
+    actorId: 1,
+    summary: `${state.players[1].dynasty} wins Opsikion for 4 gold.`,
+    details: {
+      themeId: 'OPS',
+      themeName: 'Opsikion',
+      cost: 4,
+      bids: [
+        { bidderId: 0, amount: 3 },
+        { bidderId: 1, amount: 4 },
+      ],
+    },
+  });
+  const lostBidNotice = buildPrivateNotifications(state, 0).notifications.find((notice) => notice.kind === 'estate_lost');
+  assert.equal(lostBidNotice?.tone, 'negative');
+
+  state.phase = 'deployment';
+  state.allOrders = {};
+  const deploymentNotice = buildPrivateNotifications(state, 0).notifications.find((notice) => notice.kind === 'deployment_orders');
+  assert.equal(deploymentNotice?.urgent, true);
+  assert.equal(deploymentNotice?.tone, 'neutral');
+  assert.equal(deploymentNotice?.action, 'open_deployment');
 });
 
 test('same-turn office appointments do not block private estate revocation', () => {

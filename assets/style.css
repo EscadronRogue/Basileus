@@ -710,14 +710,31 @@ body::before {
   gap: 10px;
   align-items: start;
   padding: 10px;
-  border: 1px solid rgba(82,63,36,0.14);
+  border: 1px solid rgba(168,116,32,0.20);
+  border-left-width: 4px;
   border-radius: 7px;
   background: rgba(255,253,246,0.72);
 }
 
-.notification-card.urgent {
+.notification-card.tone-neutral {
+  border-left-color: rgba(168,116,32,0.42);
+  background: rgba(255,253,246,0.78);
+}
+
+.notification-card.tone-negative {
   border-color: rgba(146,46,28,0.28);
   background: rgba(255,246,239,0.86);
+  border-left-color: var(--crimson-1);
+}
+
+.notification-card.tone-positive {
+  border-color: rgba(58,107,40,0.26);
+  background: rgba(247,253,239,0.86);
+  border-left-color: var(--win);
+}
+
+.notification-card.urgent {
+  box-shadow: 0 0 0 1px rgba(168,116,32,0.10), var(--shadow-card);
 }
 
 .notification-card.read {
@@ -777,12 +794,25 @@ body::before {
   justify-content: space-between;
   gap: 12px;
   padding: 11px 12px;
-  border: 1px solid rgba(146,46,28,0.28);
+  border: 1px solid rgba(168,116,32,0.24);
+  border-left: 4px solid rgba(168,116,32,0.45);
   border-radius: 7px;
   background: rgba(255,250,238,0.96);
   box-shadow: var(--shadow-card);
   color: var(--umber-1);
   pointer-events: auto;
+}
+
+.notification-toast.tone-negative {
+  border-color: rgba(146,46,28,0.30);
+  border-left-color: var(--crimson-1);
+  background: rgba(255,246,239,0.97);
+}
+
+.notification-toast.tone-positive {
+  border-color: rgba(58,107,40,0.28);
+  border-left-color: var(--win);
+  background: rgba(247,253,239,0.97);
 }
 
 .notification-toast strong,

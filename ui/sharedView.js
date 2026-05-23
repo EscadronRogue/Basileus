@@ -463,7 +463,9 @@ export function renderActionShell(panel, state, uiState) {
 
 function getNotificationActionLabel(action) {
   return {
+    open_court: 'Court',
     open_deals: 'Deals',
+    open_estates: 'Estates',
     open_orders: 'Deployment',
     open_deployment: 'Deployment',
     open_history: 'History',
@@ -472,19 +474,26 @@ function getNotificationActionLabel(action) {
   }[action] || 'Notice';
 }
 
+function getNotificationTone(notification) {
+  return ['negative', 'positive', 'neutral'].includes(notification?.tone)
+    ? notification.tone
+    : 'neutral';
+}
+
 function renderNotificationCard(notification, uiState, scopeKey) {
   const read = isNotificationRead(uiState, scopeKey, notification.id);
+  const tone = getNotificationTone(notification);
   return `
-    <div class="notification-card${notification.urgent ? ' urgent' : ''}${read ? ' read' : ''}"
-      data-notification-id="${notification.id}"
-      data-notification-scope="${scopeKey}">
+    <div class="notification-card tone-${tone}${notification.urgent ? ' urgent' : ''}${read ? ' read' : ''}"
+      data-notification-id="${escapeHtml(notification.id)}"
+      data-notification-scope="${escapeHtml(scopeKey)}">
       <div class="notification-card-main">
-        <div class="notification-title">${notification.title}</div>
-        <div class="notification-body">${notification.body || ''}</div>
+        <div class="notification-title">${escapeHtml(notification.title)}</div>
+        <div class="notification-body">${escapeHtml(notification.body || '')}</div>
       </div>
       <div class="notification-meta">
         <span>${getNotificationActionLabel(notification.action)}</span>
-        ${read ? '' : `<button type="button" class="btn-secondary notification-read-btn" data-notification-scope="${scopeKey}" data-notification-read="${notification.id}">Mark read</button>`}
+        ${read ? '' : `<button type="button" class="btn-secondary notification-read-btn" data-notification-scope="${escapeHtml(scopeKey)}" data-notification-read="${escapeHtml(notification.id)}">Mark read</button>`}
       </div>
     </div>
   `;
@@ -499,15 +508,18 @@ function renderNotificationToasts(notifications, uiState, scopeKey) {
   if (!toasts.length) return '';
   return `
     <div class="notification-toast-rail" aria-live="polite">
-      ${toasts.map((notification) => `
-        <div class="notification-toast" data-notification-id="${notification.id}" data-notification-scope="${scopeKey}">
+      ${toasts.map((notification) => {
+        const tone = getNotificationTone(notification);
+        return `
+        <div class="notification-toast tone-${tone}" data-notification-id="${escapeHtml(notification.id)}" data-notification-scope="${escapeHtml(scopeKey)}">
           <div>
-            <strong>${notification.title}</strong>
-            <span>${notification.body || ''}</span>
+            <strong>${escapeHtml(notification.title)}</strong>
+            <span>${escapeHtml(notification.body || '')}</span>
           </div>
-          <button type="button" aria-label="Dismiss notification" data-notification-scope="${scopeKey}" data-notification-dismiss="${notification.id}">&times;</button>
+          <button type="button" aria-label="Dismiss notification" data-notification-scope="${escapeHtml(scopeKey)}" data-notification-dismiss="${escapeHtml(notification.id)}">&times;</button>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
     </div>
   `;
 }

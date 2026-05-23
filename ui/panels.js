@@ -420,7 +420,7 @@ export function renderHistoryPanel(container, state, options = {}) {
   if (!container || !state) return;
   const isOpen = options.uiState?.panels?.history ?? false;
   container.classList?.toggle?.('panel-collapsed', !isOpen);
-  const history = Array.isArray(state.history) ? state.history.slice(-30).reverse() : [];
+  const history = Array.isArray(state.history) ? state.history.slice().reverse() : [];
   const countLabel = history.length ? `${history.length} entries` : 'Empty';
   container.innerHTML = `
     <div class="history-panel sidebar-panel${isOpen ? '' : ' is-collapsed'}">

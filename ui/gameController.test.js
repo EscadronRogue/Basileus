@@ -9,6 +9,7 @@ import { renderProvinceBadge, formatProvinceValuesText } from './labels.js';
 import {
   renderCourtPanel,
   renderEstatesPanel,
+  renderHistoryPanel,
   renderOrdersPanel,
   renderResolutionPanel,
   renderTitleRedistributionPanel,
@@ -513,6 +514,25 @@ test('default interface opens the action lane and keeps support panels collapsed
   assert.equal(uiState.panels.history, false);
 });
 
+test('history panel renders the full chronicle instead of only recent entries', () => {
+  const state = makeState();
+  const panel = makePanelContainer();
+  const uiState = createDefaultUiState();
+  uiState.panels.history = true;
+  state.history = Array.from({ length: 35 }, (_, index) => ({
+    id: `history-${index + 1}`,
+    round: index + 1,
+    phase: 'court',
+    summary: `Entry ${index + 1}`,
+  }));
+
+  renderHistoryPanel(panel, state, { uiState });
+
+  assert.match(panel.innerHTML, /35 entries/);
+  assert.match(panel.innerHTML, /Entry 1/);
+  assert.match(panel.innerHTML, /Entry 35/);
+});
+
 test('phase render key changes when the active phase or ending changes', () => {
   const state = makeState();
   state.phase = 'court';
@@ -529,20 +549,54 @@ test('notification panel labels deployment actions with updated vocabulary', () 
   const uiState = createDefaultUiState();
   uiState.panels.notifications = true;
   const privateData = {
-    notifications: [{
-      id: 'order-lock:test',
-      kind: 'order_lock',
-      title: 'Deal commitments affect your orders',
-      body: 'deployment lock',
-      urgent: false,
-      action: 'open_deployment',
-    }],
+    notifications: [
+      {
+        id: 'order-lock:test',
+        kind: 'order_lock',
+        title: 'Deal commitments affect your orders',
+        body: 'deployment lock',
+        urgent: false,
+        action: 'open_deployment',
+      },
+      {
+        id: 'gain:test',
+        kind: 'court_action',
+        title: 'Court business awaits',
+        body: 'confirm court',
+        urgent: true,
+        tone: 'neutral',
+        action: 'open_court',
+      },
+      {
+        id: 'loss:test',
+        kind: 'estate_lost',
+        title: 'You lost a bid',
+        body: 'sealed bid lost',
+        urgent: false,
+        tone: 'negative',
+        action: 'open_estates',
+      },
+      {
+        id: 'win:test',
+        kind: 'estate_won',
+        title: 'You won an estate',
+        body: 'sealed bid won',
+        urgent: false,
+        tone: 'positive',
+        action: 'open_history',
+      },
+    ],
   };
 
   renderNotificationsPanel(panel, state, privateData, uiState, 'seat-0');
 
   assert.match(panel.innerHTML, /Private Inbox/);
   assert.match(panel.innerHTML, /Deployment/);
+  assert.match(panel.innerHTML, /Court/);
+  assert.match(panel.innerHTML, /Estates/);
+  assert.match(panel.innerHTML, /tone-neutral/);
+  assert.match(panel.innerHTML, /tone-negative/);
+  assert.match(panel.innerHTML, /tone-positive/);
   assert.doesNotMatch(panel.innerHTML, />Orders</);
 });
 
