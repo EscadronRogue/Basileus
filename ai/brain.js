@@ -182,7 +182,8 @@ export function runAICourtAutomation(state, meta, options = {}) {
 }
 
 export function buildAIOrders(state, meta, playerId, options = {}) {
-  const action = choosePolicyOrderAction(state, meta, playerId, options);
+  const memory = options.memory || getAiMemory(state, meta);
+  const action = choosePolicyOrderAction(state, meta, playerId, { ...options, memory });
   if (!action) throw new Error(`No legal order available for AI player ${playerId}.`);
   const playerMeta = meta?.players?.[playerId];
   return {

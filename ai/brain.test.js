@@ -171,6 +171,55 @@ test('strategic orders use the deployment schema and include decision metadata',
   assert.equal(orders.debug.decision.factors[0].label, 'frontier');
 });
 
+test('AI coup support blocks the two least-liked claimants in 5-player games', () => {
+  const state = createGameState({ playerCount: 5, deckSize: 1, seed: 22, historyEnabled: true });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  for (const player of state.players) player.majorTitles = [];
+  state.players[1].majorTitles = ['DOM_EAST'];
+  state.round = 2;
+  state.phase = 'deployment';
+  state.currentTroops = {
+    DOM_EAST: { normal: 3, capitalLocked: 0 },
+  };
+  state.history.push(
+    { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 3, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
+    { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'revoke_theme', actorId: 4, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
+  );
+  const meta = createAIMeta(state, { humanPlayerIds: [0, 2, 3, 4] });
+
+  const orders = buildAIOrders(state, meta, 1);
+
+  assert.equal(orders.candidateSupport[1], true);
+  assert.equal(orders.candidateSupport[0], true);
+  assert.equal(orders.candidateSupport[2], true);
+  assert.equal(orders.candidateSupport[3], false);
+  assert.equal(orders.candidateSupport[4], false);
+});
+
+test('AI coup support blocks the single least-liked claimant in 3-player games', () => {
+  const state = createGameState({ playerCount: 3, deckSize: 1, seed: 23, historyEnabled: true });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  for (const player of state.players) player.majorTitles = [];
+  state.players[1].majorTitles = ['DOM_EAST'];
+  state.round = 2;
+  state.phase = 'deployment';
+  state.currentTroops = {
+    DOM_EAST: { normal: 3, capitalLocked: 0 },
+  };
+  state.history.push(
+    { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 2, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
+  );
+  const meta = createAIMeta(state, { humanPlayerIds: [0, 2] });
+
+  const orders = buildAIOrders(state, meta, 1);
+
+  assert.equal(orders.candidateSupport[1], true);
+  assert.equal(orders.candidateSupport[0], true);
+  assert.equal(orders.candidateSupport[2], false);
+});
+
 test('deployment submission rejects implicit army and mercenary defaults', () => {
   const state = makeState();
   state.phase = 'deployment';

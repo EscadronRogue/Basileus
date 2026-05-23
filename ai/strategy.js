@@ -956,8 +956,8 @@ function scoreDeploymentTactics(state, playerId, action, context = {}) {
 }
 
 export function chooseStrategicOrderAction(state, meta, playerId, options = {}) {
-  const actions = listLegalOrderActions(state, playerId);
   const memory = options.memory || getAiMemory(state, meta);
+  const actions = listLegalOrderActions(state, playerId, { ...options, memory });
   const coalitionContext = options.coalitionContext || buildCoupCoalitionContext(state, meta, memory);
   const context = {
     leaderId: currentLeaderId(state, playerId),

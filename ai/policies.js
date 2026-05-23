@@ -303,10 +303,10 @@ function scoreCopycatOrder(source, action) {
   return score;
 }
 
-function chooseCopycatOrderAction(state, meta, playerId) {
+function chooseCopycatOrderAction(state, meta, playerId, options = {}) {
   const source = firstSubmittedOrders(state);
   if (!source) return chooseStrategicOrderAction(state, meta, playerId);
-  return listLegalOrderActions(state, playerId)
+  return listLegalOrderActions(state, playerId, options)
     .map((action) => ({ action, score: scoreCopycatOrder(source, action) }))
     .sort((left, right) => (
       (right.score - left.score)
@@ -321,8 +321,8 @@ export function choosePolicyCourtAction(state, meta, playerId) {
 
 export function choosePolicyOrderAction(state, meta, playerId, options = {}) {
   const policyId = getPolicyId(meta, playerId);
-  if (policyId === 'random') return pickAction(state, listLegalOrderActions(state, playerId));
-  if (policyId === 'copycat') return chooseCopycatOrderAction(state, meta, playerId);
+  if (policyId === 'random') return pickAction(state, listLegalOrderActions(state, playerId, options));
+  if (policyId === 'copycat') return chooseCopycatOrderAction(state, meta, playerId, options);
   return chooseStrategicOrderAction(state, meta, playerId, options);
 }
 

@@ -20,6 +20,7 @@ import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { buildDefaultCoupRanking } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { relationshipScore } from './memory.js';
 
 export const AI_DEALS_ENABLED = false;
 const MAX_ORDER_ACTIONS = 520;
@@ -320,20 +321,53 @@ function buildArmyPlans(state, playerId) {
   return uniqueActions(plans.map((armies) => ({ id: actionId('army-plan', armies), armies }))).map((entry) => entry.armies);
 }
 
-export function listLegalOrderActions(state, playerId) {
+function leastLikedSupportBlockCount(state) {
+  const playerCount = state?.players?.length || 0;
+  if (playerCount <= 2) return 0;
+  return playerCount === 3 ? 1 : 2;
+}
+
+export function buildAiCoupSupport(state, playerId, memory = null) {
+  const support = Object.fromEntries((state?.players || []).map((player) => [player.id, true]));
+  const blockCount = leastLikedSupportBlockCount(state);
+  if (blockCount <= 0) return support;
+
+  const leastLiked = (state.players || [])
+    .map((player) => player.id)
+    .filter((candidateId) => candidateId !== playerId)
+    .map((candidateId) => ({
+      candidateId,
+      score: relationshipScore(memory, playerId, candidateId),
+    }))
+    .sort((left, right) => (
+      (left.score - right.score)
+      || (left.candidateId - right.candidateId)
+    ))
+    .slice(0, blockCount);
+
+  for (const { candidateId } of leastLiked) support[candidateId] = false;
+  return support;
+}
+
+export function listLegalOrderActions(state, playerId, options = {}) {
   if (!state || state.phase !== 'deployment') return [];
   if (state.allOrders?.[playerId]) return [];
   const actions = [];
   const seen = new Set();
   const armyPlans = buildArmyPlans(state, playerId);
+  const candidateSupport = buildAiCoupSupport(state, playerId, options.memory || null);
+  const candidateIds = state.players
+    .map((player) => player.id)
+    .filter((candidateId) => candidateId !== playerId && candidateSupport[candidateId] !== false);
   for (const armies of armyPlans) {
     for (const mercenaries of buildMercenaryPlans(state, playerId, armies)) {
-      for (const candidate of state.players.map((player) => player.id)) {
+      for (const candidate of candidateIds) {
         const orders = {
           armies,
           mercenaries,
           candidate,
           ranking: buildDefaultCoupRanking(state, playerId, candidate),
+          candidateSupport,
         };
         const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
         if (!normalized.ok) continue;
@@ -401,11 +435,10 @@ export function listLegalTitleAssignments(state, basileusId = state?.basileusId)
 }
 
 export function listLegalActions(state, playerId, options = {}) {
-  void options;
   if (state?.phase === 'title_redistribution') return listLegalTitleAssignments(state, playerId);
   if (state?.phase === 'court') return listLegalCourtActions(state, playerId);
   if (state?.phase === 'estates') return listLegalEstateActions(state, playerId);
-  if (state?.phase === 'deployment') return listLegalOrderActions(state, playerId);
+  if (state?.phase === 'deployment') return listLegalOrderActions(state, playerId, options);
   if (state?.phase === 'resolution') return listLegalRewardActions(state, playerId);
   return [];
 }
