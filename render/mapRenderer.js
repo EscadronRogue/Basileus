@@ -24,6 +24,7 @@ const SVG_ASSET_PATHS = Object.freeze({
 });
 
 const INVASION_ORIGIN_IDS = Object.freeze({
+  emirate: 'AGH',
   aghlabids: 'AGH',
   kievan_rus: 'RUS',
   normans: 'NOR',

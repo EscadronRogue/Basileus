@@ -4,7 +4,7 @@ import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
-import { getOfficeDisplayName, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
+import { canTriggerInvasion, getOfficeDisplayName, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
 import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
@@ -26,6 +26,48 @@ function shouldRedistributeMajorTitles(state) {
 function phasePreCourt(state) {
   if (shouldRedistributeMajorTitles(state)) phaseTitleRedistribution(state);
   else phaseCourt(state);
+}
+
+function drawNextTriggerableInvasion(state) {
+  const skipped = [];
+  while (state.invasionDeck.length > 0) {
+    const invasion = state.invasionDeck.shift();
+    if (canTriggerInvasion(state, invasion)) return { invasion, skipped };
+    skipped.push(invasion);
+  }
+  return { invasion: null, skipped };
+}
+
+function recordSkippedInvasions(state, skipped, attemptedRound) {
+  if (!skipped.length) return;
+  if (!Array.isArray(state.skippedInvasions)) state.skippedInvasions = [];
+  state.skippedInvasions.push(...skipped.map((invasion) => ({
+    id: invasion.id,
+    name: invasion.name,
+    round: attemptedRound,
+    reason: 'no_imperial_targets',
+  })));
+  state.maxRounds = Math.max(attemptedRound - 1, state.maxRounds - skipped.length);
+
+  for (const invasion of skipped) {
+    state.log.push({
+      type: 'invasion_skipped',
+      invader: invasion.name,
+      reason: 'no_imperial_targets',
+      round: attemptedRound,
+    });
+    recordHistoryEvent(state, {
+      category: 'system',
+      type: 'invasion_skipped',
+      round: attemptedRound,
+      summary: `${invasion.name} does not launch because none of its target provinces remain under imperial control.`,
+      details: {
+        invader: invasion.name,
+        reason: 'no_imperial_targets',
+        route: Array.isArray(invasion.route) ? invasion.route.slice() : [],
+      },
+    });
+  }
 }
 
 function isStartingIncome(state) {
@@ -116,14 +158,20 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
 }
 
 export function phaseInvasion(state) {
-  state.round += 1;
   state.phase = 'invasion';
-  if (state.invasionDeck.length === 0) {
+  const attemptedRound = state.round + 1;
+  const { invasion, skipped } = drawNextTriggerableInvasion(state);
+  recordSkippedInvasions(state, skipped, attemptedRound);
+
+  if (!invasion) {
+    state.maxRounds = Math.min(state.maxRounds, state.round);
     state.finalScoringPending = true;
     phasePreCourt(state);
     return;
   }
-  state.currentInvasion = state.invasionDeck.shift();
+
+  state.round = attemptedRound;
+  state.currentInvasion = invasion;
   state.invasionStrength = 0;
   state.log.push({
     type: 'invasion',

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 
 import { INVASIONS } from '../data/invasions.js';
 import { PROVINCES } from '../data/provinces.js';
-import { createGameState, getPlayer, getOfficeHolder, pickInvasionTemplate } from './state.js';
+import { createGameState, createInvasionInstance, getPlayer, getOfficeHolder, pickInvasionTemplate } from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
-import { applyInvasionResult } from './combat.js';
+import { applyInvasionResult, resolveInvasion } from './combat.js';
 import { buildPrivateNotifications } from './notifications.js';
 import {
   buildBalanceOfPower,
@@ -25,6 +25,7 @@ import {
   advanceToNextInteractivePhase,
   completeCourtPhase,
   confirmTitleRedistribution,
+  phaseInvasion,
   phaseCleanup,
   phaseCourt,
   phaseResolution,
@@ -60,7 +61,7 @@ test('invasion draw weights match the configured probability table', () => {
   const weights = Object.fromEntries(INVASIONS.map(({ id, drawWeight }) => [id, drawWeight]));
 
   assert.deepEqual(weights, {
-    aghlabids: 5,
+    emirate: 5,
     kievan_rus: 5,
     normans: 5,
     venetians: 5,
@@ -74,8 +75,8 @@ test('invasion draw weights match the configured probability table', () => {
 });
 
 test('invasion picker uses weighted probability bands', () => {
-  assert.equal(pickInvasionTemplate(() => 0).id, 'aghlabids');
-  assert.equal(pickInvasionTemplate(() => 0.049999).id, 'aghlabids');
+  assert.equal(pickInvasionTemplate(() => 0).id, 'emirate');
+  assert.equal(pickInvasionTemplate(() => 0.049999).id, 'emirate');
   assert.equal(pickInvasionTemplate(() => 0.05).id, 'kievan_rus');
   assert.equal(pickInvasionTemplate(() => 0.1).id, 'normans');
   assert.equal(pickInvasionTemplate(() => 0.15).id, 'venetians');
@@ -87,6 +88,29 @@ test('invasion picker uses weighted probability bands', () => {
   assert.equal(pickInvasionTemplate(() => 0.749999).id, 'turks');
   assert.equal(pickInvasionTemplate(() => 0.75).id, 'caliphate');
   assert.equal(pickInvasionTemplate(() => 0.999999).id, 'caliphate');
+});
+
+test('invasion templates carry individual strength bounds', () => {
+  const bounds = Object.fromEntries(INVASIONS.map(({ id, strengthBounds }) => [id, strengthBounds]));
+  const emirateTemplate = INVASIONS.find((entry) => entry.id === 'emirate');
+
+  assert.deepEqual(bounds.turks, [20, 40]);
+  assert.deepEqual(bounds.caliphate, [20, 40]);
+  for (const [id, range] of Object.entries(bounds)) {
+    if (id === 'turks' || id === 'caliphate') continue;
+    assert.deepEqual(range, [10, 30], id);
+  }
+  assert.equal(emirateTemplate.name, 'Emirate');
+  assert.equal(emirateTemplate.objective, 'provinces');
+  assert.equal(emirateTemplate.requiresImperialTarget, true);
+  assert.deepEqual(emirateTemplate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP', 'ANT']);
+
+  const turks = createInvasionInstance(INVASIONS.find((entry) => entry.id === 'turks'), () => 0);
+  const emirate = createInvasionInstance(emirateTemplate, () => 0);
+  assert.deepEqual(turks.baseStrength, [20, 40]);
+  assert.deepEqual(turks.strength, [20, 25]);
+  assert.deepEqual(emirate.baseStrength, [10, 30]);
+  assert.deepEqual(emirate.strength, [10, 15]);
 });
 
 test('score shares award one point per 10 percent threshold', () => {
@@ -637,6 +661,59 @@ test('invasion loss suspends owners and reconquest restores them while bishops r
   assert.equal(state.themes.SAM.owner, 2);
   assert.equal(state.themes.SAM.suspendedOwner, null);
   assert.equal(state.themes.SAM.bishop, 1);
+});
+
+test('limited invasions take their target route without toppling the empire', () => {
+  const state = makeState();
+  state.themes.ITA.owner = 2;
+
+  const result = resolveInvasion(state, 0, 6, {
+    id: 'limited_test',
+    name: 'Limited Test',
+    objective: 'provinces',
+    requiresImperialTarget: true,
+    route: ['ITA'],
+  });
+  applyInvasionResult(state, result);
+
+  assert.equal(result.reachedCPL, false);
+  assert.deepEqual(result.themesLost, ['ITA']);
+  assert.equal(state.themes.ITA.occupied, true);
+  assert.equal(state.themes.ITA.suspendedOwner, 2);
+  assert.equal(state.gameOver, null);
+});
+
+test('limited invasions are skipped when every target province is already lost', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'cleanup';
+  state.maxRounds = 3;
+  state.invasionDeck = [
+    {
+      id: 'limited_test',
+      name: 'Limited Test',
+      objective: 'provinces',
+      requiresImperialTarget: true,
+      route: ['SAM'],
+      strength: [1, 1],
+    },
+    {
+      id: 'capital_test',
+      name: 'Capital Test',
+      objective: 'capital',
+      route: ['OPS', 'CPL'],
+      strength: [1, 1],
+    },
+  ];
+  state.themes.SAM.occupied = true;
+
+  phaseInvasion(state);
+
+  assert.equal(state.round, 2);
+  assert.equal(state.maxRounds, 2);
+  assert.equal(state.currentInvasion.id, 'capital_test');
+  assert.equal(state.log.some((entry) => entry.type === 'invasion_skipped' && entry.invader === 'Limited Test'), true);
+  assert.equal(state.history.some((entry) => entry.type === 'invasion_skipped'), true);
 });
 
 test('reconquered provinces auto-restore and reward the top defender next round', () => {

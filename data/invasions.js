@@ -1,17 +1,25 @@
-// data/invasions.js — Invasion routes and shared invasion strength bounds.
+// data/invasions.js — Invasion routes and per-invasion strength bounds.
 
-export const INVASION_STRENGTH_RANGE = [15, 35];
+export const INVASION_STRENGTH_RANGE = [10, 30];
 export const INVASION_ESTIMATE_INTERVAL = 5;
+
+export const INVASION_OBJECTIVES = Object.freeze({
+  CAPITAL: 'capital',
+  PROVINCES: 'provinces',
+});
 
 export const INVASIONS = [
   {
-    id: 'aghlabids',
-    name: 'Aghlabids',
+    id: 'emirate',
+    name: 'Emirate',
     drawWeight: 5,
     origin: 'SIC',           // first theme on the route
     originLabel: 'North Africa',
     originMarker: 'AGH',
-    route: ['SIC', 'ITA', 'KEP', 'KRE', 'AEG', 'CPL'],
+    objective: INVASION_OBJECTIVES.PROVINCES,
+    requiresImperialTarget: true,
+    strengthBounds: [10, 30],
+    route: ['SIC', 'ITA', 'KEP', 'KRE', 'KYP', 'ANT'],
     color: '#c9a84c'
   },
   {
@@ -21,6 +29,8 @@ export const INVASIONS = [
     origin: 'CHE',
     originLabel: 'Steppes',
     originMarker: 'RUS',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [10, 30],
     route: ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#5b8fb9'
   },
@@ -31,6 +41,8 @@ export const INVASIONS = [
     origin: 'ITA',
     originLabel: 'Southern Italy',
     originMarker: 'NOR',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [10, 30],
     route: ['ITA', 'SIC', 'DYR', 'KEP', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#a35638'
   },
@@ -41,6 +53,8 @@ export const INVASIONS = [
     origin: 'KEP',
     originLabel: 'Venice',
     originMarker: 'VEN',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [10, 30],
     route: ['KEP', 'KRE', 'AEG', 'CPL'],
     color: '#2e6b5e'
   },
@@ -51,6 +65,8 @@ export const INVASIONS = [
     origin: 'BUL',
     originLabel: 'Bulgaria',
     originMarker: 'BBUULL',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [10, 30],
     route: ['PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#7a4988'
   },
@@ -61,6 +77,8 @@ export const INVASIONS = [
     origin: 'SRB',
     originLabel: 'Serbia',
     originMarker: 'SSRRBB',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [10, 30],
     route: ['SRB', 'DAL', 'BUL', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#b04050'
   },
@@ -71,6 +89,8 @@ export const INVASIONS = [
     origin: 'SIM',
     originLabel: 'Pannonia',
     originMarker: 'HON',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [10, 30],
     route: ['SIM', 'CRO', 'SRB', 'DAL', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#3d7a3d'
   },
@@ -81,6 +101,8 @@ export const INVASIONS = [
     origin: 'VAS',
     originLabel: 'Persia',
     originMarker: 'TUR',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [20, 40],
     route: ['VAS', 'MES', 'KOL', 'SEB', 'CHA', 'KAP', 'ANA', 'BOU', 'ARM', 'PAP', 'OPT', 'CPL'],
     color: '#cc3333'
   },
@@ -91,6 +113,8 @@ export const INVASIONS = [
     origin: 'ANT',
     originLabel: 'Levant',
     originMarker: 'CAL',
+    objective: INVASION_OBJECTIVES.CAPITAL,
+    strengthBounds: [20, 40],
     route: ['ANT', 'CIL', 'KYP', 'SEL', 'KIB', 'AEG', 'SAM', 'THK', 'OPS', 'OPT', 'CPL'],
     color: '#d4a017'
   }

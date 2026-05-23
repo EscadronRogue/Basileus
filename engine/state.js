@@ -1,6 +1,13 @@
 // engine/state.js - game state initialization and shared lookups.
 import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
-import { INVASIONS, DYNASTIES, DYNASTY_COLORS, INVASION_STRENGTH_RANGE, INVASION_ESTIMATE_INTERVAL } from '../data/invasions.js';
+import {
+  INVASIONS,
+  DYNASTIES,
+  DYNASTY_COLORS,
+  INVASION_OBJECTIVES,
+  INVASION_STRENGTH_RANGE,
+  INVASION_ESTIMATE_INTERVAL,
+} from '../data/invasions.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 export function makeRng(seed = Date.now(), initialState = null) {
@@ -57,26 +64,59 @@ const PLAYER_ROLE_TEXT_STYLES = {
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAST', 'DOM_WEST'];
 
-function createInvasionStrengthRange(rng) {
-  const [baseMin, baseMax] = INVASION_STRENGTH_RANGE;
+function normalizeInvasionStrengthBounds(bounds) {
+  const [rawMin, rawMax] = Array.isArray(bounds) ? bounds : INVASION_STRENGTH_RANGE;
+  const baseMin = Math.max(1, Math.floor(Number(rawMin) || INVASION_STRENGTH_RANGE[0]));
+  const baseMax = Math.max(baseMin, Math.floor(Number(rawMax) || INVASION_STRENGTH_RANGE[1]));
   if (baseMax - baseMin < INVASION_ESTIMATE_INTERVAL) {
     throw new Error('Invasion strength bounds must be at least as wide as the estimate interval.');
   }
+  return [baseMin, baseMax];
+}
+
+export function getInvasionStrengthBounds(invasion) {
+  return normalizeInvasionStrengthBounds(invasion?.strengthBounds || invasion?.baseStrength);
+}
+
+function createInvasionStrengthRange(bounds, rng) {
+  const [baseMin, baseMax] = normalizeInvasionStrengthBounds(bounds);
   const estimateMin = rollRange(baseMin, baseMax - INVASION_ESTIMATE_INTERVAL, rng);
   return [estimateMin, estimateMin + INVASION_ESTIMATE_INTERVAL];
 }
 
-function createInvasionInstance(template, rng) {
+export function createInvasionInstance(template, rng) {
+  const strengthBounds = getInvasionStrengthBounds(template);
   return {
     ...template,
     route: Array.isArray(template.route) ? template.route.slice() : [],
     originMarker: template.originMarker || null,
-    strength: createInvasionStrengthRange(rng),
+    strengthBounds,
+    baseStrength: strengthBounds.slice(),
+    strength: createInvasionStrengthRange(strengthBounds, rng),
   };
 }
 
+function invasionRequiresImperialTarget(invasion) {
+  return Boolean(invasion?.requiresImperialTarget)
+    || invasion?.objective === INVASION_OBJECTIVES.PROVINCES;
+}
+
+export function hasImperialTargetOnInvasionRoute(state, invasion) {
+  const route = Array.isArray(invasion?.route) ? invasion.route : [];
+  return route.some((themeId) => {
+    if (themeId === 'CPL') return false;
+    const theme = state?.themes?.[themeId];
+    return Boolean(theme && !theme.occupied);
+  });
+}
+
+export function canTriggerInvasion(state, invasion) {
+  if (!invasionRequiresImperialTarget(invasion)) return true;
+  return hasImperialTargetOnInvasionRoute(state, invasion);
+}
+
 export function rollInvasionStrength(invasion, rng) {
-  const [estimateMin, estimateMax] = invasion?.strength || [1, 1];
+  const [estimateMin, estimateMax] = invasion?.strength || invasion?.baseStrength || [1, 1];
   return rollRange(estimateMin, estimateMax, rng);
 }
 
