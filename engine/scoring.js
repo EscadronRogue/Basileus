@@ -113,13 +113,15 @@ export function buildFinalScores(state) {
   ));
 
   const topScore = scores[0]?.points ?? 0;
-  const winners = scores.filter((score) => score.points === topScore);
+  const empireFallen = state?.gameOver?.type === 'fall';
+  const winners = empireFallen ? [] : scores.filter((score) => score.points === topScore);
   return {
     scores,
     winners,
     topScore,
     topWealth: topScore,
     income,
+    empireFallen,
   };
 }
 
@@ -168,5 +170,6 @@ export function buildBalanceOfPower(state) {
     winners: final.winners,
     topScore: final.topScore,
     income: final.income,
+    empireFallen: final.empireFallen,
   };
 }

@@ -541,6 +541,22 @@ test('final scoring uses last income phase shares without free citizens', () => 
   assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 20);
 });
 
+test('empire fall keeps final rankings but awards no winner', () => {
+  const state = makeState();
+  state.players[0].gold = 20;
+  state.players[1].gold = 5;
+  state.gameOver = { type: 'fall', message: 'Constantinople has fallen. The Empire is no more. No dynasty wins.' };
+
+  const final = buildFinalScores(state);
+  const balance = buildBalanceOfPower(state);
+
+  assert.equal(final.empireFallen, true);
+  assert.equal(final.scores[0].playerId, 0);
+  assert.equal(final.winners.length, 0);
+  assert.equal(balance.empireFallen, true);
+  assert.equal(balance.winners.length, 0);
+});
+
 test('final title redistribution triggers one last court and income phase before scoring', () => {
   const state = makeState();
   state.round = state.maxRounds;

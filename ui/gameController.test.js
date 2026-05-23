@@ -428,7 +428,7 @@ test('coup resolution shows supporters and zero-capital claimant picks', () => {
 test('empire fall still shows the resolution result before final reckoning', () => {
   const state = makeState();
   state.phase = 'resolution';
-  state.gameOver = { type: 'fall', message: 'Constantinople has fallen. The Empire is no more.' };
+  state.gameOver = { type: 'fall', message: 'Constantinople has fallen. The Empire is no more. No dynasty wins.' };
   state.currentInvasion = { name: 'Ottomans' };
   state.lastWarResult = {
     outcome: 'defeat',
@@ -530,6 +530,7 @@ test('final scoring view uses income-share scoring categories', () => {
   const html = renderScoringHtml(state);
 
   assert.match(html, /Final Reckoning/);
+  assert.match(html, /Highest point total wins/);
   assert.match(html, /Each 10% share/);
   assert.match(html, /Profit income/);
   assert.match(html, /Office income/);
@@ -538,4 +539,23 @@ test('final scoring view uses income-share scoring categories', () => {
   assert.doesNotMatch(html, /Church income/);
   assert.doesNotMatch(html, /Troop income/);
   assert.doesNotMatch(html, new RegExp('T' + 'ax'));
+});
+
+test('fallen empire final scoring makes the collective loss explicit', () => {
+  const state = makeState();
+  state.players[0].gold = 50;
+  state.players[1].gold = 5;
+  state.gameOver = { type: 'fall', message: 'Constantinople has fallen. The Empire is no more. No dynasty wins.' };
+
+  const html = renderScoringHtml(state);
+
+  assert.match(html, /Final Reckoning/);
+  assert.match(html, /Empire Fallen/);
+  assert.match(html, /Everyone lost/);
+  assert.match(html, /strongest position/);
+  assert.match(html, /score-row\s+top-score/);
+  assert.match(html, /Top score, rank/);
+  assert.doesNotMatch(html, /Highest point total wins/);
+  assert.doesNotMatch(html, /Winner, rank/);
+  assert.doesNotMatch(html, /score-row\s+winner/);
 });

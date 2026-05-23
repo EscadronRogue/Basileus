@@ -96,6 +96,6 @@ export function applyInvasionResult(state, result) {
   }
 
   if (result.reachedCPL) {
-    state.gameOver = { type: 'fall', message: 'Constantinople has fallen. The Empire is no more.' };
+    state.gameOver = { type: 'fall', message: 'Constantinople has fallen. The Empire is no more. No dynasty wins.' };
   }
 }

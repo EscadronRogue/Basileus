@@ -1893,6 +1893,31 @@ body::before {
   box-shadow: 0 4px 18px rgba(168,116,32,0.14);
 }
 
+.scoring-fall-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3);
+  border: 1px solid rgba(160,48,48,0.32);
+  border-radius: var(--r-md);
+  background: rgba(160,48,48,0.08);
+  color: var(--umber-1);
+  line-height: 1.4;
+}
+
+.scoring-fall-summary strong {
+  font-family: var(--font-display);
+  color: var(--crimson-1);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.score-row.top-score {
+  border-color: rgba(160,48,48,0.32);
+  background: rgba(160,48,48,0.045);
+}
+
 .score-rank {
   font-family: var(--font-display);
   font-size: 18px;
@@ -1902,6 +1927,7 @@ body::before {
 }
 
 .score-row.winner .score-rank { color: var(--gold-1); }
+.score-row.top-score .score-rank { color: var(--crimson-1); }
 
 .score-dynasty {
   font-family: var(--font-display);

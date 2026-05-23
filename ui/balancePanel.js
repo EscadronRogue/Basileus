@@ -1101,12 +1101,13 @@ function clampValue(value, min, max) {
 
 function renderRanking(state, scores) {
   if (!scores.length) return '';
+  const empireFallen = state?.gameOver?.type === 'fall';
   const topScore = scores[0]?.points ?? 0;
   return `
     <ol class="balance-ranking">
       ${scores.map((entry) => {
         const rank = scores.filter((other) => other.points > entry.points).length + 1;
-        const isLeader = entry.points === topScore && topScore > 0;
+        const isLeader = !empireFallen && entry.points === topScore && topScore > 0;
         const tied = scores.filter((other) => other.points === entry.points).length > 1;
         const breakdown = renderRankingBreakdown(entry);
         return `
@@ -1126,6 +1127,7 @@ function renderRanking(state, scores) {
 function getHeaderBadge(state, scores, winners) {
   if (!scores.length) return '';
   const top = scores[0];
+  if (state?.gameOver?.type === 'fall') return 'No winner';
   if (!top || top.points === 0) return 'Tied';
   if (winners.length > 1) return `${winners.length}-way tie - ${top.points} pt${top.points === 1 ? '' : 's'}`;
   return `${renderPlayerRoleName(state, top.player)} <span class="balance-header-points">${top.points} pt${top.points === 1 ? '' : 's'}</span>`;
@@ -1144,6 +1146,9 @@ export function renderBalancePanel(container, state, options = {}) {
   const balance = buildBalanceOfPower(state);
   const incomeFlow = balance.income?.flow || buildIncomeFlow(state);
   const badge = getHeaderBadge(state, balance.scores, balance.winners);
+  const hint = balance.empireFallen
+    ? 'The empire has fallen. These standings rank the final balance of power, but no dynasty wins.'
+    : 'Gold reserves score alongside Profit and combined Office income shares.';
 
   container.classList.toggle('panel-collapsed', !isOpen);
   container.innerHTML = `
@@ -1157,7 +1162,7 @@ export function renderBalancePanel(container, state, options = {}) {
       </button>
       ${isOpen ? `
         <div class="sidebar-panel-body">
-          <p class="section-hint">Gold reserves score alongside Profit and combined Office income shares.</p>
+          <p class="section-hint">${hint}</p>
           ${renderRanking(state, balance.scores)}
           <div class="balance-pie-grid">
             ${balance.categories.map((category) => renderPieCard(state, category)).join('')}

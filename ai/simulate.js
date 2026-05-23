@@ -271,7 +271,7 @@ function collectAppointmentStatsByPlayer(state) {
 
 function collectScoring(stats, state) {
   const final = buildFinalScores(state);
-  const winner = final.winners[0] || final.scores[0] || null;
+  const winner = final.winners[0] || null;
   if (winner) {
     stats.scoring.winnerScore += winner.points;
     addCount(stats.winners, String(winner.playerId));
@@ -583,7 +583,8 @@ function formatReport(result) {
   if (result.samples.length) {
     lines.push('Samples:');
     for (const sample of result.samples) {
-      lines.push(`- seed ${sample.seed}, rounds ${sample.rounds}, phase ${sample.phase}, top ${sample.topScore}, winners ${sample.winnerIds.join(',')}, ${sample.reason}${sample.fall ? ', fall' : ''}`);
+      const winnerText = sample.winnerIds.length ? sample.winnerIds.join(',') : 'none';
+      lines.push(`- seed ${sample.seed}, rounds ${sample.rounds}, phase ${sample.phase}, top ${sample.topScore}, winners ${winnerText}, ${sample.reason}${sample.fall ? ', fall' : ''}`);
     }
   }
   return lines.join('\n');

@@ -315,6 +315,10 @@ function shouldRenderFinalReckoning(state) {
   return state.phase === 'scoring' || (Boolean(state.gameOver) && state.phase !== 'resolution');
 }
 
+function isEmpireFallen(state) {
+  return state?.gameOver?.type === 'fall';
+}
+
 export function renderTopBar(state) {
   if (!state) return;
   const roundEl = document.getElementById('roundDisplay');
@@ -323,13 +327,15 @@ export function renderTopBar(state) {
 
   if (roundEl) {
     roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
-    roundEl.title = `Game ends after ${state.maxRounds} invasions, then one final title redistribution, Court, and income phase. Each ${SCORE_SHARE_STEP_PERCENT}% category share scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY}; highest total wins.`;
+    roundEl.title = isEmpireFallen(state)
+      ? 'Constantinople has fallen. No dynasty wins; standings only record the final balance of power.'
+      : `Game ends after ${state.maxRounds} invasions, then one final title redistribution, Court, and income phase. Each ${SCORE_SHARE_STEP_PERCENT}% category share scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY}; highest total wins.`;
   }
   if (phaseEl) {
-    if (state.gameOver?.type === 'fall') {
+    if (isEmpireFallen(state)) {
       phaseEl.textContent = 'Empire Fallen';
       phaseEl.className = 'phase-badge phase-empire-fallen';
-      phaseEl.title = 'Constantinople has fallen. The game ends.';
+      phaseEl.title = 'Constantinople has fallen. No dynasty wins.';
     } else {
       phaseEl.textContent = PHASE_NAMES[state.phase] || state.phase;
       phaseEl.className = `phase-badge phase-${state.phase}`;
@@ -350,7 +356,7 @@ export function renderEmpireFallenBanner(state) {
   if (!topBar) return;
   let banner = document.getElementById('empireFallenBanner');
 
-  if (state?.gameOver?.type !== 'fall') {
+  if (!isEmpireFallen(state)) {
     banner?.remove();
     return;
   }
@@ -364,8 +370,8 @@ export function renderEmpireFallenBanner(state) {
   }
 
   const message = state.phase === 'resolution'
-    ? 'Constantinople has been sacked. Review the deployment result, then continue to the final reckoning.'
-    : 'Constantinople has been sacked. The game ends now; the highest-scoring dynasty wins.';
+    ? 'Constantinople has been sacked. Review the deployment result, then continue to final standings; no dynasty can win.'
+    : 'Constantinople has been sacked. The empire is lost; no dynasty wins.';
   banner.innerHTML = `<strong>Empire Fallen</strong><span>${message}</span>`;
 }
 
@@ -561,24 +567,36 @@ function formatScoreShare(share) {
 }
 
 export function renderScoringHtml(state, options = {}) {
-  const scores = buildScores(state);
+  const final = buildFinalScores(state);
+  const scores = final.scores;
   const topScore = scores[0]?.points ?? 0;
+  const empireFallen = Boolean(final.empireFallen);
   const newGameButton = options.includeNewGame
     ? '<button class="btn-primary" type="button" onclick="location.reload()">New Game</button>'
     : '';
   const actionButtons = [newGameButton].filter(Boolean).join('');
+  const summary = empireFallen
+    ? `<div class="scoring-fall-summary">
+        <strong>Empire Fallen</strong>
+        <span>Constantinople was sacked. Everyone lost; points only record who held the strongest position when the empire collapsed.</span>
+      </div>`
+    : `<p class="section-hint">Highest point total wins. Each ${SCORE_SHARE_STEP_PERCENT}% share of Gold reserves, Profit income, and Office income is worth 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY} per category.</p>`;
 
   return `
-    <div class="scoring-panel">
+    <div class="scoring-panel${empireFallen ? ' empire-fallen-scoring' : ''}">
       <h3>Final Reckoning</h3>
-      <p class="section-hint">Highest point total wins. Each ${SCORE_SHARE_STEP_PERCENT}% share of Gold reserves, Profit income, and Office income is worth 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY} per category.</p>
+      ${summary}
       <div class="score-list">
         ${scores.map((score) => {
           const rank = scores.filter((other) => other.points > score.points).length + 1;
-          const isWinner = score.points === topScore && topScore > 0;
+          const isWinner = !empireFallen && score.points === topScore && topScore > 0;
+          const isTopFallenScore = empireFallen && score.points === topScore && topScore > 0;
+          const rowClass = ['score-row', isWinner ? 'winner' : '', isTopFallenScore ? 'top-score' : '']
+            .filter(Boolean)
+            .join(' ');
           return `
-          <div class="score-row ${isWinner ? 'winner' : ''}" style="${getPlayerStyleAttr(state, score.player.id)}">
-            <span class="score-rank" aria-label="${isWinner ? 'Winner, rank' : 'Rank'} ${rank}">${rank}</span>
+          <div class="${rowClass}" style="${getPlayerStyleAttr(state, score.player.id)}">
+            <span class="score-rank" aria-label="${isWinner ? 'Winner, rank' : isTopFallenScore ? 'Top score, rank' : 'Rank'} ${rank}">${rank}</span>
             <span class="score-dynasty">${renderPlayerRoleName(state, score.player)}</span>
             <span class="score-breakdown">
               ${score.categories.map((category) => {
