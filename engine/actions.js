@@ -712,7 +712,7 @@ export function autoConfirmFinishedCourtPlayers(state) {
 }
 
 function isRankedCapitalSupport(entry) {
-  return entry?.titleKey === 'PATRIARCH' || entry?.kind === 'reconquest';
+  return entry?.titleKey === 'PATRIARCH';
 }
 
 const COUP_TIE_EPSILON = 1e-9;

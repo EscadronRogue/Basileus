@@ -583,7 +583,7 @@ test('ranked coup support allows movable self rank and disabled candidates keep 
   ]);
 });
 
-test('patriarch influence and triumph follow rankings while fortifications stay direct', () => {
+test('patriarch influence follows rankings while fortifications and triumph stay direct', () => {
   const state = makeState();
   addTemporaryCapitalSupport(state, {
     kind: 'reconquest',
@@ -609,12 +609,14 @@ test('patriarch influence and triumph follow rankings while fortifications stay 
   });
 
   assert.equal(result.votes[0], 1);
-  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 2.333);
-  assert.equal(Math.round(result.votes[3] * 1000) / 1000, 2);
+  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 3);
+  assert.equal(Math.round(result.votes[1] * 1000) / 1000, 0.667);
+  assert.equal(result.votes[3] || 0, 0);
   assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Basileus fortifications' && entry.candidateId === 0 && entry.votes === 2), true);
   assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Lost-province unrest' && entry.candidateId === 0 && entry.votes === -1), true);
   assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Patriarchal influence' && entry.candidateId === 0), false);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 3 && entry.votes === 2), true);
+  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 2 && entry.votes === 2 && !entry.distributed), true);
+  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 3), false);
 });
 
 test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {
