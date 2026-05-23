@@ -67,9 +67,8 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   Default: `0.35`
 
 - `--fall-penalty X`  
-  Objective pressure around empire collapse. Fall rates below 75% are penalized lightly,
-  fall rates above 75% are punished hard, and fall rates below 25% are also penalized
-  because the AI is probably playing too safely.
+  Objective pressure around empire collapse. The trainer now prefers a fall rate near 50%,
+  with extra penalties for drifting below 25% or above 75%.
   Default: `130`
 
 - `--opponent-mix robust|beginner`  

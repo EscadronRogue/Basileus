@@ -24,7 +24,7 @@ import {
 } from './brain.js';
 import { applyLegalAction, listLegalCourtActions, listLegalEstateActions } from './legalActions.js';
 import { simulateGames } from './simulate.js';
-import { trainStrategyWeights } from './train.js';
+import { scoreAggregateTrainingShape, trainStrategyWeights } from './train.js';
 import { GREEK_FIRST_NAMES } from './greekNames.js';
 
 function makeState() {
@@ -369,6 +369,22 @@ test('AI training harness evaluates strategy weight profiles', () => {
   assert.equal(typeof result.best.weights.appointmentUnlockBonus, 'number');
   assert.equal(typeof result.best.metrics.appointmentUnlockRate, 'number');
   assert.equal(result.saved, undefined);
+});
+
+test('AI training fall pressure is centered around 50 percent', () => {
+  const options = { fallPenalty: 130 };
+  const baseMetrics = {
+    selfClaimRate: 0.16,
+    credibleSelfClaimRate: 0.16,
+    averageWarMargin: 4,
+    fundedTroopsPerOrder: 4,
+  };
+  const scoreAt = (fallRate) => scoreAggregateTrainingShape({ ...baseMetrics, fallRate }, options);
+
+  assert.equal(scoreAt(0.5) > scoreAt(0.25), true);
+  assert.equal(scoreAt(0.5) > scoreAt(0.75), true);
+  assert.equal(scoreAt(0.25) > scoreAt(0.1), true);
+  assert.equal(scoreAt(0.75) > scoreAt(0.9), true);
 });
 
 test('AI training beginner mix includes the built-in curriculum with low noise', () => {

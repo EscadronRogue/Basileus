@@ -67,6 +67,10 @@ const DEFAULT_OPTIONS = {
   league: DEFAULT_TRAINING_LEAGUE,
 };
 
+const FALL_RATE_TARGET = 0.5;
+const FALL_RATE_LOW_GUARD = 0.25;
+const FALL_RATE_HIGH_GUARD = 0.75;
+
 const TRAINING_OPPONENT_MIXES = Object.freeze({
   beginner: {
     label: 'Beginner',
@@ -254,7 +258,7 @@ function smoothMarginScore(value, scale = 8) {
   return Math.tanh((Number(value) || 0) / scale);
 }
 
-function scoreAggregateTrainingShape(metrics, options) {
+export function scoreAggregateTrainingShape(metrics, options) {
   const fallRate = Number(metrics.fallRate) || 0;
   const selfClaimRate = Number(metrics.selfClaimRate) || 0;
   const credibleSelfClaimRate = Number(metrics.credibleSelfClaimRate) || 0;
@@ -263,10 +267,13 @@ function scoreAggregateTrainingShape(metrics, options) {
   const fallPenalty = Math.max(0, Number(options.fallPenalty) || 0);
 
   let adjustment = 0;
-  adjustment -= fallRate * fallPenalty * 0.18;
-  adjustment -= Math.max(0, 0.25 - fallRate) * fallPenalty * 0.9;
-  const highFallGap = Math.max(0, fallRate - 0.75);
+  const fallTargetGap = Math.abs(fallRate - FALL_RATE_TARGET);
+  const lowFallGap = Math.max(0, FALL_RATE_LOW_GUARD - fallRate);
+  const highFallGap = Math.max(0, fallRate - FALL_RATE_HIGH_GUARD);
+  adjustment -= fallTargetGap * fallPenalty * 0.9;
+  adjustment -= lowFallGap * fallPenalty * 2.4;
   adjustment -= highFallGap * fallPenalty * 4.5;
+  adjustment -= lowFallGap * lowFallGap * fallPenalty * 2;
   adjustment -= highFallGap * highFallGap * fallPenalty * 2;
 
   adjustment += scoreBand(credibleSelfClaimRate, 0.12, 0.25, 48, 220, 80);
@@ -777,10 +784,12 @@ function evaluateProfile(profile, options, profileIndex, games) {
 }
 
 function compareCandidates(left, right) {
+  const leftFallTargetGap = Math.abs((Number(left.metrics.fallRate) || 0) - FALL_RATE_TARGET);
+  const rightFallTargetGap = Math.abs((Number(right.metrics.fallRate) || 0) - FALL_RATE_TARGET);
   return (
     (right.metrics.objective - left.metrics.objective)
     || ((right.metrics.winRate || 0) - (left.metrics.winRate || 0))
-    || ((left.metrics.fallRate || 0) - (right.metrics.fallRate || 0))
+    || (leftFallTargetGap - rightFallTargetGap)
     || String(left.name).localeCompare(String(right.name))
   );
 }
