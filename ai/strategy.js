@@ -1,6 +1,6 @@
 import { runIncome } from '../engine/cascade.js';
 import { resolveInvasion } from '../engine/combat.js';
-import { getMinimumLandBid } from '../engine/actions.js';
+import { getLandAuctionBidEntries, getMinimumLandBid } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeOwnerIncome } from '../engine/rules.js';
 import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
 import { getFreeThemes, getPlayer } from '../engine/state.js';
@@ -155,7 +155,10 @@ function cloneStateForAI(state) {
 function materializeAuctions(state) {
   for (const auction of Object.values(state.landAuctions || {})) {
     const theme = state.themes?.[auction.themeId];
-    const bidderId = Number(auction.bidderId);
+    const winner = getLandAuctionBidEntries(auction)
+      .filter((bid) => state.players.some((player) => player.id === bid.bidderId))
+      .sort((left, right) => (right.amount - left.amount) || (left.bidderId - right.bidderId))[0];
+    const bidderId = Number(winner?.bidderId);
     if (!theme || theme.id === 'CPL' || theme.occupied || theme.owner != null) continue;
     if (!state.players.some((player) => player.id === bidderId)) continue;
     theme.owner = bidderId;
@@ -1220,9 +1223,11 @@ export function describeOrderChoice(state, playerId, action, meta = null, option
 export function chooseStrategicEstateActions(state, meta, playerId) {
   void meta;
   const chosen = [];
+  const chosenThemes = new Set();
   let planningState = cloneStateForAI(state);
   for (let step = 0; step < MAX_ESTATE_BIDS_PER_AI; step += 1) {
-    const actions = listLegalEstateActions(planningState, playerId);
+    const actions = listLegalEstateActions(planningState, playerId)
+      .filter((action) => !chosenThemes.has(action.payload?.themeId));
     if (!actions.length) break;
     const final = projectedScoring(planningState);
     const weights = getStrategyWeights(meta, playerId);
@@ -1231,6 +1236,7 @@ export function chooseStrategicEstateActions(state, meta, playerId) {
       .sort((left, right) => compareScoredActions(planningState, playerId, left, right, `estate-${step}`))[0] || null;
     if (!best || best.score <= weights.estateGainFloor) break;
     chosen.push(best.action);
+    chosenThemes.add(best.action.payload?.themeId);
     const result = applyLegalAction(planningState, best.action, null);
     if (!result.ok) break;
   }

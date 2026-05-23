@@ -212,6 +212,7 @@ export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEn
     dealThreadSeq: 0,
     dealObligationSeq: 0,
     landAuctions: {},
+    landAuctionTieBreakers: {},
     estatesReady: {},
 
     lastCoupResult: null,

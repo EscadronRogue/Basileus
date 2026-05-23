@@ -280,7 +280,7 @@ export const PHASE_TOOLTIPS = {
   title_redistribution: 'A newly installed Basileus redistributes the major titles before Court.',
   income: 'Provinces pay out gold and raise troops automatically.',
   court: 'Each office may make up to two appointments or revocations before income.',
-  estates: 'Dynasties bid for private land.',
+  estates: 'Dynasties submit sealed bids for private land.',
   deployment: 'Each player funds armies, hires mercenaries, chooses destinations, ranks claimants, and can withhold support from any claimant.',
   resolution: 'Coup is decided first by Capital rankings and passive support, then the war by Frontier troops vs invader strength.',
   cleanup: 'Per-turn state clears before the next invasion.',

@@ -13,6 +13,7 @@ import { createGameState, createInvasionInstance, getPlayer, getOfficeHolder, pi
 import { readTroopEntry, runIncome } from './cascade.js';
 import { applyInvasionResult, resolveInvasion } from './combat.js';
 import { buildPrivateNotifications } from './notifications.js';
+import { serializePublicGameState } from './publicState.js';
 import {
   buildBalanceOfPower,
   buildFinalScores,
@@ -478,8 +479,8 @@ test('estates phase stores bids and settles them when deployment opens', () => {
 
   const bid = applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 2 });
   assert.equal(bid.ok, true);
-  assert.equal(getPlayer(state, 2).gold, 3);
-  assert.equal(state.landAuctions.OPS.bidderId, 2);
+  assert.equal(getPlayer(state, 2).gold, 5);
+  assert.equal(state.landAuctions.OPS.bids[2].amount, 2);
 
   const ready = confirmEstates(state, 2);
   assert.equal(ready.ok, true);
@@ -493,6 +494,64 @@ test('estates phase stores bids and settles them when deployment opens', () => {
   }
   assert.equal(state.phase, 'deployment');
   assert.equal(state.themes.OPS.owner, 2);
+  assert.equal(getPlayer(state, 2).gold, 3);
+});
+
+test('sealed estate bids resolve by amount, refund losing commitments, and rotate ties', () => {
+  const state = makeState();
+  state.phase = 'estates';
+  getPlayer(state, 1).gold = 8;
+  getPlayer(state, 2).gold = 8;
+  getPlayer(state, 3).gold = 8;
+
+  assert.equal(applyEstateAction(state, 1, { action: 'buy', themeId: 'OPS', amount: 3 }).ok, true);
+  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
+  assert.equal(applyEstateAction(state, 3, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
+  assert.equal(getPlayer(state, 1).gold, 8);
+  assert.equal(getPlayer(state, 2).gold, 8);
+  assert.equal(getPlayer(state, 3).gold, 8);
+
+  for (const player of state.players) confirmEstates(state, player.id);
+
+  const firstWinner = state.themes.OPS.owner;
+  const firstLoser = firstWinner === 2 ? 3 : 2;
+  assert.equal([2, 3].includes(firstWinner), true);
+  assert.equal(getPlayer(state, firstWinner).gold, 4);
+  assert.equal(getPlayer(state, firstLoser).gold, 8);
+  assert.equal(getPlayer(state, 1).gold, 8);
+
+  state.phase = 'estates';
+  state.landAuctions = {};
+  state.estatesReady = {};
+  state.themes.OPS.owner = null;
+  getPlayer(state, 2).gold = 8;
+  getPlayer(state, 3).gold = 8;
+
+  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
+  assert.equal(applyEstateAction(state, 3, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
+  for (const player of state.players) confirmEstates(state, player.id);
+
+  assert.equal(state.themes.OPS.owner, firstLoser);
+  assert.equal(getPlayer(state, firstLoser).gold, 4);
+  assert.equal(getPlayer(state, firstWinner).gold, 8);
+});
+
+test('public estate snapshots expose only the viewer sealed bid', () => {
+  const state = makeState();
+  state.phase = 'estates';
+  getPlayer(state, 1).gold = 5;
+  getPlayer(state, 2).gold = 5;
+
+  assert.equal(applyEstateAction(state, 1, { action: 'buy', themeId: 'OPS', amount: 2 }).ok, true);
+  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
+
+  const playerOneView = serializePublicGameState(state, 1);
+  const playerThreeView = serializePublicGameState(state, 3);
+
+  assert.deepEqual(Object.keys(playerOneView.landAuctions.OPS.bids), ['1']);
+  assert.equal(playerOneView.landAuctions.OPS.bids[1].amount, 2);
+  assert.deepEqual(playerThreeView.landAuctions.OPS.bids, {});
+  assert.equal(playerOneView.players[2].gold, 5);
 });
 
 test('deployment schema funds armies, pays unfunded troops, and stores mercenary orders', () => {

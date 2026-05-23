@@ -255,18 +255,23 @@ test('estates panel lists free land bids before deployment', () => {
   assert.match(container.innerHTML, /Ready for Deployment/);
 });
 
-test('estates panel marks the active high bid', () => {
+test('estates panel marks the active sealed bid', () => {
   const state = makeState();
   state.phase = 'estates';
   state.players[2].gold = 5;
-  state.landAuctions.OPS = { themeId: 'OPS', bidderId: 2, amount: 3, round: state.round };
+  state.landAuctions.OPS = {
+    themeId: 'OPS',
+    round: state.round,
+    sealed: true,
+    bids: { 2: { bidderId: 2, amount: 3, round: state.round } },
+  };
   const container = makePanelContainer();
 
   renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /estate-card selected/);
-  assert.match(container.innerHTML, /Your high bid/);
-  assert.match(container.innerHTML, />Raise</);
+  assert.match(container.innerHTML, /Your sealed bid/);
+  assert.match(container.innerHTML, />Update</);
 });
 
 test('deployment panel uses funded armies and mercenary slider schema', () => {

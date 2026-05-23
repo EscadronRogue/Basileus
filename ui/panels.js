@@ -11,10 +11,12 @@ import {
   getCourtPowerRevocationCount,
   getCourtPowerUseMode,
   getUsedCourtPowers,
+  getAvailableLandBidGold,
   isCourtPowerExhausted,
   isCourtPowerPassed,
   isCourtPowerUsed,
   getMinimumLandBid,
+  getPlayerLandBid,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
@@ -996,9 +998,8 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
 
 export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
   const freeThemes = getFreeThemes(state);
-  const player = getPlayer(state, playerId);
   const activeBidderId = Number(playerId);
-  const reserve = Math.max(0, Number(player?.gold) || 0);
+  const reserve = getAvailableLandBidGold(state, activeBidderId);
   const ready = Boolean(state.estatesReady?.[playerId]);
   const readyCount = state.players.filter((entry) => Boolean(state.estatesReady?.[entry.id])).length;
   container.innerHTML = `
@@ -1018,18 +1019,14 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
           ${freeThemes.map((theme) => {
             const minimum = getMinimumLandBid(state, theme.id);
             const value = getThemeLandPrice(theme);
-            const auction = state.landAuctions?.[theme.id] || null;
-            const bidderId = auction?.bidderId == null ? null : Number(auction.bidderId);
-            const bidder = bidderId == null ? null : getPlayer(state, bidderId);
-            const isLeading = bidderId === activeBidderId;
-            const ownBid = isLeading ? Number(auction?.amount) || 0 : 0;
-            const dueNow = Math.max(0, minimum - ownBid);
-            const cannotAfford = dueNow > reserve;
-            const bidButtonLabel = auction
-              ? (isLeading ? 'Raise' : 'Outbid')
-              : 'Bid';
+            const ownBid = getPlayerLandBid(state, theme.id, activeBidderId);
+            const ownAmount = Number(ownBid?.amount) || 0;
+            const maxBid = getAvailableLandBidGold(state, activeBidderId, theme.id);
+            const cannotAfford = minimum > maxBid;
+            const inputValue = ownAmount || minimum;
+            const bidButtonLabel = ownBid ? 'Update' : 'Seal Bid';
             return `
-              <article class="estate-card${cannotAfford ? ' disabled' : ''}${isLeading ? ' selected' : ''}${auction && !isLeading ? ' contested' : ''}" data-estate="${theme.id}" data-map-province="${theme.id}">
+              <article class="estate-card${cannotAfford ? ' disabled' : ''}${ownBid ? ' selected' : ''}" data-estate="${theme.id}" data-map-province="${theme.id}">
                 <div class="estate-card-province">
                   ${renderProvinceBadge(state, theme, { showValues: true })}
                 </div>
@@ -1043,18 +1040,18 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
                     <dd>${formatGoldHtml(minimum)}</dd>
                   </div>
                 </dl>
-                ${auction ? `
-                  <div class="estate-current-bid ${isLeading ? 'owned' : 'contested'}">
-                    <span class="estate-current-label">${isLeading ? 'Your high bid' : 'High bid'}</span>
-                    <span class="estate-current-bidder">${bidder ? renderPlayerRoleName(state, bidder) : 'Unknown'}</span>
-                    <span class="estate-current-amount">${formatGoldHtml(Number(auction.amount) || 0)}</span>
+                ${ownBid ? `
+                  <div class="estate-current-bid owned sealed">
+                    <span class="estate-current-label">Your sealed bid</span>
+                    <span class="estate-current-bidder">Private until reveal</span>
+                    <span class="estate-current-amount">${formatGoldHtml(ownAmount)}</span>
                   </div>
                 ` : ''}
                 <div class="estate-card-bid">
-                  <input type="number" min="${minimum}" value="${minimum}" data-estate-bid="${theme.id}" ${cannotAfford ? 'disabled' : ''}>
+                  <input type="number" min="${minimum}" max="${maxBid}" value="${inputValue}" data-estate-bid="${theme.id}" ${cannotAfford ? 'disabled' : ''}>
                   <button type="button" class="btn-primary estate-bid-btn" data-action="bid-estate" data-theme="${theme.id}" ${cannotAfford ? 'disabled' : ''}>${bidButtonLabel}</button>
                 </div>
-                ${cannotAfford ? `<div class="estate-card-warn">Need ${formatGoldHtml(dueNow)} of unreserved gold to bid.</div>` : ''}
+                ${cannotAfford ? `<div class="estate-card-warn">Need ${formatGoldHtml(minimum)} of unreserved gold to bid.</div>` : ''}
               </article>
             `;
           }).join('')}

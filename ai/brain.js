@@ -1,6 +1,7 @@
 import {
   applyLegalAction,
 } from './legalActions.js';
+import { getLandAuctionBidEntries } from '../engine/actions.js';
 import {
   loadOpponentByIdSync,
   loadOpponentRosterSync,
@@ -10,7 +11,7 @@ import {
 } from './opponentRoster.js';
 import {
   buildCoupCoalitionContext,
-  applyPolicyEstateActions,
+  choosePolicyEstateActions,
   choosePolicyCourtAction,
   choosePolicyOrderAction,
   choosePolicyRewardChoice,
@@ -218,6 +219,28 @@ function cloneForOrderPlanning(state) {
   return clone;
 }
 
+function cloneForEstatePlanning(state, playerId) {
+  const clone = cloneForOrderPlanning(state);
+  const ownAuctions = {};
+  for (const [themeId, auction] of Object.entries(state.landAuctions || {})) {
+    const ownBid = getLandAuctionBidEntries(auction).find((bid) => bid.bidderId === playerId);
+    if (!ownBid) continue;
+    ownAuctions[themeId] = {
+      themeId,
+      round: auction?.round ?? state.round,
+      bids: {
+        [playerId]: {
+          bidderId: playerId,
+          amount: ownBid.amount,
+          round: ownBid.round ?? state.round,
+        },
+      },
+    };
+  }
+  clone.landAuctions = ownAuctions;
+  return clone;
+}
+
 export function buildSimultaneousAIOrders(state, meta) {
   const planningState = cloneForOrderPlanning(state);
   const memory = getAiMemory(planningState, meta);
@@ -244,11 +267,16 @@ export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nex
 
 export function runAIEstateAutomation(state, meta, playerId) {
   if (!state || state.phase !== 'estates' || !meta || !isAIPlayer(meta, playerId)) return [];
-  const actions = applyPolicyEstateActions(state, meta, playerId);
+  const planningState = cloneForEstatePlanning(state, playerId);
+  const actions = choosePolicyEstateActions(planningState, meta, playerId);
+  const applied = [];
   for (const action of actions) {
+    const result = applyLegalAction(state, action, meta);
+    if (!result.ok) continue;
+    applied.push(action);
     meta?.decisionLog?.push?.(`estates:${playerId}:${meta.players?.[playerId]?.policyId || 'strategic'}:${action.payload?.themeId || 'bid'}`);
   }
-  return actions;
+  return applied;
 }
 
 export function applyPlannedAiTitleAssignment(state, meta, pendingAssignment = null, newBasileusId = state?.nextBasileusId) {

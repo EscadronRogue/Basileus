@@ -327,14 +327,83 @@ function ensureLandAuctions(state) {
   return state.landAuctions;
 }
 
+function ensureLandAuctionTieBreakers(state) {
+  if (!state.landAuctionTieBreakers || typeof state.landAuctionTieBreakers !== 'object') {
+    state.landAuctionTieBreakers = {};
+  }
+  return state.landAuctionTieBreakers;
+}
+
+function normalizeLandBidEntry(playerId, bid) {
+  const bidderId = Number(bid?.bidderId ?? playerId);
+  const amount = Number(bid?.amount);
+  if (!Number.isInteger(bidderId) || !Number.isFinite(amount) || amount <= 0) return null;
+  return {
+    bidderId,
+    amount,
+    round: bid?.round,
+  };
+}
+
+export function getLandAuctionBidEntries(auction = null) {
+  if (!auction || typeof auction !== 'object') return [];
+  if (auction.bids && typeof auction.bids === 'object') {
+    return Object.entries(auction.bids)
+      .map(([playerId, bid]) => normalizeLandBidEntry(playerId, bid))
+      .filter(Boolean)
+      .sort((left, right) => left.bidderId - right.bidderId);
+  }
+  const legacy = normalizeLandBidEntry(auction.bidderId, auction);
+  return legacy ? [legacy] : [];
+}
+
+function normalizeLandAuction(auction, themeId, round) {
+  const bids = {};
+  for (const bid of getLandAuctionBidEntries(auction)) {
+    bids[bid.bidderId] = {
+      bidderId: bid.bidderId,
+      amount: bid.amount,
+      round: bid.round ?? round,
+    };
+  }
+  return { themeId, round, bids };
+}
+
+function getOrCreateLandAuction(state, themeId) {
+  const auctions = ensureLandAuctions(state);
+  const normalized = normalizeLandAuction(auctions[themeId], themeId, state.round);
+  auctions[themeId] = normalized;
+  return normalized;
+}
+
 export function getLandAuction(state, themeId) {
   return ensureLandAuctions(state)[themeId] || null;
 }
 
 export function getMinimumLandBid(state, themeId) {
   const theme = state.themes[themeId];
-  const current = getLandAuction(state, themeId);
-  return current ? current.amount + 1 : getThemeLandPrice(theme);
+  return getThemeLandPrice(theme);
+}
+
+export function getPlayerLandBid(state, themeId, playerId) {
+  return getLandAuctionBidEntries(getLandAuction(state, themeId))
+    .find((bid) => bid.bidderId === Number(playerId)) || null;
+}
+
+export function getLandBidCommitment(state, playerId, options = {}) {
+  const exceptThemeId = options.exceptThemeId || null;
+  const normalizedPlayerId = Number(playerId);
+  return Object.entries(ensureLandAuctions(state)).reduce((total, [themeId, auction]) => {
+    if (exceptThemeId && themeId === exceptThemeId) return total;
+    const bid = getLandAuctionBidEntries(auction).find((entry) => entry.bidderId === normalizedPlayerId);
+    return total + (Number(bid?.amount) || 0);
+  }, 0);
+}
+
+export function getAvailableLandBidGold(state, playerId, themeId = null) {
+  return Math.max(0, getSpendableGold(state, playerId) - getLandBidCommitment(state, playerId, {
+    exceptThemeId: themeId,
+  }));
 }
 
 export function canBuyTheme(state, playerId, themeId, amount = null) {
@@ -344,60 +413,112 @@ export function canBuyTheme(state, playerId, themeId, amount = null) {
   if (theme.occupied) return fail('Theme is occupied.');
   if (theme.owner !== null) return fail('Theme already owned.');
   if (theme.id === 'CPL') return fail('Cannot buy Constantinople.');
-  const current = getLandAuction(state, themeId);
-  const minimumBid = current ? current.amount + 1 : getThemeLandPrice(theme);
-  const cost = amount == null ? minimumBid : Number(amount);
+  const current = getPlayerLandBid(state, themeId, playerId);
+  const minimumBid = getThemeLandPrice(theme);
+  const cost = amount == null ? (Number(current?.amount) || minimumBid) : Number(amount);
   if (!Number.isFinite(cost) || cost < minimumBid) {
-    return fail(current ? `Bid must be higher than ${formatGold(current.amount)}.` : `Bid must be at least ${formatGold(minimumBid)}.`);
+    return fail(`Bid must be at least ${formatGold(minimumBid)}.`);
   }
-  const existingOwnBid = current?.bidderId === playerId ? current.amount : 0;
-  const dueNow = cost - existingOwnBid;
-  const spendableGold = getSpendableGold(state, playerId);
-  if (spendableGold < dueNow) return fail(`Need ${formatGold(dueNow)} of unreserved gold, have ${formatGold(spendableGold)}.`);
-  return { ok: true, cost, dueNow, minimumBid, current };
+  const availableForTheme = getAvailableLandBidGold(state, playerId, themeId);
+  if (availableForTheme < cost) {
+    return fail(`Need ${formatGold(cost)} of unreserved gold for this sealed bid, have ${formatGold(availableForTheme)}.`);
+  }
+  return { ok: true, cost, minimumBid, current, availableForTheme };
 }
 
 export function buyTheme(state, playerId, themeId, amount = null) {
   const check = canBuyTheme(state, playerId, themeId, amount);
   if (!check.ok) return check;
-  const player = getPlayer(state, playerId);
-  const auctions = ensureLandAuctions(state);
-  const previous = auctions[themeId] || null;
-  if (previous && previous.bidderId !== playerId) {
-    const previousBidder = getPlayer(state, previous.bidderId);
-    if (previousBidder) previousBidder.gold += previous.amount;
-  }
-  player.gold -= check.dueNow;
-  auctions[themeId] = { themeId, bidderId: playerId, amount: check.cost, round: state.round };
+  const auction = getOrCreateLandAuction(state, themeId);
+  auction.bids[playerId] = { bidderId: playerId, amount: check.cost, round: state.round };
   state.log.push({ type: 'land_bid', player: playerId, theme: themeId, bid: check.cost, round: state.round });
-  recordHistoryEvent(state, {
-    category: 'estates',
-    type: 'land_bid',
-    actorId: playerId,
-    summary: `${playerName(state, playerId)} bids ${formatGold(check.cost)} for ${themeName(state, themeId)}.`,
-    details: { themeId, themeName: themeName(state, themeId), bid: check.cost },
-  });
   return { ok: true };
+}
+
+function getLandAuctionTieKey(playerIds) {
+  return playerIds.slice().sort((left, right) => left - right).join(':');
+}
+
+function resolveLandAuctionTie(state, tiedBids) {
+  const tied = tiedBids.slice().sort((left, right) => left.bidderId - right.bidderId);
+  if (tied.length <= 1) return { winner: tied[0] || null, tieBreak: null };
+
+  const tieBreakers = ensureLandAuctionTieBreakers(state);
+  const tieKey = getLandAuctionTieKey(tied.map((bid) => bid.bidderId));
+  const storedIndex = Number(tieBreakers[tieKey]);
+  const winnerIndex = Number.isInteger(storedIndex)
+    ? ((storedIndex % tied.length) + tied.length) % tied.length
+    : Math.floor((typeof state.rng === 'function' ? state.rng() : Math.random()) * tied.length);
+  tieBreakers[tieKey] = (winnerIndex + 1) % tied.length;
+
+  return {
+    winner: tied[winnerIndex],
+    tieBreak: {
+      method: 'rotating_random',
+      tiedPlayerIds: tied.map((bid) => bid.bidderId),
+      winnerId: tied[winnerIndex].bidderId,
+      nextIndex: tieBreakers[tieKey],
+    },
+  };
+}
+
+export function resolveLandAuctionWinner(state, themeId, auction) {
+  const validBids = getLandAuctionBidEntries(auction)
+    .filter((bid) => getPlayer(state, bid.bidderId))
+    .sort((left, right) => (right.amount - left.amount) || (left.bidderId - right.bidderId));
+  if (!validBids.length) return { winner: null, bids: [], tieBreak: null };
+
+  const winningAmount = validBids[0].amount;
+  const tied = validBids.filter((bid) => bid.amount === winningAmount);
+  const resolved = resolveLandAuctionTie(state, tied);
+  return {
+    themeId,
+    winner: resolved.winner,
+    bids: validBids,
+    tieBreak: resolved.tieBreak,
+  };
 }
 
 export function settleLandAuctions(state) {
   const auctions = ensureLandAuctions(state);
   for (const [themeId, auction] of Object.entries(auctions)) {
     const theme = state.themes[themeId];
-    const winner = getPlayer(state, Number(auction.bidderId));
-    if (!theme || !winner || theme.occupied || theme.owner !== null || theme.id === 'CPL') {
-      if (winner) winner.gold += Number(auction.amount) || 0;
+    if (!theme || theme.occupied || theme.owner !== null || theme.id === 'CPL') {
+      delete auctions[themeId];
+      continue;
+    }
+    const result = resolveLandAuctionWinner(state, themeId, auction);
+    const winner = getPlayer(state, Number(result.winner?.bidderId));
+    const winningBid = Number(result.winner?.amount) || 0;
+    if (!winner || winningBid <= 0) {
       delete auctions[themeId];
       continue;
     }
     theme.owner = winner.id;
-    state.log.push({ type: 'buy', player: winner.id, theme: themeId, cost: auction.amount, round: state.round });
+    winner.gold -= winningBid;
+    state.log.push({
+      type: 'buy',
+      player: winner.id,
+      theme: themeId,
+      cost: winningBid,
+      round: state.round,
+      bids: result.bids,
+      tieBreak: result.tieBreak,
+    });
     recordHistoryEvent(state, {
       category: 'estates',
       type: 'buy_theme',
       actorId: winner.id,
-      summary: `${playerName(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(auction.amount)}.`,
-      details: { themeId, themeName: themeName(state, themeId), cost: auction.amount },
+      summary: result.tieBreak
+        ? `${playerName(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)} after a tied sealed bid.`
+        : `${playerName(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)}.`,
+      details: {
+        themeId,
+        themeName: themeName(state, themeId),
+        cost: winningBid,
+        bids: result.bids,
+        tieBreak: result.tieBreak,
+      },
     });
     delete auctions[themeId];
   }

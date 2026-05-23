@@ -55,7 +55,9 @@ async function verifyMultiplayerRulePatchFlow() {
   assert.equal(room.gameState.players.every((player) => player.gold === 4), true);
 
   send(room, 1, { type: 'estate_action', action: 'buy', themeId: 'OPS', amount: 2 });
-  assert.equal(room.gameState.landAuctions.OPS.bidderId, 1);
+  assert.equal(room.gameState.landAuctions.OPS.bids[1].amount, 2);
+  assert.deepEqual(room.createGameSnapshotFor('s2').state.landAuctions.OPS.bids, {});
+  assert.equal(room.createGameSnapshotFor('s1').state.landAuctions.OPS.bids[1].amount, 2);
   send(room, 1, { type: 'confirm_estates' });
   assert.equal(room.gameState.phase, 'estates');
   assert.equal(room.gameState.estatesReady[1], true);
@@ -67,6 +69,7 @@ async function verifyMultiplayerRulePatchFlow() {
   }
   assert.equal(room.gameState.phase, 'deployment');
   assert.equal(room.gameState.themes.OPS.owner, 1);
+  assert.equal(room.gameState.players[1].gold, 2);
 
   for (const player of room.gameState.players) {
     send(room, player.id, {

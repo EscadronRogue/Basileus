@@ -9,6 +9,7 @@ const NON_PUBLIC_STATE_KEYS = [
   'dealParticipantIds',
   'dealThreadSeq',
   'dealObligationSeq',
+  'landAuctionTieBreakers',
 ];
 
 export function clonePlain(value) {
@@ -78,6 +79,45 @@ export function serializeSubmittedOrders(state) {
   return Object.fromEntries(Object.keys(state.allOrders || {}).map((playerId) => [playerId, true]));
 }
 
+function getLandAuctionBidEntries(auction = null) {
+  if (!auction || typeof auction !== 'object') return [];
+  if (auction.bids && typeof auction.bids === 'object') {
+    return Object.entries(auction.bids)
+      .map(([playerId, bid]) => ({
+        bidderId: Number(bid?.bidderId ?? playerId),
+        amount: Number(bid?.amount),
+        round: bid?.round,
+      }))
+      .filter((bid) => Number.isInteger(bid.bidderId) && Number.isFinite(bid.amount) && bid.amount > 0)
+      .sort((left, right) => left.bidderId - right.bidderId);
+  }
+  const bidderId = Number(auction.bidderId);
+  const amount = Number(auction.amount);
+  return Number.isInteger(bidderId) && Number.isFinite(amount) && amount > 0
+    ? [{ bidderId, amount, round: auction.round }]
+    : [];
+}
+
+export function serializeLandAuctionsForViewer(state, viewerSeatId = null) {
+  const viewerId = Number(viewerSeatId);
+  const includeOwnBid = Number.isInteger(viewerId);
+  const auctions = {};
+  for (const [themeId, auction] of Object.entries(state.landAuctions || {})) {
+    const ownBid = includeOwnBid
+      ? getLandAuctionBidEntries(auction).find((bid) => bid.bidderId === viewerId)
+      : null;
+    auctions[themeId] = {
+      themeId,
+      round: auction?.round ?? state.round,
+      sealed: true,
+      bids: ownBid
+        ? { [viewerId]: { bidderId: viewerId, amount: ownBid.amount, round: ownBid.round ?? state.round } }
+        : {},
+    };
+  }
+  return auctions;
+}
+
 export function serializePublicGameState(state, viewerSeatId = null) {
   const publicState = clonePlain(state) || {};
   for (const key of NON_PUBLIC_STATE_KEYS) delete publicState[key];
@@ -94,6 +134,7 @@ export function serializePublicGameState(state, viewerSeatId = null) {
   publicState.history = sanitizePublicHistory(state);
   publicState.courtActions = serializeCourtActions(state.courtActions);
   publicState.mercenaryOrders = clonePlain(state.mercenaryOrders || {});
+  publicState.landAuctions = serializeLandAuctionsForViewer(state, viewerSeatId);
 
   return publicState;
 }
