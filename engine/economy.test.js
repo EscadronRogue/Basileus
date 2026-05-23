@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { INVASIONS } from '../data/invasions.js';
 import { PROVINCES } from '../data/provinces.js';
-import { createGameState, getPlayer, getOfficeHolder } from './state.js';
+import { createGameState, getPlayer, getOfficeHolder, pickInvasionTemplate } from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
 import { applyInvasionResult } from './combat.js';
 import { buildPrivateNotifications } from './notifications.js';
@@ -51,6 +52,39 @@ function enterCourt(state) {
   state.phase = 'income';
   phaseCourt(state);
 }
+
+test('invasion draw weights match the configured probability table', () => {
+  const weights = Object.fromEntries(INVASIONS.map(({ id, drawWeight }) => [id, drawWeight]));
+
+  assert.deepEqual(weights, {
+    aghlabids: 5,
+    kievan_rus: 5,
+    normans: 5,
+    venetians: 5,
+    bulgars: 20,
+    serbs: 5,
+    hungarians: 5,
+    turks: 25,
+    caliphate: 25,
+  });
+  assert.equal(Object.values(weights).reduce((sum, weight) => sum + weight, 0), 100);
+});
+
+test('invasion picker uses weighted probability bands', () => {
+  assert.equal(pickInvasionTemplate(() => 0).id, 'aghlabids');
+  assert.equal(pickInvasionTemplate(() => 0.049999).id, 'aghlabids');
+  assert.equal(pickInvasionTemplate(() => 0.05).id, 'kievan_rus');
+  assert.equal(pickInvasionTemplate(() => 0.1).id, 'normans');
+  assert.equal(pickInvasionTemplate(() => 0.15).id, 'venetians');
+  assert.equal(pickInvasionTemplate(() => 0.2).id, 'bulgars');
+  assert.equal(pickInvasionTemplate(() => 0.399999).id, 'bulgars');
+  assert.equal(pickInvasionTemplate(() => 0.4).id, 'serbs');
+  assert.equal(pickInvasionTemplate(() => 0.45).id, 'hungarians');
+  assert.equal(pickInvasionTemplate(() => 0.5).id, 'turks');
+  assert.equal(pickInvasionTemplate(() => 0.749999).id, 'turks');
+  assert.equal(pickInvasionTemplate(() => 0.75).id, 'caliphate');
+  assert.equal(pickInvasionTemplate(() => 0.999999).id, 'caliphate');
+});
 
 test('score shares award one point per 10 percent threshold', () => {
   assert.deepEqual(

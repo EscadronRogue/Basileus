@@ -26,6 +26,27 @@ export function rollRange(min, max, rng) {
   return min + Math.floor(rng() * (max - min + 1));
 }
 
+export function pickInvasionTemplate(rng) {
+  const weightedInvasions = INVASIONS
+    .map((invasion) => ({
+      invasion,
+      weight: Math.max(0, Number(invasion.drawWeight) || 0),
+    }))
+    .filter(({ weight }) => weight > 0);
+  const totalWeight = weightedInvasions.reduce((sum, { weight }) => sum + weight, 0);
+  if (totalWeight <= 0) {
+    throw new Error('At least one invasion must have a positive draw weight.');
+  }
+
+  const ticket = rng() * totalWeight;
+  let cumulativeWeight = 0;
+  for (const { invasion, weight } of weightedInvasions) {
+    cumulativeWeight += weight;
+    if (ticket < cumulativeWeight) return invasion;
+  }
+  return weightedInvasions[weightedInvasions.length - 1].invasion;
+}
+
 const PLAYER_ROLE_TEXT_STYLES = {
   BASILEUS: { color: REGION_BORDER_COLORS[REGIONS.CPL], contrast: '#ffffff' },
   PATRIARCH: { color: '#000000', contrast: '#ffffff' },
@@ -115,7 +136,7 @@ export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEn
 
   const themes = Object.fromEntries(PROVINCES.map((province) => [province.id, createThemeState(province)]));
   const deck = Array.from({ length: deckSize }, () => (
-    createInvasionInstance(INVASIONS[Math.floor(rng() * INVASIONS.length)], rng)
+    createInvasionInstance(pickInvasionTemplate(rng), rng)
   ));
 
   return {

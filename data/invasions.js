@@ -7,6 +7,7 @@ export const INVASIONS = [
   {
     id: 'aghlabids',
     name: 'Aghlabids',
+    drawWeight: 5,
     origin: 'SIC',           // first theme on the route
     originLabel: 'North Africa',
     originMarker: 'AGH',
@@ -16,6 +17,7 @@ export const INVASIONS = [
   {
     id: 'kievan_rus',
     name: 'Kievan Rus',
+    drawWeight: 5,
     origin: 'CHE',
     originLabel: 'Steppes',
     originMarker: 'RUS',
@@ -25,6 +27,7 @@ export const INVASIONS = [
   {
     id: 'normans',
     name: 'Normans',
+    drawWeight: 5,
     origin: 'ITA',
     originLabel: 'Southern Italy',
     originMarker: 'NOR',
@@ -34,6 +37,7 @@ export const INVASIONS = [
   {
     id: 'venetians',
     name: 'Venetians',
+    drawWeight: 5,
     origin: 'KEP',
     originLabel: 'Venice',
     originMarker: 'VEN',
@@ -43,6 +47,7 @@ export const INVASIONS = [
   {
     id: 'bulgars',
     name: 'Bulgars',
+    drawWeight: 20,
     origin: 'BUL',
     originLabel: 'Bulgaria',
     originMarker: 'BBUULL',
@@ -52,6 +57,7 @@ export const INVASIONS = [
   {
     id: 'serbs',
     name: 'Serbs',
+    drawWeight: 5,
     origin: 'SRB',
     originLabel: 'Serbia',
     originMarker: 'SSRRBB',
@@ -61,6 +67,7 @@ export const INVASIONS = [
   {
     id: 'hungarians',
     name: 'Hungarians',
+    drawWeight: 5,
     origin: 'SIM',
     originLabel: 'Pannonia',
     originMarker: 'HON',
@@ -70,6 +77,7 @@ export const INVASIONS = [
   {
     id: 'turks',
     name: 'Turks',
+    drawWeight: 25,
     origin: 'VAS',
     originLabel: 'Persia',
     originMarker: 'TUR',
@@ -79,6 +87,7 @@ export const INVASIONS = [
   {
     id: 'caliphate',
     name: 'Caliphate',
+    drawWeight: 25,
     origin: 'ANT',
     originLabel: 'Levant',
     originMarker: 'CAL',
