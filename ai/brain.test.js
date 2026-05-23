@@ -55,6 +55,14 @@ test('browser AI roster defaults to bundled opponents without probing API', asyn
     const roster = await loadBrowserAiOpponentRoster();
     assert.equal(called, false);
     assert.equal(roster.length > 0, true);
+    const policyIds = roster.map((entry) => entry.policy?.policyId);
+    assert.equal(policyIds.includes('patron'), true);
+    assert.equal(policyIds.includes('tyrant'), true);
+    assert.equal(policyIds.includes('kingmaker'), true);
+    assert.equal(policyIds.includes('freeRider'), true);
+    assert.equal(policyIds.includes('overDefender'), true);
+    assert.equal(policyIds.includes('estateShark'), true);
+    assert.equal(policyIds.includes('antiLeader'), true);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -260,13 +268,13 @@ test('AI training harness evaluates strategy weight profiles', () => {
   assert.deepEqual(result.options.deckSizes, [1, 2]);
   assert.notEqual(result.options.seed, second.options.seed);
   assert.equal(Number.isFinite(result.best.metrics.objective), true);
-  assert.equal(typeof result.best.weights.invasionMargin, 'number');
+  assert.equal(typeof result.best.weights.invasionShortfallPenalty, 'number');
   assert.equal(typeof result.best.weights.appointmentUnlockBonus, 'number');
   assert.equal(typeof result.best.metrics.appointmentUnlockRate, 'number');
   assert.equal(result.saved, undefined);
 });
 
-test('AI training beginner mix preserves the original opponent proportions', () => {
+test('AI training beginner mix includes the built-in curriculum with low noise', () => {
   const result = trainStrategyWeights({
     opponentMix: 'beginner',
     generations: 1,
@@ -280,8 +288,15 @@ test('AI training beginner mix preserves the original opponent proportions', () 
 
   assert.equal(result.options.selfPlayEvery, 4);
   assert.equal(result.options.opponentSummary.exposure.selfPlay, 0.25);
-  assert.equal(result.options.opponentSummary.exposure.random, 0.125);
-  assert.equal(result.options.opponentSummary.exposure.copycat, 0.125);
+  assert.equal(result.options.opponentSummary.exposure.patron > 0, true);
+  assert.equal(result.options.opponentSummary.exposure.tyrant > 0, true);
+  assert.equal(result.options.opponentSummary.exposure.kingmaker > 0, true);
+  assert.equal(result.options.opponentSummary.exposure.freeRider > 0, true);
+  assert.equal(result.options.opponentSummary.exposure.overDefender > 0, true);
+  assert.equal(result.options.opponentSummary.exposure.estateShark > 0, true);
+  assert.equal(result.options.opponentSummary.exposure.antiLeader > 0, true);
+  assert.equal(result.options.opponentSummary.exposure.random < result.options.opponentSummary.exposure.defender, true);
+  assert.equal(result.options.opponentSummary.exposure.copycat < result.options.opponentSummary.exposure.usurper, true);
 });
 
 test('AI training can save Greek-named tuned champions', () => {
@@ -306,7 +321,7 @@ test('AI training can save Greek-named tuned champions', () => {
     assert.equal(result.champions.length, 2);
     assert.equal(GREEK_FIRST_NAMES.includes(payload.opponents[0].firstName), true);
     assert.equal(payload.opponents[0].policy.policyId, 'tuned');
-    assert.equal(typeof payload.opponents[0].strategyWeights.invasionMargin, 'number');
+    assert.equal(typeof payload.opponents[0].strategyWeights.invasionShortfallPenalty, 'number');
     assert.equal(typeof payload.opponents[0].training.appointmentUnlockRate, 'number');
     assert.equal(typeof payload.opponents[0].training.screeningGamesPerCandidate, 'number');
     assert.equal(payload.opponents[0].training.championRank, 1);
@@ -345,12 +360,12 @@ test('simultaneous AI planning ignores already submitted human deployment orders
 function coalitionWeights() {
   return {
     selfClaim: 0.2,
-    coalitionWillingness: 2.2,
     relationshipCoupWeight: 1.8,
     favorSeekingWeight: 1.2,
     supportLeaderPenalty: 1.8,
     supportOtherClaimant: 0.2,
-    selfClaimThreshold: 1.6,
+    basileusTitleExpectation: 1.3,
+    basileusRevocationFear: 1.2,
   };
 }
 
@@ -430,16 +445,15 @@ test('tuned deployment turns safe frontier surplus into coup pressure', () => {
         policy: {
           policyId: 'tuned',
           strategyWeights: {
-            invasionMargin: 2.4,
+            invasionShortfallPenalty: 7.4,
+            invasionSafetyValue: 1.4,
+            invasionSurplusPenalty: 0.4,
             capitalFallPenalty: 665.876428553347,
             capitalRiskPenalty: 48.353426978309265,
             throneBase: 13.837714739693313,
             selfClaim: 0.19356171899110766,
             supportOtherClaimant: 0.12764954809536314,
             relationshipCoupWeight: 0.31294053312187564,
-            surplusDefensePenalty: 0.4,
-            frontierSurplusValue: 0.35,
-            frontierSurplusCap: 6,
             coupOpportunityWeight: 0.75,
             allyDefenseReliance: 0.82,
           },

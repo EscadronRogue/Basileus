@@ -76,9 +76,9 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   Opponent schedule used during training.
   Default: `robust`
 
-  `robust` is the serious default: about 33% candidate self-play, about 32% saved tuned champions when available, about 28% strong built-in styles, and about 7% oddballs (`random`/`copycat`).
+  `robust` is the serious default: about 33% candidate self-play, a large saved-champion pool when available, a broad built-in curriculum, and low-frequency oddballs (`random`/`copycat`).
 
-  `beginner` preserves the old easier training mix: 25% candidate self-play, then an even split across `strategic`, `defender`, `usurper`, `profiteer`, `random`, and `copycat`.
+  `beginner` keeps 25% candidate self-play, then trains against the built-in curriculum without saved champions.
 
 - `--self-play-every N`  
   Every Nth evaluation game uses the candidate policy for all AI seats. This overrides the selected opponent mix's cadence.
@@ -96,7 +96,7 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
 - `--league a,b,c`  
   Custom non-champion opponent pool used during training. In `beginner` mode it is the full non-self-play league. In `robust` mode it replaces the built-in non-champion bucket while saved champions still participate.
   Current useful values include:
-  `strategic`, `defender`, `usurper`, `profiteer`, `random`, `copycat`, `greedy`, `loyalist`.
+  `strategic`, `defender`, `usurper`, `profiteer`, `patron`, `tyrant`, `kingmaker`, `freeRider`, `overDefender`, `estateShark`, `antiLeader`, `greedy`, `loyalist`, `random`, `copycat`.
 
 Example:
 
@@ -123,7 +123,7 @@ A good serious run would be:
 npm.cmd run train:ai -- --generations 8 --population 16 --elite 4 --games 40 --fall-penalty 220
 ```
 
-A beginner-friendly run with the original opponent proportions:
+A beginner-friendly run without saved champion opponents:
 
 ```powershell
 npm.cmd run train:ai -- --opponent-mix beginner

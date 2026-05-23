@@ -41,14 +41,13 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   estateProfit: 4,
   estateBidCost: 1.15,
   estateThreatPenalty: 1.5,
-  invasionMargin: 1.75,
+  invasionShortfallPenalty: 5.5,
+  invasionSafetyValue: 1.2,
+  invasionSurplusPenalty: 0.55,
   capitalFallPenalty: 760,
   capitalRiskPenalty: 260,
-  invasionVictoryBonus: 6,
-  invasionDefeatPenalty: 10,
   recoveryBonus: 0.8,
   throneBase: 18,
-  throneProgress: 0,
   selfClaim: 1.1,
   incumbentDefense: 0.85,
   supportLeaderPenalty: 0.9,
@@ -64,24 +63,35 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   defenseContextWeight: 1.15,
   fundingContextWeight: 0.7,
   revocationContextWeight: 0.65,
-  coalitionWillingness: 0.65,
   relationshipCoupWeight: 0.6,
-  coalitionDefectionPenalty: 1,
-  surplusDefensePenalty: 0.16,
-  frontierSurplusValue: 0.5,
-  frontierSurplusCap: 12,
   coupOpportunityWeight: 0.28,
+  basileusTitleExpectation: 0.7,
+  basileusRevocationFear: 0.8,
+  backerTitleReward: 0.9,
+  backerRevocationMercy: 0.9,
   allyDefenseReliance: 1,
-  selfClaimThreshold: 0.98,
   kingmakerPenalty: 0.25,
 });
 
 function getStrategyWeights(meta, playerId) {
-  return {
-    ...DEFAULT_STRATEGY_WEIGHTS,
+  const overrides = {
     ...(meta?.strategyWeights || {}),
     ...(meta?.players?.[playerId]?.strategyWeights || {}),
   };
+  const raw = {
+    ...DEFAULT_STRATEGY_WEIGHTS,
+    ...overrides,
+  };
+  if (overrides.invasionMargin != null && overrides.invasionShortfallPenalty == null) {
+    raw.invasionShortfallPenalty = clamp(Number(overrides.invasionMargin), 0.35, 2.4) * 3.1;
+  }
+  if (overrides.frontierSurplusValue != null && overrides.invasionSafetyValue == null) {
+    raw.invasionSafetyValue = clamp(Number(overrides.frontierSurplusValue), 0, 0.8) * 2.4;
+  }
+  if (overrides.surplusDefensePenalty != null && overrides.invasionSurplusPenalty == null) {
+    raw.invasionSurplusPenalty = clamp(Number(overrides.surplusDefensePenalty), 0.05, 2.4);
+  }
+  return raw;
 }
 
 function hashString(value) {
@@ -261,6 +271,43 @@ function scoreThreatPenalty(final, playerId, targetId, leaderId, weights = DEFAU
   return penalty * Math.max(0.2, Number(weights.kingmakerPenalty) || 0);
 }
 
+function coupSupportGivenTo(memory, candidateId, supporterId) {
+  if (!memory || candidateId === supporterId) return 0;
+  return Math.max(0, Number(getRelationship(memory, candidateId, supporterId).coupSupport) || 0);
+}
+
+function scoreExpectedMajorTitlePatronage(state, final, supporterId) {
+  void final;
+  void supporterId;
+  const titleKeys = Object.keys(MAJOR_TITLES);
+  if (!titleKeys.length) return 0;
+  const bestYield = titleKeys.reduce((best, titleKey) => Math.max(best, estimateTitleYield(state, titleKey)), 0);
+  if (bestYield <= 0) return 0;
+  return Math.min(16, bestYield) * 0.8;
+}
+
+function scoreBasileusPreference(state, memory, supporterId, candidateId, final, leaderId, weights) {
+  if (!Number.isInteger(candidateId)) return 0;
+  if (candidateId === supporterId) return weights.throneBase * weights.selfClaim;
+
+  const relationToCandidate = getRelationship(memory, supporterId, candidateId);
+  const candidatePattern = getPlayerMemory(memory, candidateId);
+  const own = scoreEntry(final, supporterId);
+  const candidate = scoreEntry(final, candidateId);
+  const pointGap = candidate && own ? Math.max(0, (Number(candidate.points) || 0) - (Number(own.points) || 0)) : 0;
+  const titleExpectation = scoreExpectedMajorTitlePatronage(state, final, supporterId)
+    * weights.basileusTitleExpectation
+    * (0.18 + (Number(candidatePattern.patronageGenerosity) || 0) * 0.85 + Math.max(0, relationToCandidate.trust) * 0.04);
+  const revocationFear = (
+    (Number(candidatePattern.revocationAggression) || 0) * 4
+    + Math.max(0, Number(relationToCandidate.harm) || 0) * 0.45
+    + Math.max(0, -Number(relationToCandidate.trust) || 0) * 0.35
+  ) * weights.basileusRevocationFear;
+  const relationship = scoreRelationshipModifier(memory, supporterId, candidateId, weights, 0.9);
+  const leaderPenalty = candidateId === leaderId ? weights.supportLeaderPenalty * 2.4 : 0;
+  return titleExpectation + relationship - revocationFear - leaderPenalty - pointGap * weights.kingmakerPenalty;
+}
+
 function scoreRelationshipModifier(memory, viewerId, otherId, weights = DEFAULT_STRATEGY_WEIGHTS, scale = 1) {
   if (!memory || viewerId === otherId || !Number.isInteger(otherId)) return 0;
   const rel = getRelationship(memory, viewerId, otherId);
@@ -312,7 +359,13 @@ function scoreRevocationRelationship(state, final, playerId, targetId, leaderId,
   const tableOpportunity = (table.underRevoking || 0)
     * weights.revocationContextWeight
     * (targetId === leaderId ? 1.2 : Math.min(0.8, Math.max(0, targetThreat)));
-  return clamp(grudgeBonus + targetThreat + tableOpportunity - friendPenalty - tablePenalty, -weights.relationshipCap, weights.relationshipCap);
+  const backerMercy = Math.min(6, coupSupportGivenTo(context.memory, playerId, targetId))
+    * weights.backerRevocationMercy;
+  return clamp(
+    grudgeBonus + targetThreat + tableOpportunity - friendPenalty - tablePenalty - backerMercy,
+    -weights.relationshipCap,
+    weights.relationshipCap,
+  );
 }
 
 function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderIdFromScores(final, playerId), weights = DEFAULT_STRATEGY_WEIGHTS, context = {}) {
@@ -398,8 +451,12 @@ function scoreTitleAssignment(state, final, basileusId, leaderId, action, weight
   let score = 0;
   for (const [titleKey, holderId] of Object.entries(action.assignments || {})) {
     const amount = estimateTitleYield(state, titleKey);
-    score += scoreRecipientGain(final, basileusId, Number(holderId), leaderId, 'office', amount, weights, context);
-    if (Number(holderId) === leaderId) score -= 5;
+    const recipientId = Number(holderId);
+    const support = Math.min(6, coupSupportGivenTo(context.memory, basileusId, recipientId));
+    const titlePower = Math.max(1, amount);
+    score += scoreRecipientGain(final, basileusId, recipientId, leaderId, 'office', amount, weights, context);
+    score += support * weights.backerTitleReward * (0.65 + Math.min(12, titlePower) / 12);
+    if (recipientId === leaderId) score -= 5 + titlePower * weights.kingmakerPenalty;
   }
   return score;
 }
@@ -581,27 +638,13 @@ function reliableEstimatedFrontier(estimates, weights) {
   return Math.max(0, Number(estimates?.frontierTroops) || 0) * reliance;
 }
 
-function scoreInvasionMargin(margin, weights) {
-  const shortfall = Math.min(0, margin);
-  const surplus = Math.max(0, margin);
-  const rawSurplusValue = Number(weights.frontierSurplusValue);
-  const rawSurplusCap = Number(weights.frontierSurplusCap);
-  const surplusValue = clamp(
-    Number.isFinite(rawSurplusValue) ? rawSurplusValue : DEFAULT_STRATEGY_WEIGHTS.frontierSurplusValue,
-    0,
-    0.8,
-  );
-  const surplusCap = clamp(
-    Number.isFinite(rawSurplusCap) ? rawSurplusCap : DEFAULT_STRATEGY_WEIGHTS.frontierSurplusCap,
-    0,
-    24,
-  );
-  const cappedSurplus = Math.min(surplusCap, surplus);
-  const usefulSurplus = Math.min(3, cappedSurplus);
-  const extraSurplus = Math.max(0, cappedSurplus - usefulSurplus);
-  return Math.max(-28, shortfall) * weights.invasionMargin
-    + usefulSurplus * weights.invasionMargin * surplusValue
-    + extraSurplus * weights.invasionMargin * surplusValue * 0.35;
+function scoreFrontierDiscipline(totalFrontier, expectedStrength, targetFrontier, weights) {
+  const shortfall = Math.max(0, expectedStrength - totalFrontier);
+  const safeMargin = Math.max(0, Math.min(totalFrontier, targetFrontier) - expectedStrength);
+  const surplus = Math.max(0, totalFrontier - targetFrontier);
+  return -shortfall * weights.invasionShortfallPenalty
+    + safeMargin * weights.invasionSafetyValue
+    - surplus * weights.invasionSurplusPenalty;
 }
 
 function themeStake(state, playerId, themeId) {
@@ -625,15 +668,11 @@ function scoreWarPlan(state, playerId, summary, estimates, weights, context = {}
   const highStrength = estimateHighInvasionStrength(invasion);
   const expected = resolveInvasion(state, totalFrontier, expectedStrength, invasion);
   const high = resolveInvasion(state, totalFrontier, highStrength, invasion);
-  const margin = totalFrontier - expectedStrength;
-  const surplusFrontier = Math.max(0, totalFrontier - usefulFrontierTarget(state, invasion, highStrength));
+  const targetFrontier = usefulFrontierTarget(state, invasion, highStrength);
 
-  let value = scoreInvasionMargin(margin, weights);
-  value -= surplusFrontier * (0.06 + weights.surplusDefensePenalty);
+  let value = scoreFrontierDiscipline(totalFrontier, expectedStrength, targetFrontier, weights);
   if (expected.reachedCPL) value -= weights.capitalFallPenalty;
   else if (high.reachedCPL) value -= weights.capitalRiskPenalty;
-  if (expected.outcome === 'victory') value += weights.invasionVictoryBonus;
-  if (expected.outcome === 'defeat') value -= weights.invasionDefeatPenalty;
 
   for (const themeId of expected.themesLost || []) value -= themeStake(state, playerId, themeId);
   for (const themeId of expected.themesRecovered || []) value += Math.max(0.5, themeStake(state, playerId, themeId) * 0.5);
@@ -670,33 +709,16 @@ function existingCapitalVotes(state) {
   return votes;
 }
 
-function selfClaimStatus(ownPotential, rivalPotential, weights = DEFAULT_STRATEGY_WEIGHTS) {
-  const threshold = Math.max(0.6, Number(weights.selfClaimThreshold) || DEFAULT_STRATEGY_WEIGHTS.selfClaimThreshold);
-  if (ownPotential >= rivalPotential * threshold + 0.5) return 'strong';
+function selfClaimStatus(ownPotential, rivalPotential) {
+  if (ownPotential >= rivalPotential + 0.5) return 'strong';
   if (ownPotential >= rivalPotential * 0.72) return 'weak';
   return 'dead';
 }
 
 function scoreCoalitionCandidate(state, memory, supporterId, candidateId, final, leaderId, weights) {
-  if (supporterId === candidateId) return 0.6 * weights.selfClaim;
-  const rel = getRelationship(memory, supporterId, candidateId);
-  const candidateMemory = getPlayerMemory(memory, candidateId);
-  const own = scoreEntry(final, supporterId);
-  const candidate = scoreEntry(final, candidateId);
-  const pointGap = candidate && own ? (candidate.points - own.points) : 0;
-  let value = 0;
-  value += rel.score * weights.relationshipCoupWeight;
-  value += Math.max(0, rel.trust) * weights.trustWeight;
-  value += Math.max(0, rel.harm) * -weights.grudgeWeight;
-  value += candidateMemory.patronageGenerosity * weights.favorSeekingWeight * 1.4;
-  value += weights.favorSeekingWeight * 0.7;
-  if (candidateId === leaderId && candidateId !== supporterId) value -= weights.supportLeaderPenalty * 3.5;
-  if (candidateId === state.basileusId && candidateId !== supporterId) {
-    value -= weights.supportLeaderPenalty * (2.1 - Math.min(1.2, Math.max(0, rel.score) * 0.15));
-  }
-  if (pointGap > 0) value -= pointGap * weights.kingmakerPenalty;
-  value -= candidateMemory.revocationAggression * weights.grudgeWeight * 0.4;
-  return value;
+  if (supporterId === candidateId) return weights.throneBase * weights.selfClaim * 0.18;
+  return scoreBasileusPreference(state, memory, supporterId, candidateId, final, leaderId, weights)
+    + weights.supportOtherClaimant;
 }
 
 export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemory(state, meta)) {
@@ -712,14 +734,13 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
   const fixedVotes = existingCapitalVotes(state);
   const viability = {};
   for (const playerId of aiPlayerIds) {
-    const weights = getStrategyWeights(meta, playerId);
     const rivalPotential = Math.max(
       1,
       ...Object.entries(potentials)
         .filter(([otherId]) => Number(otherId) !== playerId)
         .map(([, value]) => value),
     );
-    viability[playerId] = selfClaimStatus(potentials[playerId] || 0, rivalPotential, weights);
+    viability[playerId] = selfClaimStatus(potentials[playerId] || 0, rivalPotential);
   }
 
   const candidates = [];
@@ -732,9 +753,7 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
       const weights = getStrategyWeights(meta, supporterId);
       if (supporterId !== candidateId && viability[supporterId] === 'strong') continue;
       const willingness = scoreCoalitionCandidate(state, memory, supporterId, candidateId, final, leaderId, weights);
-      const threshold = supporterId === candidateId
-        ? -0.2
-        : 0.35 / Math.max(0.25, weights.coalitionWillingness);
+      const threshold = supporterId === candidateId ? -0.2 : 2;
       if (willingness <= threshold) continue;
       supporters.push({ playerId: supporterId, willingness });
       supportValue += willingness;
@@ -745,7 +764,7 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
     const threatPenalty = candidateId === leaderId ? 2.5 : 0;
     const incumbentPenalty = candidateId === state.basileusId ? 3.5 : 0;
     const score = expectedVotes
-      + supportValue * 1.25
+      + supportValue * 0.8
       - threatPenalty
       - incumbentPenalty
       - candidateMemory.revocationAggression * 0.7;
@@ -764,7 +783,6 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
   const recommendations = {};
   for (const supporterId of aiPlayerIds) {
     if (viability[supporterId] === 'strong') continue;
-    const weights = getStrategyWeights(meta, supporterId);
     const best = candidates
       .filter((candidate) => candidate.supporters.some((supporter) => supporter.playerId === supporterId))
       .map((candidate) => {
@@ -772,7 +790,7 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
         return {
           ...candidate,
           supporterScore: supporter?.willingness || 0,
-          personalScore: (supporter?.willingness || 0) * weights.coalitionWillingness + candidate.score * 0.18,
+          personalScore: (supporter?.willingness || 0) + candidate.score * 0.18,
         };
       })
       .sort((left, right) => {
@@ -808,13 +826,12 @@ function scoreCoalitionFit(state, playerId, summary, leaderId, weights, context 
     const targetIsLeader = candidateId === leaderId && candidateId !== playerId;
     const leaderPenalty = targetIsLeader ? weights.supportLeaderPenalty * 0.8 : 0;
     return summary.capitalTroops
-      * weights.coalitionWillingness
-      * (0.65 + Math.max(0, relation) * 0.08 + Math.max(0, recommendation.supporterScore) * 0.18)
+      * (1.1 + Math.max(0, relation) * 0.06 + Math.max(0, recommendation.supporterScore) * 0.16)
       - leaderPenalty;
   }
   const selfException = candidateId === playerId && recommendation.viability === 'weak';
-  if (selfException) return -summary.capitalTroops * weights.coalitionDefectionPenalty * 0.35;
-  return -summary.capitalTroops * weights.coalitionDefectionPenalty;
+  if (selfException) return -summary.capitalTroops * 0.35;
+  return -summary.capitalTroops * 1.1;
 }
 
 function frontierSafetyScale(state, summary, estimates, weights = DEFAULT_STRATEGY_WEIGHTS) {
@@ -842,71 +859,56 @@ function scoreSupportRelationship(state, playerId, candidateId, capitalTroops, l
 }
 
 function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLeaderId(state, playerId), weights = DEFAULT_STRATEGY_WEIGHTS, context = {}) {
-  const throneValue = weights.throneBase;
   const safetyScale = frontierSafetyScale(state, summary, estimates, weights);
   const table = context.memory?.table || {};
+  const final = context.final || projectedScoring(state);
+  const rivalCapital = Math.max(estimates.maxCapitalTroops, estimates.incumbentCapitalTroops);
+  const ownCapital = Math.max(0, summary.capitalTroops);
+  const leverage = clamp(ownCapital / Math.max(1, rivalCapital + 1), 0, 1.25);
+  const decisiveTroops = Math.max(0, ownCapital - rivalCapital);
+  const candidatePreference = scoreBasileusPreference(
+    state,
+    context.memory,
+    playerId,
+    summary.candidate,
+    final,
+    leaderId,
+    weights,
+  );
+  const opportunity = ownCapital
+    * weights.coupOpportunityWeight
+    * safetyScale
+    * (0.45 + Math.min(1, leverage) + (table.underCouping || 0) * 0.25);
 
   if (summary.candidate === playerId) {
-    const rivalCapital = Math.max(estimates.maxCapitalTroops, estimates.incumbentCapitalTroops);
-    const claimLeverage = summary.capitalTroops > rivalCapital + 0.5
-      ? 1
-      : clamp(summary.capitalTroops / (rivalCapital + 1), 0, 1);
-    const decisiveTroops = Math.max(0, summary.capitalTroops - rivalCapital);
-    const coalitionBacking = context.coalitionContext?.candidates?.find((candidate) => (
-      candidate.candidateId === playerId
-      && candidate.supporters?.some((supporter) => supporter.playerId !== playerId)
-      && candidate.expectedVotes > rivalCapital
-    ));
-    const claimSafety = safetyScale;
-    const tokenPenalty = summary.capitalTroops > 0 && summary.capitalTroops < 3
-      ? (3 - summary.capitalTroops) * (2.8 + weights.selfClaim) * (coalitionBacking ? 0.25 : 1)
-      : 0;
-    let value = 0;
-    if (summary.capitalTroops > rivalCapital + 0.5) {
-      value = throneValue * weights.selfClaim * claimSafety
-        + decisiveTroops * weights.selfClaim * 1.2 * safetyScale;
-    } else if (summary.capitalTroops >= 3) {
-      value = (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.35 * weights.selfClaim;
-    } else if (summary.capitalTroops > 0) {
-      value = (summary.capitalTroops / (rivalCapital + 1)) * throneValue * 0.12 * weights.selfClaim;
-    } else value = -5;
-    value += summary.capitalTroops
-      * weights.coupOpportunityWeight
-      * safetyScale
-      * (0.35 + claimLeverage + (table.underCouping || 0) * 0.35);
-    value -= tokenPenalty;
+    let value = candidatePreference * Math.min(1, leverage) * safetyScale
+      + ownCapital * weights.selfClaim * 1.2 * safetyScale
+      + decisiveTroops * weights.selfClaim * 1.1 * safetyScale
+      + opportunity;
+    if (ownCapital <= 0) value -= 5;
     value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
-    value += summary.capitalTroops * (table.underCouping || 0) * weights.coalitionWillingness * 0.18;
-    value -= summary.capitalTroops * (table.overCouping || 0) * weights.coalitionWillingness * 0.12;
+    value -= ownCapital * (table.overCouping || 0) * 0.18;
     return value;
   }
 
   if (summary.candidate === state.basileusId) {
     let value = 0;
-    if (playerId === state.basileusId) value = summary.capitalTroops * 1.5 * weights.incumbentDefense;
-    else if (state.basileusId === leaderId) value = -summary.capitalTroops * weights.supportLeaderPenalty;
-    else value = summary.capitalTroops * 0.25 * weights.incumbentDefense;
+    if (playerId === state.basileusId) value = ownCapital * 1.5 * weights.incumbentDefense + opportunity * 0.45;
+    else value = candidatePreference * Math.min(1, leverage) + ownCapital * 0.25 * weights.incumbentDefense;
     if (playerId === state.basileusId) {
-      value += summary.capitalTroops * weights.coupOpportunityWeight * safetyScale * 0.45;
+      value += ownCapital * weights.coupOpportunityWeight * safetyScale * 0.35;
     }
-    value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops, leaderId, weights, context);
+    value += scoreSupportRelationship(state, playerId, summary.candidate, ownCapital, leaderId, weights, context);
     value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
     return value;
   }
 
-  let value = summary.candidate === leaderId
-    ? -summary.capitalTroops * weights.supportLeaderPenalty * 1.35
-    : summary.capitalTroops * weights.supportOtherClaimant;
-  if (summary.candidate !== leaderId) {
-    value += summary.capitalTroops
-      * weights.coupOpportunityWeight
-      * safetyScale
-      * (0.45 + (table.underCouping || 0) * 0.25);
-  }
-  value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops, leaderId, weights, context);
+  let value = candidatePreference * Math.min(1, leverage)
+    + ownCapital * weights.supportOtherClaimant
+    + opportunity;
+  value += scoreSupportRelationship(state, playerId, summary.candidate, ownCapital, leaderId, weights, context);
   value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
-  value += summary.capitalTroops * (table.underCouping || 0) * weights.coalitionWillingness * 0.1;
-  value -= summary.capitalTroops * (table.overCouping || 0) * weights.coalitionWillingness * 0.12;
+  value -= ownCapital * (table.overCouping || 0) * 0.18;
   return value;
 }
 
@@ -948,6 +950,7 @@ export function chooseStrategicOrderAction(state, meta, playerId, options = {}) 
   const coalitionContext = options.coalitionContext || buildCoupCoalitionContext(state, meta, memory);
   const context = {
     leaderId: currentLeaderId(state, playerId),
+    final: projectedScoring(state),
     weights: getStrategyWeights(meta, playerId),
     memory,
     coalitionContext,

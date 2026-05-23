@@ -30,6 +30,55 @@ export const FALLBACK_AI_OPPONENTS = Object.freeze([
     description: 'Leans toward estates, gold, and income-share plays.',
     policy: { policyId: 'profiteer' },
   },
+  {
+    id: 'patron-default',
+    firstName: 'Patron AI',
+    label: 'Patron AI',
+    description: 'Seeks the throne and rewards useful backers with real power.',
+    policy: { policyId: 'patron' },
+  },
+  {
+    id: 'tyrant-default',
+    firstName: 'Tyrant AI',
+    label: 'Tyrant AI',
+    description: 'Seeks the throne, centralizes power, and revokes aggressively.',
+    policy: { policyId: 'tyrant' },
+  },
+  {
+    id: 'kingmaker-default',
+    firstName: 'Kingmaker AI',
+    label: 'Kingmaker AI',
+    description: 'Backs promising claimants instead of chasing every crown itself.',
+    policy: { policyId: 'kingmaker' },
+  },
+  {
+    id: 'free-rider-default',
+    firstName: 'Free Rider AI',
+    label: 'Free Rider AI',
+    description: 'Trusts others to defend while it keeps resources for politics.',
+    policy: { policyId: 'freeRider' },
+  },
+  {
+    id: 'over-defender-default',
+    firstName: 'Over-Defender AI',
+    label: 'Over-Defender AI',
+    description: 'Overcommits to the frontier and leaves political openings.',
+    policy: { policyId: 'overDefender' },
+  },
+  {
+    id: 'estate-shark-default',
+    firstName: 'Estate Shark AI',
+    label: 'Estate Shark AI',
+    description: 'Turns estates and offices into sharp victory pressure.',
+    policy: { policyId: 'estateShark' },
+  },
+  {
+    id: 'anti-leader-default',
+    firstName: 'Anti-Leader AI',
+    label: 'Anti-Leader AI',
+    description: 'Targets the score leader and avoids easy kingmaking.',
+    policy: { policyId: 'antiLeader' },
+  },
 ]);
 
 function fallbackForSeat(seatId = 0) {
@@ -81,6 +130,40 @@ function migrateDangerBandTunedWeights(entry, weights) {
   };
 }
 
+function withoutDeprecatedTrainingWeights(weights) {
+  const migrated = { ...weights };
+  delete migrated.invasionMargin;
+  delete migrated.invasionVictoryBonus;
+  delete migrated.invasionDefeatPenalty;
+  delete migrated.throneProgress;
+  delete migrated.coalitionWillingness;
+  delete migrated.coalitionDefectionPenalty;
+  delete migrated.surplusDefensePenalty;
+  delete migrated.frontierSurplusValue;
+  delete migrated.frontierSurplusCap;
+  delete migrated.selfClaimThreshold;
+  return migrated;
+}
+
+function migratePatronageTunedWeights(entry, weights) {
+  if ((entry?.policy?.policyId || entry?.policyId || 'tuned') !== 'tuned') return weights;
+  const objectiveVersion = Number(entry?.training?.objectiveVersion) || 0;
+  if (objectiveVersion >= 4) return withoutDeprecatedTrainingWeights(weights);
+  const legacyMargin = Number(weights.invasionMargin) || 1.65;
+  const legacySurplusPenalty = Number(weights.surplusDefensePenalty) || 0.28;
+  const legacySafetyValue = Number(weights.frontierSurplusValue) || 0.5;
+  return {
+    ...withoutDeprecatedTrainingWeights(weights),
+    invasionShortfallPenalty: Math.max(1, Math.min(12, legacyMargin * 3.1)),
+    invasionSafetyValue: Math.max(0, Math.min(4, legacySafetyValue * 2.4)),
+    invasionSurplusPenalty: Math.max(0.05, Math.min(3, legacySurplusPenalty)),
+    basileusTitleExpectation: Number(weights.basileusTitleExpectation) || 0.7,
+    basileusRevocationFear: Number(weights.basileusRevocationFear) || 0.8,
+    backerTitleReward: Number(weights.backerTitleReward) || 0.9,
+    backerRevocationMercy: Number(weights.backerRevocationMercy) || 0.9,
+  };
+}
+
 function normalizeTunedOpponent(entry, index = 0) {
   if (!entry || typeof entry !== 'object') return null;
   const id = String(entry.id || `tuned-${index + 1}`).trim();
@@ -90,7 +173,8 @@ function normalizeTunedOpponent(entry, index = 0) {
     entry,
     entry.strategyWeights || entry.policy?.strategyWeights || entry.weights || {},
   );
-  const strategyWeights = migrateDangerBandTunedWeights(entry, legacyWeights);
+  const dangerBandWeights = migrateDangerBandTunedWeights(entry, legacyWeights);
+  const strategyWeights = migratePatronageTunedWeights(entry, dangerBandWeights);
   return {
     id,
     firstName,

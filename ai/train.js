@@ -12,6 +12,37 @@ import { POLICY_WEIGHT_PRESETS } from './policies.js';
 import { pickGreekFirstName, slugifyGreekFirstName } from './greekNames.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 
+const DEFAULT_TRAINING_LEAGUE = Object.freeze([
+  'strategic',
+  'defender',
+  'usurper',
+  'profiteer',
+  'patron',
+  'tyrant',
+  'kingmaker',
+  'freeRider',
+  'overDefender',
+  'estateShark',
+  'antiLeader',
+  'greedy',
+  'loyalist',
+  'random',
+  'copycat',
+]);
+
+const SEED_PROFILE_IDS = Object.freeze([
+  'strategic',
+  'defender',
+  'usurper',
+  'patron',
+  'tyrant',
+  'kingmaker',
+  'freeRider',
+  'overDefender',
+  'estateShark',
+  'antiLeader',
+]);
+
 const DEFAULT_OPTIONS = {
   generations: 3,
   population: 10,
@@ -33,7 +64,7 @@ const DEFAULT_OPTIONS = {
   workers: null,
   save: true,
   outputPath: fileURLToPath(new URL('./tunedOpponents.json', import.meta.url)),
-  league: ['strategic', 'defender', 'usurper', 'profiteer', 'random', 'copycat'],
+  league: DEFAULT_TRAINING_LEAGUE,
 };
 
 const TRAINING_OPPONENT_MIXES = Object.freeze({
@@ -43,10 +74,17 @@ const TRAINING_OPPONENT_MIXES = Object.freeze({
     championWeight: 0,
     nonChampionWeight: 6,
     builtInWeights: [
-      ['strategic', 1],
-      ['defender', 1],
-      ['usurper', 1],
+      ['strategic', 2],
+      ['defender', 2],
+      ['usurper', 2],
       ['profiteer', 1],
+      ['patron', 1],
+      ['tyrant', 1],
+      ['kingmaker', 1],
+      ['freeRider', 1],
+      ['overDefender', 1],
+      ['estateShark', 1],
+      ['antiLeader', 1],
       ['random', 1],
       ['copycat', 1],
     ],
@@ -54,13 +92,22 @@ const TRAINING_OPPONENT_MIXES = Object.freeze({
   robust: {
     label: 'Robust',
     selfPlayEvery: 3,
-    championWeight: 9,
-    nonChampionWeight: 10,
+    championWeight: 18,
+    nonChampionWeight: 18,
     builtInWeights: [
       ['strategic', 2],
       ['defender', 2],
       ['usurper', 2],
-      ['profiteer', 2],
+      ['patron', 2],
+      ['tyrant', 2],
+      ['kingmaker', 2],
+      ['freeRider', 2],
+      ['overDefender', 2],
+      ['estateShark', 2],
+      ['antiLeader', 2],
+      ['profiteer', 1],
+      ['greedy', 1],
+      ['loyalist', 1],
       ['random', 1],
       ['copycat', 1],
     ],
@@ -75,14 +122,13 @@ export const STRATEGY_WEIGHT_BOUNDS = Object.freeze({
   estateProfit: [1, 9],
   estateBidCost: [0.35, 2.4],
   estateThreatPenalty: [0, 5],
-  invasionMargin: [0.35, 2.4],
+  invasionShortfallPenalty: [1, 12],
+  invasionSafetyValue: [0, 4],
+  invasionSurplusPenalty: [0.05, 3],
   capitalFallPenalty: [100, 1400],
   capitalRiskPenalty: [20, 500],
-  invasionVictoryBonus: [0, 24],
-  invasionDefeatPenalty: [0, 34],
   recoveryBonus: [0, 2.5],
   throneBase: [0, 80],
-  throneProgress: [0, 0],
   selfClaim: [0.05, 2.4],
   incumbentDefense: [0.1, 2.4],
   supportLeaderPenalty: [0.1, 2.4],
@@ -98,15 +144,13 @@ export const STRATEGY_WEIGHT_BOUNDS = Object.freeze({
   defenseContextWeight: [0, 2.4],
   fundingContextWeight: [0, 1.8],
   revocationContextWeight: [0, 1.6],
-  coalitionWillingness: [0, 2.4],
   relationshipCoupWeight: [0, 1.8],
-  coalitionDefectionPenalty: [0, 2.4],
-  surplusDefensePenalty: [0.05, 2.4],
-  frontierSurplusValue: [0, 0.8],
-  frontierSurplusCap: [0, 16],
   coupOpportunityWeight: [0.05, 2.4],
+  basileusTitleExpectation: [0, 2.4],
+  basileusRevocationFear: [0, 2.4],
+  backerTitleReward: [0, 2.4],
+  backerRevocationMercy: [0, 2.4],
   allyDefenseReliance: [0.55, 1],
-  selfClaimThreshold: [0.65, 1.6],
   kingmakerPenalty: [0, 1.2],
 });
 
@@ -201,6 +245,15 @@ function scoreBand(value, min, max, reward, lowPenalty, highPenalty) {
   return reward;
 }
 
+function normalizedRankScore(rank, playerCount) {
+  const span = Math.max(1, playerCount - 1);
+  return Math.max(0, Math.min(1, (playerCount - rank) / span));
+}
+
+function smoothMarginScore(value, scale = 8) {
+  return Math.tanh((Number(value) || 0) / scale);
+}
+
 function scoreAggregateTrainingShape(metrics, options) {
   const fallRate = Number(metrics.fallRate) || 0;
   const selfClaimRate = Number(metrics.selfClaimRate) || 0;
@@ -248,14 +301,7 @@ function mutateWeights(base, rng, mutation) {
 }
 
 function seedPopulation(options, rng) {
-  const namedProfiles = [
-    ['strategic', {}],
-    ['defender', POLICY_WEIGHT_PRESETS.defender],
-    ['usurper', POLICY_WEIGHT_PRESETS.usurper],
-    ['profiteer', POLICY_WEIGHT_PRESETS.profiteer],
-    ['greedy', POLICY_WEIGHT_PRESETS.greedy],
-    ['loyalist', POLICY_WEIGHT_PRESETS.loyalist],
-  ];
+  const namedProfiles = SEED_PROFILE_IDS.map((policyId) => [policyId, POLICY_WEIGHT_PRESETS[policyId] || {}]);
   const population = namedProfiles.map(([name, weights]) => ({
     name,
     weights: boundedWeights(weights),
@@ -418,20 +464,20 @@ function scoreCandidateGame(game, candidateSeat, playerCount, options) {
   const unresolvedAppointmentLock = appointmentStats.finalSelfLocked ? 1 : 0;
   const won = game.winnerIds.includes(candidateSeat);
 
-  let objective = won ? 240 : 0;
-  objective += (playerCount - rank) * 55;
-  objective += pointMargin * 28;
-  objective += (Number(entry.points) || 0) * 18;
-  objective += Math.min(40, Math.max(0, Number(entry.gold) || 0)) * 0.12;
-  objective += Math.max(0, Number(entry.projectedIncome) || 0) * 0.18;
-  objective += selfClaimWinRate * 70;
-  objective += Math.min(0.35, credibleSelfClaimRate) * 42;
-  objective += Math.min(8, averageSelfClaimTroops) * (selfClaims > 0 ? 1.8 : 0);
+  let objective = won ? 180 : 0;
+  objective += normalizedRankScore(rank, playerCount) * 90;
+  objective += smoothMarginScore(pointMargin) * 70;
+  objective += Math.min(45, Math.max(0, Number(entry.points) || 0)) * 7;
+  objective += Math.min(40, Math.max(0, Number(entry.gold) || 0)) * 0.1;
+  objective += Math.max(0, Number(entry.projectedIncome) || 0) * 0.14;
+  objective += selfClaimWinRate * 55;
+  objective += Math.min(0.35, credibleSelfClaimRate) * 36;
+  objective += Math.min(8, averageSelfClaimTroops) * (selfClaims > 0 ? 1.4 : 0);
   objective -= tokenSelfClaimRate * 28;
   objective -= Math.max(0, 0.08 - credibleSelfClaimRate) * 12;
-  objective -= defeatRate * 14;
-  objective += victoryRate * 5;
-  objective -= Math.max(0, averageWarMargin - 10) * 0.5;
+  objective -= defeatRate * 12;
+  objective += victoryRate * 3;
+  objective -= Math.max(0, averageWarMargin - 6) * 1.2;
   if (game.reason === 'stuck') objective -= 120;
 
   return {
@@ -602,7 +648,7 @@ function buildSavedOpponent(result, champion, index, existing) {
     metrics: champion.metrics,
     training: {
       trainedAt: new Date().toISOString(),
-      objectiveVersion: 3,
+      objectiveVersion: 4,
       championRank: index + 1,
       generations: result.options.generations,
       population: result.options.population,
