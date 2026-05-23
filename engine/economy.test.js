@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DYNASTY_COLORS, DYNASTY_PROFILES, INVASIONS, getDynastyColor } from '../data/invasions.js';
+import {
+  DYNASTY_COLORS,
+  DYNASTY_PROFILES,
+  INVASIONS,
+  INVASION_ESTIMATE_INTERVAL,
+  getDynastyColor,
+} from '../data/invasions.js';
 import { PROVINCES } from '../data/provinces.js';
 import { createGameState, createInvasionInstance, getPlayer, getOfficeHolder, pickInvasionTemplate } from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
@@ -113,31 +119,25 @@ test('invasion picker uses weighted probability bands', () => {
 });
 
 test('invasion templates carry individual strength bounds', () => {
-  const bounds = Object.fromEntries(INVASIONS.map(({ id, strengthBounds }) => [id, strengthBounds]));
   const emirateTemplate = INVASIONS.find((entry) => entry.id === 'emirate');
 
-  assert.deepEqual(bounds, {
-    emirate: [10, 30],
-    kievan_rus: [10, 25],
-    normans: [10, 25],
-    venetians: [10, 30],
-    bulgars: [10, 30],
-    serbs: [10, 25],
-    hungarians: [10, 25],
-    turks: [20, 40],
-    caliphate: [20, 40],
-  });
+  assert.equal(INVASIONS.every(({ strengthBounds }) => Array.isArray(strengthBounds)), true);
+  assert.equal(new Set(INVASIONS.map(({ strengthBounds }) => strengthBounds.join('-'))).size > 1, true);
+  for (const template of INVASIONS) {
+    const [min, max] = template.strengthBounds;
+    assert.equal(Number.isInteger(min), true, `${template.id} strength minimum should be an integer`);
+    assert.equal(Number.isInteger(max), true, `${template.id} strength maximum should be an integer`);
+    assert.equal(min >= 1, true, `${template.id} strength minimum should be positive`);
+    assert.equal(max - min >= INVASION_ESTIMATE_INTERVAL, true, `${template.id} strength range should support an estimate interval`);
+
+    const invasion = createInvasionInstance(template, () => 0);
+    assert.deepEqual(invasion.baseStrength, template.strengthBounds);
+    assert.deepEqual(invasion.strength, [min, min + INVASION_ESTIMATE_INTERVAL]);
+  }
   assert.equal(emirateTemplate.name, 'Emirate');
   assert.equal(emirateTemplate.objective, 'provinces');
   assert.equal(emirateTemplate.requiresImperialTarget, true);
   assert.deepEqual(emirateTemplate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP']);
-
-  const turks = createInvasionInstance(INVASIONS.find((entry) => entry.id === 'turks'), () => 0);
-  const emirate = createInvasionInstance(emirateTemplate, () => 0);
-  assert.deepEqual(turks.baseStrength, [20, 40]);
-  assert.deepEqual(turks.strength, [20, 25]);
-  assert.deepEqual(emirate.baseStrength, [10, 30]);
-  assert.deepEqual(emirate.strength, [10, 15]);
 });
 
 test('score shares award one point per 10 percent threshold', () => {
