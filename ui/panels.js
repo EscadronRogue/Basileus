@@ -19,6 +19,8 @@ import {
 } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
 import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey, getBishopThemes } from '../engine/state.js';
+import { getPlayerCapitalSupport } from '../engine/capitalSupport.js';
+import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking } from '../engine/coup.js';
 import {
   getDeploymentArmyDisplayName,
   getDeploymentArmySourceKeys,
@@ -33,7 +35,7 @@ import {
   formatChurchHtml,
   formatMercenariesHtml,
 } from '../engine/presentation.js';
-import { renderIcon } from './icons.js';
+import { renderIcon, renderValue } from './icons.js';
 import {
   getPlayerStyleAttr,
   renderPlayerRoleName,
@@ -1081,6 +1083,17 @@ function ensureDeploymentDraft(state, draft, armyKeys) {
   }
 }
 
+function ensureDeploymentRanking(state, playerId, draft, preferredCandidateId = null) {
+  draft.ranking = normalizeCoupRanking(
+    state,
+    playerId,
+    draft.ranking,
+    preferredCandidateId ?? draft.candidate,
+  );
+  draft.candidate = getPreferredCoupCandidate(state, playerId, draft);
+  return draft.ranking;
+}
+
 function isDeploymentDestination(value) {
   return value === 'frontier' || value === 'capital';
 }
@@ -1104,7 +1117,8 @@ function getDeploymentReadiness(state, playerId, draft, armyKeys) {
   if (mercenaryCount > 0 && !isDeploymentDestination(draft.mercenaries?.destination)) {
     missing.push('mercenaries:destination');
   }
-  if (draft.candidate == null || draft.candidate === '' || !Number.isInteger(Number(draft.candidate))) missing.push('candidate');
+  const ranking = ensureDeploymentRanking(state, playerId, draft);
+  if (ranking.length !== state.players.length || ranking[0] !== playerId) missing.push('ranking');
   return { ready: missing.length === 0, missing };
 }
 
@@ -1115,7 +1129,10 @@ function getActiveOrderLocks(options = {}) {
 
 function applyOrderLocksToDraft(state, playerId, draft, orderLocks) {
   if (!orderLocks?.ok) return;
-  if (orderLocks.candidateId != null) draft.candidate = Number(orderLocks.candidateId);
+  if (orderLocks.candidateId != null) {
+    draft.ranking = normalizeCoupRanking(state, playerId, draft.ranking, Number(orderLocks.candidateId));
+    draft.candidate = Number(orderLocks.candidateId);
+  }
   for (const [officeKey, destination] of Object.entries(orderLocks.committedOfficeKeys || {})) {
     if (!draft.armies[officeKey]) draft.armies[officeKey] = { funded: 0, destination: 'frontier' };
     draft.armies[officeKey].funded = getArmyMaxTroops(state, playerId, officeKey);
@@ -1146,7 +1163,12 @@ function getDraftArmyBreakdown(state, playerId, draft, armyKeys) {
   if (draft.mercenaries?.destination === 'capital') capitalTroops += mercenaryCount;
   else if (draft.mercenaries?.destination === 'frontier') frontierTroops += mercenaryCount;
 
-  return { capitalTroops, frontierTroops, unfundedTroops };
+  return {
+    capitalTroops,
+    passiveCapitalSupport: getPlayerCapitalSupport(state, playerId),
+    frontierTroops,
+    unfundedTroops,
+  };
 }
 
 function getDeploymentTotals(state, playerId, draft, armyKeys, reserve) {
@@ -1175,7 +1197,7 @@ function renderOrderLockNotice(state, orderLocks) {
   const rows = [];
   if (orderLocks.candidateId != null) {
     const candidate = getPlayer(state, Number(orderLocks.candidateId));
-    rows.push(`Claimant: ${escapeHtml(playerDisplayLabel(candidate))}`);
+    rows.push(`Coup rank: ${escapeHtml(playerDisplayLabel(candidate))} after you`);
   }
   for (const office of orderLocks.officeSelections || []) {
     const destination = office.destination === 'capital' ? 'Capital' : 'Frontier';
@@ -1196,15 +1218,18 @@ function renderOrderLockNotice(state, orderLocks) {
 
 function renderDeploymentPreview(state, playerId, draft, armyKeys) {
   const breakdown = getDraftArmyBreakdown(state, playerId, draft, armyKeys);
-  const candidate = draft.candidate != null && draft.candidate !== '' && Number.isInteger(Number(draft.candidate))
-    ? getPlayer(state, Number(draft.candidate))
-    : null;
-  const candidateLabel = candidate ? escapeHtml(playerDisplayLabel(candidate)) : 'Pick claimant';
+  const ranking = ensureDeploymentRanking(state, playerId, draft);
+  const topPreference = getPlayer(state, ranking[1] ?? playerId);
+  const preferenceLabel = topPreference ? escapeHtml(playerDisplayLabel(topPreference)) : 'Rank claimants';
   return `
     <div class="deployment-preview" data-deployment-preview>
       <div class="deployment-preview-row">
-        <span class="deployment-preview-label">Coup support</span>
-        <span class="deployment-preview-value">${formatTroopsHtml(breakdown.capitalTroops)} for ${candidateLabel}</span>
+        <span class="deployment-preview-label">Capital troops</span>
+        <span class="deployment-preview-value">${formatTroopsHtml(breakdown.capitalTroops)} through ranking</span>
+      </div>
+      <div class="deployment-preview-row">
+        <span class="deployment-preview-label">Passive support</span>
+        <span class="deployment-preview-value">${renderValue('troop', breakdown.passiveCapitalSupport, { signed: true, displayValue: breakdown.passiveCapitalSupport })}</span>
       </div>
       <div class="deployment-preview-row">
         <span class="deployment-preview-label">Frontier</span>
@@ -1215,12 +1240,38 @@ function renderDeploymentPreview(state, playerId, draft, armyKeys) {
         <span class="deployment-preview-value">${formatGoldHtml(breakdown.unfundedTroops, { signed: true, tone: 'income' })}</span>
       </div>
       <p class="deployment-preview-note">
-        ${!candidate
-          ? 'Pick a claimant before locking deployment.'
-          : breakdown.capitalTroops > 0
-          ? 'Only funded Capital troops and Capital mercenaries count in the coup.'
-          : 'No troops are backing this claimant yet. Move funded troops or mercenaries to Capital to make them count in the coup.'}
+        ${breakdown.capitalTroops > 0
+          ? `Your strongest secondary preference is ${preferenceLabel}.`
+          : 'No funded troops or mercenaries are entering the capital ranking.'}
       </p>
+    </div>
+  `;
+}
+
+function renderCandidateRanking(state, playerId, draft, lockedCandidateId = null) {
+  const ranking = ensureDeploymentRanking(state, playerId, draft, lockedCandidateId);
+  const playerCount = state.players.length;
+  return `
+    <div class="candidate-rank-list" data-candidate-rank-list>
+      ${ranking.map((candidateId, index) => {
+        const candidate = getPlayer(state, candidateId);
+        const isSelf = candidateId === playerId;
+        const isLockedCandidate = lockedCandidateId != null && candidateId === lockedCandidateId;
+        const isDragging = Number(draft.draggedCandidateId) === Number(candidateId);
+        const weight = getCoupRankWeight(playerCount, index);
+        const tag = isSelf ? 'You' : isLockedCandidate ? 'Deal lock' : `${Math.round(weight * 100)}%`;
+        return `
+          <div class="candidate-row candidate-rank-row${isSelf ? ' self locked' : ''}${isLockedCandidate ? ' deal-locked' : ''}${isDragging ? ' dragging' : ''}"
+            data-candidate-rank="${candidateId}"
+            draggable="${!isSelf && !isLockedCandidate}"
+            style="${getPlayerStyleAttr(state, candidateId)}">
+            <span class="candidate-rank-no">${index + 1}</span>
+            <span class="candidate-crest">${playerInitial(candidate)}</span>
+            <span class="candidate-name">${escapeHtml(playerDisplayLabel(candidate))}</span>
+            <span class="candidate-tag">${tag}</span>
+          </div>
+        `;
+      }).join('')}
     </div>
   `;
 }
@@ -1238,34 +1289,14 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   ensureDeploymentDraft(state, draft, armyKeys);
   const orderLocks = getActiveOrderLocks(options);
   applyOrderLocksToDraft(state, playerId, draft, orderLocks);
+  ensureDeploymentRanking(state, playerId, draft, orderLocks?.ok ? orderLocks.candidateId : null);
   const totals = getDeploymentTotals(state, playerId, draft, armyKeys, reserve);
   const readiness = getDeploymentReadiness(state, playerId, draft, armyKeys);
   const candidateLockedId = orderLocks?.ok && orderLocks.candidateId != null ? Number(orderLocks.candidateId) : null;
   const lockedDestinations = orderLocks?.ok ? (orderLocks.committedOfficeKeys || {}) : {};
   const deploymentPreview = renderDeploymentPreview(state, playerId, draft, armyKeys);
   const lockNotice = renderOrderLockNotice(state, orderLocks);
-
-  const candidateRows = state.players.map((candidate) => {
-    const isCurrent = candidate.id === state.basileusId;
-    const isSelected = draft.candidate != null
-      && draft.candidate !== ''
-      && Number(draft.candidate) === candidate.id;
-    const isLockedCandidate = candidateLockedId === candidate.id;
-    const isDisabled = candidateLockedId != null && !isLockedCandidate;
-    const tag = isLockedCandidate ? 'Deal lock' : (isSelected ? 'Your pick' : (isCurrent ? 'Current' : 'Claimant'));
-    return `
-      <button type="button"
-        class="candidate-row${isSelected ? ' selected' : ''}${isDisabled ? ' disabled' : ''}"
-        data-candidate-pick="${candidate.id}"
-        aria-pressed="${isSelected ? 'true' : 'false'}"
-        style="${getPlayerStyleAttr(state, candidate.id)}"
-        ${isDisabled ? 'disabled' : ''}>
-        <span class="candidate-crest">${playerInitial(candidate)}</span>
-        <span class="candidate-name">${escapeHtml(playerDisplayLabel(candidate))}</span>
-        <span class="candidate-tag">${tag}</span>
-      </button>
-    `;
-  }).join('');
+  const candidateRanking = renderCandidateRanking(state, playerId, draft, candidateLockedId);
 
   container.innerHTML = `
     <section class="phase-card orders-panel">
@@ -1344,9 +1375,9 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
 
         <div class="candidate-section">
           <div class="candidate-section-head">
-            ${renderPickerStep('★', 'Back a claimant for the throne')}
+            ${renderPickerStep('★', 'Rank claimants for the throne')}
           </div>
-          <div class="candidate-grid">${candidateRows}</div>
+          ${candidateRanking}
         </div>
 
         <div class="panel-actions">
@@ -1416,16 +1447,61 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       rerender();
     });
   });
-  container.querySelectorAll('[data-candidate-pick]').forEach((button) => {
-    button.addEventListener('click', () => {
-      draft.candidate = Number(button.dataset.candidatePick);
-      rerender();
+  const getDraggedCandidateId = () => (
+    Number.isInteger(Number(draft.draggedCandidateId)) ? Number(draft.draggedCandidateId) : null
+  );
+  const clearDraggedCandidateId = () => {
+    delete draft.draggedCandidateId;
+  };
+  const moveRankedCandidate = (candidateId, targetId, after = false) => {
+    if (!Number.isInteger(candidateId) || candidateId === playerId) return false;
+    if (candidateLockedId != null && candidateId === candidateLockedId) return false;
+    const ranking = ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
+    const moving = ranking.indexOf(candidateId);
+    const target = ranking.indexOf(targetId);
+    if (moving <= 0 || target <= 0 || moving === target) return false;
+    const lockedIndex = candidateLockedId == null ? -1 : ranking.indexOf(candidateLockedId);
+    if (lockedIndex > 0 && target <= lockedIndex) return false;
+    const [entry] = ranking.splice(moving, 1);
+    let insertAt = ranking.indexOf(targetId);
+    if (after) insertAt += 1;
+    if (lockedIndex > 0) insertAt = Math.max(insertAt, lockedIndex + 1);
+    ranking.splice(insertAt, 0, entry);
+    draft.ranking = normalizeCoupRanking(state, playerId, ranking, candidateLockedId);
+    draft.candidate = getPreferredCoupCandidate(state, playerId, draft);
+    return true;
+  };
+  container.querySelectorAll('[data-candidate-rank]').forEach((row) => {
+    row.addEventListener('dragstart', (event) => {
+      draft.draggedCandidateId = Number(row.dataset.candidateRank);
+      row.classList.add('dragging');
+      event.dataTransfer?.setData?.('text/plain', String(draft.draggedCandidateId));
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      clearDraggedCandidateId();
+      row.classList.remove('dragging');
+    });
+    row.addEventListener('dragover', (event) => {
+      const draggedCandidateId = getDraggedCandidateId();
+      if (draggedCandidateId == null) return;
+      event.preventDefault();
+      const targetId = Number(row.dataset.candidateRank);
+      const rect = row.getBoundingClientRect?.();
+      const after = rect ? event.clientY > rect.top + rect.height / 2 : false;
+      if (moveRankedCandidate(draggedCandidateId, targetId, after)) rerender();
+    });
+    row.addEventListener('drop', (event) => {
+      event.preventDefault();
+      clearDraggedCandidateId();
     });
   });
   bindSelectAction(container, '[data-action="lock-orders"]', () => {
+    ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
     callbacks.lockOrders?.({
       armies: draft.armies,
       mercenaries: draft.mercenaries,
+      ranking: draft.ranking.slice(),
       candidate: draft.candidate == null ? null : Number(draft.candidate),
     });
   });
@@ -1475,6 +1551,7 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
   const themesLost = Array.isArray(war.themesLost) ? war.themesLost : [];
   const themesRecovered = Array.isArray(war.themesRecovered) ? war.themesRecovered : [];
   const frontierBreakdown = renderFrontierContributionBreakdown(state, war.contributions);
+  const reconquestReward = war.reconquestReward || null;
 
   return `
     <article class="result-card war-result war-${outcome}${empireFell ? ' empire-fell' : ''}">
@@ -1507,7 +1584,21 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
           <div class="war-result-tokens">${themesRecovered.map((id) => renderProvinceBadge(state, state.themes[id] || { id, name: id }, { compact: true })).join(' ')}</div>
         </div>
       ` : ''}
+      ${reconquestReward ? renderReconquestRewardRow(state, reconquestReward) : ''}
     </article>
+  `;
+}
+
+function renderReconquestRewardRow(state, reward) {
+  const defender = getPlayer(state, Number(reward.defenderId));
+  return `
+    <div class="war-result-row recovered reconquest-reward-row">
+      <span class="war-result-row-label">Reconquest acclaim</span>
+      <div class="reward-card-body">
+        ${defender ? renderPlayerRoleName(state, defender) : escapeHtml(reward.defenderName || 'Top defender')}
+        <span class="muted">gains ${formatGoldHtml(reward.gold || 0)} and ${renderValue('troop', reward.capitalSupport || 0, { signed: true })} in Constantinople next round.</span>
+      </div>
+    </div>
   `;
 }
 
@@ -1547,17 +1638,16 @@ function renderCoupResultCard(state, coup) {
   const contributions = Array.isArray(coup.contributions) ? coup.contributions : [];
   const ballots = Array.isArray(coup.ballots) ? coup.ballots : contributions;
   const voteRows = Object.entries(votes)
-    .map(([candidateId, troops]) => ({ candidateId: Number(candidateId), troops: Math.max(0, Number(troops) || 0) }))
-    .filter((row) => row.troops > 0)
-    .sort((a, b) => b.troops - a.troops);
+    .map(([candidateId, troops]) => ({ candidateId: Number(candidateId), troops: Number(troops) || 0 }))
+    .filter((row) => row.troops !== 0)
+    .sort((a, b) => (b.troops - a.troops) || (a.candidateId - b.candidateId));
   const zeroBallots = ballots
     .filter((ballot) => Math.max(0, Number(ballot.troops) || 0) <= 0)
     .sort((a, b) => Number(a.playerId) - Number(b.playerId));
   const zeroBallotSummary = zeroBallots.length
     ? `No capital troops from ${zeroBallots.map((ballot) => {
       const voter = getPlayer(state, Number(ballot.playerId));
-      const candidate = getPlayer(state, Number(ballot.candidateId));
-      return `${escapeHtml(playerDisplayLabel(voter))} (${escapeHtml(playerDisplayLabel(candidate))})`;
+      return `${escapeHtml(playerDisplayLabel(voter))}`;
     }).join(', ')}.`
     : '';
 
@@ -1575,8 +1665,8 @@ function renderCoupResultCard(state, coup) {
         <div class="vote-breakdown">
           ${voteRows.map((row) => {
             const supporters = contributions
-              .filter((entry) => Number(entry.candidateId) === row.candidateId && (Number(entry.troops) || 0) > 0)
-              .sort((a, b) => (Number(b.troops) - Number(a.troops)) || (Number(a.playerId) - Number(b.playerId)));
+              .filter((entry) => Number(entry.candidateId) === row.candidateId && (Number(entry.votes ?? entry.troops) || 0) !== 0)
+              .sort((a, b) => (Number(b.votes ?? b.troops) - Number(a.votes ?? a.troops)) || (Number(a.playerId) - Number(b.playerId)));
             return `
               <div class="vote-row">
                 <span class="vote-candidate">
@@ -1585,12 +1675,16 @@ function renderCoupResultCard(state, coup) {
                     <span class="vote-supporters">
                       ${supporters.map((entry) => {
                         const supporter = getPlayer(state, Number(entry.playerId));
-                        return `${escapeHtml(playerDisplayLabel(supporter))} ${formatTroopsHtml(entry.troops)}`;
+                        const value = Number(entry.votes ?? entry.troops) || 0;
+                        const sourceLabel = entry.passive
+                          ? escapeHtml(entry.supportLabel || 'Passive support')
+                          : escapeHtml(playerDisplayLabel(supporter));
+                        return `${sourceLabel} ${renderValue('troop', value, { signed: entry.passive, displayValue: Math.round(value * 100) / 100 })}`;
                       }).join(' ')}
                     </span>
                   ` : ''}
                 </span>
-                <span class="vote-troops">${formatTroopsHtml(row.troops)}</span>
+                <span class="vote-troops">${renderValue('troop', row.troops, { signed: true, displayValue: Math.round(row.troops * 100) / 100 })}</span>
               </div>
             `;
           }).join('')}

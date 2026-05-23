@@ -7,6 +7,8 @@ import { recordHistoryEvent } from './history.js';
 import { getOfficeDisplayName, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
 import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
+import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
+import { getPreferredCoupCandidate, normalizeCoupRanking } from './coup.js';
 import {
   getDeploymentArmyDisplayName,
   getDeploymentArmyTroopEntry,
@@ -94,12 +96,18 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
     else frontierTroops += mercenaries.count;
   }
 
+  const ranking = normalizeCoupRanking(state, player.id, orders.ranking, orders.candidate);
+  const preferredCandidateId = getPreferredCoupCandidate(state, player.id, { ...orders, ranking });
+  const passiveCapitalSupport = getPlayerCapitalSupport(state, player.id);
+
   return {
     playerId: player.id,
     playerName: playerName(state, player.id),
-    candidateId: orders.candidate,
-    candidateName: playerName(state, orders.candidate),
+    candidateId: preferredCandidateId,
+    candidateName: playerName(state, preferredCandidateId),
+    ranking,
     capitalTroops,
+    passiveCapitalSupport,
     frontierTroops,
     offices,
     mercenaries,
@@ -292,12 +300,18 @@ export function submitOrders(state, playerId, orders) {
   }
 
   state.allOrders[playerId] = orders;
+  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
+  const preferredCandidateId = getPreferredCoupCandidate(state, playerId, { ...orders, ranking });
   recordHistoryEvent(state, {
     category: 'orders',
     type: 'orders_submitted',
     actorId: playerId,
     summary: `${playerName(state, playerId)} locks deployment orders.`,
-    details: { candidateId: orders.candidate, candidateName: playerName(state, orders.candidate) },
+    details: {
+      candidateId: preferredCandidateId,
+      candidateName: playerName(state, preferredCandidateId),
+      ranking,
+    },
   });
   return { ok: true, unfundedGold, mercCost };
 }
@@ -332,11 +346,13 @@ export function phaseResolution(state) {
       type: 'orders_revealed',
       actorId: breakdown.playerId,
       actorAi: Boolean(breakdown.debug?.decision),
-      summary: `${breakdown.playerName} reveals orders: ${formatTroops(breakdown.capitalTroops)} support ${breakdown.candidateName} in the capital, and ${formatTroops(breakdown.frontierTroops)} go to the frontier.`,
+      summary: `${breakdown.playerName} reveals orders: ${formatTroops(breakdown.capitalTroops)} enter the capital ranking, and ${formatTroops(breakdown.frontierTroops)} go to the frontier.`,
       details: {
         candidateId: breakdown.candidateId,
         candidateName: breakdown.candidateName,
+        ranking: breakdown.ranking,
         capitalTroops: breakdown.capitalTroops,
+        passiveCapitalSupport: breakdown.passiveCapitalSupport,
         frontierTroops: breakdown.frontierTroops,
         offices: breakdown.offices,
         mercenaries: breakdown.mercenaries,
@@ -362,6 +378,7 @@ export function phaseResolution(state) {
         candidateName: playerName(state, Number(candidateId)),
         troops,
       })),
+      passiveSupport: coupResult.passiveSupport,
     },
   });
 
@@ -375,9 +392,10 @@ export function phaseResolution(state) {
       contributions: frontierContributions,
     };
     applyInvasionResult(state, warResult);
-    state.pendingDefenderRewards = createDefenderRewardQueue(state, warResult, frontierContributions);
-    preparePendingReconquestRewards(state, state.pendingDefenderRewards);
-    warResult.defenderRewards = state.pendingDefenderRewards;
+    state.pendingDefenderRewards = [];
+    warResult.defenderRewards = [];
+    warResult.reconquestReward = applyAutomaticReconquestRewards(state, warResult, frontierContributions);
+    applyBasileusLossPenalty(state, warResult);
     state.lastWarResult = warResult;
     state.log.push({
       type: 'war',
@@ -407,6 +425,7 @@ export function phaseResolution(state) {
         themesLost: warResult.themesLost.slice(),
         themesRecovered: warResult.themesRecovered.slice(),
         contributions: frontierContributions,
+        reconquestReward: warResult.reconquestReward,
       },
     });
   }
@@ -419,6 +438,75 @@ function rankedDefenders(contributions = []) {
     .filter((entry) => (Number(entry.troops) || 0) > 0)
     .slice()
     .sort((a, b) => (b.troops - a.troops) || (a.playerId - b.playerId));
+}
+
+function applyAutomaticReconquestRewards(state, warResult, contributions) {
+  const recovered = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
+  if (!recovered.length) return null;
+  const defender = rankedDefenders(contributions)[0] || null;
+  if (!defender) return null;
+  const player = getPlayer(state, defender.playerId);
+  const gold = recovered.length;
+  if (player) player.gold += gold;
+  const support = addTemporaryCapitalSupport(state, {
+    kind: 'reconquest',
+    label: 'Reconquest acclaim',
+    playerId: defender.playerId,
+    amount: recovered.length,
+    activeRound: state.round + 1,
+    themeIds: recovered,
+  });
+  const reward = {
+    defenderId: defender.playerId,
+    defenderName: defender.playerName,
+    troops: defender.troops,
+    themeIds: recovered.slice(),
+    gold,
+    capitalSupport: support?.amount || recovered.length,
+    activeRound: state.round + 1,
+  };
+  state.log.push({
+    type: 'reconquest_reward',
+    player: defender.playerId,
+    themes: recovered.slice(),
+    gold,
+    capitalSupport: reward.capitalSupport,
+    round: state.round,
+  });
+  recordHistoryEvent(state, {
+    category: 'resolution',
+    type: 'reconquest_reward',
+    actorId: defender.playerId,
+    summary: `${playerName(state, defender.playerId)} leads the reconquest and gains ${formatGold(gold)} plus ${formatTroops(reward.capitalSupport)} of capital acclaim next round.`,
+    details: reward,
+  });
+  return reward;
+}
+
+function applyBasileusLossPenalty(state, warResult) {
+  const lost = Array.isArray(warResult?.themesLost) ? warResult.themesLost.length : 0;
+  if (lost <= 0) return null;
+  const penalty = addTemporaryCapitalSupport(state, {
+    kind: 'lost_provinces',
+    label: 'Lost-province unrest',
+    titleKey: 'BASILEUS',
+    amount: -lost,
+    activeRound: state.round + 1,
+    themeIds: warResult.themesLost,
+  });
+  recordHistoryEvent(state, {
+    category: 'resolution',
+    type: 'basileus_loss_penalty',
+    actorId: state.basileusId,
+    summary: `${playerName(state, state.basileusId)} loses ${formatTroops(lost, 'province')} and suffers ${formatTroops(lost)} less capital support next round.`,
+    details: {
+      basileusId: state.basileusId,
+      themesLost: warResult.themesLost.slice(),
+      capitalSupport: penalty?.amount || -lost,
+      activeRound: state.round + 1,
+    },
+  });
+  return penalty;
 }
 
 function restoreReconqueredTheme(state, theme) {
@@ -588,6 +676,7 @@ export function applyDefenderRewards(state, warResult, contributions) {
 export function phaseCleanup(state) {
   state.phase = 'cleanup';
   finalizeDealRound(state);
+  expireCapitalSupport(state);
 
   const basileusChanged = state.nextBasileusId !== state.basileusId;
   state.majorTitleRedistributionPending = basileusChanged;

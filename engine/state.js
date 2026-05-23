@@ -164,6 +164,7 @@ export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEn
     currentTroops: {},
     lastIncome: null,
     mercenaryOrders: {},
+    temporaryCapitalSupport: [],
 
     dealThreads: [],
     activeDealObligations: [],

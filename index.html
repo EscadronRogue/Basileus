@@ -65,8 +65,8 @@
             <li><strong>Court.</strong> Each dynasty may make deals or skip; major offices may make up to two appointments or revocations in any mix, while the Basileus may make up to four revocations.</li>
             <li><strong>Income.</strong> Estates pay gold, bishops collect church value, and offices raise troops automatically after Court.</li>
             <li><strong>Estates.</strong> Dynasties bid for free-citizen land. Winning bids settle when deployment opens.</li>
-            <li><strong>Deployment.</strong> Each player funds office troops, hires mercenaries, chooses destinations, and backs a claimant.</li>
-            <li><strong>Resolution.</strong> Coup is decided first, then the war. Lost provinces become occupied; reconquerable ones return as free-citizen land only when defenders restore them.</li>
+            <li><strong>Deployment.</strong> Each player funds office troops, hires mercenaries, chooses destinations, and ranks the claimants.</li>
+            <li><strong>Resolution.</strong> Coup is decided first, then the war. Lost provinces become occupied; all provinces the empire can recover are automatically reconquered.</li>
             <li><strong>Cleanup.</strong> The new Basileus takes effect, round state clears, and the next invasion begins. After the last invasion, there is one final title redistribution, Court, and income phase before scoring.</li>
           </ol>
 
@@ -94,11 +94,12 @@
             <li><strong>Funding</strong> is chosen per office. Unfunded troops stay home and pay 1 gold each to their controller.</li>
             <li><strong>Mercenaries</strong> are hired during Deployment. Their cost rises triangularly: 1, then +2, then +3, etc. All hired mercenaries share one destination.</li>
             <li><strong>Capital-locked troops</strong> always defend the throne and cannot go to the frontier.</li>
+            <li><strong>Passive capital support</strong> comes from offices and acclaim, always stays in Constantinople, cannot be defunded, and is never counted for scoring or office troop shares.</li>
           </ul>
 
           <h3>Coup &amp; War</h3>
           <ul>
-            <li><strong>Coup.</strong> Add up the Capital troops backing each candidate. Most votes wins. Ties favour the sitting Basileus. A new Basileus redistributes all four major titles at the start of the next round or final reckoning.</li>
+            <li><strong>Coup.</strong> Every funded Capital troop follows its owner's ranking: first place gets full support, last place gets none, and the ranks between scale evenly. The Basileus starts with 2 passive capital support, the Patriarch with 1, and temporary acclaim or unrest can adjust those totals for one round. Most support wins; ties favour the sitting Basileus. A new Basileus redistributes all four major titles at the start of the next round or final reckoning.</li>
             <li><strong>War.</strong> Frontier troops minus invader strength. Win &rarr; reconquer occupied provinces along the route (cost 1, then +1, +1...). Lose &rarr; invader advances along the route capturing provinces (same triangular cost). If the invader reaches Constantinople, the empire falls.</li>
           </ul>
 
@@ -107,7 +108,7 @@
 
           <h3>Debt &amp; Defenders</h3>
           <ul>
-            <li><strong>Best defender.</strong> When the empire can reconquer provinces, the top frontier contributors take turns choosing either to restore a province to the empire as free-citizen land or take twice its profit value in gold. Gold leaves the farthest pending province along the invasion route occupied, keeping the frontier contiguous.</li>
+            <li><strong>Best defender.</strong> When the empire reconquers provinces, the top frontier contributor gains 1 gold and 1 temporary Constantinople support for each province recovered. That acclaim applies only during the next coup.</li>
           </ul>
         </div>
       </details>
@@ -154,7 +155,7 @@
           <p id="setupAiRosterHint" class="setup-hint">AI seats are named placeholders until a new AI system is installed.</p>
         </div>
 
-        <p class="setup-hint">AI dynasties act automatically during Court, Deployment, defender rewards, and title redistribution.</p>
+        <p class="setup-hint">AI dynasties act automatically during Court, Deployment, title redistribution, and final scoring.</p>
       </div>
 
       <div id="multiplayerFields" hidden>

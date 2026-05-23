@@ -18,6 +18,7 @@ import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/
 import { getFreeThemes, getPlayer } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
+import { buildDefaultCoupRanking } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 
 export const AI_DEALS_ENABLED = false;
@@ -328,7 +329,12 @@ export function listLegalOrderActions(state, playerId) {
   for (const armies of armyPlans) {
     for (const mercenaries of buildMercenaryPlans(state, playerId, armies)) {
       for (const candidate of state.players.map((player) => player.id)) {
-        const orders = { armies, mercenaries, candidate };
+        const orders = {
+          armies,
+          mercenaries,
+          candidate,
+          ranking: buildDefaultCoupRanking(state, playerId, candidate),
+        };
         const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
         if (!normalized.ok) continue;
         const key = stablePayload(normalized.orders);

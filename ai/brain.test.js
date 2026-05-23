@@ -162,6 +162,8 @@ test('strategic orders use the deployment schema and include decision metadata',
 
   assert.equal(validation.ok, true);
   assert.equal(Number.isInteger(orders.candidate), true);
+  assert.deepEqual(orders.ranking.slice(0, 1), [1]);
+  assert.equal(orders.ranking.length, state.players.length);
   assert.equal(orders.mercenaries.count >= 0, true);
   assert.equal(orders.armies.DOM_EAST.funded >= 0, true);
   assert.equal(orders.armies.PATRIARCH.funded >= 0, true);
@@ -169,7 +171,7 @@ test('strategic orders use the deployment schema and include decision metadata',
   assert.equal(orders.debug.decision.factors[0].label, 'frontier');
 });
 
-test('deployment submission rejects implicit army, claimant, and mercenary defaults', () => {
+test('deployment submission rejects implicit army and mercenary defaults', () => {
   const state = makeState();
   state.phase = 'deployment';
   state.currentTroops = {
@@ -183,12 +185,13 @@ test('deployment submission rejects implicit army, claimant, and mercenary defau
   assert.equal(missingArmy.ok, false);
   assert.match(missingArmy.reason, /funding/);
 
-  const missingCandidate = submitHumanOrders(state, 0, {
+  const defaultRanking = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
     mercenaries: { count: 0, destination: 'frontier' },
   });
-  assert.equal(missingCandidate.ok, false);
-  assert.match(missingCandidate.reason, /candidate/);
+  assert.equal(defaultRanking.ok, true);
+  assert.deepEqual(defaultRanking.orders.ranking, [0, 1, 2, 3]);
+  delete state.allOrders[0];
 
   const missingMercenaryDestination = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
@@ -444,7 +447,12 @@ test('AI coup coalition planning rallies weak AI seats behind one friendly claim
 
   const plans = buildSimultaneousAIOrders(state, meta);
 
-  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.candidate]), [[1, 2], [2, 2], [3, 2]]);
+  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.ranking[0], plan.orders.ranking[1]]), [
+    [1, 1, 2],
+    [2, 2, 3],
+    [3, 3, 2],
+  ]);
+  assert.equal(plans.filter((plan) => plan.orders.ranking[1] === 2).length >= 2, true);
 });
 
 test('AI coup coalition planning can support a human claimant with good relations', () => {
@@ -513,7 +521,7 @@ test('tuned deployment turns safe frontier surplus into coup pressure', () => {
     .reduce((total, entry) => total + entry.funded, 0);
   const capitalMercs = orders.mercenaries.destination === 'capital' ? orders.mercenaries.count : 0;
 
-  assert.equal(orders.candidate, 1);
+  assert.equal(orders.ranking[0], 1);
   assert.equal(fundedFrontier < state.currentTroops.DOM_EAST.normal, true);
   assert.equal(capitalMercs > 0 || Object.values(orders.armies).some((entry) => entry.destination === 'capital' && entry.funded > 0), true);
 });

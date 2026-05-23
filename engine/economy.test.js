@@ -27,7 +27,9 @@ import {
   confirmTitleRedistribution,
   phaseCleanup,
   phaseCourt,
+  phaseResolution,
 } from './turnflow.js';
+import { getCapitalSupportByPlayer } from './capitalSupport.js';
 import {
   getCourtPowerActionCount,
   getCourtPowerAppointmentCount,
@@ -486,7 +488,7 @@ test("deployment bundles a player's strategos troops into one army", () => {
   });
 });
 
-test('coup resolution records every claimant pick and positive supporter contribution', () => {
+test('coup resolution uses ranked ballots and passive title support', () => {
   const state = makeState();
   const result = resolveCoup(state, {
     0: { candidate: 2 },
@@ -496,16 +498,18 @@ test('coup resolution records every claimant pick and positive supporter contrib
     1: 0,
   });
 
-  assert.equal(result.winner, 2);
-  assert.deepEqual(result.votes, { 2: 4, 3: 0 });
-  assert.deepEqual(result.contributions, [{ playerId: 0, candidateId: 2, troops: 4 }]);
-  assert.deepEqual(result.ballots, [
-    { playerId: 0, candidateId: 2, troops: 4 },
-    { playerId: 1, candidateId: 3, troops: 0 },
+  assert.equal(result.winner, 0);
+  assert.equal(result.votes[0], 6);
+  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 2.667);
+  assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
+    [0, 2, 1, 3],
+    [1, 3, 0, 2],
   ]);
+  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'BASILEUS' && entry.votes === 2), true);
+  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'PATRIARCH' && entry.votes === 1), true);
 });
 
-test('coup resolution merges reciprocal claimant picks behind the higher troop claimant', () => {
+test('ranked coup support can transfer secondary support without reciprocal merging', () => {
   const state = makeState();
   const result = resolveCoup(state, {
     1: { candidate: 2 },
@@ -517,18 +521,15 @@ test('coup resolution merges reciprocal claimant picks behind the higher troop c
     3: 2,
   });
 
-  assert.equal(result.winner, 2);
-  assert.deepEqual(result.votes, { 2: 8, 3: 2 });
-  assert.deepEqual(result.contributions, [
-    { playerId: 1, candidateId: 2, troops: 3 },
-    { playerId: 2, candidateId: 2, troops: 5 },
-    { playerId: 3, candidateId: 3, troops: 2 },
+  assert.equal(result.winner, 1);
+  assert.equal(result.votes[1], 8);
+  assert.equal(result.votes[2], 7);
+  assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
+    [1, 2, 0, 3],
+    [2, 1, 0, 3],
+    [3, 0, 1, 2],
   ]);
-  assert.deepEqual(result.ballots, [
-    { playerId: 1, candidateId: 2, troops: 3 },
-    { playerId: 2, candidateId: 2, troops: 5 },
-    { playerId: 3, candidateId: 3, troops: 2 },
-  ]);
+  assert.equal(result.contributions.some((entry) => entry.playerId === 2 && entry.candidateId === 1 && Math.abs(entry.votes - 3.333333333333334) < 1e-9), true);
 });
 
 test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {
@@ -549,6 +550,50 @@ test('invasion loss suspends owners and reconquest restores them while bishops r
   assert.equal(state.themes.SAM.owner, 2);
   assert.equal(state.themes.SAM.suspendedOwner, null);
   assert.equal(state.themes.SAM.bishop, 1);
+});
+
+test('reconquered provinces auto-restore and reward the top defender next round', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'deployment';
+  state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
+  state.themes.SAM.occupied = true;
+  state.currentTroops = { DOM_WEST: { normal: 3, capitalLocked: 0 } };
+  state.allOrders = {
+    2: {
+      armies: { DOM_WEST: { funded: 3, destination: 'frontier' } },
+      mercenaries: { count: 0, destination: 'frontier' },
+      ranking: [2, 0, 1, 3],
+      candidate: 0,
+    },
+  };
+  getPlayer(state, 2).gold = 0;
+
+  phaseResolution(state);
+
+  assert.equal(state.themes.SAM.occupied, false);
+  assert.equal(getPlayer(state, 2).gold, 1);
+  assert.deepEqual(state.lastWarResult.themesRecovered, ['SAM']);
+  assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
+  assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
+  assert.equal(getCapitalSupportByPlayer(state)[0], 2);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
+});
+
+test('lost provinces reduce the next round Basileus passive support', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'deployment';
+  state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
+  state.currentTroops = {};
+  state.allOrders = {
+    0: { armies: {}, mercenaries: { count: 0, destination: 'frontier' }, ranking: [0, 1, 2, 3], candidate: 1 },
+  };
+
+  phaseResolution(state);
+
+  assert.deepEqual(state.lastWarResult.themesLost, ['SAM']);
+  assert.equal(getCapitalSupportByPlayer({ ...state, round: 2 })[0], 1);
 });
 
 test('final scoring uses last income phase shares without free citizens', () => {

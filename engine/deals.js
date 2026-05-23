@@ -9,6 +9,7 @@ import {
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from './deployment.js';
+import { normalizeCoupRanking } from './coup.js';
 
 export const DEAL_THREAD_STATUS = {
   OPEN: 'open',
@@ -1178,6 +1179,7 @@ export function normalizeOrdersWithDealLocks(state, playerId, orders, options = 
   };
   if (locks.candidateId != null) {
     nextOrders.candidate = locks.candidateId;
+    nextOrders.ranking = normalizeCoupRanking(state, playerId, nextOrders.ranking, locks.candidateId);
   }
   for (const [officeKey, destination] of Object.entries(locks.committedOfficeKeys || {})) {
     const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);

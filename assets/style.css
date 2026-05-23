@@ -4907,7 +4907,8 @@ textarea {
    a clear gold ring on the selected entry. */
 .candidate-section { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .candidate-section-head { margin-bottom: 4px; }
-.candidate-grid { display: flex; flex-direction: column; gap: 7px; }
+.candidate-grid,
+.candidate-rank-list { display: flex; flex-direction: column; gap: 7px; }
 .candidate-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -4932,6 +4933,32 @@ textarea {
   transition: filter 0.12s, box-shadow 0.12s;
 }
 .candidate-row:hover { filter: brightness(1.06); }
+.candidate-rank-row {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  cursor: grab;
+  user-select: none;
+}
+.candidate-rank-row.self,
+.candidate-rank-row.deal-locked {
+  cursor: default;
+}
+.candidate-rank-row.dragging {
+  opacity: 0.66;
+  filter: brightness(1.08);
+}
+.candidate-rank-no {
+  min-width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.28);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 .candidate-row:disabled,
 .candidate-row.disabled {
   cursor: not-allowed;

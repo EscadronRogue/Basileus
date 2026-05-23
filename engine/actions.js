@@ -19,6 +19,8 @@ import {
 import { getThemeLandPrice } from './rules.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 import { formatGold } from './presentation.js';
+import { getCapitalSupportEntries } from './capitalSupport.js';
+import { getCoupRankWeight, normalizeCoupRanking } from './coup.js';
 
 const STRATEGOS_TITLE_BY_REGION = {
   east: 'DOM_EAST',
@@ -709,59 +711,77 @@ export function autoConfirmFinishedCourtPlayers(state) {
   return confirmed;
 }
 
-function mergeReciprocalCoupBallots(ballots) {
-  const ballotByPlayer = new Map(ballots.map((ballot) => [ballot.playerId, ballot]));
-  const processed = new Set();
-
-  for (const ballot of ballots) {
-    const playerId = ballot.playerId;
-    const candidateId = ballot.candidateId;
-    if (processed.has(playerId) || candidateId === playerId) continue;
-
-    const reciprocal = ballotByPlayer.get(candidateId);
-    if (!reciprocal || reciprocal.candidateId !== playerId) continue;
-
-    processed.add(playerId);
-    processed.add(candidateId);
-    if (ballot.troops === reciprocal.troops) continue;
-
-    const mergedCandidateId = ballot.troops > reciprocal.troops ? playerId : candidateId;
-    ballot.candidateId = mergedCandidateId;
-    reciprocal.candidateId = mergedCandidateId;
-  }
-}
-
 export function resolveCoup(state, allOrders, capitalTroops) {
   const ballots = [];
-  for (const [pidStr, orders] of Object.entries(allOrders || {})) {
-    const pid = Number(pidStr);
-    const candidate = Number.isInteger(Number(orders?.candidate)) ? Number(orders.candidate) : state.basileusId;
-    const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
-    ballots.push({ playerId: pid, candidateId: candidate, troops });
-  }
-
-  mergeReciprocalCoupBallots(ballots);
-
   const candidateVotes = {};
   const contributions = [];
-  for (const ballot of ballots) {
-    const { playerId, candidateId, troops } = ballot;
-    candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + troops;
-    if (troops > 0) contributions.push({ playerId, candidateId, troops });
+  const playerCount = state.players.length;
+
+  for (const [pidStr, orders] of Object.entries(allOrders || {})) {
+    const pid = Number(pidStr);
+    const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
+    const ranking = normalizeCoupRanking(state, pid, orders?.ranking, orders?.candidate);
+    const weightedVotes = ranking.map((candidateId, rankIndex) => {
+      const weight = getCoupRankWeight(playerCount, rankIndex);
+      const votes = troops * weight;
+      candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
+      if (votes > 0) {
+        contributions.push({
+          playerId: pid,
+          candidateId,
+          troops: votes,
+          votes,
+          sourceTroops: troops,
+          rank: rankIndex + 1,
+          weight,
+          passive: false,
+        });
+      }
+      return { candidateId, rank: rankIndex + 1, weight, votes };
+    });
+    ballots.push({
+      playerId: pid,
+      candidateId: ranking[0],
+      ranking,
+      troops,
+      weightedVotes,
+    });
+  }
+
+  const passiveSupport = getCapitalSupportEntries(state);
+  for (const entry of passiveSupport) {
+    const candidateId = Number(entry.playerId);
+    const votes = Number(entry.amount) || 0;
+    if (!Number.isInteger(candidateId) || votes === 0) continue;
+    candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
+    contributions.push({
+      playerId: candidateId,
+      candidateId,
+      troops: votes,
+      votes,
+      sourceTroops: votes,
+      rank: 0,
+      weight: 1,
+      passive: true,
+      supportId: entry.id,
+      supportKind: entry.kind,
+      supportLabel: entry.label,
+      titleKey: entry.titleKey || null,
+    });
   }
 
   let winner = state.basileusId;
   const candidates = Object.entries(candidateVotes)
-    .filter(([, troops]) => troops > 0)
-    .sort((a, b) => b[1] - a[1]);
+    .filter(([, votes]) => votes > 0)
+    .sort((a, b) => (b[1] - a[1]) || (Number(a[0]) - Number(b[0])));
   if (candidates.length > 0) {
     const maxVotes = candidates[0][1];
-    const tied = candidates.filter((candidate) => candidate[1] === maxVotes);
+    const tied = candidates.filter((candidate) => Math.abs(candidate[1] - maxVotes) < 1e-9);
     winner = tied.some(([candidateId]) => Number(candidateId) === state.basileusId)
       ? state.basileusId
       : Number(tied[0][0]);
   }
-  return { winner, votes: candidateVotes, contributions, ballots };
+  return { winner, votes: candidateVotes, contributions, ballots, passiveSupport };
 }
 
 export function validateMajorTitleAssignments(state, basileusId, titleAssignments) {

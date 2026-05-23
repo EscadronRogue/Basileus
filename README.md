@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **Strategic AI seats.** AI slots can be reserved and named. They use a phase-aware heuristic planner for titles, court powers, estate bids, deployment, and defender rewards while routing every move through the same legal command layer as humans.
+- **Strategic AI seats.** AI slots can be reserved and named. They use a phase-aware heuristic planner for titles, court powers, estate bids, deployment, and title redistribution while routing every move through the same legal command layer as humans.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -120,7 +120,7 @@ Useful entry points:
 
 ## AI Layer
 
-AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 10% scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, title redistribution, and defender rewards.
+AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 10% scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, and title redistribution.
 
 Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights, re-ranks a finalist pool, saves the top tuned champions to `ai/tunedOpponents.json`, and gives each one a Greek first name from `ai/greekNames.js`.
 

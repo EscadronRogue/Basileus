@@ -8,6 +8,11 @@ import {
   getPlayerDeploymentArmyKeys,
   isStrategosDeploymentArmyKey,
 } from './deployment.js';
+import {
+  getPreferredCoupCandidate,
+  isCompleteCoupRanking,
+  normalizeCoupRanking,
+} from './coup.js';
 
 function toInt(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -150,12 +155,16 @@ function validateMercenaryOrder(mercenaries) {
   };
 }
 
-function validateCandidate(state, orders) {
-  const candidate = toInt(orders?.candidate, NaN);
-  if (!Number.isInteger(candidate) || candidate < 0 || candidate >= state.players.length) {
-    return orderFailure('Choose a valid Basileus candidate.');
+function validateRanking(state, playerId, orders) {
+  const ranking = normalizeCoupRanking(state, playerId, orders?.ranking, orders?.candidate);
+  if (!isCompleteCoupRanking(state, ranking) || ranking[0] !== playerId) {
+    return orderFailure('Rank every Basileus claimant with your dynasty first.');
   }
-  return { ok: true, candidate };
+  return {
+    ok: true,
+    ranking,
+    candidate: getPreferredCoupCandidate(state, playerId, { ...orders, ranking }),
+  };
 }
 
 function getUnfundedGold(state, playerId, armies) {
@@ -173,7 +182,8 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
   const candidate = Object.prototype.hasOwnProperty.call(rawOrders || {}, 'candidate')
     ? toInt(rawOrders?.candidate, NaN)
     : null;
-  const rawNormalizedOrders = { armies, mercenaries, candidate };
+  const ranking = normalizeCoupRanking(state, playerId, rawOrders?.ranking, candidate);
+  const rawNormalizedOrders = { armies, mercenaries, candidate, ranking };
   if (rawOrders?.debug) rawNormalizedOrders.debug = rawOrders.debug;
 
   const dealLocks = normalizeOrdersWithDealLocks(state, playerId, rawNormalizedOrders, {
@@ -187,14 +197,15 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
   const mercenaryValidation = validateMercenaryOrder(dealLocks.orders.mercenaries);
   if (!mercenaryValidation.ok) return mercenaryValidation;
 
-  const candidateValidation = validateCandidate(state, dealLocks.orders);
-  if (!candidateValidation.ok) return candidateValidation;
+  const rankingValidation = validateRanking(state, playerId, dealLocks.orders);
+  if (!rankingValidation.ok) return rankingValidation;
 
   const normalizedOrders = {
     ...dealLocks.orders,
     armies: armyValidation.armies,
     mercenaries: mercenaryValidation.mercenaries,
-    candidate: candidateValidation.candidate,
+    ranking: rankingValidation.ranking,
+    candidate: rankingValidation.candidate,
   };
 
   const unfundedGold = getUnfundedGold(state, playerId, normalizedOrders.armies);

@@ -8,6 +8,7 @@ import {
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from '../engine/deployment.js';
+import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import {
   applyLegalAction,
@@ -515,8 +516,12 @@ function summarizeOrders(state, playerId, orders = {}) {
   if (orders.mercenaries?.destination === 'capital') capitalTroops += mercCount;
   else frontierTroops += mercCount;
 
+  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
   return {
-    candidate: Number.isInteger(Number(orders.candidate)) ? Number(orders.candidate) : state.basileusId,
+    candidate: Number.isInteger(Number(orders.candidate))
+      ? Number(orders.candidate)
+      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking }),
+    ranking,
     capitalTroops,
     frontierTroops,
     fundedTroops,
@@ -704,7 +709,10 @@ function existingCapitalVotes(state) {
   const votes = {};
   for (const [playerId, orders] of Object.entries(state.allOrders || {})) {
     const summary = summarizeOrders(state, Number(playerId), orders);
-    votes[summary.candidate] = (votes[summary.candidate] || 0) + summary.capitalTroops;
+    summary.ranking.forEach((candidateId, rankIndex) => {
+      const support = summary.capitalTroops * getCoupRankWeight(state.players.length, rankIndex);
+      votes[candidateId] = (votes[candidateId] || 0) + support;
+    });
   }
   return votes;
 }
@@ -978,8 +986,8 @@ export function describeOrderChoice(state, playerId, action) {
       {
         label: 'capital',
         value: Math.round(summary.capitalTroops),
-        impact: summary.candidate === playerId ? 'positive' : 'neutral',
-        note: summary.candidate === playerId ? 'Backing its own claim to the throne.' : 'Supporting the selected claimant.',
+        impact: summary.capitalTroops > 0 ? 'positive' : 'neutral',
+        note: 'Capital troops follow the ranked claimant list.',
       },
       {
         label: 'reserve',

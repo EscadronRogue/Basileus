@@ -292,14 +292,16 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.match(container.innerHTML, /Funding/);
   assert.match(container.innerHTML, /Mercs/);
   assert.match(container.innerHTML, /Unfunded troops stay home/);
-  assert.match(container.innerHTML, /Coup support/);
-  assert.match(container.innerHTML, /Only funded Capital troops/);
+  assert.match(container.innerHTML, /Capital troops/);
+  assert.match(container.innerHTML, /through ranking/);
+  assert.match(container.innerHTML, /Passive support/);
+  assert.match(container.innerHTML, /Rank claimants for the throne/);
   assert.match(container.innerHTML, /capital locked/);
   assert.match(container.innerHTML, /Mercenaries/);
   assert.match(container.innerHTML, /Lock Deployment/);
 });
 
-test('fresh deployment panel requires explicit funding, destination, and claimant', () => {
+test('fresh deployment panel requires explicit funding and destination', () => {
   const state = makeState();
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;
@@ -375,10 +377,11 @@ test('deployment panel surfaces deal-forced coup support before lock-in', () => 
   });
 
   assert.match(container.innerHTML, /Deal commitments/);
-  assert.match(container.innerHTML, /Claimant:/);
+  assert.match(container.innerHTML, /Coup rank:/);
   assert.match(container.innerHTML, /Deal lock/);
   assert.match(container.innerHTML, /must deploy to Capital/);
-  assert.match(container.innerHTML, /data-candidate-pick="1"[\s\S]*disabled/);
+  assert.match(container.innerHTML, /candidate-rank-row deal-locked/);
+  assert.match(container.innerHTML, /data-candidate-rank="2"[\s\S]*draggable="false"/);
 });
 
 test('war resolution shows frontier contributor details', () => {
