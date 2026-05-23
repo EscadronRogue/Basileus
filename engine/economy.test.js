@@ -511,6 +511,30 @@ test('coup resolution uses ranked ballots and passive title support', () => {
   assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'PATRIARCH' && entry.candidateId === 3 && Math.abs(entry.votes - 0.6666666666666667) < 1e-9), true);
 });
 
+test('coup ties break toward the most Patriarchal support before incumbent support', () => {
+  const state = makeState();
+  addTemporaryCapitalSupport(state, {
+    kind: 'lost_provinces',
+    label: 'Lost-province unrest',
+    titleKey: 'BASILEUS',
+    amount: -1,
+    activeRound: state.round,
+  });
+
+  const result = resolveCoup(state, {
+    1: {
+      ranking: [2, 1, 0, 3],
+      candidateSupport: { 0: false, 1: false, 3: false },
+    },
+  }, {});
+
+  assert.equal(result.votes[0], 1);
+  assert.equal(result.votes[2], 1);
+  assert.equal(result.winner, 2);
+  assert.equal(result.tieBreak.method, 'patriarch');
+  assert.equal(result.tieBreak.patriarchSupport[2], 1);
+});
+
 test('ranked coup support can transfer secondary support without reciprocal merging', () => {
   const state = makeState();
   const result = resolveCoup(state, {
@@ -639,6 +663,47 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
   assert.equal(getCapitalSupportByPlayer(state)[0], 2);
   assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
+});
+
+test('tied top defenders split reconquest reward with rounded shares', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'deployment';
+  state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [2, 2] };
+  state.themes.OPS.occupied = true;
+  state.themes.SAM.occupied = true;
+  state.themes.ITA.occupied = true;
+  state.currentTroops = {
+    DOM_WEST: { normal: 4, capitalLocked: 0 },
+    ADMIRAL: { normal: 4, capitalLocked: 0 },
+  };
+  state.allOrders = {
+    2: {
+      armies: { DOM_WEST: { funded: 4, destination: 'frontier' } },
+      mercenaries: { count: 0, destination: 'frontier' },
+      ranking: [2, 0, 1, 3],
+      candidate: 0,
+    },
+    3: {
+      armies: { ADMIRAL: { funded: 4, destination: 'frontier' } },
+      mercenaries: { count: 0, destination: 'frontier' },
+      ranking: [3, 0, 1, 2],
+      candidate: 0,
+    },
+  };
+  getPlayer(state, 2).gold = 0;
+  getPlayer(state, 3).gold = 0;
+
+  phaseResolution(state);
+
+  assert.equal(state.lastWarResult.themesRecovered.length, 3);
+  assert.equal(getPlayer(state, 2).gold, 2);
+  assert.equal(getPlayer(state, 3).gold, 2);
+  assert.deepEqual(state.lastWarResult.reconquestReward.defenders.map((entry) => entry.defenderId), [2, 3]);
+  assert.equal(state.lastWarResult.reconquestReward.gold, 2);
+  assert.equal(state.lastWarResult.reconquestReward.capitalSupport, 1);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[3], 1);
 });
 
 test('lost provinces reduce the next round Basileus passive support', () => {

@@ -330,7 +330,7 @@ These were not directly addressed but are needed to ship. The defaults below sta
 11. **`state.bishopAppointments`** registry is removed (no longer needed for pay).
 12. **Patriarch holds no army of his own** in the new ruleset (capital-locked Patriarch levies are removed in §14). The Patriarch's only troop interaction is via any strategos seat he happens to hold concurrently (3p/4p only).
 13. **Mercenary destination slider**: capital/frontier snap, identical to other army destination sliders.
-14. **Coup tie-break**: unchanged — incumbent Basileus wins ties.
+14. **Coup tie-break**: tied claimants compare Patriarchal support first; if that is still tied, the incumbent Basileus keeps the throne when included in the tie, and any remaining tie uses seat order.
 
 ---
 

@@ -379,6 +379,7 @@ export function phaseResolution(state) {
         troops,
       })),
       passiveSupport: coupResult.passiveSupport,
+      tieBreak: coupResult.tieBreak,
     },
   });
 
@@ -440,44 +441,80 @@ function rankedDefenders(contributions = []) {
     .sort((a, b) => (b.troops - a.troops) || (a.playerId - b.playerId));
 }
 
+function topRankedDefenders(contributions = []) {
+  const ranked = rankedDefenders(contributions);
+  const topTroops = Number(ranked[0]?.troops) || 0;
+  if (topTroops <= 0) return [];
+  return ranked.filter((entry) => Math.abs((Number(entry.troops) || 0) - topTroops) < 1e-9);
+}
+
+function formatPlayerNameList(state, playerIds = []) {
+  const names = playerIds.map((playerId) => playerName(state, playerId));
+  if (names.length <= 2) return names.join(' and ');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 function applyAutomaticReconquestRewards(state, warResult, contributions) {
   const recovered = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
   if (!recovered.length) return null;
-  const defender = rankedDefenders(contributions)[0] || null;
-  if (!defender) return null;
-  const player = getPlayer(state, defender.playerId);
-  const gold = recovered.length;
-  if (player) player.gold += gold;
-  const support = addTemporaryCapitalSupport(state, {
-    kind: 'reconquest',
-    label: 'Triumph',
-    playerId: defender.playerId,
-    amount: recovered.length,
-    activeRound: state.round + 1,
-    themeIds: recovered,
+  const defenders = topRankedDefenders(contributions);
+  if (!defenders.length) return null;
+  const gold = Math.ceil(recovered.length / defenders.length);
+  const capitalSupport = Math.floor(recovered.length / defenders.length);
+  const recipients = defenders.map((defender) => {
+    const player = getPlayer(state, defender.playerId);
+    if (player) player.gold += gold;
+    const support = capitalSupport > 0
+      ? addTemporaryCapitalSupport(state, {
+        kind: 'reconquest',
+        label: 'Triumph',
+        playerId: defender.playerId,
+        amount: capitalSupport,
+        activeRound: state.round + 1,
+        themeIds: recovered,
+      })
+      : null;
+    return {
+      defenderId: defender.playerId,
+      defenderName: defender.playerName,
+      troops: defender.troops,
+      gold,
+      capitalSupport: support?.amount || capitalSupport,
+    };
   });
   const reward = {
-    defenderId: defender.playerId,
-    defenderName: defender.playerName,
-    troops: defender.troops,
+    defenderId: recipients.length === 1 ? recipients[0].defenderId : null,
+    defenderName: recipients.length === 1 ? recipients[0].defenderName : null,
+    troops: recipients[0]?.troops || 0,
+    defenders: recipients,
     themeIds: recovered.slice(),
+    totalGold: recovered.length,
+    totalCapitalSupport: recovered.length,
+    shareCount: defenders.length,
     gold,
-    capitalSupport: support?.amount || recovered.length,
+    capitalSupport,
     activeRound: state.round + 1,
   };
   state.log.push({
     type: 'reconquest_reward',
-    player: defender.playerId,
+    player: reward.defenderId,
+    players: recipients.map((entry) => entry.defenderId),
     themes: recovered.slice(),
     gold,
-    capitalSupport: reward.capitalSupport,
+    capitalSupport,
+    shareCount: defenders.length,
     round: state.round,
   });
+  const recipientIds = recipients.map((entry) => entry.defenderId);
+  const recipientText = formatPlayerNameList(state, recipientIds);
+  const gainText = `${formatGold(gold)} plus ${formatTroops(capitalSupport)} of Triumph support`;
   recordHistoryEvent(state, {
     category: 'resolution',
     type: 'reconquest_reward',
-    actorId: defender.playerId,
-    summary: `${playerName(state, defender.playerId)} leads the reconquest and gains ${formatGold(gold)} plus ${formatTroops(reward.capitalSupport)} of Triumph support next round.`,
+    actorId: recipients.length === 1 ? recipients[0].defenderId : null,
+    summary: recipients.length === 1
+      ? `${recipientText} leads the reconquest and gains ${gainText} next round.`
+      : `${recipientText} tie for the reconquest and each gain ${gainText} next round.`,
     details: reward,
   });
   return reward;
@@ -573,7 +610,7 @@ function preparePendingReconquestRewards(state, rewards) {
 
 export function createDefenderRewardQueue(state, warResult, contributions) {
   const themes = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
-  const defenders = rankedDefenders(contributions);
+  const defenders = topRankedDefenders(contributions);
   if (themes.length === 0 || defenders.length === 0) return [];
   return themes.map((themeId, i) => {
     const defender = defenders[i % defenders.length];

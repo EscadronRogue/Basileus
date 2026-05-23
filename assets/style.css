@@ -5493,6 +5493,15 @@ textarea {
   color: var(--umber-1);
 }
 .coup-winner-line .muted { color: var(--umber-3); font-style: italic; }
+.coup-tie-break {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--umber-3);
+}
+.coup-tie-break .value { font-size: 12px; }
 .vote-breakdown {
   display: flex;
   flex-direction: column;
@@ -5625,6 +5634,12 @@ textarea {
 }
 .reward-card-body .muted { color: var(--umber-3); font-style: italic; }
 .reward-card-body .value { font-size: 13px; }
+.reward-recipient {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 
 .reward-card-choice {
   display: grid;

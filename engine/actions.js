@@ -715,6 +715,71 @@ function isRankedCapitalSupport(entry) {
   return entry?.titleKey === 'PATRIARCH' || entry?.kind === 'reconquest';
 }
 
+const COUP_TIE_EPSILON = 1e-9;
+
+function getPatriarchSupportByCandidate(contributions) {
+  const support = {};
+  for (const entry of contributions || []) {
+    if (entry?.titleKey !== 'PATRIARCH') continue;
+    const candidateId = Number(entry.candidateId);
+    const votes = Number(entry.votes ?? entry.troops) || 0;
+    if (!Number.isInteger(candidateId) || votes <= 0) continue;
+    support[candidateId] = (support[candidateId] || 0) + votes;
+  }
+  return support;
+}
+
+function resolveCoupTie(state, tied, patriarchSupport) {
+  const tiedCandidateIds = tied.map(([candidateId]) => Number(candidateId));
+  const patriarchRanked = tied
+    .map(([candidateId]) => ({
+      candidateId: Number(candidateId),
+      support: patriarchSupport[Number(candidateId)] || 0,
+    }))
+    .sort((left, right) => (right.support - left.support) || (left.candidateId - right.candidateId));
+  const topPatriarchSupport = patriarchRanked[0]?.support || 0;
+  const patriarchTied = patriarchRanked.filter((entry) => (
+    Math.abs(entry.support - topPatriarchSupport) < COUP_TIE_EPSILON
+  ));
+
+  if (topPatriarchSupport > 0 && patriarchTied.length === 1) {
+    return {
+      winner: patriarchTied[0].candidateId,
+      tieBreak: {
+        method: 'patriarch',
+        tiedCandidateIds,
+        patriarchSupport: Object.fromEntries(
+          patriarchRanked.map((entry) => [entry.candidateId, entry.support]),
+        ),
+      },
+    };
+  }
+
+  if (tiedCandidateIds.includes(state.basileusId)) {
+    return {
+      winner: state.basileusId,
+      tieBreak: {
+        method: 'incumbent',
+        tiedCandidateIds,
+        patriarchSupport: Object.fromEntries(
+          patriarchRanked.map((entry) => [entry.candidateId, entry.support]),
+        ),
+      },
+    };
+  }
+
+  return {
+    winner: Number(tied[0][0]),
+    tieBreak: {
+      method: 'seat_order',
+      tiedCandidateIds,
+      patriarchSupport: Object.fromEntries(
+        patriarchRanked.map((entry) => [entry.candidateId, entry.support]),
+      ),
+    },
+  };
+}
+
 export function resolveCoup(state, allOrders, capitalTroops) {
   const ballots = [];
   const candidateVotes = {};
@@ -793,17 +858,22 @@ export function resolveCoup(state, allOrders, capitalTroops) {
   }
 
   let winner = state.basileusId;
+  let tieBreak = null;
   const candidates = Object.entries(candidateVotes)
     .filter(([, votes]) => votes > 0)
     .sort((a, b) => (b[1] - a[1]) || (Number(a[0]) - Number(b[0])));
   if (candidates.length > 0) {
     const maxVotes = candidates[0][1];
-    const tied = candidates.filter((candidate) => Math.abs(candidate[1] - maxVotes) < 1e-9);
-    winner = tied.some(([candidateId]) => Number(candidateId) === state.basileusId)
-      ? state.basileusId
-      : Number(tied[0][0]);
+    const tied = candidates.filter((candidate) => Math.abs(candidate[1] - maxVotes) < COUP_TIE_EPSILON);
+    if (tied.length > 1) {
+      const resolved = resolveCoupTie(state, tied, getPatriarchSupportByCandidate(contributions));
+      winner = resolved.winner;
+      tieBreak = resolved.tieBreak;
+    } else {
+      winner = Number(tied[0][0]);
+    }
   }
-  return { winner, votes: candidateVotes, contributions, ballots, passiveSupport };
+  return { winner, votes: candidateVotes, contributions, ballots, passiveSupport, tieBreak };
 }
 
 export function validateMajorTitleAssignments(state, basileusId, titleAssignments) {

@@ -1670,14 +1670,34 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
   `;
 }
 
+function getReconquestRewardRecipients(reward) {
+  if (Array.isArray(reward?.defenders) && reward.defenders.length) return reward.defenders;
+  if (!reward) return [];
+  return [{
+    defenderId: reward.defenderId,
+    defenderName: reward.defenderName,
+    gold: reward.gold,
+    capitalSupport: reward.capitalSupport,
+  }];
+}
+
 function renderReconquestRewardRow(state, reward) {
-  const defender = getPlayer(state, Number(reward.defenderId));
+  const recipients = getReconquestRewardRecipients(reward);
+  if (!recipients.length) return '';
+  const split = recipients.length > 1;
   return `
     <div class="war-result-row recovered reconquest-reward-row">
-      <span class="war-result-row-label">Triumph</span>
+      <span class="war-result-row-label">${split ? 'Triumph split' : 'Triumph'}</span>
       <div class="reward-card-body">
-        ${defender ? renderPlayerRoleName(state, defender) : escapeHtml(reward.defenderName || 'Top defender')}
-        <span class="muted">gains ${formatGoldHtml(reward.gold || 0)} and ${renderValue('troop', reward.capitalSupport || 0, { signed: true })} in Constantinople next round.</span>
+        ${recipients.map((recipient) => {
+          const defender = getPlayer(state, Number(recipient.defenderId));
+          return `
+            <div class="reward-recipient">
+              ${defender ? renderPlayerRoleName(state, defender) : escapeHtml(recipient.defenderName || 'Top defender')}
+              <span class="muted">gains ${formatGoldHtml(recipient.gold || 0)} and ${renderValue('troop', recipient.capitalSupport || 0, { signed: true })} in Constantinople next round.</span>
+            </div>
+          `;
+        }).join('')}
       </div>
     </div>
   `;
@@ -1711,6 +1731,21 @@ function renderFrontierContributionBreakdown(state, contributions = []) {
   `;
 }
 
+function renderCoupTieBreakNote(state, coup) {
+  const tieBreak = coup?.tieBreak || null;
+  const tiedIds = Array.isArray(tieBreak?.tiedCandidateIds) ? tieBreak.tiedCandidateIds : [];
+  if (!tieBreak?.method || tiedIds.length < 2) return '';
+  const winner = getPlayer(state, Number(coup.winner));
+  const winnerName = winner ? renderPlayerRoleName(state, winner) : escapeHtml(`Player ${Number(coup.winner) + 1}`);
+  const support = Number(tieBreak.patriarchSupport?.[Number(coup.winner)]) || 0;
+  const text = tieBreak.method === 'patriarch'
+    ? `${winnerName} wins the tied coup with ${renderValue('troop', support, { displayValue: Math.round(support * 100) / 100 })} of Patriarchal support.`
+    : tieBreak.method === 'incumbent'
+      ? 'Patriarchal support is still tied, so the sitting Basileus keeps the throne.'
+      : 'Patriarchal support is still tied, so the remaining tie falls to seat order.';
+  return `<div class="coup-tie-break">${text}</div>`;
+}
+
 function renderCoupResultCard(state, coup) {
   const winnerId = coup.winner;
   const winner = getPlayer(state, winnerId);
@@ -1742,6 +1777,7 @@ function renderCoupResultCard(state, coup) {
         ${winner ? renderPlayerRoleName(state, winner) : 'Vacant'}
         <span class="muted">${heldThrone ? 'holds the throne' : 'claims the throne'}</span>
       </div>
+      ${renderCoupTieBreakNote(state, coup)}
       ${voteRows.length ? `
         <div class="vote-breakdown">
           ${voteRows.map((row) => {
