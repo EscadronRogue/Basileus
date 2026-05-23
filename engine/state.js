@@ -148,7 +148,8 @@ export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEn
     maxRounds: deck.length,
     startingIncomeResolved: false,
     finalScoringPending: false,
-    majorTitleRedistributionPending: false,
+    majorTitleRedistributionPending: true,
+    titleRedistributionSeq: 0,
     phase: 'setup',
 
     basileusId: basileusIdx,

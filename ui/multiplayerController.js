@@ -621,7 +621,7 @@ export class MultiplayerController {
 
     const resolution = {};
     if (waitingForHumanReassignment) {
-      resolution.disabledText = 'Waiting For New Basileus';
+      resolution.disabledText = 'Waiting For Basileus';
     } else if (pendingHumanDefenderReward) {
       resolution.disabledText = 'Resolve Rewards';
     } else if (!this.isHost() && state.phase === 'resolution') {

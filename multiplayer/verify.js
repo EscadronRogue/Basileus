@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { createRoom, SAVE_VERSION } from './session.js';
+import { suggestMajorTitleAssignments } from '../engine/actions.js';
 import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
 
 function claimAllSeats(room) {
@@ -32,6 +33,14 @@ function buildCapitalOrders(state, playerId) {
   };
 }
 
+function confirmCurrentTitleDistribution(room) {
+  const basileusId = room.gameState.basileusId;
+  send(room, basileusId, {
+    type: 'reassign_major_titles',
+    assignments: suggestMajorTitleAssignments(room.gameState, basileusId),
+  });
+}
+
 async function verifyMultiplayerRulePatchFlow() {
   const room = createRoom({
     existingRoomCodes: new Set(),
@@ -42,6 +51,8 @@ async function verifyMultiplayerRulePatchFlow() {
   claimAllSeats(room);
 
   await room.startGame('s0');
+  assert.equal(room.gameState.phase, 'title_redistribution');
+  confirmCurrentTitleDistribution(room);
   assert.equal(room.gameState.phase, 'court');
   assert.equal(room.createSavePayload().version, SAVE_VERSION);
   assert.equal(SAVE_VERSION, 2);
@@ -79,6 +90,8 @@ async function verifyMultiplayerRulePatchFlow() {
 
   send(room, 0, { type: 'continue_after_resolution' });
   if (!room.gameState.gameOver) {
+    assert.equal(room.gameState.phase, 'title_redistribution');
+    confirmCurrentTitleDistribution(room);
     assert.equal(room.gameState.phase, 'court');
     for (const player of room.gameState.players) {
       send(room, player.id, { type: 'confirm_court' });
