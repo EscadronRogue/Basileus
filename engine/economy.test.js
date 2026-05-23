@@ -22,6 +22,7 @@ import {
   submitHumanOrders,
 } from './commands.js';
 import {
+  advanceToNextInteractivePhase,
   completeCourtPhase,
   confirmTitleRedistribution,
   phaseCleanup,
@@ -181,6 +182,35 @@ test('title redistribution opens court before starting income', () => {
   assert.equal(state.phase, 'estates');
   assert.equal(state.startingIncomeResolved, true);
   assert.deepEqual(state.players.map((player) => player.gold), [4, 4, 4, 4]);
+});
+
+test('opening phase skips title redistribution when no coup replaced the Basileus', () => {
+  const state = makeState();
+
+  advanceToNextInteractivePhase(state);
+
+  assert.equal(state.round, 1);
+  assert.equal(state.phase, 'court');
+  assert.equal(state.majorTitleRedistributionPending, false);
+});
+
+test('coup replacement schedules title redistribution before the next court', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'cleanup';
+  state.nextBasileusId = 2;
+
+  phaseCleanup(state);
+
+  assert.equal(state.basileusId, 2);
+  assert.equal(state.phase, 'cleanup');
+  assert.equal(state.majorTitleRedistributionPending, true);
+
+  advanceToNextInteractivePhase(state);
+
+  assert.equal(state.round, 2);
+  assert.equal(state.phase, 'title_redistribution');
+  assert.equal(state.majorTitleRedistributionPending, true);
 });
 
 test('court actions are role-filtered and appointment-capped per major title', () => {
@@ -591,7 +621,32 @@ test('empire fall keeps final rankings but awards no winner', () => {
   assert.equal(balance.winners.length, 0);
 });
 
-test('final title redistribution triggers one last court and income phase before scoring', () => {
+test('final phase skips title redistribution when the throne did not change', () => {
+  const state = makeState();
+  state.round = state.maxRounds;
+  state.invasionDeck = [];
+  state.phase = 'cleanup';
+  state.nextBasileusId = state.basileusId;
+
+  phaseCleanup(state);
+
+  assert.equal(state.basileusId, 0);
+  assert.equal(state.phase, 'court');
+  assert.equal(state.majorTitleRedistributionPending, false);
+  assert.equal(state.finalScoringPending, true);
+
+  for (const player of state.players) {
+    if (state.phase !== 'court' || state.courtActions.playerConfirmed.has(player.id)) continue;
+    const skip = applyCourtAction(state, player.id, { action: 'skip' });
+    assert.equal(skip.ok, true);
+  }
+  completeCourtPhase(state);
+  assert.equal(state.phase, 'scoring');
+  assert.equal(state.finalScoringPending, false);
+  assert.equal(state.lastIncome.round, state.round);
+});
+
+test('coup replacement triggers major title redistribution before final court and income', () => {
   const state = makeState();
   state.round = state.maxRounds;
   state.invasionDeck = [];
@@ -602,6 +657,7 @@ test('final title redistribution triggers one last court and income phase before
 
   assert.equal(state.basileusId, 2);
   assert.equal(state.phase, 'title_redistribution');
+  assert.equal(state.majorTitleRedistributionPending, true);
   assert.equal(state.finalScoringPending, true);
 
   const assignments = suggestMajorTitleAssignments(state, state.basileusId);
@@ -609,6 +665,7 @@ test('final title redistribution triggers one last court and income phase before
 
   assert.equal(result.ok, true);
   assert.equal(state.phase, 'court');
+  assert.equal(state.majorTitleRedistributionPending, false);
   assert.equal(state.finalScoringPending, true);
 
   for (const player of state.players) {

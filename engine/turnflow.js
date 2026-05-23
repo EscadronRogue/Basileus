@@ -17,6 +17,15 @@ import {
 export const PHASES = ['invasion', 'title_redistribution', 'court', 'income', 'estates', 'deployment', 'resolution', 'cleanup'];
 export const STARTING_INCOME_GOLD = 4;
 
+function shouldRedistributeMajorTitles(state) {
+  return Boolean(state?.majorTitleRedistributionPending);
+}
+
+function phasePreCourt(state) {
+  if (shouldRedistributeMajorTitles(state)) phaseTitleRedistribution(state);
+  else phaseCourt(state);
+}
+
 function isStartingIncome(state) {
   return state.round === 1 && !state.startingIncomeResolved;
 }
@@ -103,7 +112,7 @@ export function phaseInvasion(state) {
   state.phase = 'invasion';
   if (state.invasionDeck.length === 0) {
     state.finalScoringPending = true;
-    phaseTitleRedistribution(state);
+    phasePreCourt(state);
     return;
   }
   state.currentInvasion = state.invasionDeck.shift();
@@ -135,6 +144,7 @@ export function confirmTitleRedistribution(state, playerId, assignments) {
   if (playerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus may redistribute major titles.' };
   const result = applyTitleRedistribution(state, state.basileusId, assignments);
   if (!result.ok) return result;
+  state.majorTitleRedistributionPending = false;
   phaseCourt(state);
   return { ok: true };
 }
@@ -579,7 +589,10 @@ export function phaseCleanup(state) {
   state.phase = 'cleanup';
   finalizeDealRound(state);
 
-  if (state.nextBasileusId !== state.basileusId) {
+  const basileusChanged = state.nextBasileusId !== state.basileusId;
+  state.majorTitleRedistributionPending = basileusChanged;
+
+  if (basileusChanged) {
     const oldBasileus = state.basileusId;
     state.basileusId = state.nextBasileusId;
     state.log.push({ type: 'new_basileus', old: oldBasileus, new: state.basileusId, round: state.round });
@@ -606,7 +619,7 @@ export function phaseCleanup(state) {
 
   if (shouldRunFinalIncome) {
     state.finalScoringPending = true;
-    phaseTitleRedistribution(state);
+    phasePreCourt(state);
   }
 }
 
@@ -619,7 +632,7 @@ export function advanceToNextInteractivePhase(state) {
     }
     if (state.phase === 'invasion') {
       if (state.phase === 'scoring') return;
-      phaseTitleRedistribution(state);
+      phasePreCourt(state);
       return;
     }
     if (state.phase === 'title_redistribution') return;

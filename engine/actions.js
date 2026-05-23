@@ -848,6 +848,7 @@ export function applyTitleRedistribution(state, basileusId = state.basileusId, t
   }
   state.basileusId = basileusId;
   state.nextBasileusId = basileusId;
+  state.majorTitleRedistributionPending = false;
   state.log.push({ type: 'title_redistribution', basileus: basileusId, round: state.round });
   recordHistoryEvent(state, {
     category: 'system',

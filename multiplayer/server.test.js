@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createRoom, SAVE_VERSION } from './session.js';
-import { suggestMajorTitleAssignments } from '../engine/actions.js';
 import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
 
 function makeStartedRoom() {
@@ -30,15 +29,8 @@ function capitalOrders(state, playerId) {
   return { armies, mercenaries: { count: 0, destination: 'frontier' }, candidate: state.basileusId };
 }
 
-test('multiplayer room follows title, court, estates, deployment, resolution flow', async () => {
+test('multiplayer room follows court, estates, deployment, resolution flow', async () => {
   const room = await makeStartedRoom();
-  assert.equal(room.gameState.phase, 'title_redistribution');
-
-  const basileusId = room.gameState.basileusId;
-  send(room, basileusId, {
-    type: 'reassign_major_titles',
-    assignments: suggestMajorTitleAssignments(room.gameState, basileusId),
-  });
   assert.equal(room.gameState.phase, 'court');
 
   for (const player of room.gameState.players) send(room, player.id, { type: 'confirm_court' });
