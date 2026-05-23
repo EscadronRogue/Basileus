@@ -1251,8 +1251,9 @@ function renderDeploymentPreview(state, playerId, draft, armyKeys) {
 function renderCandidateRanking(state, playerId, draft, lockedCandidateId = null) {
   const ranking = ensureDeploymentRanking(state, playerId, draft, lockedCandidateId);
   const playerCount = state.players.length;
+  const hasDragging = Number.isInteger(Number(draft.draggedCandidateId));
   return `
-    <div class="candidate-rank-list" data-candidate-rank-list>
+    <div class="candidate-rank-list${hasDragging ? ' drag-active' : ''}" data-candidate-rank-list>
       ${ranking.map((candidateId, index) => {
         const candidate = getPlayer(state, candidateId);
         const isSelf = candidateId === playerId;
@@ -1263,7 +1264,7 @@ function renderCandidateRanking(state, playerId, draft, lockedCandidateId = null
         return `
           <div class="candidate-row candidate-rank-row${isSelf ? ' self locked' : ''}${isLockedCandidate ? ' deal-locked' : ''}${isDragging ? ' dragging' : ''}"
             data-candidate-rank="${candidateId}"
-            draggable="${!isSelf && !isLockedCandidate}"
+            draggable="false"
             style="${getPlayerStyleAttr(state, candidateId)}">
             <span class="candidate-rank-no">${index + 1}</span>
             <span class="candidate-crest">${playerInitial(candidate)}</span>
@@ -1453,48 +1454,95 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   const clearDraggedCandidateId = () => {
     delete draft.draggedCandidateId;
   };
-  const moveRankedCandidate = (candidateId, targetId, after = false) => {
+  const moveRankedCandidateToIndex = (candidateId, insertIndex) => {
     if (!Number.isInteger(candidateId) || candidateId === playerId) return false;
     if (candidateLockedId != null && candidateId === candidateLockedId) return false;
     const ranking = ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
+    const previousRanking = ranking.join(',');
     const moving = ranking.indexOf(candidateId);
-    const target = ranking.indexOf(targetId);
-    if (moving <= 0 || target <= 0 || moving === target) return false;
+    if (moving <= 0) return false;
     const lockedIndex = candidateLockedId == null ? -1 : ranking.indexOf(candidateLockedId);
-    if (lockedIndex > 0 && target <= lockedIndex) return false;
+    const minIndex = lockedIndex > 0 ? lockedIndex + 1 : 1;
+    let targetIndex = Math.max(minIndex, Math.min(ranking.length, Number(insertIndex) || minIndex));
     const [entry] = ranking.splice(moving, 1);
-    let insertAt = ranking.indexOf(targetId);
-    if (after) insertAt += 1;
-    if (lockedIndex > 0) insertAt = Math.max(insertAt, lockedIndex + 1);
-    ranking.splice(insertAt, 0, entry);
+    if (targetIndex > moving) targetIndex -= 1;
+    const nextLockedIndex = candidateLockedId == null ? -1 : ranking.indexOf(candidateLockedId);
+    const nextMinIndex = nextLockedIndex > 0 ? nextLockedIndex + 1 : 1;
+    targetIndex = Math.max(nextMinIndex, Math.min(ranking.length, targetIndex));
+    ranking.splice(targetIndex, 0, entry);
     draft.ranking = normalizeCoupRanking(state, playerId, ranking, candidateLockedId);
     draft.candidate = getPreferredCoupCandidate(state, playerId, draft);
-    return true;
+    return draft.ranking.join(',') !== previousRanking;
+  };
+  const getRankInsertIndexFromPointer = (clientY) => {
+    const list = container.querySelector('[data-candidate-rank-list]');
+    const rows = Array.from(list?.querySelectorAll?.('[data-candidate-rank]') || []);
+    const draggedCandidateId = getDraggedCandidateId();
+    const ranking = ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
+    for (const row of rows) {
+      const rowCandidateId = Number(row.dataset.candidateRank);
+      if (rowCandidateId === draggedCandidateId) continue;
+      const rect = row.getBoundingClientRect?.();
+      if (!rect) continue;
+      if (clientY < rect.top + rect.height / 2) {
+        const rowIndex = ranking.indexOf(rowCandidateId);
+        if (rowIndex >= 0) return rowIndex;
+      }
+    }
+    return ranking.length;
+  };
+  const moveDraggedCandidateNearPointer = (event) => {
+    const draggedCandidateId = getDraggedCandidateId();
+    if (draggedCandidateId == null) return false;
+    const insertIndex = getRankInsertIndexFromPointer(Number(event.clientY) || 0);
+    return moveRankedCandidateToIndex(draggedCandidateId, insertIndex);
   };
   container.querySelectorAll('[data-candidate-rank]').forEach((row) => {
-    row.addEventListener('dragstart', (event) => {
-      draft.draggedCandidateId = Number(row.dataset.candidateRank);
+    row.addEventListener('pointerdown', (event) => {
+      if (event.button != null && event.button !== 0) return;
+      const candidateId = Number(row.dataset.candidateRank);
+      if (!Number.isInteger(candidateId) || candidateId === playerId) return;
+      if (candidateLockedId != null && candidateId === candidateLockedId) return;
+      const ownerDocument = container.ownerDocument || globalThis.document;
+      draft.draggedCandidateId = candidateId;
       row.classList.add('dragging');
-      event.dataTransfer?.setData?.('text/plain', String(draft.draggedCandidateId));
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-    });
-    row.addEventListener('dragend', () => {
-      clearDraggedCandidateId();
-      row.classList.remove('dragging');
-    });
-    row.addEventListener('dragover', (event) => {
-      const draggedCandidateId = getDraggedCandidateId();
-      if (draggedCandidateId == null) return;
+      row.setPointerCapture?.(event.pointerId);
       event.preventDefault();
-      const targetId = Number(row.dataset.candidateRank);
-      const rect = row.getBoundingClientRect?.();
-      const after = rect ? event.clientY > rect.top + rect.height / 2 : false;
-      if (moveRankedCandidate(draggedCandidateId, targetId, after)) rerender();
+
+      const handlePointerMove = (moveEvent) => {
+        moveEvent.preventDefault?.();
+        if (moveDraggedCandidateNearPointer(moveEvent)) rerender();
+      };
+      const finishDrag = (upEvent) => {
+        upEvent?.preventDefault?.();
+        ownerDocument?.removeEventListener?.('pointermove', handlePointerMove);
+        ownerDocument?.removeEventListener?.('pointerup', finishDrag);
+        ownerDocument?.removeEventListener?.('pointercancel', finishDrag);
+        clearDraggedCandidateId();
+        rerender();
+      };
+      ownerDocument?.addEventListener?.('pointermove', handlePointerMove);
+      ownerDocument?.addEventListener?.('pointerup', finishDrag, { once: true });
+      ownerDocument?.addEventListener?.('pointercancel', finishDrag, { once: true });
     });
-    row.addEventListener('drop', (event) => {
-      event.preventDefault();
+  });
+  container.querySelector('[data-candidate-rank-list]')?.addEventListener('pointermove', (event) => {
+    if (getDraggedCandidateId() == null) return;
+    event.preventDefault();
+    if (moveDraggedCandidateNearPointer(event)) rerender();
+  });
+  container.querySelector('[data-candidate-rank-list]')?.addEventListener('pointerleave', (event) => {
+    if (getDraggedCandidateId() == null) return;
+    if (moveDraggedCandidateNearPointer(event)) rerender();
+  });
+  container.querySelector('[data-candidate-rank-list]')?.addEventListener('pointerup', (event) => {
+    if (getDraggedCandidateId() == null) return;
+    event.preventDefault();
+    if (moveDraggedCandidateNearPointer(event)) rerender();
+    else {
       clearDraggedCandidateId();
-    });
+      rerender();
+    }
   });
   bindSelectAction(container, '[data-action="lock-orders"]', () => {
     ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
