@@ -20,7 +20,7 @@ import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { buildDefaultCoupRanking } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
-import { relationshipScore } from './memory.js';
+import { getPlayerMemory, getRelationship, relationshipScore } from './memory.js';
 
 export const AI_DEALS_ENABLED = false;
 const MAX_ORDER_ACTIONS = 520;
@@ -330,7 +330,41 @@ function leastLikedSupportBlockCount(state) {
 export function buildAiCoupSupport(state, playerId, memory = null) {
   const support = Object.fromEntries((state?.players || []).map((player) => [player.id, true]));
   const blockCount = leastLikedSupportBlockCount(state);
-  if (blockCount <= 0) return support;
+  const restoreFallbackCandidate = () => {
+    const candidateIds = (state?.players || [])
+      .map((player) => player.id)
+      .filter((candidateId) => candidateId !== playerId);
+    if (candidateIds.some((candidateId) => support[candidateId] !== false)) return;
+    const fallback = candidateIds
+      .map((candidateId) => ({
+        candidateId,
+        score: relationshipScore(memory, playerId, candidateId),
+      }))
+      .sort((left, right) => (
+        (right.score - left.score)
+        || (left.candidateId - right.candidateId)
+      ))[0];
+    if (fallback) support[fallback.candidateId] = true;
+  };
+  const basileusId = state?.basileusId;
+  if (Number.isInteger(basileusId) && basileusId !== playerId && memory) {
+    const relationToBasileus = getRelationship(memory, playerId, basileusId);
+    const basileusPattern = getPlayerMemory(memory, basileusId);
+    if (
+      Math.max(0, Number(relationToBasileus.revokedMe) || 0) >= 0.75
+      || Number(relationToBasileus.score) <= -1.5
+      || (
+        Math.max(0, Number(basileusPattern.revocationAggression) || 0) > 0.9
+        && Number(relationToBasileus.score) < 0
+      )
+    ) {
+      support[basileusId] = false;
+    }
+  }
+  if (blockCount <= 0) {
+    restoreFallbackCandidate();
+    return support;
+  }
 
   const leastLiked = (state.players || [])
     .map((player) => player.id)
@@ -346,6 +380,7 @@ export function buildAiCoupSupport(state, playerId, memory = null) {
     .slice(0, blockCount);
 
   for (const { candidateId } of leastLiked) support[candidateId] = false;
+  restoreFallbackCandidate();
   return support;
 }
 

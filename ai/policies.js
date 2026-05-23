@@ -108,6 +108,9 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     basileusRevocationFear: 0.55,
     backerTitleReward: 2.1,
     backerRevocationMercy: 2,
+    titleQualityWeight: 1.6,
+    regimeTreatmentWeight: 1.35,
+    regimeUrgencyWeight: 0.9,
     kingmakerPenalty: 0.35,
   },
   tyrant: {
@@ -136,6 +139,9 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     basileusRevocationFear: 1.95,
     backerTitleReward: 0.1,
     backerRevocationMercy: 0.05,
+    titleQualityWeight: 0.35,
+    regimeTreatmentWeight: 0.35,
+    regimeUrgencyWeight: 1.15,
     kingmakerPenalty: 0.2,
   },
   kingmaker: {
@@ -155,6 +161,9 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     basileusTitleExpectation: 2,
     basileusRevocationFear: 1.45,
     supportLeaderPenalty: 1.4,
+    titleQualityWeight: 1.75,
+    regimeTreatmentWeight: 1.55,
+    regimeUrgencyWeight: 1.35,
     allyDefenseReliance: 0.9,
     kingmakerPenalty: 0.75,
   },
@@ -240,6 +249,9 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     coupOpportunityWeight: 0.65,
     basileusTitleExpectation: 0.9,
     basileusRevocationFear: 1.2,
+    titleQualityWeight: 1.15,
+    regimeTreatmentWeight: 0.95,
+    regimeUrgencyWeight: 1.45,
     kingmakerPenalty: 1.1,
   },
   copycat: {
@@ -326,8 +338,8 @@ export function choosePolicyOrderAction(state, meta, playerId, options = {}) {
   return chooseStrategicOrderAction(state, meta, playerId, options);
 }
 
-export function describePolicyOrderChoice(state, playerId, action) {
-  return describeOrderChoice(state, playerId, action);
+export function describePolicyOrderChoice(state, playerId, action, meta = null, options = {}) {
+  return describeOrderChoice(state, playerId, action, meta, options);
 }
 
 export function choosePolicyEstateActions(state, meta, playerId) {

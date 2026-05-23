@@ -164,6 +164,19 @@ function migratePatronageTunedWeights(entry, weights) {
   };
 }
 
+function migrateReserveConversionTunedWeights(entry, weights) {
+  if ((entry?.policy?.policyId || entry?.policyId || 'tuned') !== 'tuned') return weights;
+  const objectiveVersion = Number(entry?.training?.objectiveVersion) || 0;
+  if (objectiveVersion >= 7) return weights;
+  return {
+    ...weights,
+    invasionShortfallPenalty: Math.max(Number(weights.invasionShortfallPenalty) || 0, 4.2),
+    capitalRiskPenalty: Math.max(Number(weights.capitalRiskPenalty) || 0, 120),
+    reserveValue: Math.max(Number(weights.reserveValue) || 0, 0.35),
+    mercenaryCostPenalty: Math.min(Number(weights.mercenaryCostPenalty) || 0.12, 0.32),
+  };
+}
+
 function normalizeTunedOpponent(entry, index = 0) {
   if (!entry || typeof entry !== 'object') return null;
   const id = String(entry.id || `tuned-${index + 1}`).trim();
@@ -174,7 +187,8 @@ function normalizeTunedOpponent(entry, index = 0) {
     entry.strategyWeights || entry.policy?.strategyWeights || entry.weights || {},
   );
   const dangerBandWeights = migrateDangerBandTunedWeights(entry, legacyWeights);
-  const strategyWeights = migratePatronageTunedWeights(entry, dangerBandWeights);
+  const patronageWeights = migratePatronageTunedWeights(entry, dangerBandWeights);
+  const strategyWeights = migrateReserveConversionTunedWeights(entry, patronageWeights);
   return {
     id,
     firstName,

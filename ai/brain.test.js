@@ -23,6 +23,8 @@ import {
   runAICourtAutomation,
 } from './brain.js';
 import { applyLegalAction, listLegalCourtActions, listLegalEstateActions } from './legalActions.js';
+import { getAiMemory, getRelationship } from './memory.js';
+import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 import { simulateGames } from './simulate.js';
 import { scoreAggregateTrainingShape, trainStrategyWeights } from './train.js';
 import { GREEK_FIRST_NAMES } from './greekNames.js';
@@ -36,6 +38,26 @@ function makeState() {
   state.players[2].majorTitles = ['DOM_WEST'];
   state.players[3].majorTitles = ['ADMIRAL'];
   return state;
+}
+
+function capitalTroopsFromOrders(orders) {
+  const armyCapital = Object.values(orders.armies || {}).reduce((total, order) => (
+    total + (order.destination === 'capital' ? Number(order.funded) || 0 : 0)
+  ), 0);
+  const mercenaryCapital = orders.mercenaries?.destination === 'capital'
+    ? Number(orders.mercenaries.count) || 0
+    : 0;
+  return armyCapital + mercenaryCapital;
+}
+
+function frontierTroopsFromOrders(orders) {
+  const armyFrontier = Object.values(orders.armies || {}).reduce((total, order) => (
+    total + (order.destination === 'frontier' ? Number(order.funded) || 0 : 0)
+  ), 0);
+  const mercenaryFrontier = orders.mercenaries?.destination === 'frontier'
+    ? Number(orders.mercenaries.count) || 0
+    : 0;
+  return armyFrontier + mercenaryFrontier;
 }
 
 test('AI meta keeps declared human seats under human control', () => {
@@ -70,6 +92,32 @@ test('browser AI roster defaults to bundled opponents without probing API', asyn
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('legacy tuned AI roster migrates to reserve-aware deployment weights', () => {
+  const roster = normalizeTunedOpponentRoster({
+    opponents: [{
+      id: 'tuned-legacy',
+      firstName: 'Legacy',
+      policy: {
+        policyId: 'tuned',
+        strategyWeights: {
+          invasionShortfallPenalty: 1.2,
+          capitalRiskPenalty: 40,
+          reserveValue: 0.1,
+          mercenaryCostPenalty: 0.5,
+        },
+      },
+      training: { objectiveVersion: 6 },
+    }],
+  });
+
+  const weights = roster[0].policy.strategyWeights;
+
+  assert.equal(weights.invasionShortfallPenalty >= 4.2, true);
+  assert.equal(weights.capitalRiskPenalty >= 120, true);
+  assert.equal(weights.reserveValue >= 0.35, true);
+  assert.equal(weights.mercenaryCostPenalty <= 0.32, true);
 });
 
 test('strategic court automation only controls AI players', () => {
@@ -218,6 +266,171 @@ test('AI coup support blocks the single least-liked claimant in 3-player games',
   assert.equal(orders.candidateSupport[1], true);
   assert.equal(orders.candidateSupport[0], true);
   assert.equal(orders.candidateSupport[2], false);
+});
+
+test('AI memory values major title quality instead of treating every title as equal', () => {
+  const state = createGameState({ playerCount: 5, deckSize: 1, seed: 24, historyEnabled: true });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  state.round = 2;
+  for (const theme of Object.values(state.themes)) {
+    if (theme.id === 'CPL') continue;
+    theme.occupied = false;
+    theme.strategos = null;
+    theme.bishop = null;
+    theme.T = theme.region === 'east' ? 6 : 1;
+    theme.C = 0;
+  }
+  state.history.push({
+    id: 'h1',
+    index: 1,
+    round: 1,
+    phase: 'title_redistribution',
+    category: 'system',
+    type: 'title_redistribution',
+    actorId: 0,
+    details: {
+      assignments: {
+        DOM_EAST: { playerId: 1 },
+        DOM_WEST: { playerId: 2 },
+        ADMIRAL: { playerId: 3 },
+        PATRIARCH: { playerId: 4 },
+      },
+    },
+  });
+
+  const memory = getAiMemory(state);
+  const favored = getRelationship(memory, 1, 0);
+  const slighted = getRelationship(memory, 4, 0);
+
+  assert.equal(favored.titleFavor > slighted.titleFavor, true);
+  assert.equal(slighted.titleJealousy > 0, true);
+  assert.equal(favored.score > slighted.score, true);
+});
+
+test('AI deployment creates urgent opposition to a hostile incumbent Basileus', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.currentInvasion = {
+    id: 'test_invasion',
+    name: 'Test invasion',
+    strength: [1, 2],
+    route: ['OPS', 'CPL'],
+  };
+  for (const player of state.players) player.gold = 8;
+  state.currentTroops = {
+    BASILEUS: { normal: 3, capitalLocked: 0 },
+    DOM_EAST: { normal: 5, capitalLocked: 0 },
+    DOM_WEST: { normal: 2, capitalLocked: 0 },
+    ADMIRAL: { normal: 2, capitalLocked: 0 },
+    PATRIARCH: { normal: 2, capitalLocked: 0 },
+  };
+  state.history.push(
+    { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_theme', actorId: 0, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
+    { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 0, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
+  );
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0, 2, 3],
+    aiPlayers: {
+      1: {
+        policy: {
+          policyId: 'tuned',
+          strategyWeights: {
+            selfClaim: 0.7,
+            supportOtherClaimant: 1.1,
+            relationshipCoupWeight: 1.4,
+            coupOpportunityWeight: 0.9,
+            basileusRevocationFear: 2,
+            regimeTreatmentWeight: 1.5,
+            regimeUrgencyWeight: 2,
+            allyDefenseReliance: 0.9,
+          },
+        },
+      },
+    },
+  });
+
+  const orders = buildAIOrders(state, meta, 1);
+  const regimeFactor = orders.debug.decision.factors.find((factor) => factor.label === 'regime');
+
+  assert.equal(orders.candidateSupport[0], false);
+  assert.notEqual(orders.candidate, 0);
+  assert.equal(capitalTroopsFromOrders(orders) > 0, true);
+  assert.equal(regimeFactor.value > 0, true);
+});
+
+function makeReserveDeploymentState(strength, route = ['OPS', 'CPL']) {
+  const state = createGameState({ playerCount: 4, deckSize: 2, seed: 41, historyEnabled: true });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  for (const player of state.players) {
+    player.majorTitles = [];
+    player.gold = 1;
+  }
+  state.players[1].majorTitles = ['DOM_EAST'];
+  state.phase = 'deployment';
+  state.currentInvasion = {
+    id: 'test_invasion',
+    name: 'Test invasion',
+    strength,
+    route,
+  };
+  state.currentTroops = {
+    DOM_EAST: { normal: 6, capitalLocked: 0 },
+  };
+  return state;
+}
+
+const RESERVE_DEPLOYMENT_WEIGHTS = {
+  reserveValue: 1.2,
+  estateProfit: 8,
+  estateBidCost: 0.6,
+  invasionShortfallPenalty: 8,
+  invasionSafetyValue: 0.2,
+  invasionSurplusPenalty: 1.4,
+  capitalFallPenalty: 800,
+  capitalRiskPenalty: 200,
+  throneBase: 2,
+  selfClaim: 0.1,
+  supportOtherClaimant: 0.1,
+  coupOpportunityWeight: 0.05,
+  mercenaryCostPenalty: 0.3,
+};
+
+function makeReserveDeploymentMeta(state) {
+  return createAIMeta(state, {
+    humanPlayerIds: [0, 2, 3],
+    aiPlayers: {
+      1: {
+        policy: {
+          policyId: 'tuned',
+          strategyWeights: RESERVE_DEPLOYMENT_WEIGHTS,
+        },
+      },
+    },
+  });
+}
+
+test('AI deployment defunds surplus troops when frontier and coup urgency are low', () => {
+  const state = makeReserveDeploymentState([1, 1]);
+  const meta = makeReserveDeploymentMeta(state);
+
+  const orders = buildAIOrders(state, meta, 1);
+  const funded = Number(orders.armies.DOM_EAST.funded) || 0;
+
+  assert.equal(funded < state.currentTroops.DOM_EAST.normal, true);
+  assert.equal(state.currentTroops.DOM_EAST.normal - funded > 0, true);
+  assert.equal(frontierTroopsFromOrders(orders) > 0, true);
+});
+
+test('AI deployment keeps funding troops when underfunding risks Constantinople', () => {
+  const state = makeReserveDeploymentState([7, 9]);
+  const meta = makeReserveDeploymentMeta(state);
+
+  const orders = buildAIOrders(state, meta, 1);
+
+  assert.equal(orders.armies.DOM_EAST.funded, state.currentTroops.DOM_EAST.normal);
+  assert.equal(frontierTroopsFromOrders(orders) >= state.currentTroops.DOM_EAST.normal, true);
 });
 
 test('deployment submission rejects implicit army and mercenary defaults', () => {
@@ -645,4 +858,56 @@ test('AI title planning returns a legal title redistribution action', () => {
 
   assert.equal(action.kind, 'title-assignment');
   assert.equal(validateMajorTitleAssignments(state, state.basileusId, action.assignments).ok, true);
+});
+
+test('AI Basileus title planning rewards loyal backers with stronger offices', () => {
+  const state = createGameState({ playerCount: 5, deckSize: 1, seed: 31, historyEnabled: true });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  state.phase = 'title_redistribution';
+  state.round = 2;
+  for (const theme of Object.values(state.themes)) {
+    if (theme.id === 'CPL') continue;
+    theme.occupied = false;
+    theme.strategos = null;
+    theme.bishop = null;
+    theme.T = theme.region === 'east' ? 6 : 1;
+    theme.C = 0;
+  }
+  state.history.push({
+    id: 'h1',
+    index: 1,
+    round: 1,
+    phase: 'resolution',
+    category: 'orders',
+    type: 'orders_revealed',
+    actorId: 1,
+    details: {
+      candidateId: 0,
+      capitalTroops: 5,
+      frontierTroops: 0,
+      offices: [{ totalTroops: 5, fundedTroops: 5, unfundedTroops: 0 }],
+      mercenaries: { count: 0 },
+    },
+  });
+  const meta = createAIMeta(state, {
+    aiPlayers: {
+      0: {
+        policy: {
+          policyId: 'tuned',
+          strategyWeights: {
+            backerTitleReward: 2.4,
+            titleQualityWeight: 2,
+            friendNeglectPenalty: 1.2,
+            kingmakerPenalty: 0.1,
+          },
+        },
+      },
+    },
+  });
+
+  const action = planMajorTitleAssignment(state, meta, 0);
+
+  assert.equal(action.assignments.DOM_EAST, 1);
+  assert.equal(validateMajorTitleAssignments(state, 0, action.assignments).ok, true);
 });

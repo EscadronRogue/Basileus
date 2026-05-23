@@ -1,3 +1,5 @@
+import { analyzeMajorTitleAssignments } from './patronage.js';
+
 const MEMORY_DECAY = 0.84;
 const EPSILON = 1e-9;
 
@@ -34,10 +36,17 @@ function createPlayerMemory(playerId) {
     rewardEmpireChoices: 0,
     dealFailures: 0,
     dealTransfers: 0,
+    titleAssignments: 0,
+    titlePatronageValue: 0,
+    titleExpectedValue: 0,
+    titleOverReward: 0,
+    titleUnderReward: 0,
     defenseReliability: 0,
     fundingGreed: 0,
     coupPressure: 0,
     patronageGenerosity: 0,
+    titlePatronageGenerosity: 0,
+    titlePatronageStinginess: 0,
     revocationAggression: 0,
     incumbentLoyalty: 0,
     kingmaking: 0,
@@ -54,6 +63,8 @@ function createRelationship(viewerId, otherId) {
     debt: 0,
     givenFavor: 0,
     neglect: 0,
+    titleFavor: 0,
+    titleJealousy: 0,
     coupSupport: 0,
     revokedMe: 0,
     score: 0,
@@ -160,6 +171,63 @@ function noteHarm(memory, actorId, targetId, amount) {
   });
 }
 
+function titleEntitlement(memory, actorId, targetId, averagePackageValue) {
+  if (!Number.isInteger(actorId) || !Number.isInteger(targetId) || actorId === targetId) return 0;
+  const rel = relation(memory, actorId, targetId);
+  const support = Math.max(0, Number(rel?.coupSupport) || 0);
+  const favor = Math.max(0, Number(rel?.favor) || 0);
+  const debt = Math.max(0, Number(rel?.debt) || 0);
+  const trust = Math.max(0, Number(rel?.trust) || 0);
+  const harm = Math.max(0, Number(rel?.harm) || 0);
+  const share = clamp(support * 0.08 + favor * 0.025 + debt * 0.015 + trust * 0.025 - harm * 0.04, -0.35, 0.75);
+  return Math.max(0, Number(averagePackageValue) || 0) * share;
+}
+
+function noteTitlePatronage(memory, actorId, targetId, actualValue, expectedValue, weight) {
+  if (!Number.isInteger(actorId) || !Number.isInteger(targetId) || actorId === targetId) return;
+  const actual = Math.max(0, Number(actualValue) || 0);
+  const expected = Math.max(0, Number(expectedValue) || 0);
+  const delta = actual - expected;
+  const scale = Math.max(1, actual, expected);
+  const quality = delta / scale;
+  const titleWeight = Math.max(0, Number(weight) || 0);
+  if (titleWeight <= 0) return;
+
+  addPlayer(memory, actorId, 'titleAssignments', titleWeight);
+  addPlayer(memory, actorId, 'titlePatronageValue', actual * titleWeight);
+  addPlayer(memory, actorId, 'titleExpectedValue', expected * titleWeight);
+  addPlayer(memory, actorId, delta >= 0 ? 'titleOverReward' : 'titleUnderReward', Math.abs(delta) * titleWeight);
+
+  const baseFavor = Math.min(1.1, actual * 0.1) * titleWeight;
+  const bonusFavor = Math.max(0, quality) * 2.2 * titleWeight;
+  const jealousy = Math.max(0, -quality) * 2.2 * titleWeight;
+
+  if (baseFavor > 0 || bonusFavor > 0) {
+    const value = baseFavor * 0.25 + bonusFavor;
+    addRelation(memory, targetId, actorId, {
+      titleFavor: value,
+      favor: value * 0.42,
+      debt: value * 0.28,
+      trust: value * 0.24,
+    });
+    addRelation(memory, actorId, targetId, {
+      givenFavor: value * 0.35,
+      trust: value * 0.08,
+    });
+  }
+
+  if (jealousy > 0) {
+    addRelation(memory, targetId, actorId, {
+      titleJealousy: jealousy,
+      neglect: jealousy * 0.75,
+      trust: -jealousy * 0.26,
+    });
+    addRelation(memory, actorId, targetId, {
+      trust: -jealousy * 0.04,
+    });
+  }
+}
+
 function themeStakeOwnerIds(state, themeId) {
   const theme = state?.themes?.[themeId];
   if (!theme) return [];
@@ -195,16 +263,22 @@ function handleRevocation(memory, event, weight) {
   }
 }
 
-function handleTitleRedistribution(memory, event, weight) {
+function handleTitleRedistribution(memory, event, weight, state) {
   const actorId = Number(event.actorId);
   if (!Number.isInteger(actorId)) return;
   const assignments = event.details?.assignments || {};
+  const normalizedAssignments = Object.fromEntries(Object.entries(assignments).map(([titleKey, assignment]) => [
+    titleKey,
+    Number(assignment?.playerId ?? assignment),
+  ]));
+  const analysis = analyzeMajorTitleAssignments(state, actorId, normalizedAssignments);
   const assignedIds = [];
-  for (const assignment of Object.values(assignments)) {
-    const targetId = Number(assignment?.playerId);
+  for (const packageEntry of analysis.entries) {
+    const targetId = Number(packageEntry.playerId);
     if (!Number.isInteger(targetId) || targetId === actorId) continue;
     assignedIds.push(targetId);
-    noteBenefit(memory, actorId, targetId, weight * 1.35, { trustScale: 0.3 });
+    const expected = analysis.averagePackageValue + titleEntitlement(memory, actorId, targetId, analysis.averagePackageValue);
+    noteTitlePatronage(memory, actorId, targetId, packageEntry.value, expected, weight);
   }
   addPlayer(memory, actorId, 'otherAppointments', assignedIds.length * weight * 1.35);
 }
@@ -331,7 +405,8 @@ function finalizeRelationships(memory) {
   for (const row of Object.values(memory.relationships)) {
     for (const entry of Object.values(row)) {
       const raw = entry.favor + entry.trust * 0.8 + entry.debt * 0.45
-        - entry.harm * 1.15 - entry.neglect * 0.75;
+        + entry.titleFavor * 0.9
+        - entry.harm * 1.15 - entry.neglect * 0.75 - entry.titleJealousy * 0.9;
       entry.score = clamp(raw, -8, 8);
       entry.trust = clamp(entry.trust, -6, 6);
       entry.favor = clamp(entry.favor, 0, 10);
@@ -339,6 +414,8 @@ function finalizeRelationships(memory) {
       entry.debt = clamp(entry.debt, 0, 8);
       entry.givenFavor = clamp(entry.givenFavor, 0, 8);
       entry.neglect = clamp(entry.neglect, 0, 8);
+      entry.titleFavor = clamp(entry.titleFavor, 0, 8);
+      entry.titleJealousy = clamp(entry.titleJealousy, 0, 8);
     }
   }
 }
@@ -358,6 +435,8 @@ function finalizePlayerPatterns(memory) {
     entry.fundingGreed = clamp(entry.idleTroops / totalTroops, 0, 1);
     entry.coupPressure = clamp((entry.capitalTroops / totalTroops) * 1.15 + ((entry.selfClaims + entry.otherBacks) / orders) * 0.45, 0, 1.8);
     entry.patronageGenerosity = clamp(entry.otherAppointments / appointments, 0, 1);
+    entry.titlePatronageGenerosity = clamp(entry.titleOverReward / Math.max(EPSILON, entry.titleExpectedValue), 0, 1.5);
+    entry.titlePatronageStinginess = clamp(entry.titleUnderReward / Math.max(EPSILON, entry.titleExpectedValue), 0, 1.5);
     entry.revocationAggression = clamp(entry.revocations / orders, 0, 1.5);
     entry.incumbentLoyalty = clamp(entry.incumbentBacks / orders, 0, 1);
     entry.kingmaking = clamp(entry.otherBacks / orders, 0, 1);
@@ -405,7 +484,7 @@ export function buildAiMemory(state) {
     const weight = decayedWeight(state, event);
     if (['appoint_strategos', 'appoint_bishop'].includes(event.type)) handleAppointment(memory, event, weight);
     else if (['revoke_minor_title', 'revoke_theme'].includes(event.type)) handleRevocation(memory, event, weight);
-    else if (event.type === 'title_redistribution') handleTitleRedistribution(memory, event, weight);
+    else if (event.type === 'title_redistribution') handleTitleRedistribution(memory, event, weight, state);
     else if (event.type === 'deal_gold_transfer' || event.type === 'deal_estate_transfer') handleDealTransfer(memory, event, weight);
     else if (event.type === 'deal_obligation_failed') handleDealFailure(memory, event, weight);
     else if (event.type === 'orders_revealed') handleOrders(memory, event, weight, state);

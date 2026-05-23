@@ -190,7 +190,7 @@ export function buildAIOrders(state, meta, playerId, options = {}) {
     ...action.orders,
     debug: {
       decision: {
-        ...describePolicyOrderChoice(state, playerId, action),
+        ...describePolicyOrderChoice(state, playerId, action, meta, { memory }),
         title: `${playerMeta?.displayName || 'AI'} ${playerMeta?.policyId || 'strategic'} order`,
       },
     },
