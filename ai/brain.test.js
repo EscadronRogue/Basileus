@@ -8,7 +8,11 @@ import { createGameState } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
 import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
 import { validateMajorTitleAssignments } from '../engine/actions.js';
-import { handleManualTitleReassignment } from '../engine/runtime.js';
+import {
+  handleContinueAfterResolution,
+  handleManualTitleReassignment,
+  startInteractiveRuntime,
+} from '../engine/runtime.js';
 import {
   buildAIOrders,
   buildSimultaneousAIOrders,
@@ -99,6 +103,47 @@ test('human basileus title confirmation runs AI court when basileus has no actio
   });
 
   assert.equal(result.ok, true);
+  assert.equal(state.phase, 'estates');
+  assert.equal(state.courtActions.playerConfirmed.size, state.players.length);
+});
+
+test('initial human basileus with skipped redistribution lets AI finish court', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  const context = {};
+
+  const result = startInteractiveRuntime(state, meta, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(state.round, 1);
+  assert.equal(state.majorTitleRedistributionPending, false);
+  assert.equal(state.phase, 'estates');
+  assert.equal(state.courtActions.playerConfirmed.size, state.players.length);
+});
+
+test('initial human office holder keeps court interactive before AI finishes', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [1] });
+
+  const result = startInteractiveRuntime(state, meta, {});
+
+  assert.equal(result.ok, true);
+  assert.equal(state.phase, 'court');
+  assert.equal(state.courtActions.playerConfirmed.has(1), false);
+});
+
+test('post-resolution human basileus with no court actions lets AI finish court', () => {
+  const state = makeState();
+  const meta = createAIMeta(state, { humanPlayerIds: [0] });
+  state.round = 1;
+  state.phase = 'resolution';
+  state.nextBasileusId = state.basileusId;
+
+  const result = handleContinueAfterResolution(state, meta, {});
+
+  assert.equal(result.ok, true);
+  assert.equal(state.round, 2);
+  assert.equal(state.majorTitleRedistributionPending, false);
   assert.equal(state.phase, 'estates');
   assert.equal(state.courtActions.playerConfirmed.size, state.players.length);
 });

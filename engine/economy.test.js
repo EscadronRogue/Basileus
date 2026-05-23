@@ -184,14 +184,14 @@ test('title redistribution opens court before starting income', () => {
   assert.deepEqual(state.players.map((player) => player.gold), [4, 4, 4, 4]);
 });
 
-test('opening phase starts title redistribution before the first court', () => {
+test('opening phase skips title redistribution when no coup replaced the Basileus', () => {
   const state = makeState();
 
   advanceToNextInteractivePhase(state);
 
   assert.equal(state.round, 1);
-  assert.equal(state.phase, 'title_redistribution');
-  assert.equal(state.majorTitleRedistributionPending, true);
+  assert.equal(state.phase, 'court');
+  assert.equal(state.majorTitleRedistributionPending, false);
 });
 
 test('coup replacement schedules title redistribution before the next court', () => {
@@ -621,7 +621,7 @@ test('empire fall keeps final rankings but awards no winner', () => {
   assert.equal(balance.winners.length, 0);
 });
 
-test('final phase redistributes titles before final court even when the throne did not change', () => {
+test('final phase skips title redistribution when the throne did not change', () => {
   const state = makeState();
   state.round = state.maxRounds;
   state.invasionDeck = [];
@@ -631,14 +631,6 @@ test('final phase redistributes titles before final court even when the throne d
   phaseCleanup(state);
 
   assert.equal(state.basileusId, 0);
-  assert.equal(state.phase, 'title_redistribution');
-  assert.equal(state.majorTitleRedistributionPending, true);
-  assert.equal(state.finalScoringPending, true);
-
-  const assignments = suggestMajorTitleAssignments(state, state.basileusId);
-  const result = confirmTitleRedistribution(state, state.basileusId, assignments);
-
-  assert.equal(result.ok, true);
   assert.equal(state.phase, 'court');
   assert.equal(state.majorTitleRedistributionPending, false);
   assert.equal(state.finalScoringPending, true);

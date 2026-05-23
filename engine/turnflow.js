@@ -17,8 +17,13 @@ import {
 export const PHASES = ['invasion', 'title_redistribution', 'court', 'income', 'estates', 'deployment', 'resolution', 'cleanup'];
 export const STARTING_INCOME_GOLD = 4;
 
+function shouldRedistributeMajorTitles(state) {
+  return Boolean(state?.majorTitleRedistributionPending);
+}
+
 function phasePreCourt(state) {
-  phaseTitleRedistribution(state);
+  if (shouldRedistributeMajorTitles(state)) phaseTitleRedistribution(state);
+  else phaseCourt(state);
 }
 
 function isStartingIncome(state) {
@@ -132,8 +137,6 @@ export function phaseInvasion(state) {
 
 export function phaseTitleRedistribution(state) {
   state.phase = 'title_redistribution';
-  state.majorTitleRedistributionPending = true;
-  state.titleRedistributionSeq = (Number(state.titleRedistributionSeq) || 0) + 1;
 }
 
 export function confirmTitleRedistribution(state, playerId, assignments) {
@@ -587,7 +590,7 @@ export function phaseCleanup(state) {
   finalizeDealRound(state);
 
   const basileusChanged = state.nextBasileusId !== state.basileusId;
-  state.majorTitleRedistributionPending = true;
+  state.majorTitleRedistributionPending = basileusChanged;
 
   if (basileusChanged) {
     const oldBasileus = state.basileusId;

@@ -86,6 +86,27 @@ function hasAIPlayers(state, meta) {
   return Boolean(state?.players?.some((player) => isAIPlayer(meta, player.id)));
 }
 
+function getHumanCourtPlayerIds(state, meta) {
+  if (!state || !meta) return [];
+  const humanIds = meta.humanPlayerIds instanceof Set
+    ? [...meta.humanPlayerIds]
+    : [];
+  const playerIds = new Set((state.players || []).map((player) => player.id));
+  return humanIds.filter((playerId) => playerIds.has(playerId));
+}
+
+function allHumanCourtPlayersConfirmed(state, meta) {
+  if (!state || state.phase !== 'court' || !meta) return false;
+  return getHumanCourtPlayerIds(state, meta)
+    .every((playerId) => state.courtActions?.playerConfirmed?.has(playerId));
+}
+
+function shouldProcessAiAtInteractiveBoundary(state, meta) {
+  if (!meta) return true;
+  if (state?.phase !== 'court') return true;
+  return allHumanCourtPlayersConfirmed(state, meta);
+}
+
 function autoResolveAiDefenderRewards(state, meta) {
   if (!state || !meta) return [];
   const resolved = [];
@@ -106,9 +127,21 @@ function autoResolveAiDefenderRewards(state, meta) {
   return resolved;
 }
 
-export function autoResolveUnavailableHumanAppointments(state, playerId, aiMeta = null) {
+export function autoResolveUnavailableHumanAppointments(state, playerId, aiMeta = null, context = null) {
+  if (context) ensureRuntimeContext(context);
   const changed = autoConfirmFinishedCourtPlayer(state, playerId);
-  if (changed) maybeAdvanceCourt(state, aiMeta);
+  if (!changed) return { ok: true, changed: false, pendingAiTitleAssignment: context?.pendingAiTitleAssignment ?? null };
+
+  if (aiMeta && shouldProcessAiAtInteractiveBoundary(state, aiMeta)) {
+    writePending(context || {}, processAiFlow(state, aiMeta, {
+      pendingAiTitleAssignment: context?.pendingAiTitleAssignment ?? null,
+      courtMode: 'finish',
+    }));
+  } else {
+    maybeAdvanceCourt(state, aiMeta);
+  }
+
+  return { ok: true, changed: true, pendingAiTitleAssignment: context?.pendingAiTitleAssignment ?? null };
 }
 
 export function maybeAdvanceCourt(state, aiMeta = null) {
@@ -238,7 +271,7 @@ export function continueAfterResolution(state, aiMeta, pendingAiTitleAssignment 
 export function startInteractiveRuntime(state, aiMeta = null, context = {}) {
   ensureRuntimeContext(context);
   advanceToNextInteractivePhase(state);
-  if (!aiMeta || state.phase !== 'court') {
+  if (shouldProcessAiAtInteractiveBoundary(state, aiMeta)) {
     writePending(context, processAiFlow(state, aiMeta, {
       pendingAiTitleAssignment: context.pendingAiTitleAssignment,
       courtMode: 'finish',
@@ -260,7 +293,7 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
   if (!state || state.phase !== 'court') return fail('Court actions are not available right now.');
   if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already confirmed court actions this round.');
 
-  autoResolveUnavailableHumanAppointments(state, playerId, aiMeta);
+  autoResolveUnavailableHumanAppointments(state, playerId, aiMeta, context);
   const result = applyCourtAction(state, playerId, payload);
   if (!result.ok) return result;
   const playerFinished = Boolean(state.courtActions?.playerConfirmed?.has(playerId));
@@ -290,7 +323,7 @@ export function handleHumanEstateAction(state, aiMeta, context = {}, playerId, p
 
 export function handleHumanCourtConfirmation(state, aiMeta, context = {}, playerId, options = {}) {
   ensureRuntimeContext(context);
-  autoResolveUnavailableHumanAppointments(state, playerId, aiMeta);
+  autoResolveUnavailableHumanAppointments(state, playerId, aiMeta, context);
   const result = confirmCourt(state, playerId);
   if (!result.ok) return result;
 
@@ -379,9 +412,9 @@ export function handleContinueAfterResolution(state, aiMeta, context = {}, optio
   context.pendingAiTitleAssignment = continuation.pendingAiTitleAssignment;
 
   // Singleplayer source of truth: after resolution, do not immediately run AI
-  // court if the next interactive phase is court. AI reacts after a human court
-  // action or confirmation instead of racing ahead at round start.
-  if (aiMeta && state.phase !== 'court' && options.processAi !== false) {
+  // court if a human still has court business. If every human is already
+  // confirmed, let AI finish so a no-action Basileus cannot strand the round.
+  if (aiMeta && options.processAi !== false && shouldProcessAiAtInteractiveBoundary(state, aiMeta)) {
     writePending(context, processAiFlow(state, aiMeta, {
       ...options,
       pendingAiTitleAssignment: context.pendingAiTitleAssignment,

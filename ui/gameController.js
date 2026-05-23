@@ -136,7 +136,16 @@ export class GameController {
     this.activePlayer = this.config.humanPlayerIds[0] ?? 0;
   }
 
+  resolveAutomaticCourtProgress() {
+    if (!this.state || this.state.phase !== 'court') return;
+    const canControl = !(this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer));
+    if (!canControl) return;
+    autoResolveUnavailableHumanAppointments(this.state, this.activePlayer, this.aiMeta, this);
+    this.ensureHumanFocus();
+  }
+
   render() {
+    this.resolveAutomaticCourtProgress();
     const phaseKey = getPhaseRenderKey(this.state);
     const phaseChanged = phaseKey !== this.lastPhaseKey;
     if (phaseChanged) {
@@ -220,10 +229,6 @@ export class GameController {
   renderActionPanel() {
     const state = this.state;
     const canControl = !(this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer));
-
-    if (state.phase === 'court' && canControl) {
-      autoResolveUnavailableHumanAppointments(state, this.activePlayer, this.aiMeta);
-    }
 
     const spectatorMessage = state.phase === 'deployment'
       ? 'Switch back to your dynasty to continue.'

@@ -108,30 +108,9 @@ test('title redistribution panel is its own phase panel', () => {
 
   assert.match(container.innerHTML, /Redistribute Major Titles/);
   assert.match(container.innerHTML, /data-title-assignment="DOM_EAST"/);
-  assert.match(container.innerHTML, /data-title-assignment="DOM_EAST" value="1"/);
-  assert.doesNotMatch(container.innerHTML, /data-action="confirm-title-redistribution" disabled/);
+  assert.match(container.innerHTML, /data-title-assignment="DOM_EAST" value=""/);
+  assert.match(container.innerHTML, /data-action="confirm-title-redistribution" disabled/);
   assert.match(container.innerHTML, /Confirm Titles/);
-});
-
-test('title redistribution drafts are scoped to the phase instance', () => {
-  const state = makeState();
-  state.phase = 'title_redistribution';
-  state.titleRedistributionSeq = 2;
-  const uiState = createDefaultUiState();
-  uiState.drafts[`title-redist-1:${state.round}:${state.basileusId}`] = {
-    assignments: {
-      DOM_EAST: 2,
-      PATRIARCH: 2,
-      DOM_WEST: 3,
-      ADMIRAL: 3,
-    },
-  };
-  const container = makePanelContainer();
-
-  renderTitleRedistributionPanel(container, state, state.basileusId, {}, { uiState });
-
-  assert.match(container.innerHTML, /data-title-assignment="DOM_EAST" value="1"/);
-  assert.doesNotMatch(container.innerHTML, /data-title-assignment="DOM_EAST" value="2"/);
 });
 
 test('court panel exposes only role-legal appointments and no legacy army buying', () => {

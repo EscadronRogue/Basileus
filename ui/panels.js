@@ -15,7 +15,6 @@ import {
   isCourtPowerPassed,
   isCourtPowerUsed,
   getMinimumLandBid,
-  suggestMajorTitleAssignments,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
@@ -341,9 +340,8 @@ function renderArmyOfficeBadge(state, officeKey, playerId) {
 
 export function renderTitleRedistributionPanel(container, state, playerId, callbacks = {}, options = {}) {
   const isBasileus = playerId === state.basileusId;
-  const redistributionScope = `title-redist-${Number(state.titleRedistributionSeq) || 0}`;
-  const draft = getDraftBucket(options.uiState, state, redistributionScope, playerId);
-  const initial = options.assignments || suggestMajorTitleAssignments(state, state.basileusId);
+  const draft = getDraftBucket(options.uiState, state, 'title-redist', playerId);
+  const initial = options.assignments || {};
   if (!draft.assignments) draft.assignments = { ...initial };
   const titleKeys = Object.keys(MAJOR_TITLES);
   const eligible = state.players.filter((player) => player.id !== state.basileusId);
