@@ -450,7 +450,7 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
   if (player) player.gold += gold;
   const support = addTemporaryCapitalSupport(state, {
     kind: 'reconquest',
-    label: 'Reconquest acclaim',
+    label: 'Triumph',
     playerId: defender.playerId,
     amount: recovered.length,
     activeRound: state.round + 1,
@@ -477,7 +477,7 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
     category: 'resolution',
     type: 'reconquest_reward',
     actorId: defender.playerId,
-    summary: `${playerName(state, defender.playerId)} leads the reconquest and gains ${formatGold(gold)} plus ${formatTroops(reward.capitalSupport)} of capital acclaim next round.`,
+    summary: `${playerName(state, defender.playerId)} leads the reconquest and gains ${formatGold(gold)} plus ${formatTroops(reward.capitalSupport)} of Triumph support next round.`,
     details: reward,
   });
   return reward;

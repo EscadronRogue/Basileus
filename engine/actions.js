@@ -711,21 +711,23 @@ export function autoConfirmFinishedCourtPlayers(state) {
   return confirmed;
 }
 
+function isRankedCapitalSupport(entry) {
+  return entry?.titleKey === 'PATRIARCH' || entry?.kind === 'reconquest';
+}
+
 export function resolveCoup(state, allOrders, capitalTroops) {
   const ballots = [];
   const candidateVotes = {};
   const contributions = [];
   const playerCount = state.players.length;
 
-  for (const [pidStr, orders] of Object.entries(allOrders || {})) {
-    const pid = Number(pidStr);
-    const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
+  const addRankedContributions = (pid, orders, sourceTroops, passiveEntry = null) => {
     const ranking = normalizeCoupRanking(state, pid, orders?.ranking, orders?.candidate);
     const candidateSupport = normalizeCoupSupport(state, orders?.candidateSupport);
     const weightedVotes = ranking.map((candidateId, rankIndex) => {
       const weight = getCoupRankWeight(playerCount, rankIndex);
       const enabled = candidateSupport[candidateId] !== false;
-      const votes = enabled ? troops * weight : 0;
+      const votes = enabled ? sourceTroops * weight : 0;
       candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
       if (votes > 0) {
         contributions.push({
@@ -733,22 +735,34 @@ export function resolveCoup(state, allOrders, capitalTroops) {
           candidateId,
           troops: votes,
           votes,
-          sourceTroops: troops,
+          sourceTroops,
           rank: rankIndex + 1,
           weight,
-          passive: false,
+          passive: Boolean(passiveEntry),
           enabled,
+          distributed: Boolean(passiveEntry),
+          supportId: passiveEntry?.id,
+          supportKind: passiveEntry?.kind,
+          supportLabel: passiveEntry?.label,
+          titleKey: passiveEntry?.titleKey || null,
         });
       }
       return { candidateId, rank: rankIndex + 1, weight, votes, enabled };
     });
+    return { ranking, candidateSupport, weightedVotes };
+  };
+
+  for (const [pidStr, orders] of Object.entries(allOrders || {})) {
+    const pid = Number(pidStr);
+    const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
+    const ranked = addRankedContributions(pid, orders, troops);
     ballots.push({
       playerId: pid,
-      candidateId: ranking[0],
-      ranking,
-      candidateSupport,
+      candidateId: ranked.ranking[0],
+      ranking: ranked.ranking,
+      candidateSupport: ranked.candidateSupport,
       troops,
-      weightedVotes,
+      weightedVotes: ranked.weightedVotes,
     });
   }
 
@@ -757,6 +771,10 @@ export function resolveCoup(state, allOrders, capitalTroops) {
     const candidateId = Number(entry.playerId);
     const votes = Number(entry.amount) || 0;
     if (!Number.isInteger(candidateId) || votes === 0) continue;
+    if (isRankedCapitalSupport(entry)) {
+      addRankedContributions(candidateId, allOrders?.[candidateId] || {}, Math.max(0, votes), entry);
+      continue;
+    }
     candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
     contributions.push({
       playerId: candidateId,

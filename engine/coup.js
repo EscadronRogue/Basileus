@@ -76,9 +76,11 @@ export function normalizeCoupSupport(state, rawSupport = null, requiredCandidate
     }
   }
 
-  const required = Number(requiredCandidateId);
-  if (Number.isInteger(required) && Object.prototype.hasOwnProperty.call(support, required)) {
-    support[required] = true;
+  if (requiredCandidateId != null) {
+    const required = Number(requiredCandidateId);
+    if (Number.isInteger(required) && Object.prototype.hasOwnProperty.call(support, required)) {
+      support[required] = true;
+    }
   }
   return support;
 }

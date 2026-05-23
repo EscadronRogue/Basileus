@@ -322,6 +322,31 @@ test('fresh deployment panel requires explicit funding and destination', () => {
   assert.match(container.innerHTML, /data-action="lock-orders" disabled/);
 });
 
+test('deployment ranking can withhold support from seat one', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.players[state.basileusId].gold = 1;
+  state.currentTroops = {
+    BASILEUS: { normal: 2, capitalLocked: 0 },
+  };
+  const container = makePanelContainer();
+  const uiState = createDefaultUiState();
+  uiState.drafts[`deployment:${state.round}:${state.basileusId}`] = {
+    armies: {
+      BASILEUS: { funded: 1, destination: 'capital' },
+    },
+    mercenaries: { count: 0, destination: null },
+    ranking: [0, 1, 2, 3],
+    candidateSupport: { 0: false },
+  };
+
+  renderOrdersPanel(container, state, state.basileusId, {}, { uiState });
+
+  assert.match(container.innerHTML, /support-off[\s\S]*data-candidate-rank="0"/);
+  assert.match(container.innerHTML, /data-candidate-support="0"[^>]*aria-pressed="false"/);
+  assert.doesNotMatch(container.innerHTML, /data-candidate-support="0"[^>]*disabled/);
+});
+
 test('deployment panel bundles strategos commands and does not require idle mercenary destination', () => {
   const state = makeState();
   state.phase = 'deployment';

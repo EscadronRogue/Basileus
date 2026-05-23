@@ -1280,10 +1280,14 @@ function renderCandidateRanking(state, playerId, draft, lockedCandidateId = null
             <span class="candidate-crest">${playerInitial(candidate)}</span>
             <span class="candidate-name">${escapeHtml(playerDisplayLabel(candidate))}</span>
             <span class="candidate-tag">${isLockedCandidate ? `Deal ${tag}` : tag}</span>
-            <label class="candidate-support-toggle" data-candidate-support-toggle title="Toggle coup support">
-              <input type="checkbox" data-candidate-support="${candidateId}" ${isEnabled ? 'checked' : ''} ${isLockedCandidate ? 'disabled' : ''}>
+            <button type="button"
+              class="candidate-support-toggle${isEnabled ? ' is-on' : ''}"
+              data-candidate-support="${candidateId}"
+              aria-pressed="${isEnabled ? 'true' : 'false'}"
+              title="Toggle coup support"
+              ${isLockedCandidate ? 'disabled' : ''}>
               <span aria-hidden="true"></span>
-            </label>
+            </button>
           </div>
         `;
       }).join('')}
@@ -1513,7 +1517,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   container.querySelectorAll('[data-candidate-rank]').forEach((row) => {
     row.addEventListener('pointerdown', (event) => {
       if (event.button != null && event.button !== 0) return;
-      if (event.target?.closest?.('[data-candidate-support-toggle]')) return;
+      if (event.target?.closest?.('[data-candidate-support]')) return;
       const candidateId = Number(row.dataset.candidateRank);
       if (!Number.isInteger(candidateId)) return;
       if (candidateLockedId != null && candidateId === candidateLockedId) return;
@@ -1540,19 +1544,15 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       ownerDocument?.addEventListener?.('pointercancel', finishDrag, { once: true });
     });
   });
-  container.querySelectorAll('[data-candidate-support-toggle]').forEach((toggle) => {
-    toggle.addEventListener('pointerdown', (event) => {
+  container.querySelectorAll('[data-candidate-support]').forEach((button) => {
+    button.addEventListener('pointerdown', (event) => {
       event.stopPropagation();
     });
-  });
-  container.querySelectorAll('[data-candidate-support]').forEach((checkbox) => {
-    checkbox.addEventListener('pointerdown', (event) => {
+    button.addEventListener('click', (event) => {
       event.stopPropagation();
-    });
-    checkbox.addEventListener('change', () => {
-      const candidateId = Number(checkbox.dataset.candidateSupport);
+      const candidateId = Number(button.dataset.candidateSupport);
       draft.candidateSupport = normalizeCoupSupport(state, draft.candidateSupport, candidateLockedId);
-      draft.candidateSupport[candidateId] = Boolean(checkbox.checked);
+      draft.candidateSupport[candidateId] = button.getAttribute('aria-pressed') !== 'true';
       if (candidateLockedId != null) draft.candidateSupport[candidateLockedId] = true;
       draft.candidate = getPreferredCoupCandidate(state, playerId, draft);
       rerender();
@@ -1674,7 +1674,7 @@ function renderReconquestRewardRow(state, reward) {
   const defender = getPlayer(state, Number(reward.defenderId));
   return `
     <div class="war-result-row recovered reconquest-reward-row">
-      <span class="war-result-row-label">Reconquest acclaim</span>
+      <span class="war-result-row-label">Triumph</span>
       <div class="reward-card-body">
         ${defender ? renderPlayerRoleName(state, defender) : escapeHtml(reward.defenderName || 'Top defender')}
         <span class="muted">gains ${formatGoldHtml(reward.gold || 0)} and ${renderValue('troop', reward.capitalSupport || 0, { signed: true })} in Constantinople next round.</span>

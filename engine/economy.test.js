@@ -29,7 +29,7 @@ import {
   phaseCourt,
   phaseResolution,
 } from './turnflow.js';
-import { getCapitalSupportByPlayer } from './capitalSupport.js';
+import { addTemporaryCapitalSupport, getCapitalSupportByPlayer } from './capitalSupport.js';
 import {
   getCourtPowerActionCount,
   getCourtPowerAppointmentCount,
@@ -499,14 +499,16 @@ test('coup resolution uses ranked ballots and passive title support', () => {
   });
 
   assert.equal(result.winner, 0);
-  assert.equal(result.votes[0], 6);
+  assert.equal(Math.round(result.votes[0] * 1000) / 1000, 6.333);
   assert.equal(Math.round(result.votes[2] * 1000) / 1000, 2.667);
+  assert.equal(Math.round(result.votes[1] * 1000) / 1000, 2.333);
+  assert.equal(Math.round(result.votes[3] * 1000) / 1000, 0.667);
   assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
     [0, 2, 1, 3],
     [1, 3, 0, 2],
   ]);
   assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'BASILEUS' && entry.votes === 2), true);
-  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'PATRIARCH' && entry.votes === 1), true);
+  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'PATRIARCH' && entry.candidateId === 3 && Math.abs(entry.votes - 0.6666666666666667) < 1e-9), true);
 });
 
 test('ranked coup support can transfer secondary support without reciprocal merging', () => {
@@ -523,7 +525,7 @@ test('ranked coup support can transfer secondary support without reciprocal merg
 
   assert.equal(result.winner, 1);
   assert.equal(result.votes[1], 8);
-  assert.equal(result.votes[2], 7);
+  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 7.667);
   assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
     [1, 2, 0, 3],
     [2, 1, 0, 3],
@@ -555,6 +557,40 @@ test('ranked coup support allows movable self rank and disabled candidates keep 
     [3, 0, false],
     [4, 0, false],
   ]);
+});
+
+test('patriarch influence and triumph follow rankings while fortifications stay direct', () => {
+  const state = makeState();
+  addTemporaryCapitalSupport(state, {
+    kind: 'reconquest',
+    label: 'Triumph',
+    playerId: 2,
+    amount: 2,
+    activeRound: state.round,
+  });
+  addTemporaryCapitalSupport(state, {
+    kind: 'lost_provinces',
+    label: 'Lost-province unrest',
+    titleKey: 'BASILEUS',
+    amount: -1,
+    activeRound: state.round,
+  });
+
+  const result = resolveCoup(state, {
+    1: { ranking: [2, 1, 0, 3], candidateSupport: { 0: false } },
+    2: { ranking: [3, 2, 1, 0] },
+  }, {
+    1: 0,
+    2: 0,
+  });
+
+  assert.equal(result.votes[0], 1);
+  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 2.333);
+  assert.equal(Math.round(result.votes[3] * 1000) / 1000, 2);
+  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Basileus fortifications' && entry.candidateId === 0 && entry.votes === 2), true);
+  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Lost-province unrest' && entry.candidateId === 0 && entry.votes === -1), true);
+  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Patriarchal influence' && entry.candidateId === 0), false);
+  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 3 && entry.votes === 2), true);
 });
 
 test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {
