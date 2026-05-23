@@ -556,6 +556,7 @@ test('notification panel labels deployment actions with updated vocabulary', () 
         title: 'Deal commitments affect your orders',
         body: 'deployment lock',
         urgent: false,
+        toast: false,
         action: 'open_deployment',
       },
       {
@@ -564,6 +565,7 @@ test('notification panel labels deployment actions with updated vocabulary', () 
         title: 'You lost a bid',
         body: 'sealed bid lost',
         urgent: false,
+        toast: true,
         tone: 'negative',
         action: 'open_history',
       },
@@ -586,7 +588,9 @@ test('notification panel labels deployment actions with updated vocabulary', () 
   assert.match(panel.innerHTML, /tone-neutral/);
   assert.match(panel.innerHTML, /tone-negative/);
   assert.match(panel.innerHTML, /tone-positive/);
+  assert.match(panel.innerHTML, /notification-toast tone-negative/);
   assert.match(panel.innerHTML, /notification-toast tone-positive/);
+  assert.doesNotMatch(panel.innerHTML, /notification-toast tone-neutral/);
   assert.doesNotMatch(panel.innerHTML, /Court business awaits/);
   assert.doesNotMatch(panel.innerHTML, />Orders</);
 });

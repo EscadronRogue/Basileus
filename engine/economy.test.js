@@ -451,6 +451,7 @@ test('private notifications cover personal toned chronicle news without turn pro
   assert.equal(appointment.ok, true);
   const appointmentNotice = buildPrivateNotifications(state, 2).notifications.find((notice) => notice.kind === 'appointment');
   assert.equal(appointmentNotice?.tone, 'positive');
+  assert.equal(appointmentNotice?.toast, true);
   assert.match(appointmentNotice?.title || '', /appointed strategos/);
 
   state.history.push({
@@ -472,8 +473,10 @@ test('private notifications cover personal toned chronicle news without turn pro
   });
   const lostBidNotice = buildPrivateNotifications(state, 0).notifications.find((notice) => notice.kind === 'estate_lost');
   assert.equal(lostBidNotice?.tone, 'negative');
+  assert.equal(lostBidNotice?.toast, true);
   const wonBidNotice = buildPrivateNotifications(state, 1).notifications.find((notice) => notice.kind === 'estate_won');
   assert.equal(wonBidNotice?.tone, 'positive');
+  assert.equal(wonBidNotice?.toast, true);
 
   state.phase = 'deployment';
   state.allOrders = {};

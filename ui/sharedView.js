@@ -497,7 +497,7 @@ function getNotificationTone(notification) {
 
 function getToastNotifications(notifications, uiState, scopeKey) {
   return notifications
-    .filter((notification) => notification.urgent)
+    .filter((notification) => notification.toast !== false)
     .filter((notification) => !isNotificationRead(uiState, scopeKey, notification.id))
     .filter((notification) => !isNotificationDismissed(uiState, scopeKey, notification.id))
     .slice(0, 3);
