@@ -516,7 +516,7 @@ test('coup ties break toward the most Patriarchal support before incumbent suppo
   addTemporaryCapitalSupport(state, {
     kind: 'lost_provinces',
     label: 'Lost-province unrest',
-    titleKey: 'BASILEUS',
+    playerId: state.basileusId,
     amount: -1,
     activeRound: state.round,
   });
@@ -595,7 +595,7 @@ test('patriarch influence follows rankings while fortifications and triumph stay
   addTemporaryCapitalSupport(state, {
     kind: 'lost_provinces',
     label: 'Lost-province unrest',
-    titleKey: 'BASILEUS',
+    playerId: state.basileusId,
     amount: -1,
     activeRound: state.round,
   });
@@ -748,6 +748,43 @@ test('lost provinces reduce the next round Basileus passive support', () => {
 
   assert.deepEqual(state.lastWarResult.themesLost, ['SAM']);
   assert.equal(getCapitalSupportByPlayer({ ...state, round: 2 })[0], 1);
+});
+
+test('lost province unrest follows the basileus who lost provinces through a coup', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'deployment';
+  state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
+  state.currentTroops = {};
+  state.mercenaryOrders = {
+    2: { count: 3, destination: 'capital' },
+  };
+  state.allOrders = {
+    2: {
+      armies: {},
+      mercenaries: { count: 0, destination: 'frontier' },
+      ranking: [2, 1, 3, 0],
+      candidate: 2,
+    },
+  };
+
+  phaseResolution(state);
+
+  assert.equal(state.basileusId, 0);
+  assert.equal(state.nextBasileusId, 2);
+  assert.deepEqual(state.lastWarResult.themesLost, ['SAM']);
+  assert.equal(state.temporaryCapitalSupport.some((entry) => (
+    entry.kind === 'lost_provinces'
+    && entry.playerId === 0
+    && entry.titleKey == null
+  )), true);
+
+  phaseCleanup(state);
+
+  assert.equal(state.basileusId, 2);
+  const nextRoundSupport = getCapitalSupportByPlayer({ ...state, round: 2 });
+  assert.equal(nextRoundSupport[2], 2);
+  assert.equal(nextRoundSupport[0], -1);
 });
 
 test('final scoring uses last income phase shares without free citizens', () => {

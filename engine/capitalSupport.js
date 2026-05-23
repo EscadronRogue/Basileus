@@ -14,25 +14,45 @@ function playerName(state, playerId) {
   return player?.firstName ? `${player.firstName} ${player.dynasty}`.trim() : player?.dynasty || `Player ${Number(playerId) + 1}`;
 }
 
+function toIntegerOrNull(value) {
+  const number = Number(value);
+  return Number.isInteger(number) ? number : null;
+}
+
 function getTitleHolderForSupport(state, titleKey) {
   if (titleKey === 'BASILEUS') return state.basileusId;
   if (MAJOR_TITLES[titleKey]) return findTitleHolder(state, titleKey);
   return null;
 }
 
+function normalizeTemporarySupportSubject(state, entry, kind) {
+  let playerId = toIntegerOrNull(entry.playerId);
+  let titleKey = entry.titleKey || null;
+
+  if (kind === 'lost_provinces') {
+    // Unrest belongs to the ruler who lost the land, not whoever later holds the title.
+    if (playerId == null && titleKey) playerId = getTitleHolderForSupport(state, titleKey);
+    titleKey = null;
+  }
+
+  return { playerId, titleKey };
+}
+
 export function addTemporaryCapitalSupport(state, entry = {}) {
   const support = ensureTemporaryCapitalSupport(state);
   const amount = Number(entry.amount) || 0;
   if (!amount) return null;
+  const kind = entry.kind || 'temporary';
   const activeRound = Number.isInteger(Number(entry.activeRound))
     ? Number(entry.activeRound)
     : (Number(state.round) || 0) + 1;
+  const { playerId, titleKey } = normalizeTemporarySupportSubject(state, entry, kind);
   const normalized = {
-    id: entry.id || `${entry.kind || 'support'}:${state.round}:${support.length}`,
-    kind: entry.kind || 'temporary',
+    id: entry.id || `${kind}:${state.round}:${support.length}`,
+    kind,
     label: entry.label || 'Capital support',
-    playerId: Number.isInteger(Number(entry.playerId)) ? Number(entry.playerId) : null,
-    titleKey: entry.titleKey || null,
+    playerId,
+    titleKey,
     amount,
     activeRound,
     originRound: Number(state.round) || 0,

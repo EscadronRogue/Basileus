@@ -537,10 +537,11 @@ function getReconquestRewardProvinceCount(warResult) {
 function applyBasileusLossPenalty(state, warResult) {
   const lost = Array.isArray(warResult?.themesLost) ? warResult.themesLost.length : 0;
   if (lost <= 0) return null;
+  const penalizedBasileusId = state.basileusId;
   const penalty = addTemporaryCapitalSupport(state, {
     kind: 'lost_provinces',
     label: 'Lost-province unrest',
-    titleKey: 'BASILEUS',
+    playerId: penalizedBasileusId,
     amount: -lost,
     activeRound: state.round + 1,
     themeIds: warResult.themesLost,
@@ -548,10 +549,11 @@ function applyBasileusLossPenalty(state, warResult) {
   recordHistoryEvent(state, {
     category: 'resolution',
     type: 'basileus_loss_penalty',
-    actorId: state.basileusId,
-    summary: `${playerName(state, state.basileusId)} loses ${formatTroops(lost, 'province')} and suffers ${formatTroops(lost)} less capital support next round.`,
+    actorId: penalizedBasileusId,
+    summary: `${playerName(state, penalizedBasileusId)} loses ${formatTroops(lost, 'province')} and suffers ${formatTroops(lost)} less capital support next round.`,
     details: {
-      basileusId: state.basileusId,
+      basileusId: penalizedBasileusId,
+      playerId: penalizedBasileusId,
       themesLost: warResult.themesLost.slice(),
       capitalSupport: penalty?.amount || -lost,
       activeRound: state.round + 1,
