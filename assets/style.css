@@ -5716,7 +5716,7 @@ textarea {
 /* ─────────────────────────────────────────────────────────────────
    VALUE READABILITY — Resource values (gold / troops / church) must
    stay crisp on every background: parchment, dynasty fills (lighter
-   ones like Doukas amber and capital gold are the worst offenders),
+   ones like yellow dynasty fills and capital gold are the worst offenders),
    and the translucent dark veils used by finance / stat cards on
    top of those colors.
 
@@ -5869,7 +5869,7 @@ textarea {
 
 /* 4. Finance cards inside the dashboard sit on a dynasty fill, so
       the 22 %-opacity dark veil from the base rule is too faint on
-      the lighter dynasty colors (Doukas amber and the capital gold
+      the lighter dynasty colors (yellow dynasty fills and the capital gold
       come out essentially the same as the card). Deepen the veil
       and the inner gold hairline, bolden the numerals. */
 .player-dashboard .finance-card {
@@ -5910,7 +5910,7 @@ textarea {
 }
 .player-dashboard .dashboard-stat-row strong { font-weight: 700; }
 
-/* 6. Player-tab finance run — numerals were faint on Doukas amber.
+/* 6. Player-tab finance run — numerals were faint on yellow dynasty fills.
       Apply the bolder + halo treatment from the cartouche spec. */
 .player-tab .tab-finance .value-num { font-weight: 700; }
 .player-tab .tab-finance .value-noun { opacity: 0.95; }

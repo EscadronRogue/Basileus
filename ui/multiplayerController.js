@@ -10,7 +10,7 @@ import {
   renderPlayerTabs,
   scrollPhasePanelIntoView,
 } from './sharedView.js';
-import { DYNASTY_COLORS } from '../data/invasions.js';
+import { getDynastyProfileForSeat } from '../data/invasions.js';
 
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
 const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
@@ -38,8 +38,11 @@ function escapeHtml(value) {
     .replaceAll('"', '&quot;');
 }
 
-function seatCartoucheStyle(seatId) {
-  const color = DYNASTY_COLORS[(Math.max(0, Number(seatId) || 0)) % DYNASTY_COLORS.length] || '#5a3810';
+function seatCartoucheStyle(seatOrId) {
+  const seatId = typeof seatOrId === 'object' ? seatOrId?.seatId : seatOrId;
+  const color = (typeof seatOrId === 'object' ? seatOrId?.color : null)
+    || getDynastyProfileForSeat(Math.max(0, Number(seatId) || 0)).color
+    || '#5a3810';
   return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
 }
 
@@ -834,7 +837,7 @@ export class MultiplayerController {
           <label>Seats</label>
           <div class="multiplayer-seat-list">
             ${seats.map((seat) => `
-              <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}" style="${seatCartoucheStyle(seat.seatId)}">
+              <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}" style="${seatCartoucheStyle(seat)}">
                 <span class="choice-crest">${seat.seatId + 1}</span>
                 <div class="multiplayer-seat-copy">
                   <strong>Seat ${seat.seatId + 1}</strong>

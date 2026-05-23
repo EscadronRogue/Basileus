@@ -150,6 +150,7 @@ function getSeatStatus(seat) {
 
 function createSeatSummary(room, seat, viewerSessionId) {
   const isViewerSeat = seat.sessionId != null && seat.sessionId === viewerSessionId;
+  const player = room.gameState ? getPlayer(room.gameState, seat.seatId) : null;
   return {
     seatId: seat.seatId,
     kind: seat.kind,
@@ -162,7 +163,8 @@ function createSeatSummary(room, seat, viewerSessionId) {
     aiOpponentId: seat.kind === 'ai' ? seat.aiOpponentId : null,
     isHostSeat: seat.sessionId != null && seat.sessionId === room.hostSessionId,
     isViewerSeat,
-    dynasty: room.gameState ? (formatPlayerLabel(getPlayer(room.gameState, seat.seatId)) || null) : null,
+    dynasty: player ? (formatPlayerLabel(player) || null) : null,
+    color: player?.color || null,
   };
 }
 

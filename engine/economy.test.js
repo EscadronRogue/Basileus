@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { INVASIONS } from '../data/invasions.js';
+import { DYNASTY_COLORS, DYNASTY_PROFILES, INVASIONS, getDynastyColor } from '../data/invasions.js';
 import { PROVINCES } from '../data/provinces.js';
 import { createGameState, createInvasionInstance, getPlayer, getOfficeHolder, pickInvasionTemplate } from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
@@ -74,6 +74,28 @@ test('invasion draw weights match the configured probability table', () => {
   assert.equal(Object.values(weights).reduce((sum, weight) => sum + weight, 0), 100);
 });
 
+test('dynasty colors are fixed to their family names', () => {
+  assert.deepEqual(DYNASTY_PROFILES, [
+    { name: 'Phokas', color: DYNASTY_COLORS[0] },
+    { name: 'Doukas', color: DYNASTY_COLORS[1] },
+    { name: 'Komnenos', color: DYNASTY_COLORS[2] },
+    { name: 'Botenaiates', color: DYNASTY_COLORS[3] },
+    { name: 'Diogenes', color: DYNASTY_COLORS[4] },
+  ]);
+
+  assert.equal(getDynastyColor('Doukas'), DYNASTY_COLORS[1]);
+  assert.equal(getDynastyColor('Komnenos'), DYNASTY_COLORS[2]);
+  assert.equal(getDynastyColor('Phokas'), DYNASTY_COLORS[0]);
+  assert.equal(getDynastyColor('Diogenes'), DYNASTY_COLORS[4]);
+  assert.equal(getDynastyColor('Botenaiates'), DYNASTY_COLORS[3]);
+
+  const state = createGameState({ playerCount: 5, deckSize: 1, seed: 123 });
+  assert.deepEqual(
+    state.players.map(({ dynasty, color }) => ({ name: dynasty, color })),
+    DYNASTY_PROFILES.map(({ name, color }) => ({ name, color })),
+  );
+});
+
 test('invasion picker uses weighted probability bands', () => {
   assert.equal(pickInvasionTemplate(() => 0).id, 'emirate');
   assert.equal(pickInvasionTemplate(() => 0.049999).id, 'emirate');
@@ -94,16 +116,21 @@ test('invasion templates carry individual strength bounds', () => {
   const bounds = Object.fromEntries(INVASIONS.map(({ id, strengthBounds }) => [id, strengthBounds]));
   const emirateTemplate = INVASIONS.find((entry) => entry.id === 'emirate');
 
-  assert.deepEqual(bounds.turks, [20, 40]);
-  assert.deepEqual(bounds.caliphate, [20, 40]);
-  for (const [id, range] of Object.entries(bounds)) {
-    if (id === 'turks' || id === 'caliphate') continue;
-    assert.deepEqual(range, [10, 30], id);
-  }
+  assert.deepEqual(bounds, {
+    emirate: [10, 30],
+    kievan_rus: [10, 25],
+    normans: [10, 25],
+    venetians: [10, 30],
+    bulgars: [10, 30],
+    serbs: [10, 25],
+    hungarians: [10, 25],
+    turks: [20, 40],
+    caliphate: [20, 40],
+  });
   assert.equal(emirateTemplate.name, 'Emirate');
   assert.equal(emirateTemplate.objective, 'provinces');
   assert.equal(emirateTemplate.requiresImperialTarget, true);
-  assert.deepEqual(emirateTemplate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP', 'ANT']);
+  assert.deepEqual(emirateTemplate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP']);
 
   const turks = createInvasionInstance(INVASIONS.find((entry) => entry.id === 'turks'), () => 0);
   const emirate = createInvasionInstance(emirateTemplate, () => 0);

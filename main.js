@@ -2,7 +2,7 @@ import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
 import { loadBrowserAiOpponentRoster } from './ai/brain.js';
-import { DYNASTY_COLORS } from './data/invasions.js';
+import { getDynastyProfileForSeat } from './data/invasions.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 
@@ -43,7 +43,7 @@ function escapeHtml(value) {
 }
 
 function seatCartoucheStyle(seat) {
-  const color = DYNASTY_COLORS[(Math.max(1, Number(seat) || 1) - 1) % DYNASTY_COLORS.length] || '#5a3810';
+  const color = getDynastyProfileForSeat((Math.max(1, Number(seat) || 1) - 1)).color || '#5a3810';
   return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
 }
 

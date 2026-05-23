@@ -2,8 +2,7 @@
 import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 import {
   INVASIONS,
-  DYNASTIES,
-  DYNASTY_COLORS,
+  getDynastyProfileForSeat,
   INVASION_OBJECTIVES,
   INVASION_STRENGTH_RANGE,
   INVASION_ESTIMATE_INTERVAL,
@@ -145,14 +144,14 @@ function createThemeState(province) {
 
 export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEnabled = false } = {}) {
   const rng = makeRng(seed);
-  const dynastyPool = shuffle(DYNASTIES, rng);
   const players = [];
 
   for (let i = 0; i < playerCount; i++) {
+    const { name: dynasty, color } = getDynastyProfileForSeat(i);
     players.push({
       id: i,
-      dynasty: dynastyPool[i],
-      color: DYNASTY_COLORS[i % DYNASTY_COLORS.length],
+      dynasty,
+      color,
       gold: 0,
       majorTitles: [],
       minorTitles: [],
