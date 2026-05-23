@@ -20,7 +20,13 @@ import {
 import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
 import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey, getBishopThemes } from '../engine/state.js';
 import { getPlayerCapitalSupport } from '../engine/capitalSupport.js';
-import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking } from '../engine/coup.js';
+import {
+  getCoupRankWeight,
+  getPreferredCoupCandidate,
+  normalizeCoupRanking,
+  normalizeCoupSupport,
+  placeCoupCandidateAfterPlayer,
+} from '../engine/coup.js';
 import {
   getDeploymentArmyDisplayName,
   getDeploymentArmySourceKeys,
@@ -1084,12 +1090,10 @@ function ensureDeploymentDraft(state, draft, armyKeys) {
 }
 
 function ensureDeploymentRanking(state, playerId, draft, preferredCandidateId = null) {
-  draft.ranking = normalizeCoupRanking(
-    state,
-    playerId,
-    draft.ranking,
-    preferredCandidateId ?? draft.candidate,
-  );
+  draft.ranking = preferredCandidateId == null
+    ? normalizeCoupRanking(state, playerId, draft.ranking, draft.candidate)
+    : placeCoupCandidateAfterPlayer(state, playerId, draft.ranking, preferredCandidateId);
+  draft.candidateSupport = normalizeCoupSupport(state, draft.candidateSupport, preferredCandidateId);
   draft.candidate = getPreferredCoupCandidate(state, playerId, draft);
   return draft.ranking;
 }
@@ -1118,7 +1122,7 @@ function getDeploymentReadiness(state, playerId, draft, armyKeys) {
     missing.push('mercenaries:destination');
   }
   const ranking = ensureDeploymentRanking(state, playerId, draft);
-  if (ranking.length !== state.players.length || ranking[0] !== playerId) missing.push('ranking');
+  if (ranking.length !== state.players.length) missing.push('ranking');
   return { ready: missing.length === 0, missing };
 }
 
@@ -1130,7 +1134,8 @@ function getActiveOrderLocks(options = {}) {
 function applyOrderLocksToDraft(state, playerId, draft, orderLocks) {
   if (!orderLocks?.ok) return;
   if (orderLocks.candidateId != null) {
-    draft.ranking = normalizeCoupRanking(state, playerId, draft.ranking, Number(orderLocks.candidateId));
+    draft.ranking = placeCoupCandidateAfterPlayer(state, playerId, draft.ranking, Number(orderLocks.candidateId));
+    draft.candidateSupport = normalizeCoupSupport(state, draft.candidateSupport, Number(orderLocks.candidateId));
     draft.candidate = Number(orderLocks.candidateId);
   }
   for (const [officeKey, destination] of Object.entries(orderLocks.committedOfficeKeys || {})) {
@@ -1197,7 +1202,7 @@ function renderOrderLockNotice(state, orderLocks) {
   const rows = [];
   if (orderLocks.candidateId != null) {
     const candidate = getPlayer(state, Number(orderLocks.candidateId));
-    rows.push(`Coup rank: ${escapeHtml(playerDisplayLabel(candidate))} after you`);
+    rows.push(`Coup rank: ${escapeHtml(playerDisplayLabel(candidate))} stays pledged`);
   }
   for (const office of orderLocks.officeSelections || []) {
     const destination = office.destination === 'capital' ? 'Capital' : 'Frontier';
@@ -1219,7 +1224,9 @@ function renderOrderLockNotice(state, orderLocks) {
 function renderDeploymentPreview(state, playerId, draft, armyKeys) {
   const breakdown = getDraftArmyBreakdown(state, playerId, draft, armyKeys);
   const ranking = ensureDeploymentRanking(state, playerId, draft);
-  const topPreference = getPlayer(state, ranking[1] ?? playerId);
+  const candidateSupport = normalizeCoupSupport(state, draft.candidateSupport);
+  const topSupportedId = ranking.find((candidateId) => candidateSupport[candidateId] !== false);
+  const topPreference = getPlayer(state, topSupportedId ?? playerId);
   const preferenceLabel = topPreference ? escapeHtml(playerDisplayLabel(topPreference)) : 'Rank claimants';
   return `
     <div class="deployment-preview" data-deployment-preview>
@@ -1241,7 +1248,7 @@ function renderDeploymentPreview(state, playerId, draft, armyKeys) {
       </div>
       <p class="deployment-preview-note">
         ${breakdown.capitalTroops > 0
-          ? `Your strongest secondary preference is ${preferenceLabel}.`
+          ? `Your strongest active preference is ${preferenceLabel}.`
           : 'No funded troops or mercenaries are entering the capital ranking.'}
       </p>
     </div>
@@ -1250,6 +1257,7 @@ function renderDeploymentPreview(state, playerId, draft, armyKeys) {
 
 function renderCandidateRanking(state, playerId, draft, lockedCandidateId = null) {
   const ranking = ensureDeploymentRanking(state, playerId, draft, lockedCandidateId);
+  const candidateSupport = normalizeCoupSupport(state, draft.candidateSupport, lockedCandidateId);
   const playerCount = state.players.length;
   const hasDragging = Number.isInteger(Number(draft.draggedCandidateId));
   return `
@@ -1259,17 +1267,23 @@ function renderCandidateRanking(state, playerId, draft, lockedCandidateId = null
         const isSelf = candidateId === playerId;
         const isLockedCandidate = lockedCandidateId != null && candidateId === lockedCandidateId;
         const isDragging = Number(draft.draggedCandidateId) === Number(candidateId);
+        const isEnabled = candidateSupport[candidateId] !== false;
         const weight = getCoupRankWeight(playerCount, index);
-        const tag = isSelf ? 'You' : isLockedCandidate ? 'Deal lock' : `${Math.round(weight * 100)}%`;
+        const tag = isEnabled ? `${Math.round(weight * 100)}%` : '0%';
         return `
-          <div class="candidate-row candidate-rank-row${isSelf ? ' self locked' : ''}${isLockedCandidate ? ' deal-locked' : ''}${isDragging ? ' dragging' : ''}"
+          <div class="candidate-row candidate-rank-row${isSelf ? ' self' : ''}${isLockedCandidate ? ' deal-locked' : ''}${isDragging ? ' dragging' : ''}${isEnabled ? '' : ' support-off'}"
             data-candidate-rank="${candidateId}"
             draggable="false"
             style="${getPlayerStyleAttr(state, candidateId)}">
+            <span class="candidate-drag-handle" aria-hidden="true"></span>
             <span class="candidate-rank-no">${index + 1}</span>
             <span class="candidate-crest">${playerInitial(candidate)}</span>
             <span class="candidate-name">${escapeHtml(playerDisplayLabel(candidate))}</span>
-            <span class="candidate-tag">${tag}</span>
+            <span class="candidate-tag">${isLockedCandidate ? `Deal ${tag}` : tag}</span>
+            <label class="candidate-support-toggle" data-candidate-support-toggle title="Toggle coup support">
+              <input type="checkbox" data-candidate-support="${candidateId}" ${isEnabled ? 'checked' : ''} ${isLockedCandidate ? 'disabled' : ''}>
+              <span aria-hidden="true"></span>
+            </label>
           </div>
         `;
       }).join('')}
@@ -1455,22 +1469,21 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
     delete draft.draggedCandidateId;
   };
   const moveRankedCandidateToIndex = (candidateId, insertIndex) => {
-    if (!Number.isInteger(candidateId) || candidateId === playerId) return false;
+    if (!Number.isInteger(candidateId)) return false;
     if (candidateLockedId != null && candidateId === candidateLockedId) return false;
     const ranking = ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
     const previousRanking = ranking.join(',');
     const moving = ranking.indexOf(candidateId);
-    if (moving <= 0) return false;
-    const lockedIndex = candidateLockedId == null ? -1 : ranking.indexOf(candidateLockedId);
-    const minIndex = lockedIndex > 0 ? lockedIndex + 1 : 1;
+    if (moving < 0) return false;
+    const minIndex = 0;
     let targetIndex = Math.max(minIndex, Math.min(ranking.length, Number(insertIndex) || minIndex));
     const [entry] = ranking.splice(moving, 1);
     if (targetIndex > moving) targetIndex -= 1;
-    const nextLockedIndex = candidateLockedId == null ? -1 : ranking.indexOf(candidateLockedId);
-    const nextMinIndex = nextLockedIndex > 0 ? nextLockedIndex + 1 : 1;
-    targetIndex = Math.max(nextMinIndex, Math.min(ranking.length, targetIndex));
+    targetIndex = Math.max(minIndex, Math.min(ranking.length, targetIndex));
     ranking.splice(targetIndex, 0, entry);
-    draft.ranking = normalizeCoupRanking(state, playerId, ranking, candidateLockedId);
+    draft.ranking = candidateLockedId == null
+      ? normalizeCoupRanking(state, playerId, ranking)
+      : placeCoupCandidateAfterPlayer(state, playerId, ranking, candidateLockedId);
     draft.candidate = getPreferredCoupCandidate(state, playerId, draft);
     return draft.ranking.join(',') !== previousRanking;
   };
@@ -1500,8 +1513,9 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   container.querySelectorAll('[data-candidate-rank]').forEach((row) => {
     row.addEventListener('pointerdown', (event) => {
       if (event.button != null && event.button !== 0) return;
+      if (event.target?.closest?.('[data-candidate-support-toggle]')) return;
       const candidateId = Number(row.dataset.candidateRank);
-      if (!Number.isInteger(candidateId) || candidateId === playerId) return;
+      if (!Number.isInteger(candidateId)) return;
       if (candidateLockedId != null && candidateId === candidateLockedId) return;
       const ownerDocument = container.ownerDocument || globalThis.document;
       draft.draggedCandidateId = candidateId;
@@ -1524,6 +1538,24 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       ownerDocument?.addEventListener?.('pointermove', handlePointerMove);
       ownerDocument?.addEventListener?.('pointerup', finishDrag, { once: true });
       ownerDocument?.addEventListener?.('pointercancel', finishDrag, { once: true });
+    });
+  });
+  container.querySelectorAll('[data-candidate-support-toggle]').forEach((toggle) => {
+    toggle.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+    });
+  });
+  container.querySelectorAll('[data-candidate-support]').forEach((checkbox) => {
+    checkbox.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+    });
+    checkbox.addEventListener('change', () => {
+      const candidateId = Number(checkbox.dataset.candidateSupport);
+      draft.candidateSupport = normalizeCoupSupport(state, draft.candidateSupport, candidateLockedId);
+      draft.candidateSupport[candidateId] = Boolean(checkbox.checked);
+      if (candidateLockedId != null) draft.candidateSupport[candidateLockedId] = true;
+      draft.candidate = getPreferredCoupCandidate(state, playerId, draft);
+      rerender();
     });
   });
   container.querySelector('[data-candidate-rank-list]')?.addEventListener('pointermove', (event) => {
@@ -1550,6 +1582,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       armies: draft.armies,
       mercenaries: draft.mercenaries,
       ranking: draft.ranking.slice(),
+      candidateSupport: { ...normalizeCoupSupport(state, draft.candidateSupport, candidateLockedId) },
       candidate: draft.candidate == null ? null : Number(draft.candidate),
     });
   });

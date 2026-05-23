@@ -532,6 +532,31 @@ test('ranked coup support can transfer secondary support without reciprocal merg
   assert.equal(result.contributions.some((entry) => entry.playerId === 2 && entry.candidateId === 1 && Math.abs(entry.votes - 3.333333333333334) < 1e-9), true);
 });
 
+test('ranked coup support allows movable self rank and disabled candidates keep rank weights', () => {
+  const state = createGameState({ playerCount: 5, deckSize: 2, seed: 11 });
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  for (const player of state.players) player.majorTitles = [];
+
+  const result = resolveCoup(state, {
+    0: {
+      ranking: [2, 0, 1, 3, 4],
+      candidateSupport: { 3: false, 4: false },
+    },
+  }, {
+    0: 4,
+  });
+
+  assert.deepEqual(result.ballots[0].ranking, [2, 0, 1, 3, 4]);
+  assert.deepEqual(result.ballots[0].weightedVotes.map((entry) => [entry.candidateId, entry.votes, entry.enabled]), [
+    [2, 4, true],
+    [0, 3, true],
+    [1, 2, true],
+    [3, 0, false],
+    [4, 0, false],
+  ]);
+});
+
 test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {
   const state = makeState();
   state.themes.SAM.owner = 2;

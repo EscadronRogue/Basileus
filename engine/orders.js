@@ -11,6 +11,7 @@ import {
 import {
   getPreferredCoupCandidate,
   isCompleteCoupRanking,
+  normalizeCoupSupport,
   normalizeCoupRanking,
 } from './coup.js';
 
@@ -157,13 +158,15 @@ function validateMercenaryOrder(mercenaries) {
 
 function validateRanking(state, playerId, orders) {
   const ranking = normalizeCoupRanking(state, playerId, orders?.ranking, orders?.candidate);
-  if (!isCompleteCoupRanking(state, ranking) || ranking[0] !== playerId) {
-    return orderFailure('Rank every Basileus claimant with your dynasty first.');
+  if (!isCompleteCoupRanking(state, ranking)) {
+    return orderFailure('Rank every Basileus claimant.');
   }
+  const candidateSupport = normalizeCoupSupport(state, orders?.candidateSupport);
   return {
     ok: true,
     ranking,
-    candidate: getPreferredCoupCandidate(state, playerId, { ...orders, ranking }),
+    candidateSupport,
+    candidate: getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
   };
 }
 
@@ -183,7 +186,8 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
     ? toInt(rawOrders?.candidate, NaN)
     : null;
   const ranking = normalizeCoupRanking(state, playerId, rawOrders?.ranking, candidate);
-  const rawNormalizedOrders = { armies, mercenaries, candidate, ranking };
+  const candidateSupport = normalizeCoupSupport(state, rawOrders?.candidateSupport);
+  const rawNormalizedOrders = { armies, mercenaries, candidate, ranking, candidateSupport };
   if (rawOrders?.debug) rawNormalizedOrders.debug = rawOrders.debug;
 
   const dealLocks = normalizeOrdersWithDealLocks(state, playerId, rawNormalizedOrders, {
@@ -205,6 +209,7 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
     armies: armyValidation.armies,
     mercenaries: mercenaryValidation.mercenaries,
     ranking: rankingValidation.ranking,
+    candidateSupport: rankingValidation.candidateSupport,
     candidate: rankingValidation.candidate,
   };
 

@@ -20,7 +20,7 @@ import { getThemeLandPrice } from './rules.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 import { formatGold } from './presentation.js';
 import { getCapitalSupportEntries } from './capitalSupport.js';
-import { getCoupRankWeight, normalizeCoupRanking } from './coup.js';
+import { getCoupRankWeight, normalizeCoupRanking, normalizeCoupSupport } from './coup.js';
 
 const STRATEGOS_TITLE_BY_REGION = {
   east: 'DOM_EAST',
@@ -721,9 +721,11 @@ export function resolveCoup(state, allOrders, capitalTroops) {
     const pid = Number(pidStr);
     const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
     const ranking = normalizeCoupRanking(state, pid, orders?.ranking, orders?.candidate);
+    const candidateSupport = normalizeCoupSupport(state, orders?.candidateSupport);
     const weightedVotes = ranking.map((candidateId, rankIndex) => {
       const weight = getCoupRankWeight(playerCount, rankIndex);
-      const votes = troops * weight;
+      const enabled = candidateSupport[candidateId] !== false;
+      const votes = enabled ? troops * weight : 0;
       candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
       if (votes > 0) {
         contributions.push({
@@ -735,14 +737,16 @@ export function resolveCoup(state, allOrders, capitalTroops) {
           rank: rankIndex + 1,
           weight,
           passive: false,
+          enabled,
         });
       }
-      return { candidateId, rank: rankIndex + 1, weight, votes };
+      return { candidateId, rank: rankIndex + 1, weight, votes, enabled };
     });
     ballots.push({
       playerId: pid,
       candidateId: ranking[0],
       ranking,
+      candidateSupport,
       troops,
       weightedVotes,
     });

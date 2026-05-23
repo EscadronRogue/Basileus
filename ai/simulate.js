@@ -7,7 +7,7 @@ import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } 
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopEntry, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
-import { getPreferredCoupCandidate, normalizeCoupRanking } from '../engine/coup.js';
+import { getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
 import { createAIMeta } from './brain.js';
 
 const DEFAULT_OPTIONS = {
@@ -155,6 +155,7 @@ function summarizeOrders(state, playerId) {
       : getPreferredCoupCandidate(state, playerId, {
         ...orders,
         ranking: normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate),
+        candidateSupport: normalizeCoupSupport(state, orders.candidateSupport),
       }),
     frontierTroops,
     capitalTroops,

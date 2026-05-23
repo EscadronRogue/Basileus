@@ -8,7 +8,7 @@ import {
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from '../engine/deployment.js';
-import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking } from '../engine/coup.js';
+import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import {
   applyLegalAction,
@@ -517,11 +517,13 @@ function summarizeOrders(state, playerId, orders = {}) {
   else frontierTroops += mercCount;
 
   const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
+  const candidateSupport = normalizeCoupSupport(state, orders.candidateSupport);
   return {
     candidate: Number.isInteger(Number(orders.candidate))
       ? Number(orders.candidate)
-      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking }),
+      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
     ranking,
+    candidateSupport,
     capitalTroops,
     frontierTroops,
     fundedTroops,
@@ -710,6 +712,7 @@ function existingCapitalVotes(state) {
   for (const [playerId, orders] of Object.entries(state.allOrders || {})) {
     const summary = summarizeOrders(state, Number(playerId), orders);
     summary.ranking.forEach((candidateId, rankIndex) => {
+      if (summary.candidateSupport[candidateId] === false) return;
       const support = summary.capitalTroops * getCoupRankWeight(state.players.length, rankIndex);
       votes[candidateId] = (votes[candidateId] || 0) + support;
     });

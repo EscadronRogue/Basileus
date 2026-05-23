@@ -19,17 +19,32 @@ export function normalizeCoupRanking(state, playerId, rawRanking = null, preferr
     ranking.push(id);
   };
 
-  push(playerId);
-  if (preferredCandidateId != null) push(preferredCandidateId);
+  const hasRawRanking = Array.isArray(rawRanking)
+    ? rawRanking.length > 0
+    : rawRanking && typeof rawRanking === 'object' && Object.keys(rawRanking).length > 0;
 
-  if (Array.isArray(rawRanking)) {
+  if (hasRawRanking && Array.isArray(rawRanking)) {
     for (const candidateId of rawRanking) push(candidateId);
-  } else if (rawRanking && typeof rawRanking === 'object') {
+  } else if (hasRawRanking && rawRanking && typeof rawRanking === 'object') {
     for (const candidateId of Object.values(rawRanking)) push(candidateId);
+  } else {
+    push(playerId);
+    if (preferredCandidateId != null) push(preferredCandidateId);
   }
 
   for (const candidateId of playerIds) push(candidateId);
   return ranking;
+}
+
+export function placeCoupCandidateAfterPlayer(state, playerId, rawRanking = null, candidateId = null) {
+  const candidate = Number(candidateId);
+  const ranking = normalizeCoupRanking(state, playerId, rawRanking);
+  if (!Number.isInteger(candidate) || !ranking.includes(candidate) || candidate === playerId) return ranking;
+  const nextRanking = ranking.filter((id) => id !== candidate);
+  const playerIndex = nextRanking.indexOf(Number(playerId));
+  const insertAt = playerIndex >= 0 ? playerIndex + 1 : 1;
+  nextRanking.splice(insertAt, 0, candidate);
+  return normalizeCoupRanking(state, playerId, nextRanking);
 }
 
 export function buildDefaultCoupRanking(state, playerId, preferredCandidateId = null) {
@@ -49,7 +64,34 @@ export function isCompleteCoupRanking(state, ranking) {
   return true;
 }
 
+export function normalizeCoupSupport(state, rawSupport = null, requiredCandidateId = null) {
+  const support = {};
+  for (const candidateId of validPlayerIds(state)) support[candidateId] = true;
+
+  if (rawSupport && typeof rawSupport === 'object') {
+    for (const [key, value] of Object.entries(rawSupport)) {
+      const candidateId = Number(key);
+      if (!Number.isInteger(candidateId) || !Object.prototype.hasOwnProperty.call(support, candidateId)) continue;
+      support[candidateId] = value !== false && value !== 'false' && value !== 0 && value !== '0';
+    }
+  }
+
+  const required = Number(requiredCandidateId);
+  if (Number.isInteger(required) && Object.prototype.hasOwnProperty.call(support, required)) {
+    support[required] = true;
+  }
+  return support;
+}
+
+export function isCoupCandidateSupported(state, orders = {}, candidateId) {
+  const support = normalizeCoupSupport(state, orders?.candidateSupport);
+  return support[Number(candidateId)] !== false;
+}
+
 export function getPreferredCoupCandidate(state, playerId, orders = {}) {
   const ranking = normalizeCoupRanking(state, playerId, orders?.ranking, orders?.candidate);
-  return ranking.find((candidateId) => candidateId !== playerId) ?? playerId;
+  const support = normalizeCoupSupport(state, orders?.candidateSupport);
+  return ranking.find((candidateId) => candidateId !== playerId && support[candidateId] !== false)
+    ?? ranking.find((candidateId) => support[candidateId] !== false)
+    ?? playerId;
 }
