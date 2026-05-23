@@ -17,6 +17,7 @@ import {
   createDefaultUiState,
   getPhaseRenderKey,
   getPlayerTabEconomy,
+  renderGameActionPanel,
   renderNotificationsPanel,
   renderPlayerTabFinance,
   renderScoringHtml,
@@ -40,6 +41,53 @@ function makePanelContainer() {
     querySelectorAll: () => [],
     querySelector: () => null,
   };
+}
+
+function makeFakeElement() {
+  const element = {
+    innerHTML: '',
+    textContent: '',
+    disabled: false,
+    children: [],
+    classList: { toggle: () => {} },
+    appendChild(child) {
+      this.children.push(child);
+    },
+    addEventListener() {},
+    querySelectorAll() {
+      return [];
+    },
+    querySelector(selector) {
+      if (selector === '[data-action="continue"]' && this.innerHTML.includes('data-action="continue"')) {
+        this.continueButton = this.continueButton || makeFakeElement();
+        return this.continueButton;
+      }
+      return null;
+    },
+  };
+  return element;
+}
+
+function makeActionPanelContainer() {
+  const panel = makeFakeElement();
+  const body = makeFakeElement();
+  panel.querySelector = (selector) => (
+    selector === '[data-role="action-panel-body"]' ? body : null
+  );
+  return { panel, body };
+}
+
+function withFakeDocument(callback) {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    createElement: () => makeFakeElement(),
+  };
+  try {
+    return callback();
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 }
 
 test('province badges render the updated P/T/C economy and hide capital values', () => {
@@ -375,6 +423,48 @@ test('coup resolution shows supporters and zero-capital claimant picks', () => {
   assert.match(container.innerHTML, /Coup/);
   assert.match(container.innerHTML, /vote-supporters/);
   assert.match(container.innerHTML, /No capital troops from/);
+});
+
+test('empire fall still shows the resolution result before final reckoning', () => {
+  const state = makeState();
+  state.phase = 'resolution';
+  state.gameOver = { type: 'fall', message: 'Constantinople has fallen. The Empire is no more.' };
+  state.currentInvasion = { name: 'Ottomans' };
+  state.lastWarResult = {
+    outcome: 'defeat',
+    frontierTroops: 2,
+    invaderStrength: 7,
+    themesLost: ['OPS'],
+    themesRecovered: [],
+    reachedCPL: true,
+    contributions: [{ playerId: 1, playerName: 'Defender', troops: 2 }],
+  };
+  state.lastCoupResult = {
+    winner: state.basileusId,
+    votes: { [state.basileusId]: 2 },
+    contributions: [{ playerId: 0, candidateId: state.basileusId, troops: 2 }],
+    ballots: [{ playerId: 0, candidateId: state.basileusId, troops: 2 }],
+  };
+  const { panel, body } = makeActionPanelContainer();
+
+  withFakeDocument(() => {
+    renderGameActionPanel({
+      panel,
+      state,
+      uiState: createDefaultUiState(),
+      activePlayerId: state.basileusId,
+      handlers: { includeNewGame: true },
+      resolution: { continue: () => {} },
+    });
+  });
+
+  const shell = body.children[0];
+  assert.match(panel.innerHTML, /sidebar-panel-title">Resolution/);
+  assert.match(shell.innerHTML, /<h3>Resolution<\/h3>/);
+  assert.match(shell.innerHTML, /Empire Fallen/);
+  assert.match(shell.innerHTML, /Empire falls/);
+  assert.doesNotMatch(shell.innerHTML, /Final Reckoning/);
+  assert.equal(shell.continueButton.textContent, 'Final Reckoning');
 });
 
 test('default interface opens the action lane and keeps support panels collapsed', () => {

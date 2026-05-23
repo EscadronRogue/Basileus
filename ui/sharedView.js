@@ -306,8 +306,13 @@ export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
 };
 
 function getActionPanelTitle(state) {
-  if (state?.gameOver || state?.phase === 'scoring') return 'Final Reckoning';
+  if (shouldRenderFinalReckoning(state)) return 'Final Reckoning';
   return ACTION_PANEL_TITLE_BY_PHASE[state?.phase] || 'Action Panel';
+}
+
+function shouldRenderFinalReckoning(state) {
+  if (!state) return false;
+  return state.phase === 'scoring' || (Boolean(state.gameOver) && state.phase !== 'resolution');
 }
 
 export function renderTopBar(state) {
@@ -358,7 +363,10 @@ export function renderEmpireFallenBanner(state) {
     topBar.insertBefore(banner, invasionEl || null);
   }
 
-  banner.innerHTML = '<strong>Empire Fallen</strong><span>Constantinople has been sacked. The game ends now; the highest-scoring dynasty wins.</span>';
+  const message = state.phase === 'resolution'
+    ? 'Constantinople has been sacked. Review the deployment result, then continue to the final reckoning.'
+    : 'Constantinople has been sacked. The game ends now; the highest-scoring dynasty wins.';
+  banner.innerHTML = `<strong>Empire Fallen</strong><span>${message}</span>`;
 }
 
 export function getPlayerTabEconomy(player, administration, state = null) {
@@ -633,7 +641,8 @@ export function renderGameActionPanel({
   const body = renderActionShell(panel, state, uiState);
   if (!body) return null;
 
-  if (!canControl && state.phase !== 'scoring' && !state.gameOver) {
+  const sharedReviewPhase = state.phase === 'resolution' || state.phase === 'scoring' || Boolean(state.gameOver);
+  if (!canControl && !sharedReviewPhase) {
     renderSpectatorPanel(body, state, activePlayerId, spectatorMessage);
     return body;
   }
@@ -645,7 +654,7 @@ export function renderGameActionPanel({
   const shell = document.createElement('div');
   body.appendChild(shell);
 
-  if (state.gameOver || state.phase === 'scoring') {
+  if (shouldRenderFinalReckoning(state)) {
     shell.innerHTML = renderScoringHtml(state, {
       includeNewGame: Boolean(handlers.includeNewGame),
     });
@@ -710,7 +719,7 @@ export function renderGameActionPanel({
         break;
       }
 
-      continueButton.textContent = resolution.continueText || 'Continue';
+      continueButton.textContent = resolution.continueText || (state.gameOver?.type === 'fall' ? 'Final Reckoning' : 'Continue');
       continueButton.addEventListener('click', () => {
         resolution.continue?.(shell);
       });
