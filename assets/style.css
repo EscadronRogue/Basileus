@@ -801,6 +801,14 @@ body::before {
   box-shadow: var(--shadow-card);
   color: var(--umber-1);
   pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.notification-toast.is-dismissing {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .notification-toast.tone-negative {

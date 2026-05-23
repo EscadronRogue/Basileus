@@ -559,29 +559,20 @@ test('notification panel labels deployment actions with updated vocabulary', () 
         action: 'open_deployment',
       },
       {
-        id: 'gain:test',
-        kind: 'court_action',
-        title: 'Court business awaits',
-        body: 'confirm court',
-        urgent: true,
-        tone: 'neutral',
-        action: 'open_court',
-      },
-      {
         id: 'loss:test',
         kind: 'estate_lost',
         title: 'You lost a bid',
         body: 'sealed bid lost',
         urgent: false,
         tone: 'negative',
-        action: 'open_estates',
+        action: 'open_history',
       },
       {
         id: 'win:test',
         kind: 'estate_won',
         title: 'You won an estate',
         body: 'sealed bid won',
-        urgent: false,
+        urgent: true,
         tone: 'positive',
         action: 'open_history',
       },
@@ -592,11 +583,11 @@ test('notification panel labels deployment actions with updated vocabulary', () 
 
   assert.match(panel.innerHTML, /Private Inbox/);
   assert.match(panel.innerHTML, /Deployment/);
-  assert.match(panel.innerHTML, /Court/);
-  assert.match(panel.innerHTML, /Estates/);
   assert.match(panel.innerHTML, /tone-neutral/);
   assert.match(panel.innerHTML, /tone-negative/);
   assert.match(panel.innerHTML, /tone-positive/);
+  assert.match(panel.innerHTML, /notification-toast tone-positive/);
+  assert.doesNotMatch(panel.innerHTML, /Court business awaits/);
   assert.doesNotMatch(panel.innerHTML, />Orders</);
 });
 

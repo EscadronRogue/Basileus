@@ -230,8 +230,21 @@ function ensureNotificationUi(uiState) {
   return uiState.notifications;
 }
 
+const NOTIFICATION_TOAST_VISIBLE_MS = 5200;
+const NOTIFICATION_TOAST_FADE_MS = 700;
+const notificationToastTimers = new Map();
+
 function notificationKey(scopeKey, id) {
   return `${scopeKey || 'default'}:${id}`;
+}
+
+function clearNotificationToastTimer(scopeKey, id) {
+  const key = notificationKey(scopeKey, id);
+  const timers = notificationToastTimers.get(key);
+  if (!timers) return;
+  clearTimeout(timers.dismissTimer);
+  clearTimeout(timers.removeTimer);
+  notificationToastTimers.delete(key);
 }
 
 function isNotificationRead(uiState, scopeKey, id) {
@@ -244,11 +257,13 @@ function isNotificationDismissed(uiState, scopeKey, id) {
 
 function markNotificationRead(uiState, scopeKey, id) {
   if (!id) return;
+  clearNotificationToastTimer(scopeKey, id);
   ensureNotificationUi(uiState).read[notificationKey(scopeKey, id)] = true;
 }
 
 function markNotificationDismissed(uiState, scopeKey, id) {
   if (!id) return;
+  clearNotificationToastTimer(scopeKey, id);
   const key = notificationKey(scopeKey, id);
   const notificationUi = ensureNotificationUi(uiState);
   notificationUi.dismissedToasts[key] = true;
@@ -480,6 +495,14 @@ function getNotificationTone(notification) {
     : 'neutral';
 }
 
+function getToastNotifications(notifications, uiState, scopeKey) {
+  return notifications
+    .filter((notification) => notification.urgent)
+    .filter((notification) => !isNotificationRead(uiState, scopeKey, notification.id))
+    .filter((notification) => !isNotificationDismissed(uiState, scopeKey, notification.id))
+    .slice(0, 3);
+}
+
 function renderNotificationCard(notification, uiState, scopeKey) {
   const read = isNotificationRead(uiState, scopeKey, notification.id);
   const tone = getNotificationTone(notification);
@@ -500,11 +523,7 @@ function renderNotificationCard(notification, uiState, scopeKey) {
 }
 
 function renderNotificationToasts(notifications, uiState, scopeKey) {
-  const toasts = notifications
-    .filter((notification) => notification.urgent)
-    .filter((notification) => !isNotificationRead(uiState, scopeKey, notification.id))
-    .filter((notification) => !isNotificationDismissed(uiState, scopeKey, notification.id))
-    .slice(0, 3);
+  const toasts = getToastNotifications(notifications, uiState, scopeKey);
   if (!toasts.length) return '';
   return `
     <div class="notification-toast-rail" aria-live="polite">
@@ -524,7 +543,31 @@ function renderNotificationToasts(notifications, uiState, scopeKey) {
   `;
 }
 
-export function renderNotificationsPanel(panel, state, privateData, uiState, scopeKey = 'default') {
+function scheduleNotificationToastDismissal(panel, notifications, uiState, scopeKey, onAutoDismiss = null) {
+  if (typeof window === 'undefined') return;
+  const toasts = getToastNotifications(notifications, uiState, scopeKey);
+  for (const notification of toasts) {
+    const key = notificationKey(scopeKey, notification.id);
+    if (notificationToastTimers.has(key)) continue;
+
+    const dismissTimer = window.setTimeout(() => {
+      const toast = [...panel.querySelectorAll('.notification-toast')]
+        .find((entry) => entry.dataset.notificationScope === scopeKey && entry.dataset.notificationId === String(notification.id));
+      toast?.classList.add('is-dismissing');
+      const removeTimer = window.setTimeout(() => {
+        markNotificationDismissed(uiState, scopeKey, notification.id);
+        toast?.remove();
+        if (typeof onAutoDismiss === 'function') onAutoDismiss();
+      }, NOTIFICATION_TOAST_FADE_MS);
+      const timers = notificationToastTimers.get(key);
+      if (timers) notificationToastTimers.set(key, { ...timers, removeTimer });
+    }, NOTIFICATION_TOAST_VISIBLE_MS);
+
+    notificationToastTimers.set(key, { dismissTimer, removeTimer: null });
+  }
+}
+
+export function renderNotificationsPanel(panel, state, privateData, uiState, scopeKey = 'default', onAutoDismiss = null) {
   if (!panel || !state) return;
   const notifications = Array.isArray(privateData?.notifications) ? privateData.notifications : [];
   const unreadCount = notifications.filter((entry) => !isNotificationRead(uiState, scopeKey, entry.id)).length;
@@ -558,6 +601,7 @@ export function renderNotificationsPanel(panel, state, privateData, uiState, sco
       ${renderNotificationToasts(notifications, uiState, scopeKey)}
     </div>
   `;
+  scheduleNotificationToastDismissal(panel, notifications, uiState, scopeKey, onAutoDismiss);
 }
 
 export function renderSpectatorPanel(panel, state, playerId, message) {
@@ -796,7 +840,7 @@ export function renderGameFrame({
     { aiMeta, uiState },
   );
   renderBalancePanel(document.getElementById('balancePanel'), state, { uiState });
-  renderNotificationsPanel(document.getElementById('notificationPanel'), state, privateData, uiState, notificationScopeKey);
+  renderNotificationsPanel(document.getElementById('notificationPanel'), state, privateData, uiState, notificationScopeKey, rerender);
   renderHistoryPanel(document.getElementById('historyPanel'), state, { aiMeta, uiState });
   renderTabs?.();
   renderActionPanel?.();

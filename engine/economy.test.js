@@ -441,14 +441,11 @@ test('private estate revocation preserves seated offices and notifies the estate
   assert.equal(buildPrivateNotifications(state, 1).notifications.some((notice) => notice.kind === 'revocation'), false);
 });
 
-test('private notifications cover action prompts and toned chronicle news', () => {
+test('private notifications cover personal toned chronicle news without turn prompts', () => {
   const state = makeState();
   enterCourt(state);
 
-  const courtNotice = buildPrivateNotifications(state, 1).notifications.find((notice) => notice.kind === 'court_action');
-  assert.equal(courtNotice?.urgent, true);
-  assert.equal(courtNotice?.tone, 'neutral');
-  assert.equal(courtNotice?.action, 'open_court');
+  assert.equal(buildPrivateNotifications(state, 1).notifications.some((notice) => notice.kind === 'court_action'), false);
 
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
   assert.equal(appointment.ok, true);
@@ -475,13 +472,12 @@ test('private notifications cover action prompts and toned chronicle news', () =
   });
   const lostBidNotice = buildPrivateNotifications(state, 0).notifications.find((notice) => notice.kind === 'estate_lost');
   assert.equal(lostBidNotice?.tone, 'negative');
+  const wonBidNotice = buildPrivateNotifications(state, 1).notifications.find((notice) => notice.kind === 'estate_won');
+  assert.equal(wonBidNotice?.tone, 'positive');
 
   state.phase = 'deployment';
   state.allOrders = {};
-  const deploymentNotice = buildPrivateNotifications(state, 0).notifications.find((notice) => notice.kind === 'deployment_orders');
-  assert.equal(deploymentNotice?.urgent, true);
-  assert.equal(deploymentNotice?.tone, 'neutral');
-  assert.equal(deploymentNotice?.action, 'open_deployment');
+  assert.equal(buildPrivateNotifications(state, 0).notifications.some((notice) => notice.kind === 'deployment_orders'), false);
 });
 
 test('same-turn office appointments do not block private estate revocation', () => {

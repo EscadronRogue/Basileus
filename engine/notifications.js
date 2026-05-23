@@ -220,24 +220,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
     if (!event?.id) continue;
     const details = eventDetails(event);
 
-    if (event.type === 'invasion_drawn') {
-      pushHistoryNotification(notifications, event, viewerId, {
-        kind: 'invasion_drawn',
-        title: 'Invasion drawn',
-        tone: 'negative',
-      });
-      continue;
-    }
-
-    if (event.type === 'invasion_skipped') {
-      pushHistoryNotification(notifications, event, viewerId, {
-        kind: 'invasion_skipped',
-        title: 'Invasion skipped',
-        tone: 'positive',
-      });
-      continue;
-    }
-
     if (event.type === 'buy_theme') {
       const winnerId = normalizePlayerId(event.actorId);
       const viewerBid = getViewerBid(details, normalizedViewerId);
@@ -277,40 +259,20 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
           title: titleNames ? `You received ${titleNames}` : 'You received a major office',
           tone: 'positive',
         });
-      } else {
-        pushHistoryNotification(notifications, event, viewerId, {
-          kind: 'title_redistribution',
-          title: 'Major offices redistributed',
-          tone: 'neutral',
-        });
       }
       continue;
     }
 
     if (event.type === 'coup_result') {
       const winnerId = normalizePlayerId(details.winnerId);
-      pushHistoryNotification(notifications, event, viewerId, {
-        kind: 'coup_result',
-        title: winnerId === normalizedViewerId ? 'You won the coup' : 'Coup result declared',
-        tone: winnerId === normalizedViewerId ? 'positive' : 'neutral',
-        action: 'open_resolution',
-      });
-      continue;
-    }
-
-    if (event.type === 'war_result') {
-      const outcome = details.outcome || 'stalemate';
-      pushHistoryNotification(notifications, event, viewerId, {
-        kind: 'war_result',
-        title: outcome === 'victory'
-          ? 'The empire won the war'
-          : outcome === 'defeat'
-            ? 'The empire lost the war'
-            : 'The war ended in stalemate',
-        urgent: outcome === 'defeat' || Boolean(details.reachedCPL),
-        tone: outcome === 'victory' ? 'positive' : outcome === 'defeat' ? 'negative' : 'neutral',
-        action: 'open_resolution',
-      });
+      if (winnerId === normalizedViewerId) {
+        pushHistoryNotification(notifications, event, viewerId, {
+          kind: 'coup_result',
+          title: 'You won the coup',
+          tone: 'positive',
+          action: 'open_resolution',
+        });
+      }
       continue;
     }
 
@@ -356,21 +318,15 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
     if (event.type === 'new_basileus') {
       const newBasileusId = normalizePlayerId(details.newBasileusId);
       const oldBasileusId = normalizePlayerId(details.oldBasileusId);
-      pushHistoryNotification(notifications, event, viewerId, {
-        kind: 'new_basileus',
-        title: newBasileusId === normalizedViewerId
-          ? 'You are Basileus'
-          : oldBasileusId === normalizedViewerId
-            ? 'You lost the throne'
-            : 'A new Basileus took the throne',
-        urgent: newBasileusId === normalizedViewerId || oldBasileusId === normalizedViewerId,
-        tone: newBasileusId === normalizedViewerId
-          ? 'positive'
-          : oldBasileusId === normalizedViewerId
-            ? 'negative'
-            : 'neutral',
-        action: 'open_history',
-      });
+      if (newBasileusId === normalizedViewerId || oldBasileusId === normalizedViewerId) {
+        pushHistoryNotification(notifications, event, viewerId, {
+          kind: 'new_basileus',
+          title: newBasileusId === normalizedViewerId ? 'You are Basileus' : 'You lost the throne',
+          urgent: true,
+          tone: newBasileusId === normalizedViewerId ? 'positive' : 'negative',
+          action: 'open_history',
+        });
+      }
       continue;
     }
 
@@ -418,79 +374,14 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
   }
 }
 
-function buildPendingActionNotifications(state, viewerId, notifications) {
-  const normalizedViewerId = normalizePlayerId(viewerId);
-  if (state.phase === 'title_redistribution' && Number(state.basileusId) === Number(viewerId)) {
-    pushNotification(notifications, {
-      id: `title-reassignment:${viewerId}:${state.round}`,
-      kind: 'title_reassignment',
-      title: 'Redistribute the major offices',
-      body: 'As the newly installed Basileus, redistribute the major titles before Court.',
-      urgent: true,
-      tone: 'neutral',
-      action: 'open_title_redistribution',
-      round: state.round,
-      phase: state.phase,
-    });
-  }
-
-  if (state.phase === 'court' && Number.isInteger(normalizedViewerId)) {
-    const confirmed = state.courtActions?.playerConfirmed;
-    const isConfirmed = confirmed instanceof Set
-      ? confirmed.has(normalizedViewerId)
-      : Array.isArray(confirmed)
-        ? confirmed.includes(normalizedViewerId)
-        : Boolean(confirmed?.[normalizedViewerId]);
-    if (!isConfirmed) {
-      pushNotification(notifications, {
-        id: `court-action:${viewerId}:${state.round}`,
-        kind: 'court_action',
-        title: 'Court business awaits',
-        body: 'Use or pass your office powers, answer deals, then confirm Court.',
-        urgent: true,
-        tone: 'neutral',
-        action: 'open_court',
-        round: state.round,
-        phase: state.phase,
-      });
-    }
-  }
-
-  if (state.phase === 'estates' && Number.isInteger(normalizedViewerId) && !state.estatesReady?.[normalizedViewerId]) {
-    pushNotification(notifications, {
-      id: `estate-action:${viewerId}:${state.round}`,
-      kind: 'estate_action',
-      title: 'Estate bidding awaits',
-      body: 'Place sealed estate bids or confirm that you are ready for deployment.',
-      urgent: true,
-      tone: 'neutral',
-      action: 'open_estates',
-      round: state.round,
-      phase: state.phase,
-    });
-  }
-
-  if (state.phase === 'deployment' && Number.isInteger(normalizedViewerId) && !state.allOrders?.[normalizedViewerId]) {
-    pushNotification(notifications, {
-      id: `deployment-orders:${viewerId}:${state.round}`,
-      kind: 'deployment_orders',
-      title: 'Lock deployment orders',
-      body: 'Fund armies, hire mercenaries, rank coup candidates, then lock your orders.',
-      urgent: true,
-      tone: 'neutral',
-      action: 'open_deployment',
-      round: state.round,
-      phase: state.phase,
-    });
-  }
-
+function buildPendingRewardNotifications(state, viewerId, notifications) {
   for (const reward of state.pendingDefenderRewards || []) {
     if (reward.resolved || Number(reward.defenderId) !== Number(viewerId)) continue;
     pushNotification(notifications, {
       id: `defender-reward:${reward.id}`,
       kind: 'defender_reward',
-      title: 'Choose a defender reward',
-      body: `${reward.themeName || reward.themeId} can be restored or converted into gold.`,
+      title: 'You earned a defender reward',
+      body: `${reward.themeName || reward.themeId} awaits your choice.`,
       urgent: true,
       tone: 'positive',
       action: 'open_resolution',
@@ -513,7 +404,7 @@ export function buildPrivateNotifications(state, viewerId, dealView = null) {
   buildObligationNotifications(state, viewerId, dealView, notifications);
   buildRevocationNotifications(state, viewerId, notifications);
   buildHistoryEventNotifications(state, viewerId, notifications);
-  buildPendingActionNotifications(state, viewerId, notifications);
+  buildPendingRewardNotifications(state, viewerId, notifications);
 
   notifications.sort((left, right) => (
     (right.urgent ? 1 : 0) - (left.urgent ? 1 : 0)
