@@ -1685,6 +1685,14 @@ function renderReconquestRewardRow(state, reward) {
   const recipients = getReconquestRewardRecipients(reward);
   if (!recipients.length) return '';
   const split = recipients.length > 1;
+  const recoveredCount = Array.isArray(reward.themeIds) ? reward.themeIds.length : 0;
+  const rewardProvinceCount = Math.max(
+    recoveredCount,
+    Number(reward.rewardProvinceCount ?? reward.totalGold ?? reward.totalCapitalSupport) || 0,
+  );
+  const repulseNote = rewardProvinceCount > recoveredCount
+    ? `<span class="muted">Repulse value: ${rewardProvinceCount} province win${rewardProvinceCount === 1 ? '' : 's'}.</span>`
+    : '';
   return `
     <div class="war-result-row recovered reconquest-reward-row">
       <span class="war-result-row-label">${split ? 'Triumph split' : 'Triumph'}</span>
@@ -1698,6 +1706,7 @@ function renderReconquestRewardRow(state, reward) {
             </div>
           `;
         }).join('')}
+        ${repulseNote}
       </div>
     </div>
   `;

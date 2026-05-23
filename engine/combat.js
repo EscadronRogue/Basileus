@@ -15,6 +15,7 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
     invaderStrength: S,
     themesLost: [],
     themesRecovered: [],
+    reconquestRewardProvinceCount: 0,
     reachedCPL: false,
     advancePath: [],
   };
@@ -52,6 +53,7 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
   let surplus = F - S;
   let recoverCost = 1;
   const reverseRoute = route.slice().reverse().filter((themeId) => themeId !== 'CPL');
+  result.reconquestRewardProvinceCount = countAffordableProvinceWins(state, surplus, reverseRoute);
   const projectedRecovered = new Set(initiallyOccupied);
   for (const themeId of reverseRoute) {
     if (surplus < recoverCost) break;
@@ -64,6 +66,19 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
     result.themesRecovered.push(themeId);
   }
   return result;
+}
+
+function countAffordableProvinceWins(state, surplus, reverseRoute) {
+  let wins = 0;
+  let nextCost = 1;
+  for (const themeId of reverseRoute) {
+    if (!state.themes[themeId]) continue;
+    if (surplus < nextCost) break;
+    surplus -= nextCost;
+    nextCost += 1;
+    wins += 1;
+  }
+  return wins;
 }
 
 function suspendOwnerOnLoss(theme) {

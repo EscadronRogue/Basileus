@@ -406,6 +406,7 @@ export function phaseResolution(state) {
       outcome: warResult.outcome,
       themesLost: warResult.themesLost,
       themesRecovered: warResult.themesRecovered,
+      reconquestRewardProvinceCount: warResult.reconquestRewardProvinceCount,
       round: state.round,
     });
     recordHistoryEvent(state, {
@@ -425,6 +426,7 @@ export function phaseResolution(state) {
         reachedCPL: Boolean(warResult.reachedCPL),
         themesLost: warResult.themesLost.slice(),
         themesRecovered: warResult.themesRecovered.slice(),
+        reconquestRewardProvinceCount: warResult.reconquestRewardProvinceCount,
         contributions: frontierContributions,
         reconquestReward: warResult.reconquestReward,
       },
@@ -456,11 +458,12 @@ function formatPlayerNameList(state, playerIds = []) {
 
 function applyAutomaticReconquestRewards(state, warResult, contributions) {
   const recovered = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
-  if (!recovered.length) return null;
+  const rewardProvinceCount = getReconquestRewardProvinceCount(warResult);
+  if (rewardProvinceCount <= 0) return null;
   const defenders = topRankedDefenders(contributions);
   if (!defenders.length) return null;
-  const gold = Math.ceil(recovered.length / defenders.length);
-  const capitalSupport = Math.floor(recovered.length / defenders.length);
+  const gold = Math.ceil(rewardProvinceCount / defenders.length);
+  const capitalSupport = Math.floor(rewardProvinceCount / defenders.length);
   const recipients = defenders.map((defender) => {
     const player = getPlayer(state, defender.playerId);
     if (player) player.gold += gold;
@@ -488,8 +491,9 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
     troops: recipients[0]?.troops || 0,
     defenders: recipients,
     themeIds: recovered.slice(),
-    totalGold: recovered.length,
-    totalCapitalSupport: recovered.length,
+    rewardProvinceCount,
+    totalGold: rewardProvinceCount,
+    totalCapitalSupport: rewardProvinceCount,
     shareCount: defenders.length,
     gold,
     capitalSupport,
@@ -500,6 +504,7 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
     player: reward.defenderId,
     players: recipients.map((entry) => entry.defenderId),
     themes: recovered.slice(),
+    rewardProvinceCount,
     gold,
     capitalSupport,
     shareCount: defenders.length,
@@ -508,16 +513,25 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
   const recipientIds = recipients.map((entry) => entry.defenderId);
   const recipientText = formatPlayerNameList(state, recipientIds);
   const gainText = `${formatGold(gold)} plus ${formatTroops(capitalSupport)} of Triumph support`;
+  const actionText = recovered.length ? 'reconquest' : 'repulse';
   recordHistoryEvent(state, {
     category: 'resolution',
     type: 'reconquest_reward',
     actorId: recipients.length === 1 ? recipients[0].defenderId : null,
     summary: recipients.length === 1
-      ? `${recipientText} leads the reconquest and gains ${gainText} next round.`
-      : `${recipientText} tie for the reconquest and each gain ${gainText} next round.`,
+      ? `${recipientText} leads the ${actionText} and gains ${gainText} next round.`
+      : `${recipientText} tie for the ${actionText} and each gain ${gainText} next round.`,
     details: reward,
   });
   return reward;
+}
+
+function getReconquestRewardProvinceCount(warResult) {
+  const rewardProvinceCount = Number(warResult?.reconquestRewardProvinceCount);
+  if (Number.isFinite(rewardProvinceCount) && rewardProvinceCount > 0) {
+    return Math.floor(rewardProvinceCount);
+  }
+  return Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered.length : 0;
 }
 
 function applyBasileusLossPenalty(state, warResult) {

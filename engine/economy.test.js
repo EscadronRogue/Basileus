@@ -667,6 +667,32 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
 });
 
+test('repulsed invasions reward the top defender for province wins even without occupied provinces', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'deployment';
+  state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [2, 2] };
+  state.currentTroops = { DOM_WEST: { normal: 5, capitalLocked: 0 } };
+  state.allOrders = {
+    2: {
+      armies: { DOM_WEST: { funded: 5, destination: 'frontier' } },
+      mercenaries: { count: 0, destination: 'frontier' },
+      ranking: [2, 0, 1, 3],
+      candidate: 0,
+    },
+  };
+  getPlayer(state, 2).gold = 0;
+
+  phaseResolution(state);
+
+  assert.deepEqual(state.lastWarResult.themesRecovered, []);
+  assert.equal(state.lastWarResult.reconquestRewardProvinceCount, 2);
+  assert.equal(state.lastWarResult.reconquestReward.rewardProvinceCount, 2);
+  assert.deepEqual(state.lastWarResult.reconquestReward.themeIds, []);
+  assert.equal(getPlayer(state, 2).gold, 2);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2);
+});
+
 test('tied top defenders split reconquest reward with rounded shares', () => {
   const state = makeState();
   state.round = 1;

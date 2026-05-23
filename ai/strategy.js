@@ -684,9 +684,13 @@ function scoreWarPlan(state, playerId, summary, estimates, weights, context = {}
   for (const themeId of expected.themesLost || []) value -= themeStake(state, playerId, themeId);
   for (const themeId of expected.themesRecovered || []) value += Math.max(0.5, themeStake(state, playerId, themeId) * 0.5);
 
-  if (summary.frontierTroops > 0 && expected.themesRecovered?.length) {
+  const recoveredCount = Array.isArray(expected.themesRecovered) ? expected.themesRecovered.length : 0;
+  const rewardProvinceCount = Math.max(recoveredCount, Number(expected.reconquestRewardProvinceCount) || 0);
+  if (summary.frontierTroops > 0 && recoveredCount) {
     value += Math.min(summary.frontierTroops, 8) * weights.recoveryBonus;
-    if (summary.frontierTroops >= estimates.averageFrontierTroops) value += expected.themesRecovered.length * 3;
+    if (summary.frontierTroops >= estimates.averageFrontierTroops) value += rewardProvinceCount * 3;
+  } else if (summary.frontierTroops > 0 && rewardProvinceCount && summary.frontierTroops >= estimates.averageFrontierTroops) {
+    value += rewardProvinceCount * weights.recoveryBonus;
   }
   const table = context.memory?.table || {};
   value += summary.frontierTroops * (table.underDefense || 0) * weights.defenseContextWeight;
