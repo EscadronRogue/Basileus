@@ -76,6 +76,12 @@ function cloneStateForValidation(state) {
     }
   }
   clone.rng = state.rng;
+  clone.log = [];
+  clone.historyEnabled = false;
+  clone.history = null;
+  clone.activeDealObligations = Array.isArray(clone.activeDealObligations) ? clone.activeDealObligations : [];
+  clone.reservedGold = clone.reservedGold && typeof clone.reservedGold === 'object' ? clone.reservedGold : {};
+  clone.dealThreads = Array.isArray(clone.dealThreads) ? clone.dealThreads : [];
   return clone;
 }
 

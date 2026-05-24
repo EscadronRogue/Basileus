@@ -5,6 +5,7 @@ import { createGameState } from '../engine/state.js';
 import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
 import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
+import { hydratePublicState, serializePublicGameState } from '../engine/publicState.js';
 import { renderProvinceBadge, formatProvinceValuesText } from './labels.js';
 import {
   renderCourtPanel,
@@ -170,6 +171,26 @@ test('court panel disables appointments blocked by current legality', () => {
   assert.match(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
   assert.match(container.innerHTML, /data-bishop-player-pick="1"[^>]*disabled[^>]*>/);
   assert.match(container.innerHTML, /You cannot appoint yourself twice in a row/);
+});
+
+test('court panel validates multiplayer public snapshots without private logs', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  const publicState = hydratePublicState(serializePublicGameState(state, 1));
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, publicState, 1, {}, { uiState: createDefaultUiState() });
+
+  assert.doesNotMatch(container.innerHTML, /Cannot read properties/);
+  assert.doesNotMatch(container.innerHTML, /data-strategos-player-pick="0"[^>]*disabled[^>]*>/);
+  assert.doesNotMatch(container.innerHTML, /data-bishop-player-pick="0"[^>]*disabled[^>]*>/);
 });
 
 test('court panel keeps mixed actions open but blocks same-turn title reversals', () => {
