@@ -2,6 +2,7 @@ import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
 import { loadBrowserAiOpponentRoster } from './ai/brain.js';
+import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from './ai/opponentRoster.js';
 import { getDynastyProfileForSeat } from './data/invasions.js';
 
 const SETUP_RANDOM_VALUE = 'random';
@@ -27,8 +28,6 @@ const setupStartError = document.getElementById('setupStartError');
 const setupAiRoster = document.getElementById('setupAiRoster');
 const setupAiRosterHint = document.getElementById('setupAiRosterHint');
 
-const RANDOM_TRAINED_OPPONENT_ID = '__random-trained-opponent__';
-
 let multiplayerLaunchInFlight = false;
 let gameLaunchInFlight = false;
 let aiOpponentRoster = [];
@@ -50,7 +49,7 @@ function seatCartoucheStyle(seat) {
 }
 
 function getTrainedAiOpponents() {
-  return aiOpponentRoster.filter((opponent) => opponent.source === 'tuned');
+  return getTunedAiOpponents(aiOpponentRoster);
 }
 
 function randomItemFromPool(pool, rng = Math.random) {
@@ -221,22 +220,22 @@ function renderAiRoster() {
   setupAiRoster.innerHTML = aiSeats.map((seat, index) => {
     const trainedOpponents = getTrainedAiOpponents();
     const existing = selectedAiOpponentBySeat.get(seat);
-    const selectedId = existing === RANDOM_TRAINED_OPPONENT_ID || aiOpponentRoster.some((opponent) => opponent.id === existing)
+    const selectedId = existing === RANDOM_TUNED_OPPONENT_ID || aiOpponentRoster.some((opponent) => opponent.id === existing)
       ? existing
       : trainedOpponents.length
-        ? RANDOM_TRAINED_OPPONENT_ID
+        ? RANDOM_TUNED_OPPONENT_ID
         : aiOpponentRoster[index % aiOpponentRoster.length]?.id;
     selectedAiOpponentBySeat.set(seat, selectedId);
     const selectedOpponent = aiOpponentRoster.find((opponent) => opponent.id === selectedId);
     const dynasty = getDynastyProfileForSeat(seat - 1).name;
-    const displayName = selectedId === RANDOM_TRAINED_OPPONENT_ID
+    const displayName = selectedId === RANDOM_TUNED_OPPONENT_ID
       ? 'Random trained AI'
       : selectedOpponent?.firstName || selectedOpponent?.id || 'Choose opponent';
     const randomTrainedButton = trainedOpponents.length ? `
       <button type="button"
-        class="setup-ai-opponent-btn${selectedId === RANDOM_TRAINED_OPPONENT_ID ? ' selected' : ''}"
+        class="setup-ai-opponent-btn${selectedId === RANDOM_TUNED_OPPONENT_ID ? ' selected' : ''}"
         data-seat="${seat}"
-        data-ai-opponent="${RANDOM_TRAINED_OPPONENT_ID}">
+        data-ai-opponent="${RANDOM_TUNED_OPPONENT_ID}">
         Random trained
       </button>
     ` : '';
@@ -311,7 +310,7 @@ function buildAiOpponentSelections(playerCount, humanSeat, rng = Math.random) {
     if (playerId === humanSeat) continue;
     const seat = playerId + 1;
     const selectedId = selectedAiOpponentBySeat.get(seat);
-    const selectedOpponent = selectedId && selectedId !== RANDOM_TRAINED_OPPONENT_ID
+    const selectedOpponent = selectedId && selectedId !== RANDOM_TUNED_OPPONENT_ID
       ? aiOpponentRoster.find((entry) => entry.id === selectedId)
       : null;
     const opponent = selectedOpponent

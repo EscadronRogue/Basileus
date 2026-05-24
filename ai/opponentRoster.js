@@ -1,5 +1,6 @@
 export const DEFAULT_FALLBACK_OPPONENT_ID = 'strategic-default';
 export const TUNED_OPPONENT_ROSTER_URL = './ai/tunedOpponents.json';
+export const RANDOM_TUNED_OPPONENT_ID = '__random-trained-opponent__';
 
 export const FALLBACK_AI_OPPONENTS = Object.freeze([
   {
@@ -226,6 +227,22 @@ export function mergeOpponentRosters(tunedOpponents = [], fallbackOpponents = lo
     merged.push(entry);
   }
   return merged;
+}
+
+export function getTunedAiOpponents(roster = []) {
+  return (Array.isArray(roster) ? roster : []).filter((opponent) => (
+    opponent?.source === 'tuned'
+    || opponent?.policy?.policyId === 'tuned'
+    || opponent?.policyId === 'tuned'
+  ));
+}
+
+export function pickRandomTunedOpponent(roster = [], rng = Math.random) {
+  const tuned = getTunedAiOpponents(roster);
+  if (!tuned.length) return null;
+  const random = typeof rng === 'function' ? rng : Math.random;
+  const index = Math.floor(random() * tuned.length);
+  return tuned[Math.max(0, Math.min(tuned.length - 1, index))] || tuned[0] || null;
 }
 
 export function loadOpponentByIdSync(id = DEFAULT_FALLBACK_OPPONENT_ID, seatId = 0) {

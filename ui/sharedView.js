@@ -73,6 +73,18 @@ export function setPanelOpen(uiState, panelKey, open) {
 }
 
 const PROVINCE_INTERACTIVE_SELECTOR = '[data-map-province], [data-estate]';
+const NESTED_INTERACTIVE_CONTROL_SELECTOR = [
+  'a[href]',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'label',
+  '[contenteditable="true"]',
+  '[data-action]',
+  '[role="button"]',
+  '[role="radio"]',
+].join(', ');
 const provinceSyncAborters = new WeakMap();
 
 function getProvinceInterfaceId(element) {
@@ -91,6 +103,12 @@ function findProvinceInterfaceElement(target, root) {
   const element = target?.closest?.(PROVINCE_INTERACTIVE_SELECTOR);
   if (!element || !root?.contains?.(element)) return null;
   return element.parentElement?.closest(PROVINCE_INTERACTIVE_SELECTOR) ? null : element;
+}
+
+export function isNestedProvinceControlClick(target, provinceElement) {
+  if (!target || !provinceElement) return false;
+  const control = target.closest?.(NESTED_INTERACTIVE_CONTROL_SELECTOR);
+  return Boolean(control && control !== provinceElement);
 }
 
 function provinceAttrSelector(provinceId) {
@@ -146,6 +164,7 @@ export function bindProvinceInterfaceSync({
     const element = findProvinceInterfaceElement(event.target, root);
     const provinceId = getProvinceInterfaceId(element);
     if (!provinceId) return;
+    if (isNestedProvinceControlClick(event.target, element)) return;
 
     const selectAfterLocalHandlers = () => onSelectProvince?.(provinceId);
     if (typeof window !== 'undefined') {

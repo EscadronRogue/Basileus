@@ -12,7 +12,7 @@ import { closeServer, jsonResponse, listenServer, serveStatic } from './httpUtil
 import {
   loadOpponentRosterSync,
   loadOpponentByIdSync,
-} from '../ai/opponentRoster.js';
+} from '../ai/nodeOpponentRoster.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');

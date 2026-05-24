@@ -11,6 +11,7 @@ import {
   scrollPhasePanelIntoView,
 } from './sharedView.js';
 import { getDynastyProfileForSeat } from '../data/invasions.js';
+import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from '../ai/opponentRoster.js';
 
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
 const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
@@ -800,6 +801,7 @@ export class MultiplayerController {
     const isHost = this.isHost();
     const seats = this.roomSnapshot.seats || [];
     const aiOpponents = this.roomSnapshot.aiOpponents || [];
+    const tunedAiOpponents = getTunedAiOpponents(aiOpponents);
     const config = this.roomSnapshot.config || {};
     const turnCount = Number(config.turnCount || config.deckSize || 9);
     const controlledSeatId = this.getControlledSeatId();
@@ -867,6 +869,14 @@ export class MultiplayerController {
                     ` : ''}
                     ${isHost && !seat.claimed && seat.kind === 'ai' && aiOpponents.length ? `
                       <span class="setup-ai-choice-row multiplayer-ai-choice-row">
+                        ${tunedAiOpponents.length ? `
+                          <button type="button"
+                            class="setup-ai-opponent-btn multiplayer-ai-opponent"
+                            data-seat-id="${seat.seatId}"
+                            data-ai-opponent="${RANDOM_TUNED_OPPONENT_ID}">
+                            Random trained
+                          </button>
+                        ` : ''}
                         ${aiOpponents.map((opponent) => {
                           const selected = opponent.id === seat.aiOpponentId;
                           return `

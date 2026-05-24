@@ -6,11 +6,9 @@ import {
   submitHumanOrders,
 } from '../engine/commands.js';
 import {
-  canBuyTheme,
   canRevokeTheme,
-  getAvailableLandBidGold,
   getAvailableCourtPowers,
-  getMinimumLandBid,
+  getLandBidAmountOptions,
   suggestMajorTitleAssignments,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
@@ -210,11 +208,7 @@ export function listLegalCourtActions(state, playerId) {
 }
 
 function buildEstateBidAmounts(state, playerId, theme) {
-  const minimum = getMinimumLandBid(state, theme.id);
-  const spendable = Math.max(0, Number(getAvailableLandBidGold(state, playerId, theme.id)) || 0);
-  return [...new Set([minimum, Math.min(spendable, minimum + 1), spendable])]
-    .filter((amount) => amount >= minimum && canBuyTheme(state, playerId, theme.id, amount).ok)
-    .sort((left, right) => left - right);
+  return getLandBidAmountOptions(state, playerId, theme.id);
 }
 
 export function listLegalEstateActions(state, playerId) {

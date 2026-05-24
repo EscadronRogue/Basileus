@@ -12,6 +12,7 @@ import {
   getCourtPowerUseMode,
   getUsedCourtPowers,
   getAvailableLandBidGold,
+  getLandBidAmountOptions,
   isCourtPowerExhausted,
   isCourtPowerPassed,
   isCourtPowerUsed,
@@ -1021,8 +1022,9 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
             const value = getThemeLandPrice(theme);
             const ownBid = getPlayerLandBid(state, theme.id, activeBidderId);
             const ownAmount = Number(ownBid?.amount) || 0;
-            const maxBid = getAvailableLandBidGold(state, activeBidderId, theme.id);
-            const cannotAfford = minimum > maxBid;
+            const bidAmounts = getLandBidAmountOptions(state, activeBidderId, theme.id);
+            const maxBid = bidAmounts.at(-1) || 0;
+            const cannotAfford = bidAmounts.length === 0;
             const inputValue = ownAmount || minimum;
             const bidButtonLabel = ownBid ? 'Update' : 'Seal Bid';
             return `
@@ -1048,7 +1050,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
                   </div>
                 ` : ''}
                 <div class="estate-card-bid">
-                  <input type="number" min="${minimum}" max="${maxBid}" value="${inputValue}" data-estate-bid="${theme.id}" ${cannotAfford ? 'disabled' : ''}>
+                  <input type="number" min="${minimum}" max="${maxBid}" step="1" inputmode="numeric" value="${inputValue}" data-estate-bid="${theme.id}" aria-label="Bid for ${escapeHtml(theme.name)}" ${cannotAfford ? 'disabled' : ''}>
                   <button type="button" class="btn-primary estate-bid-btn" data-action="bid-estate" data-theme="${theme.id}" ${cannotAfford ? 'disabled' : ''}>${bidButtonLabel}</button>
                 </div>
                 ${cannotAfford ? `<div class="estate-card-warn">Need ${formatGoldHtml(minimum)} of unreserved gold to bid.</div>` : ''}

@@ -40,6 +40,10 @@ import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
 import {
   loadOpponentByIdSync,
   loadOpponentRosterSync,
+} from '../ai/nodeOpponentRoster.js';
+import {
+  RANDOM_TUNED_OPPONENT_ID,
+  pickRandomTunedOpponent,
 } from '../ai/opponentRoster.js';
 import { getAiDisplayName } from '../ai/names.js';
 
@@ -330,7 +334,15 @@ export class MultiplayerRoom {
   resolveAiOpponent(rawOpponentId = null) {
     const roster = this.getAiOpponentRoster();
     assert(roster.length > 0, 'No AI placeholders are available.');
-    return roster.find((entry) => entry.id === rawOpponentId) || roster[0];
+    const requestedId = String(rawOpponentId || '').trim();
+    if (requestedId && requestedId !== RANDOM_TUNED_OPPONENT_ID) {
+      const requested = roster.find((entry) => entry.id === requestedId);
+      if (requested) return requested;
+    }
+    if (!requestedId || requestedId === RANDOM_TUNED_OPPONENT_ID) {
+      return pickRandomTunedOpponent(roster) || roster[0];
+    }
+    return roster[0];
   }
 
   setSeatKind(sessionId, seatId, kind, aiOpponentId = null) {

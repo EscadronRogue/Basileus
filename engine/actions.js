@@ -423,6 +423,14 @@ export function getAvailableLandBidGold(state, playerId, themeId = null) {
   }));
 }
 
+export function getLandBidAmountOptions(state, playerId, themeId) {
+  const minimum = Math.ceil(Number(getMinimumLandBid(state, themeId)) || 0);
+  const maximum = Math.floor(Number(getAvailableLandBidGold(state, playerId, themeId)) || 0);
+  if (minimum <= 0 || maximum < minimum) return [];
+  return Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index)
+    .filter((amount) => canBuyTheme(state, playerId, themeId, amount).ok);
+}
+
 export function canBuyTheme(state, playerId, themeId, amount = null) {
   if (state.phase !== 'estates') return fail('Estate bidding is only available during Estates.');
   const theme = state.themes[themeId];

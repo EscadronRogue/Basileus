@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import { createRoom, SAVE_VERSION } from './session.js';
 import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
+import { loadOpponentRosterSync } from '../ai/nodeOpponentRoster.js';
+import { getTunedAiOpponents } from '../ai/opponentRoster.js';
 
 function makeStartedRoom() {
   const room = createRoom({
@@ -58,4 +60,38 @@ test('multiplayer saves use the patched schema version', async () => {
 
   assert.equal(save.version, SAVE_VERSION);
   assert.equal(save.version, 2);
+});
+
+test('multiplayer roster exposes tuned opponents from disk', () => {
+  const roster = loadOpponentRosterSync();
+  const tuned = getTunedAiOpponents(roster);
+
+  assert.equal(tuned.length > 0, true);
+  assert.equal(roster[0].source, 'tuned');
+});
+
+test('new multiplayer AI seats default to a tuned opponent', () => {
+  const tunedOpponent = {
+    id: 'tuned-room-test',
+    firstName: 'Tuned Room',
+    label: 'Tuned Room',
+    source: 'tuned',
+    policy: { policyId: 'tuned', strategyWeights: { estateProfit: 4, estateBidCost: 0.35 } },
+    strategyWeights: { estateProfit: 4, estateBidCost: 0.35 },
+  };
+  const room = createRoom({
+    existingRoomCodes: new Set(),
+    hostSessionId: 's0',
+    hostPlayerName: 'Host',
+    config: { playerCount: 3, deckSize: 1, seed: '31' },
+    loadAiOpponentRoster: () => [tunedOpponent],
+    loadAiOpponentById: (id) => (id === tunedOpponent.id ? tunedOpponent : null),
+  });
+
+  room.claimSeat('s0', 0, 'Host');
+  const seat = room.setSeatKind('s0', 1, 'ai');
+
+  assert.equal(seat.aiOpponentId, tunedOpponent.id);
+  assert.equal(seat.playerName, tunedOpponent.firstName);
+  assert.equal(room.createRoomSnapshotFor('s0').aiOpponents[0].id, tunedOpponent.id);
 });

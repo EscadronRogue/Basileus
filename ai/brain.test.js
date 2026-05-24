@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { createGameState } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
 import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
-import { validateMajorTitleAssignments } from '../engine/actions.js';
+import { getLandBidAmountOptions, validateMajorTitleAssignments } from '../engine/actions.js';
 import {
   handleContinueAfterResolution,
   handleManualTitleReassignment,
@@ -26,6 +26,7 @@ import { applyLegalAction, listLegalCourtActions, listLegalEstateActions } from 
 import { getAiMemory, getRelationship } from './memory.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 import { simulateGames } from './simulate.js';
+import { chooseStrategicEstateActions } from './strategy.js';
 import { scoreAggregateTrainingShape, trainStrategyWeights } from './train.js';
 import { GREEK_FIRST_NAMES, pickUniqueGreekFirstName } from './greekNames.js';
 
@@ -467,13 +468,45 @@ test('deployment submission rejects implicit army and mercenary defaults', () =>
 test('legal estate actions dispatch through the shared AI action path', () => {
   const state = makeState();
   state.phase = 'estates';
-  state.players[1].gold = 4;
+  state.players[1].gold = 5;
 
-  const action = listLegalEstateActions(state, 1)[0];
+  const bidAmounts = getLandBidAmountOptions(state, 1, 'OPS');
+  assert.deepEqual(bidAmounts, [2, 3, 4, 5]);
+  const legalAmounts = listLegalEstateActions(state, 1)
+    .filter((action) => action.payload?.themeId === 'OPS')
+    .map((action) => action.payload.amount);
+  assert.deepEqual(legalAmounts, bidAmounts);
+
+  const action = listLegalEstateActions(state, 1).find((entry) => entry.payload.amount === 5);
   const result = applyLegalAction(state, action);
 
   assert.equal(result.ok, true);
   assert.equal(Boolean(state.landAuctions[action.payload.themeId]), true);
+  assert.equal(state.landAuctions[action.payload.themeId].bids[1].amount, 5);
+});
+
+test('tuned estate strategy can choose premium bids above the minimum', () => {
+  const state = makeState();
+  state.phase = 'estates';
+  for (const player of state.players) player.gold = 4;
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0, 2, 3],
+    aiPlayers: {
+      1: {
+        policy: {
+          policyId: 'tuned',
+          strategyWeights: {
+            estateProfit: 4,
+            estateBidCost: 0.35,
+          },
+        },
+      },
+    },
+  });
+
+  const actions = chooseStrategicEstateActions(state, meta, 1);
+
+  assert.equal(actions.some((action) => Number(action.payload?.amount) > 2), true);
 });
 
 test('AI court legal actions use the shared two-action court power limit', () => {

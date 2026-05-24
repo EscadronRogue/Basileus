@@ -1,6 +1,6 @@
 import { runIncome } from '../engine/cascade.js';
 import { resolveInvasion } from '../engine/combat.js';
-import { getLandAuctionBidEntries, getMinimumLandBid } from '../engine/actions.js';
+import { getAvailableLandBidGold, getLandAuctionBidEntries, getMinimumLandBid } from '../engine/actions.js';
 import { getMercenaryHireCost, getThemeOwnerIncome } from '../engine/rules.js';
 import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
 import { getFreeThemes, getPlayer } from '../engine/state.js';
@@ -1250,7 +1250,33 @@ function scoreEstateAction(state, final, playerId, action, weights) {
   const profit = Math.max(1, Number(theme.P ?? theme.origin?.P) || 1);
   const threatened = Array.isArray(state.currentInvasion?.route)
     && state.currentInvasion.route.includes(theme.id);
-  return scoreResourceGain(final, playerId, 'estate', profit) + profit * weights.estateProfit - bid * weights.estateBidCost - (threatened ? weights.estateThreatPenalty : 0);
+  return scoreResourceGain(final, playerId, 'estate', profit)
+    + profit * weights.estateProfit
+    + scoreEstateBidPremium(state, playerId, theme, bid, weights)
+    - bid * weights.estateBidCost
+    - (threatened ? weights.estateThreatPenalty : 0);
+}
+
+function scoreEstateBidPremium(state, playerId, theme, bid, weights) {
+  const minimum = Math.max(0, Number(getMinimumLandBid(state, theme.id)) || 0);
+  const premium = Math.max(0, bid - minimum);
+  if (premium <= 0) return 0;
+  const maximum = Math.max(minimum, Number(getAvailableLandBidGold(state, playerId, theme.id)) || minimum);
+  if (maximum <= minimum) return 0;
+
+  const eligibleRivals = (state.players || [])
+    .filter((player) => player.id !== playerId)
+    .filter((player) => getAvailableLandBidGold(state, player.id, theme.id) >= minimum)
+    .length;
+  const competition = Math.min(1, eligibleRivals / Math.max(1, (state.players || []).length - 1));
+  const configuredPressure = Number(weights.estateBidPressure);
+  const derivedPressure = Math.max(
+    0,
+    (Number(weights.estateProfit) || 0) * 0.28 - (Number(weights.estateBidCost) || 0) * 0.2,
+  );
+  const pressure = Number.isFinite(configuredPressure) ? Math.max(0, configuredPressure) : derivedPressure;
+  const rangeShare = Math.min(1, premium / Math.max(1, maximum - minimum));
+  return premium * pressure * (0.65 + competition * 0.35) * (1 - rangeShare * 0.08);
 }
 
 export function chooseStrategicRewardChoice(state, meta, reward) {

@@ -18,6 +18,7 @@ import {
   createDefaultUiState,
   getPhaseRenderKey,
   getPlayerTabEconomy,
+  isNestedProvinceControlClick,
   renderGameActionPanel,
   renderNotificationsPanel,
   renderPlayerTabFinance,
@@ -267,12 +268,14 @@ test('court panel lets a player pass one office while keeping other offices avai
 test('estates panel lists free land bids before deployment', () => {
   const state = makeState();
   state.phase = 'estates';
+  state.players[2].gold = 4;
   const container = makePanelContainer();
 
   renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /Estates/);
   assert.match(container.innerHTML, /data-estate-bid="OPS"/);
+  assert.match(container.innerHTML, /max="4"[^>]*step="1"[^>]*data-estate-bid="OPS"/);
   assert.match(container.innerHTML, /0\/4 ready/);
   assert.match(container.innerHTML, /Ready for Deployment/);
 });
@@ -294,6 +297,18 @@ test('estates panel marks the active sealed bid', () => {
   assert.match(container.innerHTML, /estate-card selected/);
   assert.match(container.innerHTML, /Your sealed bid/);
   assert.match(container.innerHTML, />Update</);
+});
+
+test('province card sync ignores nested estate bid controls', () => {
+  const estateCard = {};
+  const bidInput = { closest: () => bidInput };
+  const bidButton = { closest: () => bidButton };
+  const provinceButton = {};
+  const provinceButtonLabel = { closest: () => provinceButton };
+
+  assert.equal(isNestedProvinceControlClick(bidInput, estateCard), true);
+  assert.equal(isNestedProvinceControlClick(bidButton, estateCard), true);
+  assert.equal(isNestedProvinceControlClick(provinceButtonLabel, provinceButton), false);
 });
 
 test('deployment panel uses funded armies and mercenary slider schema', () => {
