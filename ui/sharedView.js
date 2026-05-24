@@ -291,14 +291,14 @@ export const PHASE_NAMES = {
 
 export const PHASE_TOOLTIPS = {
   setup: 'Provinces, titles and starting gold are dealt out.',
-  invasion: 'A new invasion is drawn. Its route shows which provinces are at risk.',
+  invasion: 'A turn begins. If a triggerable invasion is drawn, its route shows which provinces are at risk.',
   title_redistribution: 'A newly installed Basileus redistributes the major titles before Court.',
   income: 'Provinces pay out gold and raise troops automatically.',
   court: 'Each office may make up to two appointments or revocations before income.',
   estates: 'Dynasties submit sealed bids for private land.',
   deployment: 'Each player funds armies, hires mercenaries, chooses destinations, ranks claimants, and can withhold support from any claimant.',
   resolution: 'Coup is decided first by Capital rankings and passive support, then the war by Frontier troops vs invader strength.',
-  cleanup: 'Per-turn state clears before the next invasion.',
+  cleanup: 'Per-turn state clears before the next turn.',
   scoring: `Each ${SCORE_SHARE_STEP_PERCENT}% share of gold reserves, profit income, and combined office income scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY} per category.`,
 };
 
@@ -344,7 +344,7 @@ export function renderTopBar(state) {
     roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
     roundEl.title = isEmpireFallen(state)
       ? 'Constantinople has fallen. No dynasty wins; standings only record the final balance of power.'
-      : `Game ends after ${state.maxRounds} invasions, then one final Court and income phase. Major titles are redistributed only after a coup installs a new Basileus. Each ${SCORE_SHARE_STEP_PERCENT}% category share scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY}; highest total wins.`;
+      : `Game ends after ${state.maxRounds} turns, then one final Court and income phase. Major titles are redistributed only after a coup installs a new Basileus. Each ${SCORE_SHARE_STEP_PERCENT}% category share scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY}; highest total wins.`;
   }
   if (phaseEl) {
     if (isEmpireFallen(state)) {

@@ -823,10 +823,10 @@ export class MultiplayerController {
           <label>Game Length</label>
           ${isHost ? `
             <select id="roomDeckSize" class="room-config-source" aria-hidden="true" tabindex="-1">
-              ${[6, 9, 12].map((count) => `<option value="${count}" ${count === config.deckSize ? 'selected' : ''}>${count} invasions</option>`).join('')}
+              ${[6, 9, 12].map((count) => `<option value="${count}" ${count === config.deckSize ? 'selected' : ''}>${count} turns</option>`).join('')}
             </select>
-            ${renderRoomChoiceButtons('roomDeckSize', [6, 9, 12].map((count) => ({ value: count, label: `${count} invasions` })), config.deckSize)}
-          ` : `<div class="setup-hint">${config.deckSize} invasions</div>`}
+            ${renderRoomChoiceButtons('roomDeckSize', [6, 9, 12].map((count) => ({ value: count, label: `${count} turns` })), config.deckSize)}
+          ` : `<div class="setup-hint">${config.deckSize} turns</div>`}
         </div>
         <div class="setup-field">
           <label>Seed</label>

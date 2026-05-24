@@ -178,6 +178,7 @@ function createThemeState(province) {
 
 export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEnabled = false } = {}) {
   const rng = makeRng(seed);
+  const turnCount = Math.max(1, Math.floor(Number(deckSize) || 9));
   const players = [];
 
   for (let i = 0; i < playerCount; i++) {
@@ -208,7 +209,7 @@ export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEn
   }
 
   const themes = Object.fromEntries(PROVINCES.map((province) => [province.id, createThemeState(province)]));
-  const deck = Array.from({ length: deckSize }, () => (
+  const deck = Array.from({ length: turnCount }, () => (
     createInvasionInstance(pickInvasionTemplate(rng), rng)
   ));
 
@@ -218,7 +219,7 @@ export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEn
     historyEnabled,
     historySeq: 0,
     round: 0,
-    maxRounds: deck.length,
+    maxRounds: turnCount,
     startingIncomeResolved: false,
     finalScoringPending: false,
     majorTitleRedistributionPending: false,

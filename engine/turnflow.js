@@ -37,11 +37,17 @@ function phasePreCourt(state) {
 
 function drawNextTriggerableInvasion(state) {
   const skipped = [];
-  while (state.invasionDeck.length > 0) {
+  if (!Array.isArray(state.invasionDeck)) state.invasionDeck = [];
+  const drawCount = state.invasionDeck.length;
+  for (let i = 0; i < drawCount; i++) {
     const invasion = state.invasionDeck.shift();
-    if (canTriggerInvasion(state, invasion)) return { invasion, skipped };
+    if (canTriggerInvasion(state, invasion)) {
+      state.invasionDeck.push(...skipped);
+      return { invasion, skipped };
+    }
     skipped.push(invasion);
   }
+  state.invasionDeck.push(...skipped);
   return { invasion: null, skipped };
 }
 
@@ -54,7 +60,6 @@ function recordSkippedInvasions(state, skipped, attemptedRound) {
     round: attemptedRound,
     reason: 'no_imperial_targets',
   })));
-  state.maxRounds = Math.max(attemptedRound - 1, state.maxRounds - skipped.length);
 
   for (const invasion of skipped) {
     state.log.push({
@@ -166,20 +171,38 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
 
 export function phaseInvasion(state) {
   state.phase = 'invasion';
-  const attemptedRound = state.round + 1;
-  const { invasion, skipped } = drawNextTriggerableInvasion(state);
-  recordSkippedInvasions(state, skipped, attemptedRound);
-
-  if (!invasion) {
-    state.maxRounds = Math.min(state.maxRounds, state.round);
+  if (state.round >= state.maxRounds) {
     state.finalScoringPending = true;
     phasePreCourt(state);
     return;
   }
 
+  const attemptedRound = state.round + 1;
+  const { invasion, skipped } = drawNextTriggerableInvasion(state);
   state.round = attemptedRound;
-  state.currentInvasion = prepareInvasionForDraw(state, invasion, state.rng);
+  state.currentInvasion = null;
   state.invasionStrength = 0;
+  recordSkippedInvasions(state, skipped, attemptedRound);
+
+  if (!invasion) {
+    state.log.push({
+      type: 'no_invasion',
+      reason: skipped.length ? 'no_triggerable_invasions' : 'empty_invasion_deck',
+      round: state.round,
+    });
+    recordHistoryEvent(state, {
+      category: 'system',
+      type: 'no_invasion',
+      summary: `Round ${state.round} begins without an invasion.`,
+      details: {
+        reason: skipped.length ? 'no_triggerable_invasions' : 'empty_invasion_deck',
+        skipped: skipped.map((item) => item?.name || item?.id || 'Unknown invasion'),
+      },
+    });
+    return;
+  }
+
+  state.currentInvasion = prepareInvasionForDraw(state, invasion, state.rng);
   state.log.push({
     type: 'invasion',
     invader: state.currentInvasion.name,
@@ -802,7 +825,7 @@ export function phaseCleanup(state) {
   }
 
   if (state.gameOver) return;
-  const shouldRunFinalIncome = state.invasionDeck.length === 0 && state.round >= state.maxRounds;
+  const shouldRunFinalIncome = state.round >= state.maxRounds;
 
   state.allOrders = {};
   state.mercenaryOrders = {};

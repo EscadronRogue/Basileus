@@ -883,10 +883,45 @@ test('limited invasions are skipped when every target province is already lost',
   phaseInvasion(state);
 
   assert.equal(state.round, 2);
-  assert.equal(state.maxRounds, 2);
+  assert.equal(state.maxRounds, 3);
   assert.equal(state.currentInvasion.id, 'capital_test');
+  assert.deepEqual(state.invasionDeck.map((invasion) => invasion.id), ['limited_test']);
   assert.equal(state.log.some((entry) => entry.type === 'invasion_skipped' && entry.invader === 'Limited Test'), true);
   assert.equal(state.history.some((entry) => entry.type === 'invasion_skipped'), true);
+});
+
+test('turns continue when no invasion can currently launch', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'cleanup';
+  state.maxRounds = 3;
+  state.invasionDeck = [
+    {
+      id: 'limited_test',
+      name: 'Limited Test',
+      objective: 'provinces',
+      requiresImperialTarget: true,
+      route: ['SAM'],
+      strength: [1, 1],
+    },
+  ];
+  state.themes.SAM.occupied = true;
+
+  phaseInvasion(state);
+
+  assert.equal(state.round, 2);
+  assert.equal(state.maxRounds, 3);
+  assert.equal(state.currentInvasion, null);
+  assert.deepEqual(state.invasionDeck.map((invasion) => invasion.id), ['limited_test']);
+  assert.equal(state.log.some((entry) => entry.type === 'no_invasion' && entry.round === 2), true);
+  assert.equal(state.history.some((entry) => entry.type === 'no_invasion' && entry.round === 2), true);
+
+  state.phase = 'cleanup';
+  state.themes.SAM.occupied = false;
+  phaseInvasion(state);
+
+  assert.equal(state.round, 3);
+  assert.equal(state.currentInvasion.id, 'limited_test');
 });
 
 test('reconquered provinces auto-restore and reward the top defender next round', () => {
