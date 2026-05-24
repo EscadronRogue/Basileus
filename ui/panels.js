@@ -1748,7 +1748,7 @@ function renderCoupTieBreakNote(state, coup) {
     ? `${winnerName} wins the tied coup with ${renderValue('troop', support, { displayValue: Math.round(support * 100) / 100 })} of Patriarchal support.`
     : tieBreak.method === 'incumbent'
       ? 'Patriarchal support is still tied, so the sitting Basileus keeps the throne.'
-      : 'Patriarchal support is still tied, so the remaining tie falls to seat order.';
+      : 'Patriarchal support is still tied, so the remaining tie falls to dynasty order.';
   return `<div class="coup-tie-break">${text}</div>`;
 }
 

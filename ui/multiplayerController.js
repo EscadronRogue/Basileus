@@ -46,6 +46,13 @@ function seatCartoucheStyle(seatOrId) {
   return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
 }
 
+function dynastyNameForSeat(seatOrId) {
+  const seatId = typeof seatOrId === 'object' ? seatOrId?.seatId : seatOrId;
+  return (typeof seatOrId === 'object' ? seatOrId?.dynasty : null)
+    || getDynastyProfileForSeat(Math.max(0, Number(seatId) || 0)).name
+    || 'Dynasty';
+}
+
 function renderRoomChoiceButtons(name, options, selectedValue) {
   return `
     <div class="setup-choice-row room-choice-row" data-room-choice="${name}" role="radiogroup">
@@ -551,7 +558,7 @@ export class MultiplayerController {
     }
 
     if (message.type === 'seat_disconnected' && message.reason === 'reclaimed') {
-      this.lastError = 'This seat was reclaimed from another connection.';
+      this.lastError = 'This dynasty was reclaimed from another connection.';
       this.render();
       return;
     }
@@ -642,7 +649,7 @@ export class MultiplayerController {
       selectedProvinceId: this.selectedProvinceId,
       privateData: this.privateSnapshot || null,
       canControl: controlledSeatId != null || state.phase === 'scoring',
-      spectatorMessage: 'Claim a human seat in the lobby to control a dynasty.',
+      spectatorMessage: 'Claim a human dynasty in the lobby to control it.',
       error: this.lastError,
       handlers: {
         court: this.createCourtHandlers(),
@@ -670,7 +677,7 @@ export class MultiplayerController {
     if (!body || !this.publicSnapshot) return;
     const claimableSeats = this.getClaimableHumanSeats();
     const seatButtons = claimableSeats.map((seat) => {
-      const dynasty = seat.dynasty || `Seat ${Number(seat.seatId) + 1}`;
+      const dynasty = dynastyNameForSeat(seat);
       const status = seat.status === 'disconnected' ? 'Away' : 'Open';
       return `
         <button class="btn-secondary btn-live-claim-seat" type="button" data-seat-id="${seat.seatId}">
@@ -685,7 +692,7 @@ export class MultiplayerController {
       ${claimableSeats.length ? `
         <div class="multiplayer-banner">
           <strong>Rejoin Control</strong>
-          <span>Choose an open or disconnected human seat to control it.</span>
+          <span>Choose an open or disconnected human dynasty to control it.</span>
           <div class="setup-actions">${seatButtons}</div>
         </div>
       ` : ''}
@@ -835,50 +842,55 @@ export class MultiplayerController {
             : `<div class="setup-hint">${config.seed || 'Random on start'}</div>`}
         </div>
         <div class="setup-field">
-          <label>Seats</label>
+          <label>Dynasties</label>
           <div class="multiplayer-seat-list">
-            ${seats.map((seat) => `
-              <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}" style="${seatCartoucheStyle(seat)}">
-                <span class="choice-crest">${seat.seatId + 1}</span>
-                <div class="multiplayer-seat-copy">
-                  <strong>Seat ${seat.seatId + 1}</strong>
-                  <span>${seat.dynasty || (seat.kind === 'ai' ? 'AI opponent' : (seat.claimed ? 'Human dynasty claimed' : 'Awaiting dynasty'))}</span>
-                  <span class="setup-hint">${seat.isViewerSeat ? 'You' : (seat.playerName || (seat.kind === 'ai' ? 'AI-controlled' : 'Open human seat'))} - ${seat.status}</span>
+            ${seats.map((seat) => {
+              const dynasty = dynastyNameForSeat(seat);
+              const controllerLabel = seat.isViewerSeat
+                ? 'You'
+                : (seat.playerName || (seat.kind === 'ai' ? 'AI dynasty' : (seat.claimed ? 'Human dynasty' : 'Open human dynasty')));
+              return `
+                <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}" style="${seatCartoucheStyle(seat)}">
+                  <span class="choice-crest">${escapeHtml(dynasty.slice(0, 1))}</span>
+                  <div class="multiplayer-seat-copy">
+                    <strong>${escapeHtml(dynasty)}</strong>
+                    <span class="setup-hint">${escapeHtml(controllerLabel)} - ${escapeHtml(seat.status)}</span>
+                  </div>
+                  <div class="multiplayer-seat-actions">
+                    ${seat.kind === 'human' && !seat.claimed && controlledSeatId == null ? `
+                      <button class="btn-primary btn-claim-seat" type="button" data-seat-id="${seat.seatId}">Claim</button>
+                    ` : ''}
+                    ${isHost && !seat.claimed ? `
+                      <button class="btn-secondary" type="button" data-seat-kind data-seat-id="${seat.seatId}" data-kind="${seat.kind === 'ai' ? 'human' : 'ai'}">
+                        ${seat.kind === 'ai' ? 'Set Human' : 'Set AI'}
+                      </button>
+                    ` : ''}
+                    ${isHost && !seat.claimed && seat.kind === 'ai' && aiOpponents.length ? `
+                      <span class="setup-ai-choice-row multiplayer-ai-choice-row">
+                        ${aiOpponents.map((opponent) => {
+                          const selected = opponent.id === seat.aiOpponentId;
+                          return `
+                            <button type="button"
+                              class="setup-ai-opponent-btn multiplayer-ai-opponent${selected ? ' selected' : ''}"
+                              data-seat-id="${seat.seatId}"
+                              data-ai-opponent="${escapeHtml(opponent.id)}">
+                              ${escapeHtml(opponent.firstName || opponent.id)}
+                            </button>
+                          `;
+                        }).join('')}
+                      </span>
+                    ` : ''}
+                    ${seat.isViewerSeat ? '<span class="setup-hint">You</span>' : ''}
+                  </div>
                 </div>
-                <div class="multiplayer-seat-actions">
-                  ${seat.kind === 'human' && !seat.claimed && controlledSeatId == null ? `
-                    <button class="btn-primary btn-claim-seat" type="button" data-seat-id="${seat.seatId}">Claim</button>
-                  ` : ''}
-                  ${isHost && !seat.claimed ? `
-                    <button class="btn-secondary" type="button" data-seat-kind data-seat-id="${seat.seatId}" data-kind="${seat.kind === 'ai' ? 'human' : 'ai'}">
-                      ${seat.kind === 'ai' ? 'Set Human' : 'Set AI'}
-                    </button>
-                  ` : ''}
-                  ${isHost && !seat.claimed && seat.kind === 'ai' && aiOpponents.length ? `
-                    <span class="setup-ai-choice-row multiplayer-ai-choice-row">
-                      ${aiOpponents.map((opponent) => {
-                        const selected = opponent.id === seat.aiOpponentId;
-                        return `
-                          <button type="button"
-                            class="setup-ai-opponent-btn multiplayer-ai-opponent${selected ? ' selected' : ''}"
-                            data-seat-id="${seat.seatId}"
-                            data-ai-opponent="${escapeHtml(opponent.id)}">
-                            ${escapeHtml(opponent.firstName || opponent.id)}
-                          </button>
-                        `;
-                      }).join('')}
-                    </span>
-                  ` : ''}
-                  ${seat.isViewerSeat ? '<span class="setup-hint">You</span>' : ''}
-                </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         </div>
         <div class="setup-actions">
-          ${isHost && controlledSeatId == null ? '<span class="setup-hint">Claim one human seat before starting the match.</span>' : ''}
+          ${isHost && controlledSeatId == null ? '<span class="setup-hint">Claim a human dynasty before starting the match.</span>' : ''}
           ${isHost ? `<button class="btn-primary" type="button" id="btnStartRoom" ${this.roomSnapshot.canStart ? '' : 'disabled'}>Start Match</button>` : '<span class="setup-hint">Waiting for host to start the match.</span>'}
-          <button class="btn-secondary" type="button" id="btnLeaveRoom">${controlledSeatId != null ? 'Leave Seat' : 'Close Connection'}</button>
+          <button class="btn-secondary" type="button" id="btnLeaveRoom">${controlledSeatId != null ? 'Leave Dynasty' : 'Close Connection'}</button>
         </div>
       </div>
     `;

@@ -60,7 +60,7 @@ function frontierTroopsFromOrders(orders) {
   return armyFrontier + mercenaryFrontier;
 }
 
-test('AI meta keeps declared human seats under human control', () => {
+test('AI meta keeps declared human dynasties under human control', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0, 2] });
 
@@ -767,7 +767,7 @@ function prepareCoalitionDeploymentState() {
   return state;
 }
 
-test('AI coup coalition planning rallies weak AI seats behind one friendly claimant', () => {
+test('AI coup coalition planning rallies weak AI dynasties behind one friendly claimant', () => {
   const state = prepareCoalitionDeploymentState();
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 2, details: { appointeeId: 1 } },

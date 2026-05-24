@@ -2,7 +2,7 @@
 
 > A game of dynastic profiteering inside the Byzantine Empire.
 
-Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes named strategic AI seats, and includes a pure Node WebSocket multiplayer server.
+Basileus is a 3-5 player strategy game where rival noble houses jockey for titles, gold, and the throne while invasions hammer the frontier. It runs in the browser, supports hot-seat play, includes named strategic AI dynasties, and includes a pure Node WebSocket multiplayer server.
 
 [![CI](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/ci.yml)
 [![Deploy](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/EscadronRogue/Basileus/actions/workflows/deploy-pages.yml)
@@ -13,7 +13,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **Strategic AI seats.** AI slots can be reserved and named. They use a phase-aware heuristic planner for titles, court powers, estate bids, deployment, and title redistribution while routing every move through the same legal command layer as humans.
+- **Strategic AI dynasties.** AI dynasties can be reserved and named. They use a phase-aware heuristic planner for titles, court powers, estate bids, deployment, and title redistribution while routing every move through the same legal command layer as humans.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -120,7 +120,7 @@ Useful entry points:
 
 ## AI Layer
 
-AI seats use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 10% scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, and title redistribution.
+AI dynasties use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 10% scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, and title redistribution.
 
 Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights, re-ranks a finalist pool, saves the top tuned champions to `ai/tunedOpponents.json`, and gives each one a Greek first name from `ai/greekNames.js`.
 
@@ -130,9 +130,9 @@ Training always creates a fresh random seed. By default it trains on 5-player, 9
 
 Training uses staged evaluation by default: broad candidate screening uses fewer games, then the strongest distinct finalists are re-tested with the full `--games` budget. The CLI trainer also uses worker threads by default; pass `--workers 1` for serial evaluation. The trainer prints progress while it runs: generation starts, candidate scores, finalist scores, generation winners, final champion leaderboard, and the saved opponents. Use `--quiet` to suppress the progress log, or `--json` for machine-readable output without progress lines.
 
-When trained opponents are available, new single-player games assign AI seats from that trained champion pool by default. Built-in strategy styles remain available as a fallback when no tuned opponents have been saved yet.
+When trained opponents are available, new single-player games assign AI dynasties from that trained champion pool by default. Built-in strategy styles remain available as a fallback when no tuned opponents have been saved yet.
 
-The named opponent catalog is intentionally lightweight: names identify seats, while the shared strategic planner makes the decisions.
+The named opponent catalog is intentionally lightweight: names identify AI dynasties, while the shared strategic planner makes the decisions.
 
 ## License
 

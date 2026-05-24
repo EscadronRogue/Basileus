@@ -240,13 +240,13 @@ export class MultiplayerRoom {
   }
 
   claimSeat(sessionId, seatId, playerName) {
-    assert(this.status === ROOM_STATUS.LOBBY, 'Seats can only be claimed in the lobby.');
+    assert(this.status === ROOM_STATUS.LOBBY, 'Dynasties can only be claimed in the lobby.');
     const seat = this.seats[seatId];
-    assert(seat, 'Seat not found.');
-    assert(seat.kind === 'human', 'Seat is AI-controlled.');
+    assert(seat, 'Dynasty not found.');
+    assert(seat.kind === 'human', 'Dynasty is AI-controlled.');
     const currentSeat = this.findSeatBySession(sessionId);
-    assert(!currentSeat || currentSeat.seatId === seatId, 'You already control another seat.');
-    assert(seat.sessionId == null || seat.sessionId === sessionId, 'Seat is already claimed.');
+    assert(!currentSeat || currentSeat.seatId === seatId, 'You already control another dynasty.');
+    assert(seat.sessionId == null || seat.sessionId === sessionId, 'Dynasty is already claimed.');
 
     const session = this.ensureSession(sessionId, playerName);
     seat.playerName = session.playerName;
@@ -258,14 +258,14 @@ export class MultiplayerRoom {
   }
 
   claimActiveSeat(sessionId, seatId, playerName) {
-    assert(this.status === ROOM_STATUS.IN_PROGRESS, 'Live seats can only be claimed while a game is in progress.');
+    assert(this.status === ROOM_STATUS.IN_PROGRESS, 'Live dynasties can only be claimed while a game is in progress.');
     assert(this.gameState, 'The game has not started.');
     const seat = this.seats[seatId];
-    assert(seat, 'Seat not found.');
-    assert(seat.kind === 'human', 'Seat is AI-controlled.');
-    assert(!seat.connected || seat.sessionId === sessionId, 'That seat is already connected.');
+    assert(seat, 'Dynasty not found.');
+    assert(seat.kind === 'human', 'Dynasty is AI-controlled.');
+    assert(!seat.connected || seat.sessionId === sessionId, 'That dynasty is already connected.');
     const currentSeat = this.findSeatBySession(sessionId);
-    assert(!currentSeat || currentSeat.seatId === seatId, 'Leave your current seat before claiming another one.');
+    assert(!currentSeat || currentSeat.seatId === seatId, 'Leave your current dynasty before claiming another one.');
 
     const session = this.ensureSession(sessionId, playerName);
     seat.playerName = session.playerName;
@@ -280,10 +280,10 @@ export class MultiplayerRoom {
 
   reclaimSeat(sessionId, seatToken, playerName) {
     const seat = this.findSeatByToken(String(seatToken || '').trim());
-    assert(seat, 'Seat reclaim token is invalid.');
+    assert(seat, 'Dynasty reclaim token is invalid.');
     const previousSessionId = seat.sessionId;
     const currentSeat = this.findSeatBySession(sessionId);
-    assert(!currentSeat || currentSeat.seatId === seat.seatId, 'This session already controls another seat.');
+    assert(!currentSeat || currentSeat.seatId === seat.seatId, 'This session already controls another dynasty.');
 
     this.ensureSession(sessionId, playerName);
     seat.playerName = String(playerName || seat.playerName || 'Guest').trim() || 'Guest';
@@ -312,9 +312,9 @@ export class MultiplayerRoom {
   }
 
   releaseLobbySeat(sessionId) {
-    assert(this.status === ROOM_STATUS.LOBBY, 'Seats can only be released in the lobby.');
+    assert(this.status === ROOM_STATUS.LOBBY, 'Dynasties can only be released in the lobby.');
     const seat = this.findSeatBySession(sessionId);
-    assert(seat, 'You do not control a seat.');
+    assert(seat, 'You do not control a dynasty.');
     seat.playerName = null;
     seat.sessionId = null;
     seat.seatToken = null;
@@ -334,13 +334,13 @@ export class MultiplayerRoom {
   }
 
   setSeatKind(sessionId, seatId, kind, aiOpponentId = null) {
-    assert(this.status === ROOM_STATUS.LOBBY, 'Seat types can only be changed in the lobby.');
-    assert(this.isHostSession(sessionId), 'Only the host can change seat types.');
-    assert(kind === 'human' || kind === 'ai', 'Seat type must be human or ai.');
+    assert(this.status === ROOM_STATUS.LOBBY, 'Dynasty types can only be changed in the lobby.');
+    assert(this.isHostSession(sessionId), 'Only the host can change dynasty types.');
+    assert(kind === 'human' || kind === 'ai', 'Dynasty type must be human or ai.');
 
     const seat = this.seats[seatId];
-    assert(seat, 'Seat not found.');
-    assert(seat.sessionId == null, 'Claimed seats cannot change type.');
+    assert(seat, 'Dynasty not found.');
+    assert(seat.sessionId == null, 'Claimed dynasties cannot change type.');
 
     seat.kind = kind;
     if (kind === 'ai') {
@@ -365,7 +365,7 @@ export class MultiplayerRoom {
     if (nextConfig.playerCount < this.seats.length) {
       const removedSeats = this.seats.slice(nextConfig.playerCount);
       const hasClaimedSeat = removedSeats.some((seat) => seat.sessionId != null);
-      assert(!hasClaimedSeat, 'Cannot remove a claimed seat from the room.');
+      assert(!hasClaimedSeat, 'Cannot remove a claimed dynasty from the room.');
       this.seats = this.seats.slice(0, nextConfig.playerCount);
     } else if (nextConfig.playerCount > this.seats.length) {
       for (let seatId = this.seats.length; seatId < nextConfig.playerCount; seatId += 1) {
@@ -381,7 +381,7 @@ export class MultiplayerRoom {
   async startGame(sessionId) {
     assert(this.status === ROOM_STATUS.LOBBY, 'The game has already started.');
     assert(this.isHostSession(sessionId), 'Only the host can start the room.');
-    assert(this.canStartGame(), 'Every human seat must be claimed before starting.');
+    assert(this.canStartGame(), 'Every human dynasty must be claimed before starting.');
 
     const seed = resolveConfiguredSeed(this.config.seed);
     this.gameState = createGameState({
@@ -649,8 +649,8 @@ export class MultiplayerRoom {
     assert(this.status !== ROOM_STATUS.LOBBY, 'The game has not started.');
     assert(this.gameState, 'The game has not started.');
     const seat = this.findSeatBySession(sessionId);
-    assert(seat, 'You do not control a seat in this room.');
-    assert(seat.kind === 'human', 'Only human seats can submit commands.');
+    assert(seat, 'You do not control a dynasty in this room.');
+    assert(seat.kind === 'human', 'Only human dynasties can submit commands.');
     return seat;
   }
 

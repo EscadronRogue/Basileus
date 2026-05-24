@@ -11,6 +11,7 @@ const btnStart = document.getElementById('btnStart');
 const btnCreateRoom = document.getElementById('btnCreateRoom');
 const btnJoinRoom = document.getElementById('btnJoinRoom');
 const defaultSetupActions = document.getElementById('defaultSetupActions');
+const multiplayerActions = document.getElementById('multiplayerActions');
 const setupPlayers = document.getElementById('setupPlayers');
 const setupTurns = document.getElementById('setupTurns');
 const setupMode = document.getElementById('setupMode');
@@ -149,7 +150,7 @@ function refreshSeatOptions() {
     ...Array.from({ length: playerCount }, (_, index) => {
       const seat = index + 1;
       const dynasty = getDynastyProfileForSeat(index).name;
-      return `<option value="${seat}" ${String(seat) === clampedSeat ? 'selected' : ''}>${dynasty} - Seat ${seat}</option>`;
+      return `<option value="${seat}" ${String(seat) === clampedSeat ? 'selected' : ''}>${dynasty}</option>`;
     }),
   ].join('');
   renderSetupChoiceControl(setupSeat);
@@ -187,8 +188,8 @@ function renderAiRoster() {
     .filter((seat) => seatAssignmentUnresolved || seat !== humanSeat);
 
   if (!aiOpponentRosterLoaded) {
-    setupAiRoster.innerHTML = '<div class="setup-ai-seat setup-ai-seat-empty"><strong>Loading AI opponents...</strong><span>Preparing named seats</span></div>';
-    setupAiRosterHint.textContent = 'AI seats use the strategic planner during play.';
+    setupAiRoster.innerHTML = '<div class="setup-ai-seat setup-ai-seat-empty"><strong>Loading AI opponents...</strong><span>Preparing named dynasties</span></div>';
+    setupAiRosterHint.textContent = 'AI dynasties use the strategic planner during play.';
     updateStartAvailability();
     return;
   }
@@ -200,7 +201,7 @@ function renderAiRoster() {
         <span>${escapeHtml(aiOpponentRosterError || 'No AI opponents are available.')}</span>
       </div>
     `;
-    setupAiRosterHint.textContent = 'Single-player AI is unavailable until named AI seats are available.';
+    setupAiRosterHint.textContent = 'Single-player AI is unavailable until named AI dynasties are available.';
     updateStartAvailability();
     return;
   }
@@ -208,11 +209,11 @@ function renderAiRoster() {
   if (seatAssignmentUnresolved) {
     setupAiRoster.innerHTML = `
       <div class="setup-ai-seat setup-ai-seat-empty">
-        <strong>AI seats assigned at start</strong>
-        <span>Random setup will resolve your seat first, then fill the remaining seats with available AI strategies.</span>
+        <strong>AI dynasties assigned at start</strong>
+        <span>Random setup will resolve your dynasty first, then fill the remaining dynasties with available AI strategies.</span>
       </div>
     `;
-    setupAiRosterHint.textContent = 'Choose a fixed player count and seat to customize individual AI opponents.';
+    setupAiRosterHint.textContent = 'Choose a fixed player count and dynasty to customize individual AI opponents.';
     updateStartAvailability();
     return;
   }
@@ -227,6 +228,7 @@ function renderAiRoster() {
         : aiOpponentRoster[index % aiOpponentRoster.length]?.id;
     selectedAiOpponentBySeat.set(seat, selectedId);
     const selectedOpponent = aiOpponentRoster.find((opponent) => opponent.id === selectedId);
+    const dynasty = getDynastyProfileForSeat(seat - 1).name;
     const displayName = selectedId === RANDOM_TRAINED_OPPONENT_ID
       ? 'Random trained AI'
       : selectedOpponent?.firstName || selectedOpponent?.id || 'Choose opponent';
@@ -240,9 +242,9 @@ function renderAiRoster() {
     ` : '';
     return `
       <div class="setup-ai-seat" style="${seatCartoucheStyle(seat)}" data-seat="${seat}">
-        <span class="choice-crest">S${seat}</span>
+        <span class="choice-crest">${escapeHtml(dynasty.slice(0, 1))}</span>
         <span class="setup-ai-copy">
-          <strong>Seat ${seat}</strong>
+          <strong>${escapeHtml(dynasty)}</strong>
           <span>${escapeHtml(displayName)}</span>
         </span>
         <span class="setup-ai-choice-row">
@@ -273,7 +275,7 @@ function renderAiRoster() {
   });
 
   setupAiRosterHint.textContent = getTrainedAiOpponents().length
-    ? 'AI seats use random trained opponents by default.'
+    ? 'AI dynasties use random trained opponents by default.'
     : 'No trained opponents found yet; built-in strategies will be used.';
   updateStartAvailability();
 }
@@ -284,6 +286,7 @@ function refreshModeVisibility() {
   if (singlePlayerAdvancedFields) singlePlayerAdvancedFields.hidden = mode !== 'single';
   multiplayerFields.hidden = mode !== 'multiplayer';
   if (defaultSetupActions) defaultSetupActions.hidden = mode === 'multiplayer';
+  if (multiplayerActions) multiplayerActions.hidden = mode !== 'multiplayer';
   setSetupError('');
   setMultiplayerError('');
   renderAiRoster();
@@ -417,7 +420,7 @@ btnStart.addEventListener('click', async () => {
       ? buildAiOpponentSelections(playerCount, seat, setupRng)
       : [];
     if (mode === 'single' && aiOpponentSelections.length !== playerCount - 1) {
-      throw new Error('Choose an AI opponent for every AI seat.');
+      throw new Error('Choose an AI opponent for every AI dynasty.');
     }
     setupDialog.style.display = 'none';
 

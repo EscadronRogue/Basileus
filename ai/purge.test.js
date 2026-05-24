@@ -43,7 +43,7 @@ function collectFiles(dir, files = []) {
   return files;
 }
 
-test('retired named-seat AI traces are absent from active source', () => {
+test('retired named-dynasty AI traces are absent from active source', () => {
   const violations = [];
   for (const file of collectFiles(ROOT)) {
     const source = readFileSync(file, 'utf8').toLowerCase();

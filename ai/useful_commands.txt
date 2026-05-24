@@ -84,7 +84,7 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   `beginner` keeps 25% candidate self-play, then trains against the built-in curriculum without saved champions.
 
 - `--self-play-every N`  
-  Every Nth evaluation game uses the candidate policy for all AI seats. This overrides the selected opponent mix's cadence.
+  Every Nth evaluation game uses the candidate policy for all AI dynasties. This overrides the selected opponent mix's cadence.
   Default: `3` with `robust`, `4` with `beginner`
 
 - `--champions N`  

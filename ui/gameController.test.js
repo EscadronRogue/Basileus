@@ -349,7 +349,7 @@ test('fresh deployment panel requires explicit funding and destination', () => {
   assert.match(container.innerHTML, /data-action="lock-orders" disabled/);
 });
 
-test('deployment ranking can withhold support from seat one', () => {
+test('deployment ranking can withhold support from the first dynasty', () => {
   const state = makeState();
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;

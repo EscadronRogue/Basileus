@@ -3130,7 +3130,7 @@ body::before {
 .setup-field { margin-bottom: var(--sp-3); }
 
 .setup-mode-field {
-  margin: var(--sp-4) 0;
+  margin: var(--sp-3) 0 var(--sp-4);
 }
 
 .setup-field label {
@@ -3387,6 +3387,9 @@ body::before {
   gap: var(--sp-2);
   margin-top: var(--sp-5);
 }
+.setup-primary-actions {
+  margin: var(--sp-4) 0 var(--sp-5);
+}
 .setup-actions[hidden],
 #singlePlayerFields[hidden],
 #singlePlayerAdvancedFields[hidden],
@@ -3397,6 +3400,14 @@ body::before {
 .setup-actions .btn-secondary {
   width: 100%;
   margin-top: 0;
+}
+.setup-primary-actions .btn-primary {
+  min-height: 64px;
+  font-size: 14px;
+  letter-spacing: 1.8px;
+}
+.setup-primary-actions .btn-secondary {
+  min-height: 46px;
 }
 
 /* ── Multiplayer ─────────────────────────────────────────────────── */
@@ -3878,6 +3889,7 @@ textarea {
 .panel-collapsed .sidebar-panel-body { display: none; }
 
 #multiplayerActions.setup-actions { flex-direction: row; flex-wrap: wrap; }
+#multiplayerActions.setup-primary-actions { flex-direction: column; }
 #multiplayerActions .btn-primary,
 #multiplayerActions .btn-secondary { flex: 1; min-width: 120px; }
 
