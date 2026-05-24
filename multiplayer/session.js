@@ -27,6 +27,7 @@ import {
   handleEstatesConfirmation,
   handleHumanOrders,
   handleManualTitleReassignment,
+  settleAutomaticProgress,
   startInteractiveRuntime,
 } from '../engine/runtime.js';
 import {
@@ -237,6 +238,14 @@ export class MultiplayerRoom {
     return sessionId === this.hostSessionId;
   }
 
+  isHostConnected() {
+    return this.connections.has(this.hostSessionId);
+  }
+
+  canAdvancePastResolution(sessionId) {
+    return this.isHostSession(sessionId) || !this.isHostConnected();
+  }
+
   canStartGame() {
     if (this.status !== ROOM_STATUS.LOBBY) return false;
     if (!this.findSeatBySession(this.hostSessionId)) return false;
@@ -436,6 +445,13 @@ export class MultiplayerRoom {
     return this.gameState;
   }
 
+  runAutomaticProgress() {
+    if (!this.gameState || this.status === ROOM_STATUS.FINISHED) return { ok: true, changed: false };
+    const result = settleAutomaticProgress(this.gameState, this.aiMeta, this, { courtMode: 'finish' });
+    this.refreshStatusFromGame();
+    return result;
+  }
+
   refreshStatusFromGame() {
     if (!this.gameState) return;
     if (this.gameState.gameOver || this.gameState.phase === 'scoring') {
@@ -497,6 +513,7 @@ export class MultiplayerRoom {
       status: this.status,
       config: clonePlain(this.config),
       hostSessionId: this.hostSessionId === sessionId ? this.hostSessionId : null,
+      hostConnected: this.isHostConnected(),
       seats: this.seats.map((seat) => createSeatSummary(this, seat, sessionId)),
       aiOpponents: this.getAiOpponentRoster(),
       yourSession: {
@@ -649,6 +666,7 @@ export class MultiplayerRoom {
   }
 
   finalizeMutation(sessionId, requestId, previousPhase = null, extra = {}) {
+    this.runAutomaticProgress();
     this.refreshStatusFromGame();
     this.touch();
     this.accept(sessionId, requestId, extra);
@@ -729,7 +747,7 @@ export class MultiplayerRoom {
       }
 
       if (message.type === 'continue_after_resolution') {
-        assert(this.isHostSession(sessionId), 'Only the host can advance past resolution.');
+        assert(this.canAdvancePastResolution(sessionId), 'Only the host can advance past resolution while the host is connected.');
         assert(this.gameState.phase === 'resolution', 'Continue is only available during resolution.');
         const continuation = handleContinueAfterResolution(this.gameState, this.aiMeta, this);
         assert(continuation.ok, continuation.reason);
@@ -919,6 +937,7 @@ export function createRoomFromSave({
   if (room.status !== ROOM_STATUS.FINISHED) {
     room.status = ROOM_STATUS.IN_PROGRESS;
     room.finishedAt = null;
+    room.runAutomaticProgress();
   }
   room.touch();
   return room;

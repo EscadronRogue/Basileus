@@ -635,7 +635,7 @@ export class MultiplayerController {
       resolution.disabledText = 'Waiting For New Basileus';
     } else if (pendingHumanDefenderReward) {
       resolution.disabledText = 'Resolve Rewards';
-    } else if (!this.isHost() && state.phase === 'resolution') {
+    } else if (!this.isHost() && state.phase === 'resolution' && this.roomSnapshot?.hostConnected !== false) {
       resolution.disabledText = 'Host Continues';
     } else {
       resolution.continue = () => this.send('continue_after_resolution');

@@ -30,7 +30,6 @@ import {
   applyPlannedAiTitleAssignment,
   buildSimultaneousAIOrders,
   chooseAIDefenderRewardChoice,
-  handlePostResolutionAI,
   invalidateRoundContext,
   isAIPlayer,
   observeCourtAction,
@@ -105,6 +104,32 @@ function shouldProcessAiAtInteractiveBoundary(state, meta) {
   if (!meta) return true;
   if (state?.phase !== 'court') return true;
   return allHumanCourtPlayersConfirmed(state, meta);
+}
+
+function getRuntimeProgressKey(state, context = {}) {
+  if (!state) return 'missing';
+  const confirmed = state.courtActions?.playerConfirmed instanceof Set
+    ? [...state.courtActions.playerConfirmed].sort((a, b) => a - b)
+    : [];
+  return JSON.stringify({
+    phase: state.phase,
+    round: state.round,
+    gameOver: Boolean(state.gameOver),
+    scoring: state.phase === 'scoring',
+    confirmed,
+    orders: Object.keys(state.allOrders || {}).sort(),
+    estatesReady: Object.keys(state.estatesReady || {}).sort(),
+    pendingAiTitleAssignment: Boolean(context.pendingAiTitleAssignment),
+  });
+}
+
+function autoResolveUnavailableHumanCourtPlayers(state, aiMeta = null) {
+  if (!state || state.phase !== 'court' || !aiMeta) return false;
+  let changed = false;
+  for (const playerId of getHumanCourtPlayerIds(state, aiMeta)) {
+    changed = autoConfirmFinishedCourtPlayer(state, playerId) || changed;
+  }
+  return changed;
 }
 
 function autoResolveAiDefenderRewards(state, meta) {
@@ -241,6 +266,37 @@ export function processPostHumanAction(state, aiMeta, options = {}) {
   return processAiFlow(state, aiMeta, options);
 }
 
+export function settleAutomaticProgress(state, aiMeta = null, context = {}, options = {}) {
+  ensureRuntimeContext(context);
+  const courtMode = options.courtMode || 'finish';
+  let changed = false;
+
+  let safety = 0;
+  while (state && safety < 20) {
+    safety += 1;
+    if (state.gameOver || state.phase === 'scoring' || state.phase === 'resolution') break;
+
+    const before = getRuntimeProgressKey(state, context);
+    autoResolveUnavailableHumanCourtPlayers(state, aiMeta);
+
+    if (shouldProcessAiAtInteractiveBoundary(state, aiMeta)) {
+      writePending(context, processAiFlow(state, aiMeta, {
+        ...options,
+        courtMode,
+        pendingAiTitleAssignment: context.pendingAiTitleAssignment,
+      }));
+    } else {
+      advanceToNextInteractivePhase(state);
+    }
+
+    const after = getRuntimeProgressKey(state, context);
+    if (after === before) break;
+    changed = true;
+  }
+
+  return { ok: true, changed, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
+}
+
 export function applyPendingAiTitleAssignment(state, aiMeta, pendingAiTitleAssignment = null) {
   if (!pendingAiTitleAssignment || !aiMeta) return null;
   applyPlannedAiTitleAssignment(
@@ -271,13 +327,7 @@ export function continueAfterResolution(state, aiMeta, pendingAiTitleAssignment 
 export function startInteractiveRuntime(state, aiMeta = null, context = {}) {
   ensureRuntimeContext(context);
   advanceToNextInteractivePhase(state);
-  if (shouldProcessAiAtInteractiveBoundary(state, aiMeta)) {
-    writePending(context, processAiFlow(state, aiMeta, {
-      pendingAiTitleAssignment: context.pendingAiTitleAssignment,
-      courtMode: 'finish',
-    }));
-  }
-  return { ok: true, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
+  return settleAutomaticProgress(state, aiMeta, context, { courtMode: 'finish' });
 }
 
 export function runAiRuntime(state, aiMeta, context = {}, options = {}) {

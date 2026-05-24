@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createRoom, SAVE_VERSION } from './session.js';
+import { createRoom, createRoomFromSave, SAVE_VERSION } from './session.js';
 import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
 import { loadOpponentRosterSync } from '../ai/nodeOpponentRoster.js';
 import { getTunedAiOpponents } from '../ai/opponentRoster.js';
@@ -29,6 +29,24 @@ function capitalOrders(state, playerId) {
     armies[officeKey] = { funded: 999, destination: 'capital' };
   }
   return { armies, mercenaries: { count: 0, destination: 'frontier' }, candidate: state.basileusId };
+}
+
+const TEST_AI = {
+  id: 'test-ai',
+  firstName: 'Test AI',
+  label: 'Test AI',
+  source: 'test',
+};
+
+function makeAiRoom(config = {}) {
+  return createRoom({
+    existingRoomCodes: new Set(),
+    hostSessionId: 's0',
+    hostPlayerName: 'Host',
+    config,
+    loadAiOpponentRoster: () => [TEST_AI],
+    loadAiOpponentById: () => TEST_AI,
+  });
 }
 
 test('multiplayer room follows court, estates, deployment, resolution flow', async () => {
@@ -94,4 +112,97 @@ test('new multiplayer AI seats default to a tuned opponent', () => {
   assert.equal(seat.aiOpponentId, tunedOpponent.id);
   assert.equal(seat.playerName, tunedOpponent.firstName);
   assert.equal(room.createRoomSnapshotFor('s0').aiOpponents[0].id, tunedOpponent.id);
+});
+
+test('multiplayer launch advances when the only human is the opening Basileus', async () => {
+  const room = makeAiRoom({ playerCount: 4, deckSize: 1, seed: '\u0001' });
+  room.claimSeat('s0', 0, 'Host');
+  for (let seatId = 1; seatId < 4; seatId += 1) {
+    room.setSeatKind('s0', seatId, 'ai', TEST_AI.id);
+  }
+
+  await room.startGame('s0');
+
+  assert.equal(room.gameState.basileusId, 0);
+  assert.equal(room.gameState.phase, 'estates');
+  assert.equal(room.gameState.courtActions.playerConfirmed.size, room.gameState.players.length);
+});
+
+test('multiplayer auto-confirms a human court seat after its last option disappears', async () => {
+  const room = await makeStartedRoom();
+  const state = room.gameState;
+  const eastTheme = Object.values(state.themes).find((theme) => theme.region === 'east' && theme.id !== 'CPL');
+  assert.ok(eastTheme);
+
+  state.phase = 'court';
+  state.basileusId = 0;
+  state.nextBasileusId = 0;
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set([2, 3]),
+  };
+  for (const player of state.players) player.majorTitles = [];
+  state.players[1].majorTitles = ['DOM_EAST'];
+  for (const theme of Object.values(state.themes)) {
+    if (theme.region === 'east' && theme.id !== eastTheme.id) theme.occupied = true;
+    theme.owner = null;
+    theme.strategos = null;
+    theme.bishop = null;
+  }
+  eastTheme.occupied = false;
+  eastTheme.strategos = 2;
+
+  send(room, 1, { type: 'court_action', action: 'revoke', value: `minor:${eastTheme.id}:strategos` });
+
+  assert.equal(state.phase, 'estates');
+  assert.equal(state.courtActions.playerConfirmed.has(0), true);
+  assert.equal(state.courtActions.playerConfirmed.has(1), true);
+});
+
+test('restored rooms settle AI-only launch work before players reconnect', async () => {
+  const room = makeAiRoom({ playerCount: 4, deckSize: 1, seed: '\u0001' });
+  room.claimSeat('s0', 0, 'Host');
+  for (let seatId = 1; seatId < 4; seatId += 1) {
+    room.setSeatKind('s0', seatId, 'ai', TEST_AI.id);
+  }
+  await room.startGame('s0');
+  const save = room.createSavePayload();
+  save.room.gameState.phase = 'setup';
+  save.room.gameState.round = 0;
+  save.room.gameState.courtActions = null;
+  save.room.gameState.startingIncomeResolved = false;
+  save.room.gameState.players.forEach((player) => { player.gold = 0; });
+  for (const theme of Object.values(save.room.gameState.themes)) {
+    theme.owner = null;
+    theme.strategos = null;
+    theme.bishop = null;
+  }
+
+  const restored = createRoomFromSave({
+    existingRoomCodes: new Set([room.roomCode]),
+    hostSessionId: 'restore-host',
+    hostPlayerName: 'Restorer',
+    saveGame: save,
+    loadAiOpponentRoster: () => [TEST_AI],
+    loadAiOpponentById: () => TEST_AI,
+  });
+
+  assert.equal(restored.gameState.basileusId, 0);
+  assert.equal(restored.gameState.phase, 'estates');
+  assert.equal(restored.gameState.courtActions.playerConfirmed.size, restored.gameState.players.length);
+});
+
+test('non-host can continue resolution when the host connection is gone', async () => {
+  const room = await makeStartedRoom();
+  room.attachConnection('s1', { sendJson() {}, close() {} });
+  room.gameState.phase = 'resolution';
+  room.gameState.pendingDefenderRewards = [];
+
+  assert.equal(room.canAdvancePastResolution('s1'), true);
+  send(room, 1, { type: 'continue_after_resolution' });
+
+  assert.notEqual(room.gameState.phase, 'resolution');
 });
