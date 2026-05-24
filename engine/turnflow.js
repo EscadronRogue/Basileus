@@ -4,7 +4,14 @@ import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
-import { canTriggerInvasion, getOfficeDisplayName, getPlayer, getPlayerMercenaryOrder, rollInvasionStrength } from './state.js';
+import {
+  canTriggerInvasion,
+  getOfficeDisplayName,
+  getPlayer,
+  getPlayerMercenaryOrder,
+  prepareInvasionForDraw,
+  rollInvasionStrength,
+} from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
 import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
@@ -171,7 +178,7 @@ export function phaseInvasion(state) {
   }
 
   state.round = attemptedRound;
-  state.currentInvasion = invasion;
+  state.currentInvasion = prepareInvasionForDraw(state, invasion, state.rng);
   state.invasionStrength = 0;
   state.log.push({
     type: 'invasion',

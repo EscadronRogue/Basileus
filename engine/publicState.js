@@ -42,12 +42,14 @@ export function hydrateCourtActions(courtActions = null) {
 
 export function serializeCurrentInvasion(invasion) {
   if (!invasion) return null;
-  return {
+  const serialized = {
     ...clonePlain(invasion),
     route: Array.isArray(invasion.route) ? invasion.route.slice() : [],
     strength: Array.isArray(invasion.strength) ? invasion.strength.slice() : [],
-    baseStrength: Array.isArray(invasion.baseStrength) ? invasion.baseStrength.slice() : [],
   };
+  if (Array.isArray(invasion.strengthBounds)) serialized.strengthBounds = invasion.strengthBounds.slice();
+  if (Array.isArray(invasion.strengthRatio)) serialized.strengthRatio = invasion.strengthRatio.slice();
+  return serialized;
 }
 
 export function serializePlayersForViewer(state, viewerSeatId) {

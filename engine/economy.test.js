@@ -5,11 +5,21 @@ import {
   DYNASTY_COLORS,
   DYNASTY_PROFILES,
   INVASIONS,
+  INVASION_DIFFICULTIES,
   INVASION_ESTIMATE_INTERVAL,
+  INVASION_STRENGTH_RATIOS,
   getDynastyColor,
 } from '../data/invasions.js';
 import { PROVINCES } from '../data/provinces.js';
-import { createGameState, createInvasionInstance, getPlayer, getOfficeHolder, pickInvasionTemplate } from './state.js';
+import {
+  createGameState,
+  createInvasionInstance,
+  getEmpireProvinceStrength,
+  getInvasionStrengthBounds,
+  getPlayer,
+  getOfficeHolder,
+  pickInvasionTemplate,
+} from './state.js';
 import { readTroopEntry, runIncome } from './cascade.js';
 import { applyInvasionResult, resolveInvasion } from './combat.js';
 import { buildPrivateNotifications } from './notifications.js';
@@ -119,22 +129,46 @@ test('invasion picker uses weighted probability bands', () => {
   assert.equal(pickInvasionTemplate(() => 0.999999).id, 'caliphate');
 });
 
-test('invasion templates carry individual strength bounds', () => {
+test('invasion templates carry relative difficulty bands', () => {
   const emirateTemplate = INVASIONS.find((entry) => entry.id === 'emirate');
+  const turksTemplate = INVASIONS.find((entry) => entry.id === 'turks');
+  const state = makeState();
+  const empireStrength = getEmpireProvinceStrength(state);
 
-  assert.equal(INVASIONS.every(({ strengthBounds }) => Array.isArray(strengthBounds)), true);
-  assert.equal(new Set(INVASIONS.map(({ strengthBounds }) => strengthBounds.join('-'))).size > 1, true);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.EASY], [0.3, 0.5]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.MEDIUM], [0.5, 0.7]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD], [0.7, 0.9]);
   for (const template of INVASIONS) {
-    const [min, max] = template.strengthBounds;
-    assert.equal(Number.isInteger(min), true, `${template.id} strength minimum should be an integer`);
-    assert.equal(Number.isInteger(max), true, `${template.id} strength maximum should be an integer`);
-    assert.equal(min >= 1, true, `${template.id} strength minimum should be positive`);
-    assert.equal(max - min >= INVASION_ESTIMATE_INTERVAL, true, `${template.id} strength range should support an estimate interval`);
+    const expectedDifficulty = template.id === 'turks' || template.id === 'caliphate'
+      ? INVASION_DIFFICULTIES.HARD
+      : INVASION_DIFFICULTIES.MEDIUM;
+    assert.equal(template.difficulty, expectedDifficulty, `${template.id} should use the configured difficulty`);
 
-    const invasion = createInvasionInstance(template, () => 0);
-    assert.deepEqual(invasion.baseStrength, template.strengthBounds);
-    assert.deepEqual(invasion.strength, [min, min + INVASION_ESTIMATE_INTERVAL]);
+    const [min, max] = getInvasionStrengthBounds(template, state);
+    const [minRatio, maxRatio] = INVASION_STRENGTH_RATIOS[expectedDifficulty];
+    assert.equal(min, Math.ceil(empireStrength * minRatio), `${template.id} strength minimum should scale from empire strength`);
+    assert.equal(max, Math.floor(empireStrength * maxRatio), `${template.id} strength maximum should scale from empire strength`);
+
+    const invasion = createInvasionInstance(template, () => 0, state);
+    assert.equal(invasion.empireStrength, empireStrength);
+    assert.deepEqual(invasion.strengthBounds, [min, max]);
+    assert.deepEqual(invasion.strength, [min, Math.min(max, min + INVASION_ESTIMATE_INTERVAL)]);
   }
+
+  state.themes.OPS.occupied = true;
+  assert.equal(getEmpireProvinceStrength(state), empireStrength - 1);
+  assert.deepEqual(
+    getInvasionStrengthBounds(turksTemplate, state),
+    [Math.ceil((empireStrength - 1) * 0.7), Math.floor((empireStrength - 1) * 0.9)],
+  );
+
+  const drawState = makeState();
+  drawState.invasionDeck = [turksTemplate];
+  drawState.maxRounds = 1;
+  drawState.themes.OPS.occupied = true;
+  phaseInvasion(drawState);
+  assert.equal(drawState.currentInvasion.empireStrength, empireStrength - 1);
+  assert.deepEqual(drawState.currentInvasion.strengthBounds, getInvasionStrengthBounds(turksTemplate, drawState));
   assert.equal(emirateTemplate.name, 'Emirate');
   assert.equal(emirateTemplate.objective, 'provinces');
   assert.equal(emirateTemplate.requiresImperialTarget, true);

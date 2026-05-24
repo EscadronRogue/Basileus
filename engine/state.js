@@ -4,8 +4,9 @@ import {
   INVASIONS,
   getDynastyProfileForSeat,
   INVASION_OBJECTIVES,
-  INVASION_STRENGTH_RANGE,
   INVASION_ESTIMATE_INTERVAL,
+  INVASION_DIFFICULTIES,
+  INVASION_STRENGTH_RATIOS,
 } from '../data/invasions.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
@@ -63,36 +64,69 @@ const PLAYER_ROLE_TEXT_STYLES = {
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAST', 'DOM_WEST'];
 
-function normalizeInvasionStrengthBounds(bounds) {
-  const [rawMin, rawMax] = Array.isArray(bounds) ? bounds : INVASION_STRENGTH_RANGE;
-  const baseMin = Math.max(1, Math.floor(Number(rawMin) || INVASION_STRENGTH_RANGE[0]));
-  const baseMax = Math.max(baseMin, Math.floor(Number(rawMax) || INVASION_STRENGTH_RANGE[1]));
-  if (baseMax - baseMin < INVASION_ESTIMATE_INTERVAL) {
-    throw new Error('Invasion strength bounds must be at least as wide as the estimate interval.');
-  }
-  return [baseMin, baseMax];
+export function getEmpireProvinceStrength(state) {
+  const themes = Object.values(state?.themes || {});
+  const count = themes.length
+    ? themes.filter((theme) => theme?.id !== 'CPL' && !theme?.occupied).length
+    : PROVINCES.filter((province) => province.id !== 'CPL' && !province.startOccupied).length;
+  return Math.max(1, count);
 }
 
-export function getInvasionStrengthBounds(invasion) {
-  return normalizeInvasionStrengthBounds(invasion?.strengthBounds || invasion?.baseStrength);
+export function getInvasionDifficulty(invasion) {
+  const difficulty = String(invasion?.difficulty || INVASION_DIFFICULTIES.MEDIUM).toLowerCase();
+  return Object.hasOwn(INVASION_STRENGTH_RATIOS, difficulty)
+    ? difficulty
+    : INVASION_DIFFICULTIES.MEDIUM;
+}
+
+export function getInvasionStrengthRatio(invasion) {
+  return INVASION_STRENGTH_RATIOS[getInvasionDifficulty(invasion)].slice();
+}
+
+export function getInvasionStrengthBounds(invasion, state) {
+  const empireStrength = Number(invasion?.empireStrength) > 0
+    ? Math.floor(Number(invasion.empireStrength))
+    : getEmpireProvinceStrength(state);
+  const [minRatio, maxRatio] = getInvasionStrengthRatio(invasion);
+  const min = Math.max(1, Math.ceil(empireStrength * minRatio));
+  const max = Math.max(min, Math.floor(empireStrength * maxRatio));
+  return [min, max];
 }
 
 function createInvasionStrengthRange(bounds, rng) {
-  const [baseMin, baseMax] = normalizeInvasionStrengthBounds(bounds);
-  const estimateMin = rollRange(baseMin, baseMax - INVASION_ESTIMATE_INTERVAL, rng);
-  return [estimateMin, estimateMin + INVASION_ESTIMATE_INTERVAL];
+  const [baseMin, baseMax] = bounds;
+  const estimateInterval = Math.min(INVASION_ESTIMATE_INTERVAL, Math.max(0, baseMax - baseMin));
+  const estimateMin = rollRange(baseMin, baseMax - estimateInterval, rng);
+  return [estimateMin, estimateMin + estimateInterval];
 }
 
-export function createInvasionInstance(template, rng) {
-  const strengthBounds = getInvasionStrengthBounds(template);
-  return {
+export function createInvasionInstance(template, rng, state = null) {
+  const instance = {
     ...template,
     route: Array.isArray(template.route) ? template.route.slice() : [],
     originMarker: template.originMarker || null,
+    strength: Array.isArray(template.strength) ? template.strength.slice() : template.strength,
+    strengthBounds: Array.isArray(template.strengthBounds) ? template.strengthBounds.slice() : template.strengthBounds,
+  };
+
+  if (!state || template?.difficulty == null) return instance;
+
+  const empireStrength = getEmpireProvinceStrength(state);
+  const difficulty = getInvasionDifficulty(template);
+  const strengthRatio = getInvasionStrengthRatio(template);
+  const strengthBounds = getInvasionStrengthBounds({ difficulty, empireStrength }, state);
+  return {
+    ...instance,
+    difficulty,
+    empireStrength,
+    strengthRatio,
     strengthBounds,
-    baseStrength: strengthBounds.slice(),
     strength: createInvasionStrengthRange(strengthBounds, rng),
   };
+}
+
+export function prepareInvasionForDraw(state, invasion, rng) {
+  return createInvasionInstance(invasion, rng, state);
 }
 
 function invasionRequiresImperialTarget(invasion) {
@@ -115,7 +149,7 @@ export function canTriggerInvasion(state, invasion) {
 }
 
 export function rollInvasionStrength(invasion, rng) {
-  const [estimateMin, estimateMax] = invasion?.strength || invasion?.baseStrength || [1, 1];
+  const [estimateMin, estimateMax] = invasion?.strength || invasion?.strengthBounds || [1, 1];
   return rollRange(estimateMin, estimateMax, rng);
 }
 
