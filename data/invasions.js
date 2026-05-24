@@ -9,9 +9,9 @@ export const INVASION_DIFFICULTIES = Object.freeze({
 });
 
 export const INVASION_STRENGTH_RATIOS = Object.freeze({
-  [INVASION_DIFFICULTIES.EASY]: [0.3, 0.5],
-  [INVASION_DIFFICULTIES.MEDIUM]: [0.5, 0.7],
-  [INVASION_DIFFICULTIES.HARD]: [0.7, 0.9],
+  [INVASION_DIFFICULTIES.EASY]: [0.5, 0.8],
+  [INVASION_DIFFICULTIES.MEDIUM]: [0.6, 0.9],
+  [INVASION_DIFFICULTIES.HARD]: [0.7, 1],
 });
 
 export const INVASION_OBJECTIVES = Object.freeze({
@@ -41,7 +41,7 @@ export const INVASIONS = [
     originLabel: 'Steppes',
     originMarker: 'RUS',
     objective: INVASION_OBJECTIVES.CAPITAL,
-    difficulty: INVASION_DIFFICULTIES.MEDIUM,
+    difficulty: INVASION_DIFFICULTIES.EASY,
     route: ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#5b8fb9'
   },
@@ -89,7 +89,7 @@ export const INVASIONS = [
     originLabel: 'Serbia',
     originMarker: 'SSRRBB',
     objective: INVASION_OBJECTIVES.CAPITAL,
-    difficulty: INVASION_DIFFICULTIES.MEDIUM,
+    difficulty: INVASION_DIFFICULTIES.EASY,
     route: ['SRB', 'DAL', 'BUL', 'NIK', 'HEL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
     color: '#b04050'
   },
@@ -100,9 +100,9 @@ export const INVASIONS = [
     origin: 'SIM',
     originLabel: 'Pannonia',
     originMarker: 'HON',
-    objective: INVASION_OBJECTIVES.CAPITAL,
+    objective: INVASION_OBJECTIVES.PROVINCES,
     difficulty: INVASION_DIFFICULTIES.MEDIUM,
-    route: ['SIM', 'CRO', 'SRB', 'DAL', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'],
+    route: ['SIM', 'CRO', 'SRB', 'DAL', 'BUL', 'PAR'],
     color: '#3d7a3d'
   },
   {
