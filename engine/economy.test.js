@@ -146,9 +146,9 @@ test('invasion templates carry relative difficulty bands', () => {
     caliphate: INVASION_DIFFICULTIES.HARD,
   };
 
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.EASY], [0.5, 0.8]);
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.MEDIUM], [0.6, 0.9]);
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD], [0.7, 1]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.EASY], [0.5, 0.9]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.MEDIUM], [0.6, 1]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD], [0.7, 1.1]);
   for (const template of INVASIONS) {
     const expectedDifficulty = expectedDifficulties[template.id];
     assert.equal(template.difficulty, expectedDifficulty, `${template.id} should use the configured difficulty`);
