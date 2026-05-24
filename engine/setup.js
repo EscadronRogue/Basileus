@@ -1,11 +1,13 @@
 export const PLAYER_COUNT_MIN = 3;
 export const PLAYER_COUNT_MAX = 5;
 export const DEFAULT_PLAYER_COUNT = 5;
-export const DEFAULT_DECK_SIZE = 9;
+export const DEFAULT_TURN_COUNT = 9;
+export const DEFAULT_DECK_SIZE = DEFAULT_TURN_COUNT;
 
 export const DEFAULT_ROOM_CONFIG = {
   playerCount: DEFAULT_PLAYER_COUNT,
-  deckSize: DEFAULT_DECK_SIZE,
+  turnCount: DEFAULT_TURN_COUNT,
+  deckSize: DEFAULT_TURN_COUNT,
   seed: '',
 };
 
@@ -46,9 +48,15 @@ export function pickRandom(rng, values, fallback = null) {
 }
 
 export function normalizeRoomConfig(rawConfig = {}) {
+  const turnCount = clamp(
+    toInt(rawConfig.turnCount ?? rawConfig.deckSize, DEFAULT_TURN_COUNT),
+    1,
+    30,
+  );
   return {
     playerCount: clamp(toInt(rawConfig.playerCount, DEFAULT_PLAYER_COUNT), PLAYER_COUNT_MIN, PLAYER_COUNT_MAX),
-    deckSize: clamp(toInt(rawConfig.deckSize, DEFAULT_DECK_SIZE), 1, 30),
+    turnCount,
+    deckSize: turnCount,
     seed: String(rawConfig.seed ?? DEFAULT_ROOM_CONFIG.seed).trim(),
   };
 }

@@ -177,9 +177,9 @@ function createThemeState(province) {
   };
 }
 
-export function createGameState({ playerCount = 5, deckSize = 9, seed, historyEnabled = false } = {}) {
+export function createGameState({ playerCount = 5, turnCount: configuredTurnCount = null, deckSize = 9, seed, historyEnabled = false } = {}) {
   const rng = makeRng(seed);
-  const turnCount = Math.max(1, Math.floor(Number(deckSize) || 9));
+  const turnCount = Math.max(1, Math.floor(Number(configuredTurnCount ?? deckSize) || 9));
   const players = [];
 
   for (let i = 0; i < playerCount; i++) {

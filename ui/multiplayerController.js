@@ -794,6 +794,7 @@ export class MultiplayerController {
     const seats = this.roomSnapshot.seats || [];
     const aiOpponents = this.roomSnapshot.aiOpponents || [];
     const config = this.roomSnapshot.config || {};
+    const turnCount = Number(config.turnCount || config.deckSize || 9);
     const controlledSeatId = this.getControlledSeatId();
     const previousCard = this.setupDialog.querySelector('.setup-card');
     const previousDialogScrollTop = this.setupDialog.scrollTop;
@@ -811,22 +812,22 @@ export class MultiplayerController {
         </div>
         ${this.lastError ? `<div class="multiplayer-banner error">${this.lastError}</div>` : ''}
         <div class="setup-field">
-          <label>Players</label>
+          <label>Dynasties</label>
           ${isHost ? `
             <select id="roomPlayerCount" class="room-config-source" aria-hidden="true" tabindex="-1">
-              ${[3, 4, 5].map((count) => `<option value="${count}" ${count === config.playerCount ? 'selected' : ''}>${count} players</option>`).join('')}
+              ${[3, 4, 5].map((count) => `<option value="${count}" ${count === config.playerCount ? 'selected' : ''}>${count} dynasties</option>`).join('')}
             </select>
-            ${renderRoomChoiceButtons('roomPlayerCount', [3, 4, 5].map((count) => ({ value: count, label: `${count} players` })), config.playerCount)}
-          ` : `<div class="setup-hint">${config.playerCount} players</div>`}
+            ${renderRoomChoiceButtons('roomPlayerCount', [3, 4, 5].map((count) => ({ value: count, label: `${count} dynasties` })), config.playerCount)}
+          ` : `<div class="setup-hint">${config.playerCount} dynasties</div>`}
         </div>
         <div class="setup-field">
           <label>Game Length</label>
           ${isHost ? `
-            <select id="roomDeckSize" class="room-config-source" aria-hidden="true" tabindex="-1">
-              ${[6, 9, 12].map((count) => `<option value="${count}" ${count === config.deckSize ? 'selected' : ''}>${count} turns</option>`).join('')}
+            <select id="roomTurnCount" class="room-config-source" aria-hidden="true" tabindex="-1">
+              ${[6, 9, 12].map((count) => `<option value="${count}" ${count === turnCount ? 'selected' : ''}>${count} turns</option>`).join('')}
             </select>
-            ${renderRoomChoiceButtons('roomDeckSize', [6, 9, 12].map((count) => ({ value: count, label: `${count} turns` })), config.deckSize)}
-          ` : `<div class="setup-hint">${config.deckSize} turns</div>`}
+            ${renderRoomChoiceButtons('roomTurnCount', [6, 9, 12].map((count) => ({ value: count, label: `${count} turns` })), turnCount)}
+          ` : `<div class="setup-hint">${turnCount} turns</div>`}
         </div>
         <div class="setup-field">
           <label>Seed</label>
@@ -933,10 +934,10 @@ export class MultiplayerController {
 
     this.setupDialog.querySelector('#btnStartRoom')?.addEventListener('click', () => {
       const playerCount = Number(this.setupDialog.querySelector('#roomPlayerCount')?.value || config.playerCount || 5);
-      const deckSize = Number(this.setupDialog.querySelector('#roomDeckSize')?.value || config.deckSize || 9);
+      const turnCount = Number(this.setupDialog.querySelector('#roomTurnCount')?.value || config.turnCount || config.deckSize || 9);
       const seed = this.setupDialog.querySelector('#roomSeedInput')?.value?.trim() || '';
       this.send('set_room_config', {
-        config: { playerCount, deckSize, seed },
+        config: { playerCount, turnCount, deckSize: turnCount, seed },
       });
       this.send('start_game');
     });

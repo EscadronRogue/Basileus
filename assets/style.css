@@ -3081,7 +3081,7 @@ body::before {
   border: 1px solid var(--parch-3);
   border-radius: var(--r-lg);
   padding: var(--sp-5);
-  width: 520px;
+  width: 560px;
   max-width: 90vw;
   max-height: calc(var(--game-vh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
@@ -3128,6 +3128,10 @@ body::before {
 }
 
 .setup-field { margin-bottom: var(--sp-3); }
+
+.setup-mode-field {
+  margin: var(--sp-4) 0;
+}
 
 .setup-field label {
   display: block;
@@ -3176,6 +3180,41 @@ body::before {
   border: 1px solid var(--parch-2);
   border-radius: var(--r-sm);
   background: rgba(255,252,240,0.55);
+}
+.setup-advanced-card {
+  margin: 0 0 var(--sp-3);
+  border: 1px solid rgba(168,116,32,0.22);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.38);
+}
+.setup-advanced-card > summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 36px;
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold-1);
+}
+.setup-advanced-card > summary::-webkit-details-marker { display: none; }
+.setup-advanced-card > summary::after {
+  content: '+';
+  color: var(--umber-2);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1;
+}
+.setup-advanced-card[open] > summary::after { content: '-'; }
+.setup-advanced-card > .setup-field {
+  padding: 0 12px 12px;
+  margin-bottom: 0;
 }
 .rules-card > summary {
   list-style: none;
@@ -3239,6 +3278,11 @@ body::before {
   gap: 7px;
 }
 
+.setup-mode-field .setup-choice-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .setup-choice-btn,
 .setup-ai-opponent-btn {
   min-height: 32px;
@@ -3257,6 +3301,10 @@ body::before {
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: inset 0 0 0 1px rgba(240,200,90,0.38);
+}
+.setup-mode-field .setup-choice-btn {
+  min-height: 52px;
+  font-size: 12px;
 }
 .setup-choice-btn:hover,
 .setup-ai-opponent-btn:hover { filter: brightness(1.04); }
@@ -3338,6 +3386,12 @@ body::before {
   flex-direction: column;
   gap: var(--sp-2);
   margin-top: var(--sp-5);
+}
+.setup-actions[hidden],
+#singlePlayerFields[hidden],
+#singlePlayerAdvancedFields[hidden],
+#multiplayerFields[hidden] {
+  display: none !important;
 }
 .setup-actions .btn-primary,
 .setup-actions .btn-secondary {

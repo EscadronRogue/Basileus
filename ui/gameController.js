@@ -32,7 +32,8 @@ export class GameController {
   constructor(config = {}) {
     this.config = {
       playerCount: config.playerCount || 5,
-      deckSize: config.deckSize || 9,
+      turnCount: config.turnCount || config.deckSize || 9,
+      deckSize: config.turnCount || config.deckSize || 9,
       seed: config.seed || Date.now(),
       historyEnabled: config.historyEnabled !== false,
       mode: config.mode || 'hotseat',

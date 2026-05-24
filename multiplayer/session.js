@@ -386,6 +386,7 @@ export class MultiplayerRoom {
     const seed = resolveConfiguredSeed(this.config.seed);
     this.gameState = createGameState({
       playerCount: this.config.playerCount,
+      turnCount: this.config.turnCount,
       deckSize: this.config.deckSize,
       seed,
       historyEnabled: true,
@@ -881,6 +882,7 @@ export function createRoomFromSave({
   const config = normalizeRoomConfig({
     ...(savedRoom.config || {}),
     playerCount: gameState.players?.length || savedRoom.config?.playerCount,
+    turnCount: gameState.maxRounds || savedRoom.config?.turnCount || savedRoom.config?.deckSize,
     deckSize: gameState.maxRounds || savedRoom.config?.deckSize,
   });
   const room = new MultiplayerRoom({

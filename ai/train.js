@@ -1341,7 +1341,7 @@ function createCliProgressLogger() {
   return (event) => {
     if (event.type === 'training-start') {
       console.log(`[train ${seconds(event.elapsedMs)}] Starting ${event.generations} generations x ${event.population} profiles x ${event.screeningGames} screening games, then ${event.finalists} finalists x ${event.finalistGames} games (${event.totalGames} games estimated), seed ${event.seed}. Workers ${event.workers}.`);
-      console.log(`[train ${seconds(event.elapsedMs)}] Players ${event.playerCounts.join('/')}, decks ${event.deckSizes.join('/')}. Saving up to ${event.saveChampions} champions.`);
+      console.log(`[train ${seconds(event.elapsedMs)}] Players ${event.playerCounts.join('/')}, turns ${event.deckSizes.join('/')}. Saving up to ${event.saveChampions} champions.`);
       console.log(`[train ${seconds(event.elapsedMs)}] Opponent mix: ${event.opponentMix}; expected exposure ${formatExposure(event.opponentSummary?.exposure)}.`);
     } else if (event.type === 'generation-start') {
       console.log(`[train ${seconds(event.elapsedMs)}] Generation ${event.generation}/${event.generations} started.`);
@@ -1366,7 +1366,7 @@ function createCliProgressLogger() {
 function formatTrainingReport(result) {
   const lines = [
     `AI training: ${result.options.generations} generations, ${result.options.population} profiles, ${result.options.screeningGames} screening games/profile, ${result.options.finalistGames} finalist games/profile`,
-    `Players: ${result.options.playerCounts.join(', ')}; decks: ${result.options.deckSizes.join(', ')}; random seed ${result.options.seed}`,
+    `Players: ${result.options.playerCounts.join(', ')}; turns: ${result.options.deckSizes.join(', ')}; random seed ${result.options.seed}`,
     `Opponent mix: ${result.options.opponentMix}; exposure ${formatExposure(result.options.opponentSummary?.exposure)}`,
     `Best: ${result.best.name}, objective ${result.best.metrics.objective}, win ${Math.round(result.best.metrics.winRate * 100)}%, rank ${result.best.metrics.averageRank}, score margin ${result.best.metrics.averagePointMargin}, fall ${Math.round(result.best.metrics.fallRate * 100)}%, credible coups ${Math.round(result.best.metrics.credibleSelfClaimRate * 100)}%, coup wins ${Math.round(result.best.metrics.selfClaimWinRate * 100)}%`,
     'Champion leaderboard:',

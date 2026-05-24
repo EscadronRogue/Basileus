@@ -12,10 +12,11 @@ const btnCreateRoom = document.getElementById('btnCreateRoom');
 const btnJoinRoom = document.getElementById('btnJoinRoom');
 const defaultSetupActions = document.getElementById('defaultSetupActions');
 const setupPlayers = document.getElementById('setupPlayers');
-const setupDeck = document.getElementById('setupDeck');
+const setupTurns = document.getElementById('setupTurns');
 const setupMode = document.getElementById('setupMode');
 const setupSeat = document.getElementById('setupSeat');
 const singlePlayerFields = document.getElementById('singlePlayerFields');
+const singlePlayerAdvancedFields = document.getElementById('singlePlayerAdvancedFields');
 const multiplayerFields = document.getElementById('multiplayerFields');
 const setupPlayerName = document.getElementById('setupPlayerName');
 const setupRoomCode = document.getElementById('setupRoomCode');
@@ -81,15 +82,20 @@ function renderSetupChoiceControl(select) {
     row.setAttribute('aria-label', select.closest('.setup-field')?.querySelector('label')?.textContent?.trim() || select.id);
     select.insertAdjacentElement('afterend', row);
   }
-  row.innerHTML = [...select.options].map((option) => `
+  row.innerHTML = [...select.options].map((option) => {
+    const seatStyle = select.id === 'setupSeat' && option.value !== SETUP_RANDOM_VALUE
+      ? ` style="${seatCartoucheStyle(option.value)}"`
+      : '';
+    return `
     <button type="button"
       class="setup-choice-btn${option.selected ? ' selected' : ''}"
       role="radio"
       aria-checked="${option.selected ? 'true' : 'false'}"
-      data-setup-choice-value="${escapeHtml(option.value)}">
+      data-setup-choice-value="${escapeHtml(option.value)}"${seatStyle}>
       ${escapeHtml(option.textContent.trim())}
     </button>
-  `).join('');
+  `;
+  }).join('');
   row.querySelectorAll('[data-setup-choice-value]').forEach((button) => {
     button.addEventListener('click', () => {
       if (select.value === button.dataset.setupChoiceValue) return;
@@ -101,7 +107,7 @@ function renderSetupChoiceControl(select) {
 }
 
 function renderSetupChoiceControls() {
-  [setupPlayers, setupDeck, setupMode, setupSeat].forEach(renderSetupChoiceControl);
+  [setupMode, setupPlayers, setupTurns, setupSeat].forEach(renderSetupChoiceControl);
 }
 
 function getNonRandomOptionValues(select) {
@@ -136,16 +142,14 @@ function clampSeatIndex(rawSeatValue, playerCount) {
 
 function refreshSeatOptions() {
   const playerCount = getConfiguredPlayerCountForUi();
-  const currentValue = setupSeat.value || SETUP_RANDOM_VALUE;
-  const clampedSeat = currentValue === SETUP_RANDOM_VALUE
-    ? SETUP_RANDOM_VALUE
-    : String(Math.min(Math.max(Number.parseInt(currentValue, 10) || 1, 1), playerCount));
+  const currentValue = setupSeat.value || '1';
+  const clampedSeat = String(Math.min(Math.max(Number.parseInt(currentValue, 10) || 1, 1), playerCount));
 
   setupSeat.innerHTML = [
-    `<option value="${SETUP_RANDOM_VALUE}" ${clampedSeat === SETUP_RANDOM_VALUE ? 'selected' : ''}>Random Valid Seat</option>`,
     ...Array.from({ length: playerCount }, (_, index) => {
       const seat = index + 1;
-      return `<option value="${seat}" ${String(seat) === clampedSeat ? 'selected' : ''}>Seat ${seat}</option>`;
+      const dynasty = getDynastyProfileForSeat(index).name;
+      return `<option value="${seat}" ${String(seat) === clampedSeat ? 'selected' : ''}>${dynasty} - Seat ${seat}</option>`;
     }),
   ].join('');
   renderSetupChoiceControl(setupSeat);
@@ -277,6 +281,7 @@ function renderAiRoster() {
 function refreshModeVisibility() {
   const mode = setupMode.value;
   singlePlayerFields.hidden = mode !== 'single';
+  if (singlePlayerAdvancedFields) singlePlayerAdvancedFields.hidden = mode !== 'single';
   multiplayerFields.hidden = mode !== 'multiplayer';
   if (defaultSetupActions) defaultSetupActions.hidden = mode === 'multiplayer';
   setSetupError('');
@@ -338,8 +343,8 @@ async function launchMultiplayerFlow(intent) {
     resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '5'),
     10,
   );
-  const deckSize = Number.parseInt(
-    resolveRandomValue(setupDeck.value, getNonRandomOptionValues(setupDeck), setupRng, '9'),
+  const turnCount = Number.parseInt(
+    resolveRandomValue(setupTurns.value, getNonRandomOptionValues(setupTurns), setupRng, '9'),
     10,
   );
 
@@ -355,7 +360,8 @@ async function launchMultiplayerFlow(intent) {
       roomCode: intent === 'join' ? setupRoomCode.value.trim() : '',
       config: {
         playerCount,
-        deckSize,
+        turnCount,
+        deckSize: turnCount,
         seed: seedInput,
       },
       saveGame,
@@ -388,8 +394,8 @@ btnStart.addEventListener('click', async () => {
     resolveRandomValue(setupPlayers.value, getNonRandomOptionValues(setupPlayers), setupRng, '5'),
     10,
   );
-  const deckSize = Number.parseInt(
-    resolveRandomValue(setupDeck.value, getNonRandomOptionValues(setupDeck), setupRng, '9'),
+  const turnCount = Number.parseInt(
+    resolveRandomValue(setupTurns.value, getNonRandomOptionValues(setupTurns), setupRng, '9'),
     10,
   );
   const mode = resolveRandomValue(setupMode.value, modeChoices, setupRng, 'single');
@@ -417,7 +423,8 @@ btnStart.addEventListener('click', async () => {
 
     const game = new GameController({
       playerCount,
-      deckSize,
+      turnCount,
+      deckSize: turnCount,
       seed,
       mode,
       aiOpponentSelections,
@@ -451,7 +458,7 @@ setupPlayers.addEventListener('change', () => {
   refreshSeatOptions();
   renderAiRoster();
 });
-setupDeck.addEventListener('change', () => renderSetupChoiceControl(setupDeck));
+setupTurns.addEventListener('change', () => renderSetupChoiceControl(setupTurns));
 setupMode.addEventListener('change', () => {
   renderSetupChoiceControl(setupMode);
   refreshModeVisibility();

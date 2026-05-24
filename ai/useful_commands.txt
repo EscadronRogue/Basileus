@@ -54,7 +54,7 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   Default: `4`
 
 - `--deck N`  
-  Invasion deck size / game length.
+  Game length in turns.
   Default: `9`
 
 - `--seed N`  

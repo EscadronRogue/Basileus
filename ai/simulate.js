@@ -575,7 +575,7 @@ function parseArgs(argv) {
 
 function formatReport(result) {
   const lines = [
-    `AI simulation: ${result.games} games, ${result.options.playerCount} players, deck ${result.options.deckSize}, seed ${result.options.seed}`,
+    `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} turns, seed ${result.options.seed}`,
     `Completion: ${result.completed}/${result.games} complete, stuck ${result.stuck}, fall rate ${Math.round(result.fallRate * 100)}%, avg rounds ${result.averageRounds}`,
     `War: victory ${Math.round(result.wars.victoryRate * 100)}%, stalemate ${Math.round(result.wars.stalemateRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, avg margin ${result.wars.averageMargin}`,
     `Coup: throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, self-claims ${Math.round(result.coups.selfClaimRate * 100)}%, incumbent backing ${Math.round(result.coups.incumbentBackRate * 100)}%`,

@@ -94,7 +94,7 @@ Render notes:
 ├── main.js                 # Front-end bootstrap (setup dialog, room/lobby flow)
 ├── ai/                     # Strategic AI planner, Greek names, and legal action generation
 ├── assets/                 # SVG map, hitzones, stylesheets
-├── data/                   # Static game data (provinces, titles, invasion decks)
+├── data/                   # Static game data (provinces, titles, invasions)
 ├── engine/                 # Pure rules engine (state, actions, combat, history)
 ├── multiplayer/            # Node WebSocket server + protocol verifier
 ├── render/                 # SVG map renderer
@@ -126,7 +126,7 @@ Simulation and training tools live beside the runtime AI. `ai/simulate.js` can r
 
 Training defaults to the `robust` opponent mix: roughly one third candidate self-play, a saved tuned champion pool when available, mostly strong built-in styles, and only a small random/copycat oddball share. Use `--opponent-mix beginner` to preserve the original easier mix: 25% self-play plus an even split across strategic, defender, usurper, profiteer, random, and copycat.
 
-Training always creates a fresh random seed. By default it trains on 5-player, 9-invasion games. Pass comma lists or ranges to train across varied setups in one run, such as `--players 3,4,5 --deck 6,9,12` or `--players 3-5`.
+Training always creates a fresh random seed. By default it trains on 5-player, 9-turn games. Pass comma lists or ranges to train across varied setups in one run, such as `--players 3,4,5 --deck 6,9,12` or `--players 3-5`.
 
 Training uses staged evaluation by default: broad candidate screening uses fewer games, then the strongest distinct finalists are re-tested with the full `--games` budget. The CLI trainer also uses worker threads by default; pass `--workers 1` for serial evaluation. The trainer prints progress while it runs: generation starts, candidate scores, finalist scores, generation winners, final champion leaderboard, and the saved opponents. Use `--quiet` to suppress the progress log, or `--json` for machine-readable output without progress lines.
 
