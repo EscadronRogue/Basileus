@@ -72,6 +72,33 @@ export function pickGreekFirstName(seed = undefined) {
   return GREEK_FIRST_NAMES[Math.floor(roll * GREEK_FIRST_NAMES.length)] || 'Konstantinos';
 }
 
+function normalizedFirstName(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+export function pickUniqueGreekFirstName(seed = undefined, usedNames = []) {
+  const used = new Set(
+    (Array.isArray(usedNames) ? usedNames : [usedNames])
+      .map(normalizedFirstName)
+      .filter(Boolean),
+  );
+  const roll = seed == null ? Math.random() : seededUnit(seed);
+  const start = Math.floor(roll * GREEK_FIRST_NAMES.length);
+  for (let offset = 0; offset < GREEK_FIRST_NAMES.length; offset += 1) {
+    const name = GREEK_FIRST_NAMES[(start + offset) % GREEK_FIRST_NAMES.length] || 'Konstantinos';
+    if (!used.has(normalizedFirstName(name))) return name;
+  }
+
+  const baseName = GREEK_FIRST_NAMES[start] || 'Konstantinos';
+  let suffix = 2;
+  let candidate = `${baseName} ${suffix}`;
+  while (used.has(normalizedFirstName(candidate))) {
+    suffix += 1;
+    candidate = `${baseName} ${suffix}`;
+  }
+  return candidate;
+}
+
 export function slugifyGreekFirstName(name) {
   return String(name || 'ai')
     .normalize('NFKD')

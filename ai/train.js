@@ -9,7 +9,7 @@ import { makeRng } from '../engine/state.js';
 import { simulateGame } from './simulate.js';
 import { DEFAULT_STRATEGY_WEIGHTS } from './strategy.js';
 import { POLICY_WEIGHT_PRESETS } from './policies.js';
-import { pickGreekFirstName, slugifyGreekFirstName } from './greekNames.js';
+import { pickUniqueGreekFirstName, slugifyGreekFirstName } from './greekNames.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 
 const DEFAULT_TRAINING_LEAGUE = Object.freeze([
@@ -759,7 +759,11 @@ function trainingDescription(options) {
 }
 
 function buildSavedOpponent(result, champion, index, existing) {
-  const firstName = pickGreekFirstName(`${result.options.seed}:${Date.now()}:${index}:${champion.metrics.objective}`);
+  const usedNames = existing.map((entry) => entry.firstName || entry.name);
+  const firstName = pickUniqueGreekFirstName(
+    `${result.options.seed}:${Date.now()}:${index}:${champion.metrics.objective}`,
+    usedNames,
+  );
   const entry = {
     id: uniqueTunedId(firstName, existing),
     firstName,

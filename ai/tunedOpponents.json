@@ -727,8 +727,8 @@
       }
     },
     {
-      "id": "tuned-niketas-2",
-      "firstName": "Niketas",
+      "id": "tuned-nikephoros",
+      "firstName": "Nikephoros",
       "label": "Tuned AI 5",
       "description": "Tuned with the Robust opponent mix.",
       "policy": {
@@ -1632,8 +1632,8 @@
       }
     },
     {
-      "id": "tuned-leontios-2",
-      "firstName": "Leontios",
+      "id": "tuned-achilleus",
+      "firstName": "Achilleus",
       "label": "Tuned AI 5",
       "description": "Tuned with the Robust opponent mix.",
       "policy": {

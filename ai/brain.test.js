@@ -27,7 +27,7 @@ import { getAiMemory, getRelationship } from './memory.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 import { simulateGames } from './simulate.js';
 import { scoreAggregateTrainingShape, trainStrategyWeights } from './train.js';
-import { GREEK_FIRST_NAMES } from './greekNames.js';
+import { GREEK_FIRST_NAMES, pickUniqueGreekFirstName } from './greekNames.js';
 
 function makeState() {
   const state = createGameState({ playerCount: 4, deckSize: 2, seed: 13, historyEnabled: true });
@@ -717,6 +717,15 @@ test('AI training can save Greek-named tuned champions', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('Greek AI name picker avoids already saved names', () => {
+  const reservedNames = GREEK_FIRST_NAMES.filter((name) => name !== 'Nikephoros');
+  assert.equal(pickUniqueGreekFirstName('reserved-test', reservedNames), 'Nikephoros');
+
+  const fallbackName = pickUniqueGreekFirstName('full-roster-test', GREEK_FIRST_NAMES);
+  assert.equal(GREEK_FIRST_NAMES.includes(fallbackName), false);
+  assert.match(fallbackName, / \d+$/);
 });
 
 test('simultaneous AI planning ignores already submitted human deployment orders', () => {
