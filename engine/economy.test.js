@@ -134,14 +134,23 @@ test('invasion templates carry relative difficulty bands', () => {
   const turksTemplate = INVASIONS.find((entry) => entry.id === 'turks');
   const state = makeState();
   const empireStrength = getEmpireProvinceStrength(state);
+  const expectedDifficulties = {
+    emirate: INVASION_DIFFICULTIES.MEDIUM,
+    kievan_rus: INVASION_DIFFICULTIES.EASY,
+    normans: INVASION_DIFFICULTIES.MEDIUM,
+    venetians: INVASION_DIFFICULTIES.MEDIUM,
+    bulgars: INVASION_DIFFICULTIES.MEDIUM,
+    serbs: INVASION_DIFFICULTIES.EASY,
+    hungarians: INVASION_DIFFICULTIES.MEDIUM,
+    turks: INVASION_DIFFICULTIES.HARD,
+    caliphate: INVASION_DIFFICULTIES.HARD,
+  };
 
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.EASY], [0.3, 0.5]);
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.MEDIUM], [0.5, 0.7]);
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD], [0.7, 0.9]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.EASY], [0.5, 0.8]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.MEDIUM], [0.6, 0.9]);
+  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD], [0.7, 1]);
   for (const template of INVASIONS) {
-    const expectedDifficulty = template.id === 'turks' || template.id === 'caliphate'
-      ? INVASION_DIFFICULTIES.HARD
-      : INVASION_DIFFICULTIES.MEDIUM;
+    const expectedDifficulty = expectedDifficulties[template.id];
     assert.equal(template.difficulty, expectedDifficulty, `${template.id} should use the configured difficulty`);
 
     const [min, max] = getInvasionStrengthBounds(template, state);
@@ -157,9 +166,10 @@ test('invasion templates carry relative difficulty bands', () => {
 
   state.themes.OPS.occupied = true;
   assert.equal(getEmpireProvinceStrength(state), empireStrength - 1);
+  const [hardMinRatio, hardMaxRatio] = INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD];
   assert.deepEqual(
     getInvasionStrengthBounds(turksTemplate, state),
-    [Math.ceil((empireStrength - 1) * 0.7), Math.floor((empireStrength - 1) * 0.9)],
+    [Math.ceil((empireStrength - 1) * hardMinRatio), Math.floor((empireStrength - 1) * hardMaxRatio)],
   );
 
   const drawState = makeState();
