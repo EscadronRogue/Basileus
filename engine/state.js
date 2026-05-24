@@ -170,6 +170,7 @@ function createThemeState(province) {
     cy: province.cy,
     owner: null,
     suspendedOwner: null,
+    privateEstatePurchasedRound: null,
     occupied: Boolean(province.startOccupied),
     strategos: null,
     bishop: null,

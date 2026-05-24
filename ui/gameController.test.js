@@ -218,6 +218,27 @@ test('court estate revocations show owner color without the old separator', () =
   assert.equal(container.innerHTML.includes('Estate â€”'), false);
 });
 
+test('court panel disables recently bought estate revocations', () => {
+  const state = makeState();
+  state.round = 2;
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  state.themes.OPS.owner = 2;
+  state.themes.OPS.privateEstatePurchasedRound = 1;
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /bought last turn and cannot be revoked until next turn/);
+});
+
 test('court panel lets a player pass one office while keeping other offices available', () => {
   const state = makeState();
   state.phase = 'court';

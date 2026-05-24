@@ -32,6 +32,7 @@ export const COURT_POWER_APPOINTMENT_LIMIT = 2;
 export const COURT_POWER_REVOCATION_LIMIT = 2;
 export const COURT_POWER_ACTION_LIMIT = COURT_POWER_APPOINTMENT_LIMIT;
 export const BASILEUS_COURT_REVOCATION_LIMIT = 4;
+export const PRIVATE_ESTATE_REVOCATION_COMPENSATION = 1;
 
 export function getCourtPowerAppointmentLimit(powerKey) {
   return powerKey === 'BASILEUS' ? 0 : COURT_POWER_APPOINTMENT_LIMIT;
@@ -380,6 +381,22 @@ export function getLandAuction(state, themeId) {
   return ensureLandAuctions(state)[themeId] || null;
 }
 
+function normalizeRound(value) {
+  const round = Number(value);
+  return Number.isInteger(round) && round >= 0 ? round : null;
+}
+
+export function getPrivateEstatePurchasedRound(theme) {
+  return normalizeRound(theme?.privateEstatePurchasedRound);
+}
+
+export function wasPrivateEstateBoughtLastTurn(state, themeOrId) {
+  const theme = typeof themeOrId === 'string' ? state?.themes?.[themeOrId] : themeOrId;
+  const purchasedRound = getPrivateEstatePurchasedRound(theme);
+  const currentRound = normalizeRound(state?.round);
+  return purchasedRound != null && currentRound != null && currentRound - purchasedRound === 1;
+}
+
 export function getMinimumLandBid(state, themeId) {
   const theme = state.themes[themeId];
   return getThemeLandPrice(theme);
@@ -495,6 +512,7 @@ export function settleLandAuctions(state) {
       continue;
     }
     theme.owner = winner.id;
+    theme.privateEstatePurchasedRound = state.round;
     winner.gold -= winningBid;
     state.log.push({
       type: 'buy',
@@ -516,6 +534,7 @@ export function settleLandAuctions(state) {
         themeId,
         themeName: themeName(state, themeId),
         cost: winningBid,
+        purchasedRound: getPrivateEstatePurchasedRound(theme),
         bids: result.bids,
         tieBreak: result.tieBreak,
       },
@@ -648,9 +667,41 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
 }
 
 export function revokeTheme(state, themeId, revokerId = state.basileusId) {
+  const check = canRevokeTheme(state, themeId, revokerId);
+  if (!check.ok) return check;
+  const { theme, targetPlayerId } = check;
+  const targetPlayer = getPlayer(state, targetPlayerId);
+  const compensation = PRIVATE_ESTATE_REVOCATION_COMPENSATION;
+
+  if (targetPlayer && compensation > 0) targetPlayer.gold += compensation;
+  theme.owner = null;
+  theme.privateEstatePurchasedRound = null;
+  recordRevocation(state, revokerId, targetPlayerId, [getThemeOwnershipSlotKey(themeId)], 'BASILEUS');
+  state.log.push({ type: 'revoke_theme', theme: themeId, round: state.round, revokerId, compensation });
+  recordHistoryEvent(state, {
+    category: 'court',
+    type: 'revoke_theme',
+    actorId: revokerId,
+    summary: `${playerName(state, revokerId)} strips ${themeName(state, themeId)} from private ownership and pays ${playerName(state, targetPlayerId)} ${formatGold(compensation)}.`,
+    details: {
+      themeId,
+      themeName: themeName(state, themeId),
+      revokedPlayerId: targetPlayerId,
+      revokedPlayerIds: [targetPlayerId],
+      revokedPlayerName: playerName(state, targetPlayerId),
+      compensation,
+    },
+  });
+  return { ok: true, compensation };
+}
+
+export function canRevokeTheme(state, themeId, revokerId = state.basileusId) {
   const theme = state.themes[themeId];
   if (!theme || !Number.isInteger(theme.owner)) return fail('No private estate to revoke.');
   if (revokerId !== state.basileusId) return fail('Only the Basileus can revoke private estates.');
+  if (wasPrivateEstateBoughtLastTurn(state, theme)) {
+    return fail(`${themeName(state, themeId)} was bought last turn and cannot be revoked until next turn.`);
+  }
   const actionCheck = checkCourtActionAvailable(state, revokerId, 'BASILEUS', 'revoke');
   if (!actionCheck.ok) return actionCheck;
   const sameTurn = checkRevocationCurrentTurnAppointment(state, `theme:${themeId}`);
@@ -658,24 +709,7 @@ export function revokeTheme(state, themeId, revokerId = state.basileusId) {
   const targetPlayerId = theme.owner;
   const targetCheck = checkRevocationTargetCooldown(state, revokerId, targetPlayerId);
   if (!targetCheck.ok) return targetCheck;
-
-  theme.owner = null;
-  recordRevocation(state, revokerId, targetPlayerId, [getThemeOwnershipSlotKey(themeId)], 'BASILEUS');
-  state.log.push({ type: 'revoke_theme', theme: themeId, round: state.round, revokerId });
-  recordHistoryEvent(state, {
-    category: 'court',
-    type: 'revoke_theme',
-    actorId: revokerId,
-    summary: `${playerName(state, revokerId)} strips ${themeName(state, themeId)} from private ownership.`,
-    details: {
-      themeId,
-      themeName: themeName(state, themeId),
-      revokedPlayerId: targetPlayerId,
-      revokedPlayerIds: [targetPlayerId],
-      revokedPlayerName: playerName(state, targetPlayerId),
-    },
-  });
-  return { ok: true };
+  return { ok: true, theme, targetPlayerId };
 }
 
 function unique(values) {
@@ -693,7 +727,7 @@ function hasBasileusRevocationTarget(state) {
       || (
         Number.isInteger(theme.owner)
         && !theme.occupied
-        && checkRevocationCurrentTurnAppointment(state, `theme:${theme.id}`).ok
+        && canRevokeTheme(state, theme.id, state.basileusId).ok
       )
     )
   ));

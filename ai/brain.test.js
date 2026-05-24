@@ -502,6 +502,21 @@ test('AI court legal actions use the shared two-action court power limit', () =>
   assert.equal(revocationModeActions.some((action) => action.payload?.action === 'appoint-strategos'), true);
 });
 
+test('AI legal court actions exclude private estates bought last turn', () => {
+  const state = makeState();
+  state.round = 2;
+  state.themes.OPS.owner = 2;
+  state.themes.OPS.privateEstatePurchasedRound = 1;
+  state.themes.KAP.strategos = 1;
+  state.phase = 'income';
+  phaseCourt(state);
+
+  const actions = listLegalCourtActions(state, state.basileusId);
+
+  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'minor:KAP:strategos'), true);
+  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'theme:OPS'), false);
+});
+
 test('AI court planner uses another appointment to unlock future self-appointments', () => {
   const state = makeState();
   state.players[1].appointmentCooldown = { selfLocked: true, lastAppointeeId: 1 };

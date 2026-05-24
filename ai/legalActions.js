@@ -7,6 +7,7 @@ import {
 } from '../engine/commands.js';
 import {
   canBuyTheme,
+  canRevokeTheme,
   getAvailableLandBidGold,
   getAvailableCourtPowers,
   getMinimumLandBid,
@@ -178,7 +179,13 @@ function appendRevocationActions(actions, state, playerId) {
     if (theme.bishop != null && player.majorTitles.includes('PATRIARCH')) {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `minor:${theme.id}:bishop` }, 'revoke bishop');
     }
-    if (playerId === state.basileusId && Number.isInteger(theme.owner) && !theme.occupied && theme.id !== 'CPL') {
+    if (
+      playerId === state.basileusId
+      && Number.isInteger(theme.owner)
+      && !theme.occupied
+      && theme.id !== 'CPL'
+      && canRevokeTheme(state, theme.id, playerId).ok
+    ) {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `theme:${theme.id}` }, 'revoke estate');
     }
   }

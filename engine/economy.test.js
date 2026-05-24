@@ -466,23 +466,58 @@ test('private estate revocation preserves seated offices and notifies the estate
   state.themes.OPS.owner = 2;
   state.themes.OPS.strategos = 3;
   state.themes.OPS.bishop = 1;
+  getPlayer(state, 2).gold = 4;
   enterCourt(state);
 
   const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
 
   assert.equal(result.ok, true);
   assert.equal(state.themes.OPS.owner, null);
+  assert.equal(state.themes.OPS.privateEstatePurchasedRound, null);
   assert.equal(state.themes.OPS.strategos, 3);
   assert.equal(state.themes.OPS.bishop, 1);
+  assert.equal(getPlayer(state, 2).gold, 5);
   assert.equal(state.courtActions.revokedThisTurn['theme:OPS'], true);
   assert.equal(state.courtActions.revokedThisTurn['minor:OPS:strategos'], undefined);
   assert.equal(state.courtActions.revokedThisTurn['minor:OPS:bishop'], undefined);
+  assert.equal(state.history.find((event) => event.type === 'revoke_theme')?.details?.compensation, 1);
 
   const ownerNotices = buildPrivateNotifications(state, 2).notifications;
   assert.equal(ownerNotices.some((notice) => notice.kind === 'revocation' && /private ownership/.test(notice.body)), true);
   assert.equal(ownerNotices.find((notice) => notice.kind === 'revocation')?.tone, 'negative');
   assert.equal(buildPrivateNotifications(state, 3).notifications.some((notice) => notice.kind === 'revocation'), false);
   assert.equal(buildPrivateNotifications(state, 1).notifications.some((notice) => notice.kind === 'revocation'), false);
+});
+
+test('private estates bought last turn cannot be revoked until the next turn', () => {
+  const state = makeState();
+  state.round = 1;
+  state.phase = 'estates';
+  getPlayer(state, 2).gold = 5;
+
+  const bid = applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 2 });
+  assert.equal(bid.ok, true);
+  for (const player of state.players) confirmEstates(state, player.id);
+  assert.equal(state.phase, 'deployment');
+  assert.equal(state.themes.OPS.owner, 2);
+  assert.equal(state.themes.OPS.privateEstatePurchasedRound, 1);
+  assert.equal(getPlayer(state, 2).gold, 3);
+
+  state.round = 2;
+  state.themes.KAP.strategos = 1;
+  enterCourt(state);
+  const blocked = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason, /bought last turn/);
+  assert.equal(state.themes.OPS.owner, 2);
+  assert.equal(getPlayer(state, 2).gold, 3);
+
+  state.round = 3;
+  enterCourt(state);
+  const allowed = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+  assert.equal(allowed.ok, true);
+  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(getPlayer(state, 2).gold, 4);
 });
 
 test('private notifications cover personal toned chronicle news without turn prompts', () => {
