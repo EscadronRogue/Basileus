@@ -14,6 +14,9 @@ import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_SVG } from './svgAssets.js';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MAP_WIDTH = 297;
 const MAP_HEIGHT = 210;
+const MAP_ASPECT = MAP_WIDTH / MAP_HEIGHT;
+const DEFAULT_MAP_MAX_WIDTH_PX = 1120;
+const MAP_MAX_WIDTH_CSS_VAR = '--map-max-width';
 const LEGACY_ORIGIN_WIDTH = 1150;
 const LEGACY_ORIGIN_HEIGHT = 560;
 
@@ -79,6 +82,8 @@ let viewportLayer = null;
 let latestMapState = null;
 let mapView = { zoom: 1, panX: 0, panY: 0 };
 let gestureState = createGestureState();
+let mapShellResizeObserver = null;
+let mapShellResizeHandler = null;
 
 export async function createMapSVG(containerId, options = {}) {
   const container = document.getElementById(containerId);
@@ -146,7 +151,9 @@ export async function createMapSVG(containerId, options = {}) {
   importProvinceShapes(svg, provinceLayer, regionStrokeLayer, threatLayer, hitboxLayer, hitzonesSvg);
   invasionOrigins = parseInvasionOrigins(originSvg);
 
-  container.replaceChildren(svg, createMapControls(svg));
+  const shell = createMapShell(svg, createMapControls(svg));
+  container.replaceChildren(shell);
+  installMapShellResize(container, shell);
   ensureSvgIconSymbols(svg);
   configureThreatHatchPatterns(svg);
 
@@ -158,6 +165,65 @@ export async function createMapSVG(containerId, options = {}) {
   });
 
   return svg;
+}
+
+function createMapShell(svg, controls) {
+  const shell = document.createElement('div');
+  shell.className = 'map-shell';
+  shell.append(svg, controls);
+  return shell;
+}
+
+function installMapShellResize(container, shell) {
+  mapShellResizeObserver?.disconnect?.();
+  mapShellResizeObserver = null;
+  if (mapShellResizeHandler && typeof window !== 'undefined') {
+    window.removeEventListener?.('resize', mapShellResizeHandler);
+  }
+  mapShellResizeHandler = null;
+
+  const sync = () => syncMapShellSize(container, shell);
+  if (typeof ResizeObserver !== 'undefined') {
+    mapShellResizeObserver = new ResizeObserver(sync);
+    mapShellResizeObserver.observe(container);
+  } else if (typeof window !== 'undefined') {
+    mapShellResizeHandler = sync;
+    window.addEventListener?.('resize', sync, { passive: true });
+  }
+
+  sync();
+  const requestFrame = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (callback) => setTimeout(callback, 0);
+  requestFrame(sync);
+}
+
+function syncMapShellSize(container, shell) {
+  if (!container || !shell) return;
+  const styles = typeof getComputedStyle === 'function' ? getComputedStyle(container) : null;
+  const paddingX = readCssPixels(styles?.paddingLeft) + readCssPixels(styles?.paddingRight);
+  const paddingY = readCssPixels(styles?.paddingTop) + readCssPixels(styles?.paddingBottom);
+  const availableWidth = Math.max(0, container.clientWidth - paddingX);
+  const availableHeight = Math.max(0, container.clientHeight - paddingY);
+  if (availableWidth <= 0 || availableHeight <= 0) return;
+
+  const maxWidth = readMapMaxWidth(shell);
+  const width = Math.max(1, Math.min(availableWidth, maxWidth, availableHeight * MAP_ASPECT));
+  const height = width / MAP_ASPECT;
+  shell.style.width = `${width.toFixed(2)}px`;
+  shell.style.height = `${height.toFixed(2)}px`;
+}
+
+function readMapMaxWidth(shell) {
+  if (typeof getComputedStyle !== 'function') return DEFAULT_MAP_MAX_WIDTH_PX;
+  const raw = getComputedStyle(shell).getPropertyValue(MAP_MAX_WIDTH_CSS_VAR);
+  const parsed = readCssPixels(raw);
+  return parsed > 0 ? parsed : DEFAULT_MAP_MAX_WIDTH_PX;
+}
+
+function readCssPixels(value) {
+  const parsed = Number.parseFloat(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function installMapInteractions(svg) {
