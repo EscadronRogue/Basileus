@@ -22,6 +22,7 @@ import {
   isNestedProvinceControlClick,
   renderGameActionPanel,
   renderNotificationsPanel,
+  renderPlayerTabs,
   renderPlayerTabFinance,
   renderScoringHtml,
 } from './sharedView.js';
@@ -662,6 +663,38 @@ test('player finance renders compact icon values without retired upkeep copy', (
 
   assert.match(html, /Reserve, income, and troops/);
   assert.doesNotMatch(html, new RegExp('upkeep|prof' + 'essional', 'i'));
+});
+
+test('player tabs separate status labels from the finance row without duplicate basileus badges', () => {
+  const state = makeState();
+  state.basileusId = 2;
+  const previousDocument = globalThis.document;
+  const tabBar = {
+    innerHTML: '',
+    querySelectorAll: () => [],
+  };
+  globalThis.document = {
+    getElementById: (id) => (id === 'playerTabBar' ? tabBar : null),
+  };
+
+  try {
+    renderPlayerTabs({
+      state,
+      activePlayerId: 0,
+      onSelectPlayer: () => {},
+      getBadges: (player) => (player.id === 0 ? ['<span class="tab-you">You</span>'] : []),
+    });
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
+  assert.match(tabBar.innerHTML, /class="tab-identity"/);
+  assert.match(tabBar.innerHTML, /class="tab-finance"/);
+  assert.match(tabBar.innerHTML, /class="tab-flags"><span class="tab-you">You<\/span><\/span>/);
+  assert.match(tabBar.innerHTML, /Komnenos/);
+  assert.match(tabBar.innerHTML, /Basileus/);
+  assert.doesNotMatch(tabBar.innerHTML, /title-token/);
 });
 
 test('final scoring view uses income-share scoring categories', () => {

@@ -17,7 +17,7 @@ import {
   renderTitleRedistributionPanel,
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
-import { getPlayerStyleAttr, renderPlayerRoleName, renderTitleBadge } from './labels.js';
+import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
 import { renderIconSet } from './icons.js';
 
 export function createDefaultUiState() {
@@ -444,9 +444,6 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
     const economy = getPlayerTabEconomy(player, administration, state);
     const badges = typeof getBadges === 'function' ? getBadges(player) : [];
     const badgeHtml = badges.filter(Boolean).join('');
-    const basileusBadge = player.id === state.basileusId
-      ? renderTitleBadge(state, 'BASILEUS', { holderId: player.id, compact: true })
-      : '';
     const roleKey = getPlayerPrimaryRoleKey(state, player.id);
     // Show the primary office in italic. If a transient state has no role,
     // keep the row's vertical rhythm with an empty role line.
@@ -462,11 +459,13 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
         aria-pressed="${player.id === activePlayerId ? 'true' : 'false'}"
         style="${getPlayerStyleAttr(state, player.id)}">
         <span class="tab-body">
-          <span class="tab-name">${player.dynasty}</span>
-          ${roleHtml}
+          <span class="tab-identity">
+            <span class="tab-name">${escapeHtml(player.dynasty)}</span>
+            ${roleHtml}
+          </span>
           ${renderPlayerTabFinance(economy)}
+          <span class="tab-flags">${badgeHtml}</span>
         </span>
-        <span class="tab-flags">${badgeHtml}${basileusBadge}</span>
       </button>
     `;
   }).join('');
