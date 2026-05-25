@@ -260,16 +260,34 @@ body::before {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  flex-wrap: wrap;
   font-family: var(--font-display);
   font-size: 13px;
   color: rgba(240,200,150,0.9);
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
+}
+
+.invasion-name {
+  color: var(--gold-3);
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .invasion-strength {
   font-size: 11px;
   color: rgba(240,180,120,0.7);
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
+}
+
+.invasion-scale {
+  padding: 2px 7px;
+  border: 1px solid rgba(200,146,30,0.28);
+  border-radius: var(--r-sm);
+  background: rgba(200,146,30,0.10);
+  color: rgba(250,232,160,0.86);
+  font-size: 11px;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .connection-badge {
@@ -5006,6 +5024,204 @@ textarea {
   font-size: 12px;
   font-style: italic;
   color: var(--umber-2);
+}
+.war-scale-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(168,116,32,0.22);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.66);
+}
+.war-scale-guide-head,
+.triangular-scale-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.war-scale-guide-title,
+.triangular-scale-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+.war-scale-guide-invasion {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--umber-1);
+  min-width: 0;
+}
+.war-scale-strength {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--crimson-1);
+  font-variant-numeric: tabular-nums;
+}
+.war-scale-strength .icon {
+  width: 14px;
+  height: 14px;
+}
+.war-scale-guide-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.triangular-scale {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.58);
+}
+.triangular-scale-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--umber-2);
+}
+.triangular-scale-summary .value,
+.triangular-scale-summary .value .value-num { font-size: 12px; }
+.triangular-scale-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+  gap: 5px;
+}
+.triangular-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "index cost"
+    "total total"
+    "label label";
+  align-items: center;
+  gap: 2px 5px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 6px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.7);
+  color: var(--umber-2);
+}
+.triangular-step-index {
+  grid-area: index;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(168,116,32,0.13);
+  border: 1px solid rgba(168,116,32,0.22);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--umber-2);
+  font-variant-numeric: tabular-nums;
+}
+.triangular-step-cost {
+  grid-area: cost;
+  justify-self: end;
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--umber-3);
+  font-variant-numeric: tabular-nums;
+}
+.triangular-step-total {
+  grid-area: total;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.triangular-step-total .value {
+  gap: 3px;
+  font-size: 11px;
+}
+.triangular-step-total .value .value-num { font-size: 12px; }
+.triangular-step-total .icon {
+  width: 13px;
+  height: 13px;
+}
+.triangular-step-label {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--umber-3);
+}
+.triangular-step.capital .triangular-step-label {
+  color: var(--gold-1);
+  font-weight: 600;
+}
+.triangular-scale-gold .triangular-step.active,
+.triangular-scale-gold .triangular-step.current {
+  border-color: rgba(168,116,32,0.44);
+  background: rgba(250,232,160,0.32);
+}
+.triangular-scale-victory .triangular-step.active,
+.triangular-scale-victory .triangular-step.current {
+  border-color: rgba(58,107,40,0.42);
+  background: rgba(58,107,40,0.10);
+}
+.triangular-scale-defeat .triangular-step.active,
+.triangular-scale-defeat .triangular-step.current,
+.triangular-scale-danger .triangular-step.active,
+.triangular-scale-danger .triangular-step.current {
+  border-color: rgba(160,48,48,0.44);
+  background: rgba(160,48,48,0.10);
+}
+.triangular-scale-victory .triangular-step.active .triangular-step-index,
+.triangular-scale-victory .triangular-step.current .triangular-step-index {
+  color: var(--win);
+  border-color: rgba(58,107,40,0.36);
+  background: rgba(58,107,40,0.12);
+}
+.triangular-scale-defeat .triangular-step.active .triangular-step-index,
+.triangular-scale-defeat .triangular-step.current .triangular-step-index,
+.triangular-scale-danger .triangular-step.active .triangular-step-index,
+.triangular-scale-danger .triangular-step.current .triangular-step-index {
+  color: var(--crimson-1);
+  border-color: rgba(160,48,48,0.36);
+  background: rgba(160,48,48,0.12);
+}
+.triangular-scale-gold .triangular-step.active .triangular-step-index,
+.triangular-scale-gold .triangular-step.current .triangular-step-index {
+  color: var(--gold-2);
+  border-color: rgba(168,116,32,0.36);
+  background: rgba(200,146,30,0.15);
+}
+.triangular-step.current {
+  box-shadow: 0 0 0 2px rgba(255,252,240,0.9), 0 0 0 3px rgba(168,116,32,0.34);
+}
+.triangular-scale-empty {
+  padding: 8px 9px;
+  border: 1px dashed rgba(168,116,32,0.24);
+  border-radius: var(--r-sm);
+  color: var(--umber-3);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-style: italic;
 }
 .order-lock-notice {
   border-color: rgba(122,77,153,0.32);

@@ -5,6 +5,7 @@ import {
 } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
+import { TRIANGULAR_SCALE_STEP_LIMIT, getTriangularScaleSteps } from '../engine/rules.js';
 import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey } from '../engine/state.js';
 import { formatGoldHtml, formatTroopsHtml } from '../engine/presentation.js';
 import {
@@ -353,6 +354,31 @@ function isEmpireFallen(state) {
   return state?.gameOver?.type === 'fall';
 }
 
+function getInvasionStrengthRangeText(invasion) {
+  const range = Array.isArray(invasion?.strength) ? invasion.strength : invasion?.strengthBounds;
+  if (!Array.isArray(range) || range.length < 2) return '';
+  const min = Math.max(0, Number(range[0]) || 0);
+  const max = Math.max(min, Number(range[1]) || min);
+  return min === max ? String(min) : `${min}-${max}`;
+}
+
+function getInvasionRouteStepCount(invasion) {
+  const route = Array.isArray(invasion?.route) ? invasion.route : [];
+  return Math.max(0, Math.min(10, route.length));
+}
+
+function getInvasionStepTotalsText(invasion, visibleCount = 4) {
+  const stepCount = getInvasionRouteStepCount(invasion) || visibleCount;
+  const visible = Math.max(1, Math.min(visibleCount, stepCount));
+  const totals = getTriangularScaleSteps(visible).map((step) => step.totalCost).join('/');
+  return stepCount > visible ? `${totals}/...` : totals;
+}
+
+function getFullInvasionStepTotalsText(invasion) {
+  const stepCount = getInvasionRouteStepCount(invasion) || TRIANGULAR_SCALE_STEP_LIMIT;
+  return getTriangularScaleSteps(stepCount).map((step) => step.totalCost).join(' / ');
+}
+
 export function renderTopBar(state) {
   if (!state) return;
   const roundEl = document.getElementById('roundDisplay');
@@ -380,8 +406,22 @@ export function renderTopBar(state) {
   renderEmpireFallenBanner(state);
 
   if (invasionEl) {
-    invasionEl.textContent = '';
-    invasionEl.style.display = 'none';
+    const invasion = state.currentInvasion;
+    if (invasion) {
+      const strength = getInvasionStrengthRangeText(invasion);
+      const stepTotals = getInvasionStepTotalsText(invasion);
+      invasionEl.innerHTML = `
+        <span class="invasion-name">${escapeHtml(invasion.name || 'Invasion')}</span>
+        ${strength ? `<span class="invasion-strength">strength ${escapeHtml(strength)}</span>` : ''}
+        <span class="invasion-scale">steps ${escapeHtml(stepTotals)}</span>
+      `;
+      invasionEl.title = `Margin totals by target: ${getFullInvasionStepTotalsText(invasion)}`;
+      invasionEl.style.display = 'flex';
+    } else {
+      invasionEl.textContent = '';
+      invasionEl.title = '';
+      invasionEl.style.display = 'none';
+    }
   }
 }
 

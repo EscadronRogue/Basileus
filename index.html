@@ -180,7 +180,7 @@
           <ul>
             <li><strong>Office troops</strong> appear during Income and are assigned during Deployment. A player's Strategos troops deploy together as one combined Strategoi army.</li>
             <li><strong>Funding</strong> is chosen per office. Unfunded troops stay home and pay 1 gold each to their controller.</li>
-            <li><strong>Mercenaries</strong> are hired during Deployment. Their cost rises triangularly: 1, then +2, then +3, etc. All hired mercenaries share one destination.</li>
+            <li><strong>Mercenaries</strong> are hired during Deployment. The first costs 1 gold, the second adds 2, the third adds 3, so total costs are 1, 3, 6, 10, and onward up to 10 hired. All hired mercenaries share one destination.</li>
             <li><strong>Capital-locked troops</strong> always defend the throne and cannot go to the frontier.</li>
             <li><strong>Passive capital support</strong> comes from offices and acclaim, always stays in Constantinople, cannot be defunded, and is never counted for scoring or office troop shares.</li>
           </ul>
@@ -188,7 +188,7 @@
           <h3>Coup &amp; War</h3>
           <ul>
             <li><strong>Coup.</strong> Every funded Capital troop follows its owner's ranking: first place gets full support, last place gets none, and the ranks between scale evenly. A claimant can be toggled off for 0 support without changing the weights of the claimants ranked above them. The Basileus starts with 2 passive capital support, the Patriarch with 1, and temporary acclaim or unrest can adjust those totals for one round. Most support wins; ties go first to the tied claimant with the most Patriarchal support, then to the sitting Basileus if Patriarchal support is still tied, then to dynasty order. A new Basileus redistributes all four major titles at the start of the next round or final reckoning.</li>
-            <li><strong>War.</strong> Frontier troops minus invader strength. Win &rarr; reconquer occupied provinces along the route (cost 1, then +1, +1...). Lose &rarr; invader advances along the route capturing provinces (same triangular cost). If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.</li>
+            <li><strong>War.</strong> Frontier troops minus invader strength. The margin buys route steps triangularly: the first target needs 1 surplus, the second needs 3 total, the third needs 6, the fourth needs 10. Win &rarr; reconquer occupied provinces along the route. Lose &rarr; invader advances along the route capturing provinces. If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.</li>
           </ul>
 
           <h3>Imperial Revocation</h3>

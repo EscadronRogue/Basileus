@@ -20,7 +20,16 @@ import {
   getPlayerLandBid,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
-import { getMercenaryHireCost, getThemeLandPrice } from '../engine/rules.js';
+import {
+  TRIANGULAR_SCALE_STEP_LIMIT,
+  getAffordableTriangularCount,
+  getInvasionAdvanceScaleTargets,
+  getInvasionReconquestScaleTargets,
+  getMercenaryHireCost,
+  getThemeLandPrice,
+  getTriangularCostForCount,
+  getTriangularScaleSteps,
+} from '../engine/rules.js';
 import { getFreeThemes, getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey, getBishopThemes } from '../engine/state.js';
 import { getPlayerCapitalSupport } from '../engine/capitalSupport.js';
 import {
@@ -352,6 +361,222 @@ function renderArmyOfficeBadge(state, officeKey, playerId) {
     holderId: getOfficeHolder(state, officeKey),
     label: getOfficeDisplayName(state, officeKey),
     compact: true,
+  });
+}
+
+function pluralize(count, singular, plural = `${singular}s`) {
+  return Math.abs(Number(count) || 0) === 1 ? singular : plural;
+}
+
+function normalizeScaleSteps(steps = []) {
+  return (Array.isArray(steps) ? steps : [])
+    .slice(0, TRIANGULAR_SCALE_STEP_LIMIT)
+    .map((step, index) => {
+      const count = Math.max(1, Number(step?.count) || index + 1);
+      return {
+        ...step,
+        count,
+        stepCost: Math.max(0, Number(step?.stepCost) || count),
+        totalCost: Math.max(0, Number(step?.totalCost) || getTriangularCostForCount(count)),
+      };
+    });
+}
+
+function renderScaleValue(resource, value) {
+  return resource === 'gold'
+    ? formatGoldHtml(value)
+    : formatTroopsHtml(value);
+}
+
+function renderTriangularEquation(count) {
+  const normalized = Math.max(0, Math.min(TRIANGULAR_SCALE_STEP_LIMIT, Math.floor(Number(count) || 0)));
+  if (normalized <= 0) return '0';
+  return getTriangularScaleSteps(normalized).map((step) => step.stepCost).join(' + ');
+}
+
+function renderTriangularScale(options = {}) {
+  const steps = normalizeScaleSteps(options.steps);
+  if (!steps.length) {
+    return options.emptyLabel
+      ? `<div class="triangular-scale-empty">${escapeHtml(options.emptyLabel)}</div>`
+      : '';
+  }
+
+  const activeCount = Math.max(0, Math.min(steps.length, Math.floor(Number(options.activeCount) || 0)));
+  const tone = options.tone || 'neutral';
+  const resource = options.resource || 'troop';
+  const summary = options.summary || '';
+  const title = options.title || 'Scale';
+  const classes = [
+    'triangular-scale',
+    `triangular-scale-${tone}`,
+    activeCount > 0 ? 'has-active' : '',
+    options.compact ? 'compact' : '',
+  ].filter(Boolean).join(' ');
+
+  return `
+    <div class="${classes}" ${options.attr || ''}>
+      <div class="triangular-scale-head">
+        <span class="triangular-scale-title">${escapeHtml(title)}</span>
+        ${summary ? `<span class="triangular-scale-summary">${summary}</span>` : ''}
+      </div>
+      <div class="triangular-scale-track" aria-label="${escapeHtml(options.ariaLabel || title)}">
+        ${steps.map((step) => {
+          const label = step.label || step.name || `${options.unitLabel || 'Step'} ${step.count}`;
+          const isActive = step.count <= activeCount;
+          const isCurrent = step.count === activeCount && activeCount > 0;
+          const stepClasses = [
+            'triangular-step',
+            isActive ? 'active' : '',
+            isCurrent ? 'current' : '',
+            step.kind === 'capital' ? 'capital' : '',
+            step.occupied ? 'occupied' : '',
+          ].filter(Boolean).join(' ');
+          const tooltip = `${label}: +${step.stepCost} this step, ${step.totalCost} total`;
+          return `
+            <span class="${stepClasses}" title="${escapeHtml(tooltip)}">
+              <span class="triangular-step-index">${step.count}</span>
+              <span class="triangular-step-cost">+${step.stepCost}</span>
+              <span class="triangular-step-total">${renderScaleValue(resource, step.totalCost)}</span>
+              <span class="triangular-step-label">${escapeHtml(label)}</span>
+            </span>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderMercenaryCostScale(count, overBudget = false) {
+  const activeCount = Math.max(0, Math.min(TRIANGULAR_SCALE_STEP_LIMIT, Math.floor(Number(count) || 0)));
+  const totalCost = getMercenaryHireCost(0, activeCount);
+  const nextCount = activeCount < TRIANGULAR_SCALE_STEP_LIMIT ? activeCount + 1 : null;
+  const summary = activeCount > 0
+    ? `${activeCount} hired: ${escapeHtml(renderTriangularEquation(activeCount))} = ${formatGoldHtml(totalCost)}${nextCount ? `, next +${nextCount}` : ''}`
+    : `First mercenary costs ${formatGoldHtml(1)}`;
+  const steps = getTriangularScaleSteps().map((step) => ({
+    ...step,
+    label: `${step.count} ${pluralize(step.count, 'mercenary', 'mercenaries')}`,
+  }));
+  return renderTriangularScale({
+    title: 'Mercenary cost ladder',
+    summary,
+    steps,
+    activeCount,
+    resource: 'gold',
+    tone: overBudget ? 'danger' : 'gold',
+    unitLabel: 'Mercenary',
+    attr: 'data-mercenary-scale',
+    ariaLabel: 'Mercenary total cost ladder',
+  });
+}
+
+function formatInvasionStrengthRangeHtml(invasion) {
+  const range = Array.isArray(invasion?.strength) ? invasion.strength : invasion?.strengthBounds;
+  if (!Array.isArray(range) || range.length < 2) return '';
+  const min = Math.max(0, Number(range[0]) || 0);
+  const max = Math.max(min, Number(range[1]) || min);
+  const value = min === max ? String(min) : `${min}-${max}`;
+  return `<span class="war-scale-strength">${renderIcon('troop')}<span>${escapeHtml(value)}</span></span>`;
+}
+
+function renderWarScaleGuide(state) {
+  const invasion = state?.currentInvasion;
+  if (!invasion) return '';
+
+  const advanceTargets = getInvasionAdvanceScaleTargets(state, invasion);
+  const reconquestTargets = getInvasionReconquestScaleTargets(state, invasion, { occupiedFirst: true });
+  if (!advanceTargets.length && !reconquestTargets.length) return '';
+
+  return `
+    <section class="war-scale-guide">
+      <header class="war-scale-guide-head">
+        <span class="war-scale-guide-title">War margin ladder</span>
+        <span class="war-scale-guide-invasion">${escapeHtml(invasion.name || 'Invasion')} ${formatInvasionStrengthRangeHtml(invasion)}</span>
+      </header>
+      <div class="war-scale-guide-grid">
+        ${renderTriangularScale({
+          title: 'Invader advance',
+          summary: 'Margin over Frontier defense',
+          steps: advanceTargets,
+          activeCount: 0,
+          resource: 'troop',
+          tone: 'defeat',
+          unitLabel: 'Target',
+          emptyLabel: 'No imperial target remains.',
+          ariaLabel: 'Invader advance margin ladder',
+        })}
+        ${renderTriangularScale({
+          title: 'Imperial reconquest',
+          summary: 'Margin over invader strength',
+          steps: reconquestTargets,
+          activeCount: 0,
+          resource: 'troop',
+          tone: 'victory',
+          unitLabel: 'Province',
+          emptyLabel: 'No route province can be reclaimed.',
+          ariaLabel: 'Imperial reconquest margin ladder',
+        })}
+      </div>
+    </section>
+  `;
+}
+
+function getWarResultScaleTargets(state, war, outcome) {
+  const invasion = state?.currentInvasion;
+  if (outcome === 'defeat') {
+    const targets = Array.isArray(war?.advanceScaleTargets) && war.advanceScaleTargets.length
+      ? war.advanceScaleTargets
+      : getInvasionAdvanceScaleTargets(state, invasion);
+    return { targets, title: 'Invader advance', tone: 'defeat' };
+  }
+  if (outcome === 'victory') {
+    const targets = Array.isArray(war?.reconquestScaleTargets) && war.reconquestScaleTargets.length
+      ? war.reconquestScaleTargets
+      : getInvasionReconquestScaleTargets(state, invasion, { occupiedFirst: true });
+    return { targets, title: 'Imperial reconquest', tone: 'victory' };
+  }
+  const targets = Array.isArray(war?.advanceScaleTargets) && war.advanceScaleTargets.length
+    ? war.advanceScaleTargets
+    : getInvasionAdvanceScaleTargets(state, invasion);
+  return { targets, title: 'War margin', tone: 'neutral' };
+}
+
+function renderWarResultScale(state, war, outcome) {
+  if (!war || !state?.currentInvasion) return '';
+  const empireTroops = Math.max(0, Number(war.frontierTroops) || 0);
+  const invaderStrength = Math.max(0, Number(war.invaderStrength) || 0);
+  const margin = Math.abs(empireTroops - invaderStrength);
+  const { targets, title, tone } = getWarResultScaleTargets(state, war, outcome);
+  const steps = normalizeScaleSteps(targets);
+  if (!steps.length) return '';
+
+  let activeCount = 0;
+  let summary = `No margin: ${formatTroopsHtml(0)}`;
+  if (outcome === 'defeat') {
+    activeCount = getAffordableTriangularCount(margin, steps.length);
+    summary = `Invader margin ${formatTroopsHtml(margin)} reaches ${activeCount} ${pluralize(activeCount, 'step')}`;
+  } else if (outcome === 'victory') {
+    const rewardProvinceCount = Number(war.reconquestRewardProvinceCount);
+    const resolvedProvinceCount = Number.isFinite(rewardProvinceCount)
+      ? rewardProvinceCount
+      : getAffordableTriangularCount(margin, steps.length);
+    activeCount = Math.max(
+      0,
+      Math.min(steps.length, Math.floor(resolvedProvinceCount)),
+    );
+    summary = `Imperial surplus ${formatTroopsHtml(margin)} reaches ${activeCount} ${pluralize(activeCount, 'step')}`;
+  }
+
+  return renderTriangularScale({
+    title,
+    summary,
+    steps,
+    activeCount,
+    resource: 'troop',
+    tone,
+    unitLabel: 'Target',
+    ariaLabel: `${title} result ladder`,
   });
 }
 
@@ -1329,6 +1554,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   const deploymentPreview = renderDeploymentPreview(state, playerId, draft, armyKeys);
   const lockNotice = renderOrderLockNotice(state, orderLocks);
   const candidateRanking = renderCandidateRanking(state, playerId, draft, candidateLockedId);
+  const warScaleGuide = renderWarScaleGuide(state);
 
   container.innerHTML = `
     <section class="phase-card orders-panel">
@@ -1345,6 +1571,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       ${alreadyLocked ? '<div class="panel-empty">Deployment orders locked.</div>' : `
         ${lockNotice}
         ${deploymentPreview}
+        ${warScaleGuide}
         <div class="army-card-stack">
           ${armyKeys.map((officeKey) => {
             const entry = getDeploymentArmyTroopEntry(state, playerId, officeKey);
@@ -1389,7 +1616,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
               <span class="army-card-title">${renderIcon('troop')} Mercenaries</span>
               <span class="army-card-count">${formatMercenariesHtml(draft.mercenaries.count || 0)}</span>
             </header>
-            <p class="army-card-sub">Triangular cost: 1, +2, +3 …</p>
+            <p class="army-card-sub">Cost grows by the next step: +1, +2, +3.</p>
             <label class="army-card-slider">
               <span class="army-slider-label">Hire</span>
               <input type="range" min="0" max="10" value="${draft.mercenaries.count || 0}" data-mercenary-count>
@@ -1398,6 +1625,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
                 <span class="army-slider-cost" data-mercenary-cost>${formatGoldHtml(-totals.mercCost, { tone: 'upkeep' })}</span>
               </span>
             </label>
+            ${renderMercenaryCostScale(draft.mercenaries.count || 0, totals.overBudget)}
             <div class="segmented-control">
               <button type="button" class="${draft.mercenaries.destination === 'frontier' ? 'active' : ''}" data-mercenary-destination="frontier" aria-pressed="${draft.mercenaries.destination === 'frontier' ? 'true' : 'false'}">Frontier</button>
               <button type="button" class="${draft.mercenaries.destination === 'capital' ? 'active' : ''}" data-mercenary-destination="capital" aria-pressed="${draft.mercenaries.destination === 'capital' ? 'true' : 'false'}">Capital</button>
@@ -1436,6 +1664,8 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
     }
     const preview = container.querySelector('[data-deployment-preview]');
     if (preview) preview.outerHTML = renderDeploymentPreview(state, playerId, draft, armyKeys);
+    const mercenaryScale = container.querySelector('[data-mercenary-scale]');
+    if (mercenaryScale) mercenaryScale.outerHTML = renderMercenaryCostScale(draft.mercenaries.count || 0, nextTotals.overBudget);
   };
 
   const commitArmyFunding = (input) => {
@@ -1678,6 +1908,7 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
   const themesRecovered = Array.isArray(war.themesRecovered) ? war.themesRecovered : [];
   const frontierBreakdown = renderFrontierContributionBreakdown(state, war.contributions);
   const reconquestReward = war.reconquestReward || null;
+  const warResultScale = renderWarResultScale(state, war, outcome);
 
   return `
     <article class="result-card war-result war-${outcome}${empireFell ? ' empire-fell' : ''}">
@@ -1697,6 +1928,7 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
           <span class="war-tug-value">${formatTroopsHtml(invaderStrength)}</span>
         </div>
       </div>
+      ${warResultScale}
       ${frontierBreakdown}
       ${themesLost.length ? `
         <div class="war-result-row lost">
