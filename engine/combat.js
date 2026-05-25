@@ -1,10 +1,4 @@
 // engine/combat.js - invasion resolution and occupation effects.
-import {
-  getAffordableTriangularCount,
-  getInvasionAdvanceScaleTargets,
-  getInvasionReconquestScaleTargets,
-  getTriangularStepCost,
-} from './rules.js';
 
 export function resolveInvasion(state, frontierTroops, invaderStrength, invasion) {
   const F = frontierTroops;
@@ -24,18 +18,15 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
     reconquestRewardProvinceCount: 0,
     reachedCPL: false,
     advancePath: [],
-    advanceScaleTargets: getInvasionAdvanceScaleTargets(state, invasion),
-    reconquestScaleTargets: getInvasionReconquestScaleTargets(state, invasion, { occupiedFirst: true }),
   };
 
   if (F === S) return result;
 
   if (F < S) {
     let remaining = S - F;
-    let captureStep = 1;
+    let captureCost = 1;
     const projectedOccupied = new Set(initiallyOccupied);
     for (const themeId of route) {
-      const captureCost = getTriangularStepCost(captureStep);
       if (themeId === 'CPL') {
         if (remaining < captureCost) break;
         remaining -= captureCost;
@@ -51,7 +42,7 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
       }
       if (remaining < captureCost) break;
       remaining -= captureCost;
-      captureStep += 1;
+      captureCost += 1;
       projectedOccupied.add(themeId);
       result.themesLost.push(themeId);
       result.advancePath.push(themeId);
@@ -60,17 +51,16 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
   }
 
   let surplus = F - S;
-  let recoverStep = 1;
+  let recoverCost = 1;
   const reverseRoute = route.slice().reverse().filter((themeId) => themeId !== 'CPL');
   result.reconquestRewardProvinceCount = countAffordableProvinceWins(state, surplus, reverseRoute);
   const projectedRecovered = new Set(initiallyOccupied);
   for (const themeId of reverseRoute) {
-    const recoverCost = getTriangularStepCost(recoverStep);
     if (surplus < recoverCost) break;
     const theme = state.themes[themeId];
     if (!theme || !projectedRecovered.has(themeId)) continue;
     surplus -= recoverCost;
-    recoverStep += 1;
+    recoverCost += 1;
     projectedRecovered.delete(themeId);
     result.advancePath.push(themeId);
     result.themesRecovered.push(themeId);
@@ -79,8 +69,16 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
 }
 
 function countAffordableProvinceWins(state, surplus, reverseRoute) {
-  const validRouteLength = reverseRoute.filter((themeId) => state.themes[themeId]).length;
-  return getAffordableTriangularCount(surplus, validRouteLength);
+  let wins = 0;
+  let nextCost = 1;
+  for (const themeId of reverseRoute) {
+    if (!state.themes[themeId]) continue;
+    if (surplus < nextCost) break;
+    surplus -= nextCost;
+    nextCost += 1;
+    wins += 1;
+  }
+  return wins;
 }
 
 function suspendOwnerOnLoss(theme) {

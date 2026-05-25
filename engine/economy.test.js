@@ -57,7 +57,6 @@ import {
   resolveCoup,
   suggestMajorTitleAssignments,
 } from './actions.js';
-import { getAffordableTriangularCount, getTriangularScaleSteps } from './rules.js';
 
 function makeState() {
   const state = createGameState({ playerCount: 4, deckSize: 2, seed: 7, historyEnabled: true });
@@ -196,14 +195,6 @@ test('score shares award one point per 10 percent threshold', () => {
   assert.equal(getScorePointsForShare(0.25), 2);
   assert.equal(getScorePointsForShare(0.5), 5);
   assert.equal(getScorePointsForShare(1), SCORE_MAX_POINTS_PER_CATEGORY);
-});
-
-test('triangular scale helpers expose the playable ten-step ladder', () => {
-  assert.deepEqual(getTriangularScaleSteps().map((step) => step.totalCost), [1, 3, 6, 10, 15, 21, 28, 36, 45, 55]);
-  assert.equal(getAffordableTriangularCount(0), 0);
-  assert.equal(getAffordableTriangularCount(50), 9);
-  assert.equal(getAffordableTriangularCount(55), 10);
-  assert.equal(getAffordableTriangularCount(80), 10);
 });
 
 test('province table uses profit, troop, and church values with capital excluded', () => {

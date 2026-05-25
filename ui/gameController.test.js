@@ -367,8 +367,6 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.doesNotMatch(container.innerHTML, /candidate-rank-row self locked/);
   assert.match(container.innerHTML, /capital locked/);
   assert.match(container.innerHTML, /Mercenaries/);
-  assert.match(container.innerHTML, /Mercenary cost ladder/);
-  assert.match(container.innerHTML, /2 hired: 1 \+ 2 =/);
   assert.match(container.innerHTML, /Lock Deployment/);
 });
 
@@ -483,7 +481,6 @@ test('deployment panel surfaces deal-forced coup support before lock-in', () => 
 test('war resolution shows frontier contributor details', () => {
   const state = makeState();
   state.phase = 'resolution';
-  state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [3, 3] };
   state.lastWarResult = {
     outcome: 'victory',
     frontierTroops: 5,
@@ -499,8 +496,6 @@ test('war resolution shows frontier contributor details', () => {
 
   renderResolutionPanel(container, state);
 
-  assert.match(container.innerHTML, /Imperial reconquest/);
-  assert.match(container.innerHTML, /Imperial surplus/);
   assert.match(container.innerHTML, /Frontier contributions/);
   assert.match(container.innerHTML, /frontier-troops/);
   assert.doesNotMatch(container.innerHTML, /No frontier troops were committed/);
