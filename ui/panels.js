@@ -1266,24 +1266,32 @@ function renderCandidateRanking(state, playerId, draft, lockedCandidateId = null
   const playerCount = state.players.length;
   const hasDragging = Number.isInteger(Number(draft.draggedCandidateId));
   return `
-    <div class="candidate-rank-list${hasDragging ? ' drag-active' : ''}" data-candidate-rank-list>
+    <div class="candidate-rank-list${hasDragging ? ' drag-active' : ''}" data-candidate-rank-list role="list" aria-label="Coup claimant ranking">
       ${ranking.map((candidateId, index) => {
         const candidate = getPlayer(state, candidateId);
         const isSelf = candidateId === playerId;
         const isLockedCandidate = lockedCandidateId != null && candidateId === lockedCandidateId;
         const isDragging = Number(draft.draggedCandidateId) === Number(candidateId);
+        const needsKeyboardFocus = Number(draft.keyboardFocusCandidateId) === Number(candidateId);
         const isEnabled = candidateSupport[candidateId] !== false;
         const weight = getCoupRankWeight(playerCount, index);
         const tag = isEnabled ? `${Math.round(weight * 100)}%` : '0%';
+        const candidateName = playerDisplayLabel(candidate);
+        const supportLabel = isEnabled ? `${Math.round(weight * 100)} percent support` : 'no support';
+        const moveHint = isLockedCandidate ? 'Locked by deal.' : 'Use arrow keys to move this claimant.';
         return `
           <div class="candidate-row candidate-rank-row${isSelf ? ' self' : ''}${isLockedCandidate ? ' deal-locked' : ''}${isDragging ? ' dragging' : ''}${isEnabled ? '' : ' support-off'}"
             data-candidate-rank="${candidateId}"
+            ${needsKeyboardFocus ? 'data-candidate-autofocus="true"' : ''}
             draggable="false"
+            role="listitem"
+            tabindex="${isLockedCandidate ? '-1' : '0'}"
+            aria-label="${escapeHtml(`${candidateName}, rank ${index + 1} of ${playerCount}, ${supportLabel}. ${moveHint}`)}"
             style="${getPlayerStyleAttr(state, candidateId)}">
             <span class="candidate-drag-handle" aria-hidden="true"></span>
             <span class="candidate-rank-no">${index + 1}</span>
             <span class="candidate-crest">${playerInitial(candidate)}</span>
-            <span class="candidate-name">${escapeHtml(playerDisplayLabel(candidate))}</span>
+            <span class="candidate-name">${escapeHtml(candidateName)}</span>
             <span class="candidate-tag">${isLockedCandidate ? `Deal ${tag}` : tag}</span>
             <button type="button"
               class="candidate-support-toggle${isEnabled ? ' is-on' : ''}"
@@ -1520,6 +1528,32 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
     return moveRankedCandidateToIndex(draggedCandidateId, insertIndex);
   };
   container.querySelectorAll('[data-candidate-rank]').forEach((row) => {
+    row.addEventListener('keydown', (event) => {
+      const candidateId = Number(row.dataset.candidateRank);
+      if (!Number.isInteger(candidateId)) return;
+      if (candidateLockedId != null && candidateId === candidateLockedId) return;
+
+      const ranking = ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
+      const currentIndex = ranking.indexOf(candidateId);
+      if (currentIndex < 0) return;
+
+      const nextIndex = {
+        ArrowUp: currentIndex - 1,
+        ArrowLeft: currentIndex - 1,
+        ArrowDown: currentIndex + 2,
+        ArrowRight: currentIndex + 2,
+        Home: 0,
+        End: ranking.length,
+      }[event.key];
+      if (nextIndex == null) return;
+
+      event.preventDefault();
+      if (moveRankedCandidateToIndex(candidateId, nextIndex)) {
+        draft.keyboardFocusCandidateId = candidateId;
+        rerender();
+      }
+    });
+
     row.addEventListener('pointerdown', (event) => {
       if (event.button != null && event.button !== 0) return;
       if (event.target?.closest?.('[data-candidate-support]')) return;
@@ -1581,6 +1615,12 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       rerender();
     }
   });
+  const autofocusCandidate = container.querySelector('[data-candidate-autofocus="true"]');
+  if (autofocusCandidate) {
+    delete draft.keyboardFocusCandidateId;
+    const requestFrame = globalThis.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
+    requestFrame(() => autofocusCandidate.focus?.());
+  }
   bindSelectAction(container, '[data-action="lock-orders"]', () => {
     ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
     callbacks.lockOrders?.({

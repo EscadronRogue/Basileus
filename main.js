@@ -6,6 +6,39 @@ import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from './ai/opponentRost
 import { getDynastyProfileForSeat } from './data/invasions.js';
 
 const SETUP_RANDOM_VALUE = 'random';
+const SETUP_CHOICE_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+
+function installViewportHeightSync() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const root = document.documentElement;
+  let frame = 0;
+
+  const sync = () => {
+    frame = 0;
+    const height = Math.round(
+      window.visualViewport?.height
+      || window.innerHeight
+      || root.clientHeight
+      || 0,
+    );
+    if (height > 0) root.style.setProperty('--game-vh', `${height}px`);
+  };
+
+  const schedule = () => {
+    if (frame) return;
+    const requestFrame = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
+    frame = requestFrame(sync);
+  };
+
+  schedule();
+  window.addEventListener('resize', schedule, { passive: true });
+  window.addEventListener('orientationchange', schedule, { passive: true });
+  window.addEventListener('pageshow', schedule, { passive: true });
+  window.visualViewport?.addEventListener?.('resize', schedule, { passive: true });
+  window.visualViewport?.addEventListener?.('scroll', schedule, { passive: true });
+}
+
+installViewportHeightSync();
 
 const setupDialog = document.getElementById('setupDialog');
 const btnStart = document.getElementById('btnStart');
@@ -91,17 +124,52 @@ function renderSetupChoiceControl(select) {
       class="setup-choice-btn${option.selected ? ' selected' : ''}"
       role="radio"
       aria-checked="${option.selected ? 'true' : 'false'}"
+      tabindex="${option.selected ? '0' : '-1'}"
       data-setup-choice-value="${escapeHtml(option.value)}"${seatStyle}>
       ${escapeHtml(option.textContent.trim())}
     </button>
   `;
   }).join('');
+
+  const focusSetupChoice = (value) => {
+    const requestFrame = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
+    requestFrame(() => {
+      const nextButton = [...row.querySelectorAll('[data-setup-choice-value]')]
+        .find((candidate) => candidate.dataset.setupChoiceValue === value);
+      nextButton?.focus();
+    });
+  };
+
+  const commitChoice = (value, options = {}) => {
+    if (select.value === value) return;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    renderSetupChoiceControl(select);
+    if (options.focus) focusSetupChoice(value);
+  };
+
   row.querySelectorAll('[data-setup-choice-value]').forEach((button) => {
     button.addEventListener('click', () => {
-      if (select.value === button.dataset.setupChoiceValue) return;
-      select.value = button.dataset.setupChoiceValue;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-      renderSetupChoiceControl(select);
+      commitChoice(button.dataset.setupChoiceValue, { focus: true });
+    });
+
+    button.addEventListener('keydown', (event) => {
+      if (!SETUP_CHOICE_NAV_KEYS.has(event.key)) return;
+      const buttons = [...row.querySelectorAll('[data-setup-choice-value]')];
+      const currentIndex = Math.max(0, buttons.indexOf(button));
+      const lastIndex = Math.max(0, buttons.length - 1);
+      const nextIndex = {
+        ArrowLeft: Math.max(0, currentIndex - 1),
+        ArrowUp: Math.max(0, currentIndex - 1),
+        ArrowRight: Math.min(lastIndex, currentIndex + 1),
+        ArrowDown: Math.min(lastIndex, currentIndex + 1),
+        Home: 0,
+        End: lastIndex,
+      }[event.key];
+      const nextButton = buttons[nextIndex];
+      if (!nextButton) return;
+      event.preventDefault();
+      commitChoice(nextButton.dataset.setupChoiceValue, { focus: true });
     });
   });
 }

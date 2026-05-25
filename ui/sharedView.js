@@ -457,8 +457,10 @@ export function renderPlayerTabs({ state, activePlayerId, onSelectPlayer, getBad
       ? `<span class="tab-role">${escapeHtml(roleLabel)}</span>`
       : '<span class="tab-role muted" aria-hidden="true">&nbsp;</span>';
     return `
-      <button class="player-tab ${player.id === activePlayerId ? 'active' : ''}"
-        data-player="${player.id}" style="${getPlayerStyleAttr(state, player.id)}">
+      <button type="button" class="player-tab ${player.id === activePlayerId ? 'active' : ''}"
+        data-player="${player.id}"
+        aria-pressed="${player.id === activePlayerId ? 'true' : 'false'}"
+        style="${getPlayerStyleAttr(state, player.id)}">
         <span class="tab-body">
           <span class="tab-name">${player.dynasty}</span>
           ${roleHtml}

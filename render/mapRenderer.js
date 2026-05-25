@@ -43,8 +43,11 @@ const MIN_THREAT_HATCH_SCALE = 0.001;
 const MIN_MAP_ZOOM = 1;
 const MAX_MAP_ZOOM = 4;
 const MAP_ZOOM_STEP = 1.2;
+const MAP_KEYBOARD_PAN_UNITS = 14;
 const MAP_DRAG_THRESHOLD_PX = 4;
 const MIN_PINCH_DISTANCE_PX = 8;
+const LEGACY_MOUSE_POINTER_ID = -1;
+const LEGACY_TOUCH_POINTER_OFFSET = 1000;
 const SVG_PATH_TOKEN_PATTERN = /[A-Za-z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g;
 const PATH_PARAM_COUNTS = Object.freeze({
   M: 2,
@@ -98,6 +101,9 @@ export async function createMapSVG(containerId, options = {}) {
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   svg.setAttribute('overflow', 'hidden');
   svg.id = 'gameMap';
+  svg.setAttribute('role', 'group');
+  svg.setAttribute('aria-label', 'Province map. Use plus and minus to zoom, arrow keys to pan when zoomed, and Escape to reset.');
+  svg.setAttribute('tabindex', '0');
   svg.innerHTML = `
     <defs>
       <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -110,41 +116,7 @@ export async function createMapSVG(containerId, options = {}) {
     </defs>
   `;
 
-  svg.addEventListener('pointermove', (event) => {
-    if (gestureState.pointers.has(event.pointerId)) {
-      updateMapGesture(svg, event);
-      return;
-    }
-
-    if (event.pointerType !== 'mouse') return;
-
-    const provinceId = findProvinceAtClientPoint(svg, event.clientX, event.clientY);
-    updateHoveredProvince(provinceId);
-    updateMapCursor(svg, provinceId);
-  });
-
-  svg.addEventListener('pointerdown', (event) => beginMapGesture(svg, event));
-  svg.addEventListener('pointerup', (event) => endMapGesture(svg, event));
-  svg.addEventListener('pointercancel', (event) => endMapGesture(svg, event));
-  svg.addEventListener('wheel', (event) => zoomMapAtPoint(svg, event), { passive: false });
-  svg.addEventListener('dblclick', (event) => {
-    event.preventDefault();
-    resetMapView(svg);
-  });
-
-  svg.addEventListener('mouseleave', () => {
-    updateHoveredProvince(null);
-    updateMapCursor(svg, null);
-  });
-
-  svg.addEventListener('click', (event) => {
-    if (gestureState.suppressClick) {
-      gestureState.suppressClick = false;
-      return;
-    }
-
-    provinceSelectHandler?.(findProvinceAtEvent(svg, event));
-  });
+  installMapInteractions(svg);
 
   const frameLayer = createGroup(svg, 'layer-frame');
   frameLayer.setAttribute('clip-path', 'url(#map-frame-clip)');
@@ -188,6 +160,164 @@ export async function createMapSVG(containerId, options = {}) {
   return svg;
 }
 
+function installMapInteractions(svg) {
+  if (typeof window !== 'undefined' && 'PointerEvent' in window) {
+    svg.addEventListener('pointermove', (event) => handleMapPointerMove(svg, event));
+    svg.addEventListener('pointerdown', (event) => beginMapGesture(svg, event));
+    svg.addEventListener('pointerup', (event) => endMapGesture(svg, event));
+    svg.addEventListener('pointercancel', (event) => endMapGesture(svg, event));
+  } else {
+    installLegacyMouseMapInteractions(svg);
+    installLegacyTouchMapInteractions(svg);
+  }
+
+  svg.addEventListener('wheel', (event) => zoomMapAtPoint(svg, event), { passive: false });
+  svg.addEventListener('keydown', (event) => handleMapKeyDown(svg, event));
+  svg.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    resetMapView(svg);
+  });
+
+  svg.addEventListener('mouseleave', () => {
+    updateHoveredProvince(null);
+    updateMapCursor(svg, null);
+  });
+
+  svg.addEventListener('click', (event) => {
+    if (gestureState.suppressClick) {
+      gestureState.suppressClick = false;
+      return;
+    }
+
+    provinceSelectHandler?.(findProvinceAtEvent(svg, event));
+  });
+}
+
+function handleMapPointerMove(svg, event) {
+  if (gestureState.pointers.has(event.pointerId)) {
+    updateMapGesture(svg, event);
+    return;
+  }
+
+  if (event.pointerType !== 'mouse') return;
+
+  const provinceId = findProvinceAtClientPoint(svg, event.clientX, event.clientY);
+  updateHoveredProvince(provinceId);
+  updateMapCursor(svg, provinceId);
+}
+
+function installLegacyMouseMapInteractions(svg) {
+  const ownerDocument = svg.ownerDocument || globalThis.document;
+  const toPointer = (event) => ({
+    button: event.button,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    pointerId: LEGACY_MOUSE_POINTER_ID,
+    pointerType: 'mouse',
+    preventDefault: () => event.preventDefault?.(),
+  });
+
+  const handleDocumentMove = (event) => {
+    if (!gestureState.pointers.has(LEGACY_MOUSE_POINTER_ID)) return;
+    event.preventDefault?.();
+    updateMapGesture(svg, toPointer(event));
+  };
+
+  const handleDocumentUp = (event) => {
+    ownerDocument?.removeEventListener?.('mousemove', handleDocumentMove);
+    endMapGesture(svg, toPointer(event));
+  };
+
+  svg.addEventListener('mousemove', (event) => {
+    if (gestureState.pointers.has(LEGACY_MOUSE_POINTER_ID)) {
+      updateMapGesture(svg, toPointer(event));
+      return;
+    }
+
+    const provinceId = findProvinceAtClientPoint(svg, event.clientX, event.clientY);
+    updateHoveredProvince(provinceId);
+    updateMapCursor(svg, provinceId);
+  });
+
+  svg.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    beginMapGesture(svg, toPointer(event));
+    ownerDocument?.addEventListener?.('mousemove', handleDocumentMove);
+    ownerDocument?.addEventListener?.('mouseup', handleDocumentUp, { once: true });
+  });
+}
+
+function installLegacyTouchMapInteractions(svg) {
+  const toPointer = (touch, event) => ({
+    button: 0,
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    pointerId: LEGACY_TOUCH_POINTER_OFFSET + touch.identifier,
+    pointerType: 'touch',
+    preventDefault: () => event.preventDefault?.(),
+  });
+
+  const preventTouchScrollWhenNeeded = (event) => {
+    if (!event.cancelable) return;
+    if (mapView.zoom > 1.001 || event.touches.length > 1) event.preventDefault();
+  };
+
+  svg.addEventListener('touchstart', (event) => {
+    for (const touch of event.changedTouches || []) beginMapGesture(svg, toPointer(touch, event));
+    preventTouchScrollWhenNeeded(event);
+  }, { passive: false });
+
+  svg.addEventListener('touchmove', (event) => {
+    let handled = false;
+    for (const touch of event.changedTouches || []) {
+      const pointer = toPointer(touch, event);
+      if (!gestureState.pointers.has(pointer.pointerId)) continue;
+      updateMapGesture(svg, pointer);
+      handled = true;
+    }
+    if (handled) preventTouchScrollWhenNeeded(event);
+  }, { passive: false });
+
+  const finishTouch = (event) => {
+    for (const touch of event.changedTouches || []) endMapGesture(svg, toPointer(touch, event));
+  };
+  svg.addEventListener('touchend', finishTouch, { passive: true });
+  svg.addEventListener('touchcancel', finishTouch, { passive: true });
+}
+
+function handleMapKeyDown(svg, event) {
+  const key = event.key;
+  if (key === '+' || key === '=') {
+    event.preventDefault();
+    zoomMapAtCenter(svg, MAP_ZOOM_STEP);
+    return;
+  }
+
+  if (key === '-' || key === '_') {
+    event.preventDefault();
+    zoomMapAtCenter(svg, 1 / MAP_ZOOM_STEP);
+    return;
+  }
+
+  if (key === 'Escape' || key === '0') {
+    event.preventDefault();
+    resetMapView(svg);
+    return;
+  }
+
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key) || mapView.zoom <= 1.001) return;
+  event.preventDefault();
+  const step = MAP_KEYBOARD_PAN_UNITS / mapView.zoom;
+  if (key === 'ArrowLeft') mapView.panX += step;
+  if (key === 'ArrowRight') mapView.panX -= step;
+  if (key === 'ArrowUp') mapView.panY += step;
+  if (key === 'ArrowDown') mapView.panY -= step;
+  clampMapView();
+  applyMapTransform();
+  updateHoveredProvince(null);
+  updateMapCursor(svg, null);
+}
+
 function createMapControls(svg) {
   const controls = document.createElement('div');
   controls.className = 'map-controls';
@@ -208,14 +338,9 @@ function createMapControls(svg) {
     return button;
   };
 
-  const zoomAtCenter = (factor) => {
-    const rect = svg.getBoundingClientRect();
-    zoomMapAtClientPoint(svg, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
-  };
-
   controls.append(
-    makeButton('+', 'Zoom in', () => zoomAtCenter(MAP_ZOOM_STEP)),
-    makeButton('-', 'Zoom out', () => zoomAtCenter(1 / MAP_ZOOM_STEP)),
+    makeButton('+', 'Zoom in', () => zoomMapAtCenter(svg, MAP_ZOOM_STEP)),
+    makeButton('-', 'Zoom out', () => zoomMapAtCenter(svg, 1 / MAP_ZOOM_STEP)),
     makeButton('1:1', 'Reset map view', () => resetMapView(svg)),
   );
   return controls;
@@ -1575,7 +1700,12 @@ function findProvinceAtClientPoint(svg, clientX, clientY) {
     const screenMatrix = path.getScreenCTM();
     if (!screenMatrix) continue;
 
-    const localPoint = screenPoint.matrixTransform(screenMatrix.inverse());
+    let localPoint = null;
+    try {
+      localPoint = screenPoint.matrixTransform(screenMatrix.inverse());
+    } catch {
+      continue;
+    }
     if (path.isPointInFill(localPoint)) {
       return path.getAttribute('data-id');
     }
@@ -1637,7 +1767,11 @@ function beginMapGesture(svg, event) {
   if (event.pointerType === 'mouse' && event.button !== 0) return;
 
   gestureState.pointers.set(event.pointerId, getEventClientPoint(event));
-  svg.setPointerCapture?.(event.pointerId);
+  try {
+    svg.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Some SVG implementations expose Pointer Events without capture support.
+  }
 
   if (event.pointerType !== 'mouse') updateHoveredProvince(null);
 
@@ -1740,7 +1874,11 @@ function updateMapPinch(svg) {
 function endMapGesture(svg, event) {
   if (!gestureState.pointers.has(event.pointerId)) return;
 
-  svg.releasePointerCapture?.(event.pointerId);
+  try {
+    svg.releasePointerCapture?.(event.pointerId);
+  } catch {
+    // Capture may have been lost during browser-managed scroll or gesture cancel.
+  }
   gestureState.pointers.delete(event.pointerId);
 
   if (gestureState.mode === 'pinch' && gestureState.pointers.size === 1) {
@@ -1795,6 +1933,11 @@ function zoomMapAtPoint(svg, event) {
   zoomMapAtClientPoint(svg, event.clientX, event.clientY, event.deltaY < 0 ? MAP_ZOOM_STEP : 1 / MAP_ZOOM_STEP);
 }
 
+function zoomMapAtCenter(svg, factor) {
+  const rect = svg.getBoundingClientRect();
+  zoomMapAtClientPoint(svg, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+}
+
 function zoomMapAtClientPoint(svg, clientX, clientY, factor) {
   const point = clientPointToSvg(svg, clientX, clientY);
   if (!point) return;
@@ -1830,6 +1973,7 @@ function applyMapTransform() {
     'transform',
     `translate(${mapView.panX.toFixed(3)} ${mapView.panY.toFixed(3)}) scale(${mapView.zoom.toFixed(3)})`,
   );
+  viewportLayer.ownerSVGElement?.classList.toggle('is-map-zoomed', mapView.zoom > 1.001);
 }
 
 function clampMapView() {
@@ -1853,8 +1997,12 @@ function clientPointToSvg(svg, clientX, clientY) {
   point.x = clientX;
   point.y = clientY;
 
-  const matrix = svg.getScreenCTM();
-  return matrix ? point.matrixTransform(matrix.inverse()) : null;
+  try {
+    const matrix = svg.getScreenCTM();
+    return matrix ? point.matrixTransform(matrix.inverse()) : null;
+  } catch {
+    return null;
+  }
 }
 
 function updateMapCursor(svg, provinceId) {

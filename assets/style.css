@@ -54,7 +54,7 @@
   --free-border:  var(--purple-0);
   --church-fill:  #1a1a1a;  /* black — church estate */
   --church-border: #000000;
-  --occupied-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
+  --occupied-fill: #d8c9ad;
   --empire-border: #2e1e0f;
   --empire-border-hover: #4a3018;
   --capital-fill:  #9a7010;
@@ -121,10 +121,19 @@
 /* ── Reset & Base ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { min-height: 100%; }
+html {
+  min-height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
 
 @supports (height: 100dvh) {
   :root { --game-vh: 100dvh; }
+}
+
+@supports (color: color-mix(in srgb, white 50%, black 50%)) {
+  :root {
+    --occupied-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
+  }
 }
 
 body {
@@ -182,7 +191,7 @@ body::before {
   display: flex;
   align-items: center;
   gap: clamp(10px, 2vw, var(--sp-5));
-  padding: 0 max(var(--sp-4), env(safe-area-inset-left)) 0 max(var(--sp-4), env(safe-area-inset-right));
+  padding: 0 max(var(--sp-4), env(safe-area-inset-right)) 0 max(var(--sp-4), env(safe-area-inset-left));
   min-width: 0;
   flex-wrap: wrap;
   align-content: center;
@@ -326,7 +335,8 @@ body::before {
   justify-content: center;
   overflow: hidden;
   overscroll-behavior: contain;
-  touch-action: none;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .map-controls {
@@ -344,8 +354,8 @@ body::before {
 }
 
 .map-control-btn {
-  width: 32px;
-  height: 32px;
+  width: var(--touch-target);
+  height: var(--touch-target);
   border: 1px solid rgba(168,116,32,0.28);
   border-radius: var(--r-sm);
   background: rgba(255,252,240,0.92);
@@ -374,10 +384,15 @@ body::before {
     0 20px 50px rgba(80,50,10,0.20),
     inset 0 0 0 1px rgba(100,70,20,0.12);
   filter: saturate(0.92) contrast(1.02);
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
   -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+.game-map.is-map-zoomed {
+  touch-action: none;
 }
 
 /* ── Player Tabs ─────────────────────────────────────────────────── */
@@ -2289,14 +2304,24 @@ body::before {
    with an optional office/estate marker row below the values.
    Built and laid out by mapRenderer.js. */
 .map-cartouche {
-  --cart-bg: var(--province-cartouche-fill-color, color-mix(in srgb, var(--free-fill) 72%, var(--umber-0) 28%));
+  --cart-bg: var(--province-cartouche-fill-color, #4f3a6d);
   --cart-border: var(--province-outline-color, var(--empire-border));
   cursor: pointer;
   pointer-events: auto;
 }
 .map-cartouche.occupied {
-  --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, color-mix(in srgb, var(--free-fill) 14%, var(--parch-0) 86%)));
+  --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, #eee6d2));
   --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
+}
+
+@supports (color: color-mix(in srgb, white 50%, black 50%)) {
+  .map-cartouche {
+    --cart-bg: var(--province-cartouche-fill-color, color-mix(in srgb, var(--free-fill) 72%, var(--umber-0) 28%));
+  }
+
+  .map-cartouche.occupied {
+    --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, color-mix(in srgb, var(--free-fill) 14%, var(--parch-0) 86%)));
+  }
 }
 
 .map-cart-bg {
@@ -3067,6 +3092,7 @@ body::before {
   inset: 0;
   background: rgba(26,14,4,0.82);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 50;
   display: flex;
   align-items: center;
@@ -3268,7 +3294,12 @@ body::before {
   position: absolute;
   width: 1px;
   height: 1px;
+  margin: -1px;
+  border: 0;
   opacity: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
   pointer-events: none;
 }
 
@@ -3653,6 +3684,7 @@ textarea {
 
   #app {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto clamp(330px, 50vh, 540px) auto;
     grid-template-rows: auto clamp(330px, 50svh, 540px) auto;
     grid-template-areas:
       "topbar"
@@ -3712,6 +3744,7 @@ textarea {
   }
 
   #app {
+    grid-template-rows: auto clamp(300px, 46vh, 500px) auto;
     grid-template-rows: auto clamp(300px, 46svh, 500px) auto;
   }
 
@@ -3847,7 +3880,10 @@ textarea {
 }
 
 @media (max-width: 480px) {
-  #app { grid-template-rows: auto clamp(280px, 44svh, 440px) auto; }
+  #app {
+    grid-template-rows: auto clamp(280px, 44vh, 440px) auto;
+    grid-template-rows: auto clamp(280px, 44svh, 440px) auto;
+  }
   .game-title { flex-basis: 100%; }
   #roundDisplay { margin-right: auto; }
   .phase-badge { padding: 4px 8px; }
@@ -5111,8 +5147,8 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 .candidate-support-toggle {
-  width: 32px;
-  height: 24px;
+  min-width: 38px;
+  min-height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6096,7 +6132,10 @@ textarea {
 .candidate-row:focus-visible,
 .estate-card:focus-within,
 .segmented-control button:focus-visible,
-.map-control-btn:focus-visible {
+.map-control-btn:focus-visible,
+.setup-choice-btn:focus-visible,
+.setup-ai-opponent-btn:focus-visible,
+.game-map:focus-visible {
   outline: 2px solid var(--gold-1);
   outline-offset: 3px;
 }

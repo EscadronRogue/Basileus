@@ -359,7 +359,9 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.match(container.innerHTML, /through ranking/);
   assert.match(container.innerHTML, /Passive support/);
   assert.match(container.innerHTML, /Rank claimants for the throne/);
+  assert.match(container.innerHTML, /data-candidate-rank-list role="list"/);
   assert.match(container.innerHTML, /candidate-drag-handle/);
+  assert.match(container.innerHTML, /Use arrow keys to move this claimant/);
   assert.match(container.innerHTML, /data-candidate-support=/);
   assert.doesNotMatch(container.innerHTML, /candidate-rank-row self locked/);
   assert.match(container.innerHTML, /capital locked/);
