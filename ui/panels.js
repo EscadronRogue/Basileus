@@ -187,10 +187,43 @@ function bindSelectAction(container, selector, callback) {
   });
 }
 
-function datasetKeyFromSelector(selector) {
-  const match = String(selector || '').match(/\[data-([a-z0-9-]+)/i);
-  if (!match) return null;
-  return match[1].replace(/-([a-z0-9])/gi, (_, char) => char.toUpperCase());
+function bindWireDraftMotion(container) {
+  container.querySelectorAll('[data-court-wire-board]').forEach((board) => {
+    const svg = board.querySelector('.court-wire-svg');
+    const draftLines = [...board.querySelectorAll('[data-wire-draft-line]')];
+    if (!svg || !draftLines.length) return;
+    const viewBox = svg.viewBox?.baseVal;
+    const height = viewBox?.height || Number(svg.getAttribute('viewBox')?.split(/\s+/).at(3)) || 58;
+    const toSvgPoint = (clientX, clientY) => {
+      const rect = svg.getBoundingClientRect();
+      const x = ((clientX - rect.left) / Math.max(rect.width, 1)) * 1000;
+      const y = ((clientY - rect.top) / Math.max(rect.height, 1)) * height;
+      return {
+        x: Math.max(335, Math.min(665, x)),
+        y: Math.max(0, Math.min(height, y)),
+      };
+    };
+    const setDraftEnd = ({ x, y }, color = '') => {
+      draftLines.forEach((line) => {
+        line.setAttribute('x2', String(Math.round(x)));
+        line.setAttribute('y2', String(Math.round(y)));
+        if (color) line.style.setProperty('--wire-color', color);
+      });
+    };
+    board.addEventListener('pointermove', (event) => {
+      setDraftEnd(toSvgPoint(event.clientX, event.clientY));
+    });
+    board.querySelectorAll('[data-wire-player-finish], [data-title-wire-finish]').forEach((socket) => {
+      const snapToSocket = () => {
+        const rect = socket.getBoundingClientRect();
+        const playerRow = socket.closest('.court-wire-player');
+        const color = playerRow ? getComputedStyle(playerRow).getPropertyValue('--player-color').trim() : '';
+        setDraftEnd(toSvgPoint(rect.left + rect.width / 2, rect.top + rect.height / 2), color);
+      };
+      socket.addEventListener('pointerenter', snapToSocket);
+      socket.addEventListener('focus', snapToSocket);
+    });
+  });
 }
 
 function renderPickerStep(num, label) {
@@ -245,7 +278,8 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
     : { ok: false, reason: 'Assign every major office before confirming.' };
   const canConfirm = isBasileus && validation.ok;
   const rerender = () => renderTitleRedistributionPanel(container, state, playerId, callbacks, options);
-  const selectedTitleKey = titleKeys.includes(draft.selectedTitleKey) ? draft.selectedTitleKey : null;
+  const wireTitleKey = titleKeys.includes(draft.titleWireStart?.titleKey) ? draft.titleWireStart.titleKey : null;
+  const selectedTitleKey = wireTitleKey || (titleKeys.includes(draft.selectedTitleKey) ? draft.selectedTitleKey : null);
   const selectedPlayerId = Number.isInteger(Number(draft.selectedTitlePlayerId))
     ? Number(draft.selectedTitlePlayerId)
     : null;
@@ -280,7 +314,6 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
   )) || null;
   const rows = Math.max(titleEntries.length, playerTokens.length, 1);
   const height = rows * 58;
-  const canTieSelected = Boolean(isBasileus && selectedTitleKey && !hasAssignment(selectedTitleKey) && selectedToken);
   const selectedTitle = selectedTitleKey ? MAJOR_TITLES[selectedTitleKey] : null;
   const titleLineHtml = titleEntries.map(([titleKey, title], titleIndex) => {
     if (!hasAssignment(titleKey)) return '';
@@ -295,26 +328,22 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
       actionAttrs: `data-title-clear="${escapeHtml(titleKey)}" aria-label="${escapeHtml(`Cut ${title.name} from ${playerDisplayLabel(assignedPlayer)}`)}"`,
     });
   }).join('');
-  const pendingLineHtml = canTieSelected
-    ? renderCourtWireLine({ label: selectedTitle.name }, titleKeys.indexOf(selectedTitleKey), tokenRowByKey.get(tokenKey(selectedToken.player.id, selectedToken.copyIndex)), selectedToken.player, {
-      kind: 'pending',
-      label: `Tie ${selectedTitle.name} to ${playerDisplayLabel(selectedToken.player)}`,
-      actionAttrs: `data-title-tie="${escapeHtml(selectedTitleKey)}" data-title-tie-player="${selectedToken.player.id}" data-title-tie-copy="${selectedToken.copyIndex}" aria-label="${escapeHtml(`Tie ${selectedTitle.name} to ${playerDisplayLabel(selectedToken.player)}`)}"`,
-    })
+  const draftLineHtml = wireTitleKey && selectedTitle && !hasAssignment(wireTitleKey)
+    ? renderCourtDraftWire({ label: selectedTitle.name }, titleKeys.indexOf(wireTitleKey))
     : '';
-  const selectedSummary = canTieSelected
-    ? `Click the new rope to tie ${selectedTitle.name} to ${playerDisplayLabel(selectedToken.player)}.`
+  const selectedSummary = wireTitleKey && selectedTitle
+    ? `Guide the rope from ${selectedTitle.name} to a dynasty circle.`
     : selectedTitleKey
       ? hasAssignment(selectedTitleKey)
         ? `Click the tied rope to cut ${MAJOR_TITLES[selectedTitleKey].name}.`
-        : 'Choose a player copy to draw a new rope.'
-      : 'Choose an office on the left, then a player copy on the right.';
+        : 'Click the office circle, then a dynasty circle.'
+      : 'Click an office circle, then a dynasty circle.';
 
   container.innerHTML = `
     <section class="phase-card title-redistribution-panel">
       <h3>Assign Major Offices</h3>
       <p class="section-hint">${isBasileus ? `Tie each office to a dynasty. ${ruleText}` : 'Waiting for the Basileus to assign the major offices.'}</p>
-      <div class="title-redist-board title-redist-wire-board court-wire-board" style="--wire-rows: ${rows};">
+      <div class="title-redist-board title-redist-wire-board court-wire-board${wireTitleKey ? ' tying' : ''}" style="--wire-rows: ${rows};" data-court-wire-board>
         <div class="court-wire-col-head seats">Offices</div>
         <div class="court-wire-col-head players">Dynasties</div>
         <div class="court-wire-seats title-redist-offices">
@@ -333,14 +362,14 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
                 ${renderTitleBadge(state, titleKey, { holderId: assignedPlayer?.id, compact: true, label: title.name })}
                 <span class="title-redist-slot-state">${assignedPlayer ? 'Tied' : isSelected ? 'Selected' : 'Open'}</span>
               </span>
-              <span class="court-wire-socket" aria-hidden="true"></span>
+              <span class="court-wire-socket" ${isBasileus && !assignedPlayer ? `data-title-wire-start="${escapeHtml(titleKey)}"` : ''} aria-hidden="true"></span>
             </button>
           `;
         }).join('')}
         </div>
         <svg class="court-wire-svg title-redist-wire-svg" viewBox="0 0 1000 ${height}" preserveAspectRatio="none" aria-hidden="false">
           ${titleLineHtml}
-          ${pendingLineHtml}
+          ${draftLineHtml}
         </svg>
         <div class="court-wire-players title-redist-token-grid">
           ${playerTokens.map((token, index) => {
@@ -354,7 +383,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
                 draggable="${isBasileus && token.available ? 'true' : 'false'}"
                 ${isBasileus && !token.available ? 'disabled' : ''}
                 aria-pressed="${selected ? 'true' : 'false'}">
-                <span class="court-wire-socket" aria-hidden="true"></span>
+                <span class="court-wire-socket" ${isBasileus && token.available ? `data-title-wire-finish="${token.player.id}" data-title-wire-copy="${token.copyIndex}"` : ''} aria-hidden="true"></span>
                 <span class="candidate-crest">${playerInitial(token.player)}</span>
                 <span class="candidate-name">${escapeHtml(playerDisplayLabel(token.player))}</span>
                 <span class="candidate-tag">${token.available ? `Copy ${token.copyIndex + 1}` : 'Tied'}</span>
@@ -391,6 +420,34 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
       else delete draft.selectedTitleKey;
       return true;
     };
+
+    container.querySelectorAll('[data-title-wire-start]').forEach((socket) => {
+      socket.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const titleKey = socket.dataset.titleWireStart;
+        if (!titleKeys.includes(titleKey) || hasAssignment(titleKey)) return;
+        draft.titleWireStart = { titleKey };
+        draft.selectedTitleKey = titleKey;
+        delete draft.selectedTitlePlayerId;
+        delete draft.selectedTitleCopyIndex;
+        rerender();
+      });
+    });
+
+    container.querySelectorAll('[data-title-wire-finish]').forEach((socket) => {
+      socket.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const titleKey = draft.titleWireStart?.titleKey;
+        const nextPlayerId = Number(socket.dataset.titleWireFinish);
+        if (!titleKeys.includes(titleKey) || !Number.isInteger(nextPlayerId)) return;
+        if (assignTitle(titleKey, nextPlayerId)) {
+          delete draft.titleWireStart;
+          rerender();
+        }
+      });
+    });
+
+    bindWireDraftMotion(container);
 
     container.querySelectorAll('[data-title-token-player]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -443,6 +500,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
       button.addEventListener('click', (event) => {
         event.stopPropagation();
         delete draft.assignments[button.dataset.titleClear];
+        delete draft.titleWireStart;
         draft.selectedTitleKey = button.dataset.titleClear;
         rerender();
       });
@@ -689,15 +747,53 @@ function courtSeatLabel(kind) {
   return 'Seat';
 }
 
+function courtSeatShortLabel(kind) {
+  if (kind === 'strategos') return 'Strategos';
+  if (kind === 'bishop') return 'Bishop';
+  if (kind === 'estate') return 'Estate';
+  return 'Seat';
+}
+
+function courtSeatHolder(state, holderId) {
+  if (holderId == null || holderId === '') return null;
+  const playerId = Number(holderId);
+  return Number.isInteger(playerId) ? getPlayer(state, playerId) : null;
+}
+
+function renderCourtSeatOwnershipMark(state, kind, theme, holderId) {
+  const holder = courtSeatHolder(state, holderId);
+  if (holder) {
+    return renderOwnershipBadge(state, {
+      kind,
+      holderId: holder.id,
+      color: holder.color || '#5a3810',
+      accent: 'rgba(20,8,0,0.76)',
+    }, { compact: true, hideHolder: true });
+  }
+  const label = courtSeatShortLabel(kind);
+  return `
+    <span class="ownership-badge ownership-badge-${escapeHtml(kind)} compact court-seat-open-badge"
+      style="--ownership-color: rgba(255,252,240,0.96); --ownership-accent: rgba(46,30,15,0.72);"
+      title="${escapeHtml(`Open ${courtSeatLabel(kind)} in ${theme?.name || ''}`)}"
+      aria-label="${escapeHtml(`Open ${courtSeatLabel(kind)}`)}">
+      <span class="ownership-mark" aria-hidden="true"></span>
+      <span class="ownership-text">${escapeHtml(label)}</span>
+    </span>
+  `;
+}
+
 function renderCourtLinkSeat(state, kind, theme, holderId = null) {
   if (!theme) return '';
-  const titleKind = kind === 'bishop' ? 'BISHOP' : kind === 'strategos' ? 'STRATEGOS' : null;
+  const holder = courtSeatHolder(state, holderId);
   return `
-    <span class="court-link-seat-token ${escapeHtml(kind)}">
-      ${titleKind
-        ? renderTitleBadge(state, titleKind, { holderId, themeId: theme.id, compact: true, label: courtSeatLabel(kind) })
-        : `<span class="revocation-target-label">Estate</span>`}
-      ${renderProvinceBadge(state, theme, { compact: true, showOwnership: kind === 'estate' })}
+    <span class="court-link-seat-token ${escapeHtml(kind)}${holder ? ' tied' : ' open'}"
+      ${holder ? `style="${getPlayerStyleAttr(state, holder.id)}"` : ''}
+      title="${escapeHtml(`${courtSeatLabel(kind)} in ${theme.name}${holder ? `: ${playerDisplayLabel(holder)}` : ''}`)}">
+      <span class="court-link-seat-mark">${renderCourtSeatOwnershipMark(state, kind, theme, holder?.id ?? null)}</span>
+      <span class="court-link-seat-copy-inner">
+        <span class="court-link-seat-kind">${escapeHtml(courtSeatShortLabel(kind))}</span>
+        <span class="court-link-seat-place">${escapeHtml(theme.name)}</span>
+      </span>
     </span>
   `;
 }
@@ -780,6 +876,7 @@ function buildCourtConnectionEntries(state, playerId, powerKey) {
       mode: 'open',
       kind,
       theme,
+      powerKey,
       holderId: null,
       label: `${courtSeatLabel(kind)} in ${theme.name}`,
       seatHtml: renderCourtLinkSeat(state, kind, theme),
@@ -806,6 +903,14 @@ function courtWireY(index) {
 function renderCourtWireSeat(entry, index, active) {
   const selectedClass = active ? ' selected' : '';
   const disabledReason = entry.mode === 'bound' ? entry.revokeDisabledReason : entry.targetDisabledReason;
+  const startAttrs = entry.mode === 'open'
+    ? `
+      data-wire-seat-start="${escapeHtml(entry.key)}"
+      data-wire-kind="${escapeHtml(entry.kind)}"
+      data-wire-theme-id="${escapeHtml(entry.theme.id)}"
+      data-wire-power-key="${escapeHtml(entry.powerKey || '')}"
+    `
+    : '';
   return `
     <button type="button"
       class="court-wire-seat court-link-connection ${entry.mode}${selectedClass}${disabledReason ? ' disabled' : ''}"
@@ -817,7 +922,7 @@ function renderCourtWireSeat(entry, index, active) {
       aria-pressed="${active ? 'true' : 'false'}"
       ${disabledReason ? disabledChoiceAttrs(disabledReason, entry.label) : ''}>
       <span class="court-wire-seat-copy">${entry.seatHtml}</span>
-      <span class="court-wire-socket" aria-hidden="true"></span>
+      <span class="court-wire-socket court-wire-seat-socket" ${startAttrs} aria-hidden="true"></span>
     </button>
   `;
 }
@@ -841,13 +946,21 @@ function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, p
       aria-pressed="${selected ? 'true' : 'false'}"
     `;
   }
+  const socketAttrs = isActiveOpen
+    ? `
+      data-wire-player-finish="${player.id}"
+      data-wire-kind="${escapeHtml(activeEntry.kind)}"
+      data-wire-theme-id="${escapeHtml(activeEntry.theme.id)}"
+      data-wire-power-key="${escapeHtml(powerKey || '')}"
+    `
+    : '';
   return `
     <button type="button"
       class="court-wire-player${linked ? ' linked' : ''}${selected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
       style="--wire-row: ${index + 1}; ${getPlayerStyleAttr(state, player.id)}"
       ${dataAttrs}
       ${disabledReason ? disabledChoiceAttrs(disabledReason, playerDisplayLabel(player)) : ''}>
-      <span class="court-wire-socket" aria-hidden="true"></span>
+      <span class="court-wire-socket court-wire-player-socket" ${socketAttrs} aria-hidden="true"></span>
       <span class="candidate-crest">${playerInitial(player)}</span>
       <span class="candidate-name">${escapeHtml(playerDisplayLabel(player))}</span>
     </button>
@@ -886,6 +999,22 @@ function renderCourtWireLine(entry, entryIndex, playerIndex, player, options = {
   `;
 }
 
+function renderCourtDraftWire(entry, entryIndex) {
+  if (!entry || entryIndex < 0) return '';
+  const y = courtWireY(entryIndex);
+  const label = `Tie ${entry.label}`;
+  return `
+    <g class="court-wire-link drawing" aria-label="${escapeHtml(label)}">
+      <line class="court-wire-line court-wire-shadow" x1="335" y1="${y}" x2="500" y2="${y}" data-wire-draft-line></line>
+      <line class="court-wire-line court-wire-visible"
+        x1="335" y1="${y}" x2="500" y2="${y}"
+        style="--wire-color: var(--gold-1);"
+        data-wire-draft-line
+        title="${escapeHtml(label)}"></line>
+    </g>
+  `;
+}
+
 function renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry) {
   const lines = [];
   entries.forEach((entry, entryIndex) => {
@@ -900,23 +1029,10 @@ function renderCourtWireLines(state, entries, players, draft, playerId, powerKey
     }));
   });
 
-  if (activeOpenEntry) {
+  const wireStart = draft.wireStart || null;
+  if (activeOpenEntry && wireStart?.kind === activeOpenEntry.kind && wireStart?.themeId === activeOpenEntry.theme.id) {
     const entryIndex = entries.findIndex((entry) => entry.key === activeOpenEntry.key);
-    const appoint = getCourtAppointmentDraft(draft, activeOpenEntry.kind);
-    const selectedPlayer = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
-    if (selectedPlayer && appoint.themeId === activeOpenEntry.theme.id) {
-      const playerIndex = players.findIndex((player) => player.id === selectedPlayer.id);
-      const selectedReason = getAppointmentDisabledReason(state, playerId, powerKey, activeOpenEntry.theme.id, selectedPlayer.id);
-      const ready = !activeOpenEntry.targetDisabledReason && !selectedReason;
-      lines.push(renderCourtWireLine(activeOpenEntry, entryIndex, playerIndex, selectedPlayer, {
-        kind: ready ? 'pending' : 'pending disabled',
-        label: ready ? activeOpenEntry.buttonLabel : selectedReason || activeOpenEntry.targetDisabledReason,
-        disabledReason: ready ? '' : selectedReason || activeOpenEntry.targetDisabledReason,
-        actionAttrs: ready
-          ? `data-action="${activeOpenEntry.action}" aria-label="${escapeHtml(activeOpenEntry.buttonLabel)}"`
-          : `data-${activeOpenEntry.targetAttr}="${activeOpenEntry.theme.id}" aria-label="${escapeHtml(`Choose ${activeOpenEntry.label}`)}"`,
-      }));
-    }
+    lines.push(renderCourtDraftWire(activeOpenEntry, entryIndex));
   }
   return lines.join('');
 }
@@ -932,7 +1048,10 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
   const selectedBishop = draft.appointBishop?.themeId
     ? courtConnectionKey('bishop', draft.appointBishop.themeId)
     : null;
-  const selectedKeys = new Set([selectedStrategos, selectedBishop].filter(Boolean));
+  const wireKey = draft.wireStart?.powerKey === powerKey && draft.wireStart?.kind && draft.wireStart?.themeId
+    ? courtConnectionKey(draft.wireStart.kind, draft.wireStart.themeId)
+    : null;
+  const selectedKeys = new Set([wireKey, selectedStrategos, selectedBishop].filter(Boolean));
   const activeOpenEntry = openEntries.find((entry) => selectedKeys.has(entry.key)) || openEntries[0] || null;
   const activeKey = activeOpenEntry?.key || null;
   const linkedPlayerIds = new Set(entries.filter((entry) => entry.mode === 'bound').map((entry) => entry.holderId));
@@ -950,9 +1069,9 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
     <section class="court-link-section court-wire-section">
       <header class="court-link-section-head">
         <span class="appointment-section-title">Links</span>
-        <span class="court-link-section-note">${boundCount} tied, ${openCount} open. Click a seat and a dynasty, then click the new line to tie it. Click an existing line to Revoke.</span>
+        <span class="court-link-section-note">${boundCount} tied, ${openCount} open. Click a seat circle, guide the rope, then click a dynasty circle. Click a tied rope to Revoke.</span>
       </header>
-      <div class="court-wire-board" style="--wire-rows: ${rows};">
+      <div class="court-wire-board${wireKey ? ' tying' : ''}" style="--wire-rows: ${rows};" data-court-wire-board data-court-power-key="${escapeHtml(powerKey || '')}">
         <div class="court-wire-col-head seats">Seats</div>
         <div class="court-wire-col-head players">Dynasties</div>
         <div class="court-wire-seats">
@@ -1084,30 +1203,54 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
     </section>
   `;
 
-  // Picker click handlers — store in draft, re-render to update visuals.
-  const onPick = (selector, draftKey, prop, transform = (v) => v) => {
-    const datasetKey = datasetKeyFromSelector(selector);
-    container.querySelectorAll(selector).forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
-        const value = transform(btn.dataset[datasetKey] ?? '');
-        const next = { ...(draft[draftKey] || {}), [prop]: value };
-        if (datasetKey === 'strategosPlayerPick' && btn.dataset.strategosThemePick) {
-          next.themeId = btn.dataset.strategosThemePick;
-        }
-        if (datasetKey === 'bishopPlayerPick' && btn.dataset.bishopThemePick) {
-          next.themeId = btn.dataset.bishopThemePick;
-        }
-        draft[draftKey] = next;
-        rerender();
-      });
+  // The circles are the controls here: click a seat socket, then a player socket.
+  container.querySelectorAll('[data-wire-seat-start]').forEach((socket) => {
+    socket.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const row = socket.closest('.court-wire-seat');
+      if (row?.disabled || row?.getAttribute('aria-disabled') === 'true') return;
+      const kind = socket.dataset.wireKind;
+      const themeId = socket.dataset.wireThemeId;
+      const powerKey = socket.dataset.wirePowerKey;
+      if (!kind || !themeId) return;
+      draft.wireStart = { kind, themeId, powerKey };
+      if (kind === 'bishop') draft.appointBishop = { themeId };
+      else draft.appointStrategos = { themeId };
+      rerender();
     });
-  };
-  onPick('[data-strategos-theme-pick]', 'appointStrategos', 'themeId');
-  onPick('[data-strategos-player-pick]','appointStrategos', 'playerId',  (v) => Number(v));
-  onPick('[data-bishop-theme-pick]',    'appointBishop',    'themeId');
-  onPick('[data-bishop-player-pick]',   'appointBishop',    'playerId',  (v) => Number(v));
-  onPick('[data-revoke-pick]',          'revoke',           'target');
+  });
+
+  container.querySelectorAll('[data-wire-player-finish]').forEach((socket) => {
+    socket.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const row = socket.closest('.court-wire-player');
+      if (row?.disabled || row?.getAttribute('aria-disabled') === 'true') return;
+      const wireStart = draft.wireStart;
+      if (!wireStart) return;
+      const kind = wireStart.kind;
+      const themeId = wireStart.themeId;
+      const powerKey = wireStart.powerKey || socket.dataset.wirePowerKey;
+      const playerId = Number(socket.dataset.wirePlayerFinish);
+      if (socket.dataset.wireKind !== kind || socket.dataset.wireThemeId !== themeId) return;
+      if (!kind || !themeId || !Number.isInteger(playerId)) return;
+      const disabledReason = getAppointmentDisabledReason(state, activePlayerId, powerKey, themeId, playerId);
+      if (disabledReason) return;
+      delete draft.wireStart;
+      if (kind === 'bishop') {
+        draft.appointBishop = { themeId, playerId };
+        callbacks['appoint-bishop']?.(themeId, playerId);
+      } else {
+        draft.appointStrategos = { themeId, playerId };
+        callbacks['appoint-strategos']?.(
+          regionTitleFor(state.themes[themeId]),
+          themeId,
+          playerId,
+        );
+      }
+    });
+  });
+
+  bindWireDraftMotion(container);
 
   bindSelectAction(container, '[data-action="appoint-strategos"]', () => {
     const { themeId, playerId } = draft.appointStrategos || {};
