@@ -157,8 +157,8 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   state.themes.KAP.bishop = 2;
   const patriarchPanel = makePanelContainer();
   renderCourtPanel(patriarchPanel, state, 1, {}, { uiState: createDefaultUiState() });
-  assert.match(patriarchPanel.innerHTML, /Appoint Strategos/);
-  assert.match(patriarchPanel.innerHTML, /Appoint Bishop/);
+  assert.match(patriarchPanel.innerHTML, /data-strategos-theme-pick=/);
+  assert.match(patriarchPanel.innerHTML, /data-bishop-theme-pick=/);
   assert.match(patriarchPanel.innerHTML, /Revoke/);
   assert.doesNotMatch(patriarchPanel.innerHTML, /Gift/);
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
@@ -244,7 +244,7 @@ test('court estate revocations show owner color without the old separator', () =
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
-  assert.match(container.innerHTML, /court-link-row-bound/);
+  assert.match(container.innerHTML, /court-link-connection bound/);
   assert.match(container.innerHTML, /ownership-badge ownership-badge-estate/);
   assert.match(container.innerHTML, /data-link-revoke="theme:OPS"/);
   assert.equal(container.innerHTML.includes(`--ownership-color: ${state.players[2].color};`), true);

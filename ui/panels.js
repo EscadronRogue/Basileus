@@ -1132,6 +1132,206 @@ function renderCourtRevocationsForPowerLinked(state, playerId, draft, powerKey) 
   `;
 }
 
+function courtConnectionKey(kind, themeId) {
+  return `${kind}:${themeId}`;
+}
+
+function getCourtAppointmentDraft(draft, kind) {
+  return kind === 'bishop' ? (draft.appointBishop || {}) : (draft.appointStrategos || {});
+}
+
+function buildCourtConnectionEntries(state, playerId, powerKey) {
+  const entries = [];
+  const seen = new Set();
+  const addEntry = (entry) => {
+    if (!entry?.key || seen.has(entry.key)) return;
+    seen.add(entry.key);
+    entries.push(entry);
+  };
+
+  getRevocationTargets(state, playerId, powerKey)
+    .map((target) => {
+      const result = validateCourtPayload(state, playerId, { action: 'revoke', value: target.value });
+      return { ...target, disabledReason: result.ok ? '' : result.reason };
+    })
+    .forEach((target) => {
+      const link = describeRevocationLinkTarget(state, target);
+      if (!link) return;
+      addEntry({
+        key: courtConnectionKey(link.kind, link.theme.id),
+        mode: 'bound',
+        kind: link.kind,
+        theme: link.theme,
+        holderId: link.holderId,
+        label: link.label,
+        seatHtml: link.seatHtml,
+        holderHtml: link.holderHtml,
+        revokeValue: target.value,
+        revokeDisabledReason: target.disabledReason || '',
+      });
+    });
+
+  if (powerKey === 'BASILEUS') return entries;
+
+  const addOpenAppointment = (kind, theme) => {
+    if (!theme) return;
+    const action = kind === 'bishop' ? 'appoint-bishop' : 'appoint-strategos';
+    const targetAttr = kind === 'bishop' ? 'bishop-theme-pick' : 'strategos-theme-pick';
+    const playerAttr = kind === 'bishop' ? 'bishop-player-pick' : 'strategos-player-pick';
+    const buttonLabel = kind === 'bishop' ? 'Appoint Bishop' : 'Appoint Strategos';
+    addEntry({
+      key: courtConnectionKey(kind, theme.id),
+      mode: 'open',
+      kind,
+      theme,
+      holderId: null,
+      label: `${courtSeatLabel(kind)} in ${theme.name}`,
+      seatHtml: renderCourtLinkSeat(state, kind, theme),
+      action,
+      targetAttr,
+      playerAttr,
+      buttonLabel,
+      targetDisabledReason: getTargetDisabledReason(state, playerId, powerKey, theme.id),
+    });
+  };
+
+  if (powerKey === 'PATRIARCH') {
+    getBishopTargets(state, playerId).forEach((theme) => addOpenAppointment('bishop', theme));
+  } else {
+    getStrategosTargets(state, playerId, powerKey).forEach((theme) => addOpenAppointment('strategos', theme));
+  }
+  return entries;
+}
+
+function renderCourtPlayerNode(state, entry, draft, playerId, powerKey, active) {
+  if (entry.mode === 'bound') {
+    return `<div class="court-link-player-cell bound">${entry.holderHtml}</div>`;
+  }
+  if (!active) {
+    return `<div class="court-link-player-cell open"><span class="court-link-open-end">Choose this seat</span></div>`;
+  }
+  const appoint = getCourtAppointmentDraft(draft, entry.kind);
+  const targets = entry.kind === 'bishop'
+    ? getBishopTargets(state, playerId)
+    : getStrategosTargets(state, playerId, powerKey);
+  return `
+    <div class="court-link-player-cell active">
+      <div class="choice-grid player-choice-grid">
+        ${(state.players || []).map((player) => {
+          const disabledReason = getAppointeeDisabledReason(state, playerId, powerKey, targets, player.id, entry.theme.id);
+          const label = playerDisplayLabel(player);
+          const isSelected = Number(appoint.playerId) === player.id && appoint.themeId === entry.theme.id;
+          return `
+            <button type="button" class="choice-btn player-choice-btn${isSelected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
+              data-${entry.targetAttr}="${entry.theme.id}"
+              data-${entry.playerAttr}="${player.id}"
+              aria-pressed="${isSelected ? 'true' : 'false'}"
+              style="${getPlayerStyleAttr(state, player.id)}"
+              title="${escapeHtml(disabledReason ? `${label} - ${disabledReason}` : label)}"
+              ${disabledReason ? 'disabled aria-disabled="true"' : ''}>
+              <span class="choice-crest">${playerInitial(player)}</span>
+              <span class="choice-label">${escapeHtml(label)}</span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderCourtConnector(state, entry, draft, playerId, powerKey, active) {
+  if (entry.mode === 'bound') {
+    const disabledReason = entry.revokeDisabledReason || '';
+    return `
+      <button type="button"
+        class="court-link-connector bound${disabledReason ? ' disabled' : ''}"
+        data-link-revoke="${escapeHtml(entry.revokeValue)}"
+        aria-label="${escapeHtml(`Revoke ${entry.label}`)}"
+        ${disabledChoiceAttrs(disabledReason, `Revoke ${entry.label}`)}>
+        <span class="court-link-line"></span>
+        <span class="court-link-mid court-link-cut">&#9986;</span>
+        <span class="court-link-line"></span>
+      </button>
+    `;
+  }
+
+  const appoint = getCourtAppointmentDraft(draft, entry.kind);
+  const selectedPlayer = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
+  const selectedReason = active && selectedPlayer
+    ? getAppointmentDisabledReason(state, playerId, powerKey, entry.theme.id, selectedPlayer.id)
+    : '';
+  const ready = Boolean(active && selectedPlayer && appoint.themeId === entry.theme.id && !entry.targetDisabledReason && !selectedReason);
+  const selectAttrs = ready
+    ? `data-action="${entry.action}" aria-label="${escapeHtml(entry.buttonLabel)}"`
+    : `data-${entry.targetAttr}="${entry.theme.id}" data-map-province="${entry.theme.id}" aria-label="${escapeHtml(`Choose ${entry.label}`)}"`;
+  const disabled = entry.targetDisabledReason && !ready;
+  return `
+    <button type="button"
+      class="court-link-connector open${active ? ' active' : ''}${ready ? ' ready' : ''}${disabled ? ' disabled' : ''}"
+      ${selectAttrs}
+      ${disabled ? disabledChoiceAttrs(entry.targetDisabledReason, entry.label) : ''}>
+      <span class="court-link-line"></span>
+      <span class="court-link-mid">${ready ? 'Tie' : ''}</span>
+      <span class="court-link-line"></span>
+    </button>
+  `;
+}
+
+function renderCourtConnectionRow(state, entry, draft, playerId, powerKey, active) {
+  const selectedClass = active ? ' selected' : '';
+  const disabledReason = entry.mode === 'bound' ? entry.revokeDisabledReason : entry.targetDisabledReason;
+  return `
+    <article class="court-link-connection ${entry.mode}${selectedClass}${disabledReason ? ' disabled' : ''}"
+      data-link-kind="${escapeHtml(entry.kind)}"
+      ${entry.revokeValue ? `data-revoke-pick="${escapeHtml(entry.revokeValue)}"` : ''}
+      data-map-province="${escapeHtml(entry.theme.id)}"
+      ${disabledReason ? 'aria-disabled="true"' : ''}>
+      <button type="button"
+        class="court-link-seat-node${selectedClass}"
+        ${entry.mode === 'open' ? `data-${entry.targetAttr}="${entry.theme.id}"` : ''}
+        data-map-province="${entry.theme.id}"
+        aria-pressed="${active ? 'true' : 'false'}"
+        ${entry.mode === 'open' && entry.targetDisabledReason ? disabledChoiceAttrs(entry.targetDisabledReason, entry.label) : ''}>
+        ${entry.seatHtml}
+      </button>
+      ${renderCourtConnector(state, entry, draft, playerId, powerKey, active)}
+      ${renderCourtPlayerNode(state, entry, draft, playerId, powerKey, active)}
+      ${disabledReason ? `<div class="court-link-warning">${escapeHtml(disabledReason)}</div>` : ''}
+    </article>
+  `;
+}
+
+function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
+  const entries = buildCourtConnectionEntries(state, playerId, powerKey);
+  if (!entries.length) return '';
+  const openEntries = entries.filter((entry) => entry.mode === 'open');
+  const selectedStrategos = draft.appointStrategos?.themeId
+    ? courtConnectionKey('strategos', draft.appointStrategos.themeId)
+    : null;
+  const selectedBishop = draft.appointBishop?.themeId
+    ? courtConnectionKey('bishop', draft.appointBishop.themeId)
+    : null;
+  const selectedKeys = new Set([selectedStrategos, selectedBishop].filter(Boolean));
+  const fallbackOpenKey = openEntries[0]?.key || null;
+  const activeKey = openEntries.find((entry) => selectedKeys.has(entry.key))?.key || fallbackOpenKey;
+  const openCount = openEntries.length;
+  const boundCount = entries.length - openCount;
+  return `
+    <section class="court-link-section court-connection-section">
+      <header class="court-link-section-head">
+        <span class="appointment-section-title">Links</span>
+        <span class="court-link-section-note">${boundCount} tied, ${openCount} open. Click an open rope to tie it; click a tied rope to Revoke it.</span>
+      </header>
+      <div class="court-link-matrix" role="group" aria-label="${escapeHtml(`${getCourtPowerLabel(powerKey)} links`)}">
+        <div class="court-link-col-head">Seats</div>
+        <div class="court-link-col-head center">Rope</div>
+        <div class="court-link-col-head right">Dynasty</div>
+        ${entries.map((entry) => renderCourtConnectionRow(state, entry, draft, playerId, powerKey, entry.key === activeKey)).join('')}
+      </div>
+    </section>
+  `;
+}
+
 function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
   if (powerKey === 'BASILEUS') {
     void state;
@@ -1285,8 +1485,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const passed = isCourtPowerPassed(state, playerId, powerKey);
   const exhausted = isCourtPowerExhausted(state, playerId, powerKey);
   const usedSummary = usedKinds.length ? usedKinds.join(', ') : getCourtPowerActionKind(state, playerId, powerKey);
-  const appointHtml = renderCourtAppointmentsForPowerLinked(state, playerId, draft, powerKey);
-  const revokeHtml = renderCourtRevocationsForPowerLinked(state, playerId, draft, powerKey);
+  const connectionsHtml = renderCourtConnectionsForPower(state, playerId, draft, powerKey);
   const actionLimit = getCourtPowerActionLimit(powerKey);
   const remainingActions = Math.max(0, actionLimit - actionCount);
   const usedParts = [
@@ -1316,8 +1515,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     ? `<div class="panel-empty court-power-done">${doneText}</div>`
     : `
         <div class="court-link-stack">
-          ${powerKey === 'BASILEUS' ? '' : appointHtml || '<div class="choice-grid-empty">No appointments available</div>'}
-          ${revokeHtml || '<div class="choice-grid-empty">No revocations available</div>'}
+          ${connectionsHtml || '<div class="choice-grid-empty">No links available</div>'}
         </div>
         <div class="panel-actions court-pass-actions">
           <button type="button" class="btn-secondary" data-action="pass-court-power" data-court-pass-power="${escapeHtml(powerKey)}">${actionCount ? 'Pass Remaining' : 'Pass'}</button>
