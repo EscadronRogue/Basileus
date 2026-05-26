@@ -58,7 +58,7 @@
   --empire-border: #2e1e0f;
   --empire-border-hover: #4a3018;
   --capital-fill:  #9a7010;
-  --map-filter-neutral-fill: #e8ddbf;
+  --map-filter-neutral-fill: #ffffff;
 
   /* Typography */
   --font-display: 'Cinzel', 'Trajan Pro', Georgia, serif;
@@ -2387,15 +2387,20 @@ body::before {
   fill-opacity: 1;
 }
 .province-shape.map-filtered {
-  fill: var(--province-filter-fill-color, var(--map-filter-neutral-fill, color-mix(in srgb, var(--parch-2) 54%, #ffffff 46%)));
+  fill: var(--province-filter-fill-color, var(--map-filter-neutral-fill, #ffffff));
   fill-opacity: 1;
 }
 .province-shape.map-filter-indirect {
-  filter: saturate(0.86);
+  filter: none;
+}
+.province-shape.map-filter-direct {
+  filter:
+    drop-shadow(0 0 1.2px rgba(250,230,160,0.82))
+    drop-shadow(0 0 2.4px rgba(250,230,160,0.46));
 }
 .province-shape.map-filter-neutral {
-  fill: var(--map-filter-neutral-fill, color-mix(in srgb, var(--parch-2) 54%, #ffffff 46%));
-  filter: saturate(0.55);
+  fill: var(--map-filter-neutral-fill, #ffffff);
+  filter: none;
 }
 .province-shape.selected,
 .province-shape.selected:hover,
@@ -2438,15 +2443,17 @@ body::before {
 .region-stroke.map-filter-direct {
   stroke-width: 4.1;
   stroke-opacity: 1;
-  filter: drop-shadow(0 0 0.55px rgba(250,230,160,0.65));
+  filter:
+    drop-shadow(0 0 0.7px rgba(250,230,160,0.88))
+    drop-shadow(0 0 1.25px rgba(250,230,160,0.56));
 }
 .region-stroke.map-filter-indirect {
-  stroke-width: 2.05;
-  stroke-opacity: 0.72;
+  stroke-width: 2.45;
+  stroke-opacity: 0.92;
 }
 .region-stroke.map-filter-neutral {
   stroke-width: 1.55;
-  stroke-opacity: 0.34;
+  stroke-opacity: 0.38;
 }
 .region-stroke.hovered  { stroke-width: 3.1; stroke-opacity: 1; }
 .region-stroke.selected,
@@ -2477,6 +2484,7 @@ body::before {
 .map-cartouche {
   --cart-bg: var(--province-cartouche-fill-color, #4f3a6d);
   --cart-border: var(--province-outline-color, var(--empire-border));
+  --cart-ink: #ffffff;
   cursor: pointer;
   pointer-events: auto;
 }
@@ -2504,6 +2512,22 @@ body::before {
 }
 .map-cartouche.occupied .map-cart-bg { opacity: 1; }
 
+.map-cartouche.map-filtered {
+  --cart-bg: var(--province-filter-cartouche-fill-color, #ffffff);
+  --cart-border: var(--province-filter-cartouche-border-color, rgba(46,30,15,0.30));
+  --cart-ink: var(--province-filter-cartouche-ink-color, var(--umber-1));
+}
+
+.map-cartouche.map-filter-direct {
+  filter:
+    drop-shadow(0 0 0.6px rgba(250,230,160,0.78))
+    drop-shadow(0 0 1.1px rgba(250,230,160,0.50));
+}
+
+.map-cartouche.map-filter-neutral .map-cart-inner {
+  stroke: rgba(168,116,32,0.34);
+}
+
 .map-cart-inner {
   fill: none;
   stroke: rgba(240,200,90,0.55);
@@ -2512,7 +2536,7 @@ body::before {
 .map-cart-id,
 .map-cart-name,
 .map-cart-glyph-num {
-  fill: #ffffff;
+  fill: var(--cart-ink, #ffffff);
   text-shadow: none;
   dominant-baseline: auto;
   alignment-baseline: baseline;
@@ -2532,10 +2556,10 @@ body::before {
 }
 /* Map cartouche value group — icons + numbers, centered around x=0 */
 .map-cart-values { pointer-events: none; }
-.map-cart-glyph { color: #ffffff; opacity: 1; }
+.map-cart-glyph { color: var(--cart-ink, #ffffff); opacity: 1; }
 .map-cart-glyph-gold,
 .map-cart-glyph-troop,
-.map-cart-glyph-church { color: #ffffff; }
+.map-cart-glyph-church { color: var(--cart-ink, #ffffff); }
 .map-cartouche.occupied .map-cart-glyph { opacity: 1; }
 
 .map-cart-markers { pointer-events: none; }
@@ -2563,8 +2587,10 @@ body::before {
 }
 
 /* Capital cartouche: text leans into the imperial gold a touch more */
-.map-cartouche.is-capital .map-cart-id,
-.map-cartouche.is-capital .map-cart-name { fill: #ffffff; }
+.map-cartouche.is-capital:not(.map-filtered) .map-cart-id,
+.map-cartouche.is-capital:not(.map-filtered) .map-cart-name { fill: #ffffff; }
+.map-cartouche.map-filtered.is-capital .map-cart-id,
+.map-cartouche.map-filtered.is-capital .map-cart-name { fill: var(--cart-ink, var(--umber-1)); }
 
 /* Selected: stronger gold inner ring + slight scale-in via transform */
 .map-cartouche.selected .map-cart-inner {
@@ -4852,7 +4878,7 @@ textarea {
 }
 .revocation-target-card {
   display: grid;
-  grid-template-columns: minmax(76px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(118px, auto) minmax(0, 1fr);
   align-items: center;
   gap: 7px;
   width: 100%;
@@ -4867,6 +4893,9 @@ textarea {
 }
 .revocation-target-kind {
   justify-content: flex-start;
+}
+.revocation-target-kind .ownership-badge {
+  max-width: 100%;
 }
 .revocation-target-place {
   justify-content: flex-start;
@@ -5117,15 +5146,45 @@ textarea {
   color: var(--umber-1);
 }
 .estate-card-bid {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
+  align-items: stretch;
 }
-.estate-card-bid input {
-  flex: 1 1 80px;
+.estate-bid-stepper {
+  display: grid;
+  grid-template-columns: 34px minmax(52px, 1fr) 34px;
   min-width: 0;
-  padding: 7px 10px;
   border: 1px solid var(--parch-3);
   border-radius: var(--r-sm);
+  overflow: hidden;
+  background: #ffffff;
+}
+.estate-bid-step {
+  border: 0;
+  background:
+    linear-gradient(180deg, rgba(255,252,242,0.95), rgba(245,233,200,0.82));
+  color: var(--umber-1);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.estate-bid-step:hover:not(:disabled) {
+  background:
+    linear-gradient(180deg, rgba(250,232,160,0.38), rgba(245,233,200,0.86));
+}
+.estate-bid-step:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.estate-card-bid input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-left: 1px solid var(--parch-2);
+  border-right: 1px solid var(--parch-2);
   background: #fff;
   font-family: var(--font-display);
   font-size: 14px;
@@ -5290,6 +5349,41 @@ textarea {
   color: var(--umber-2);
 }
 .order-locked-sub { color: var(--purple-1); }
+.army-card-readiness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.readiness-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid rgba(58,107,40,0.28);
+  border-radius: 999px;
+  background: rgba(58,107,40,0.08);
+  color: var(--win);
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.readiness-pill.missing {
+  border-color: rgba(160,48,48,0.32);
+  background: rgba(160,48,48,0.08);
+  color: var(--crimson-1);
+}
+.deployment-lock-help {
+  margin: 0;
+  color: var(--crimson-1);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-style: italic;
+}
+.deployment-lock-help.ready {
+  color: var(--win);
+}
 .army-card-slider {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -5737,6 +5831,136 @@ textarea {
 }
 .title-redist-row .muted { color: var(--umber-3); font-style: italic; }
 
+.title-redist-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 10px;
+}
+.title-redist-slot {
+  padding: 12px 14px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.72) 100%);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.title-redist-slot.can-fill { cursor: pointer; }
+.title-redist-slot.can-fill:hover,
+.title-redist-slot:focus-visible {
+  border-color: rgba(200,146,30,0.48);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.24),
+    0 4px 14px rgba(168,116,32,0.16);
+  outline: none;
+}
+.title-redist-slot.filled { border-color: rgba(200,146,30,0.34); }
+.title-redist-slot-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.title-redist-slot-state,
+.title-redist-tray-head {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+.title-redist-slot-body {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+  min-width: 0;
+}
+.title-redist-empty {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed rgba(168,116,32,0.42);
+  border-radius: var(--r-sm);
+  color: var(--umber-3);
+  font-family: var(--font-body);
+  font-style: italic;
+}
+.title-redist-assigned,
+.title-redist-player-token {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 3px solid var(--role-outline-color, var(--empire-border));
+  border-radius: var(--r-sm);
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  box-shadow: inset 0 0 0 1px rgba(240,200,90,0.45);
+}
+.title-redist-assigned { flex: 1 1 auto; }
+.title-redist-clear {
+  flex: 0 0 auto;
+  border: 1px solid rgba(168,116,32,0.34);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.78);
+  color: var(--umber-2);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.title-redist-tray {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(168,116,32,0.22);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.72);
+}
+.title-redist-tray-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.title-redist-token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 7px;
+}
+.title-redist-player-token {
+  width: 100%;
+  border-width: 2px;
+  cursor: grab;
+}
+.title-redist-player-token.selected {
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.84),
+    0 0 0 2px rgba(240,200,90,0.48),
+    0 0 0 4px var(--role-outline-color, var(--gold-1));
+}
+.title-redist-player-token.used {
+  cursor: default;
+  opacity: 0.42;
+  filter: grayscale(0.28);
+}
+
 /* ── Resolution panel ───────────────────────────────────────────────────────
    War result, coup outcome, defender-reward cards. Same cartouche
    vocabulary as the appointment panels, color-coded by outcome. */
@@ -5777,6 +6001,70 @@ textarea {
   flex: 1;
 }
 .result-card-against strong { color: var(--umber-0); font-style: normal; font-weight: 600; }
+
+.deployment-reveal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.deployment-reveal-player {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.66);
+}
+.deployment-reveal-player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--umber-1);
+}
+.deployment-reveal-player-head > span:last-child { color: var(--umber-3); }
+.deployment-reveal-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.deployment-reveal-pills > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(168,116,32,0.24);
+  border-radius: 999px;
+  background: rgba(245,233,200,0.58);
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--umber-1);
+}
+.deployment-reveal-office-list {
+  display: grid;
+  gap: 5px;
+}
+.deployment-reveal-office-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) repeat(3, minmax(82px, auto));
+  gap: 6px 10px;
+  align-items: center;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--umber-2);
+}
+.deployment-reveal-office-name { min-width: 0; }
+
+@media (max-width: 620px) {
+  .deployment-reveal-office-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 /* War outcome ribbon: green / crimson / umber */
 .war-outcome-badge {
@@ -6361,7 +6649,7 @@ textarea {
   stroke-width: 0;
   stroke-linejoin: round;
   paint-order: stroke fill;
-  fill: #ffffff;
+  fill: var(--cart-ink, #ffffff);
 }
 .map-cart-glyph-num { font-weight: 800; }
 /* Keep the warm-gold / cool-blue tint on gold and church numerals
@@ -6369,7 +6657,7 @@ textarea {
    shared light stroke unifies them and the hue distinguishes them. */
 .map-cartouche .map-cart-glyph-num-gold,
 .map-cartouche .map-cart-glyph-num-troop,
-.map-cartouche .map-cart-glyph-num-church { fill: #ffffff; }
+.map-cartouche .map-cart-glyph-num-church { fill: var(--cart-ink, #ffffff); }
 
 /* SVG icon strokes on the map: a tiny light drop-shadow keeps the
    unit marker / coin / Orthodox cross outlines visible on region fills. */

@@ -1,5 +1,5 @@
 // ui/panels.js - compact phase panels for the updated ruleset.
-import { MAJOR_TITLES } from '../data/titles.js';
+import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
 import { applyCourtAction } from '../engine/commands.js';
 import {
@@ -50,7 +50,6 @@ import {
   renderPlayerRoleName,
   renderOwnershipBadge,
   renderProvinceBadge,
-  renderProvinceOwnerMarker,
   renderThemeOfficeBadge,
   renderTitleBadge,
 } from './labels.js';
@@ -309,12 +308,20 @@ function renderRevocationTargetBadge(state, target) {
   if (kind === 'minor') {
     const titleKind = titleType === 'strategos' ? 'STRATEGOS' : 'BISHOP';
     const holderId = titleType === 'strategos' ? theme.strategos : theme.bishop;
+    const holder = getPlayer(state, holderId);
+    const ownershipKind = titleType === 'strategos' ? 'strategos' : 'bishop';
     return `
       <span class="revocation-target-card ${escapeHtml(titleType)}">
         <span class="revocation-target-kind">
-          ${renderTitleBadge(state, titleKind, { holderId, themeId, compact: true })}
+          ${renderOwnershipBadge(state, {
+            kind: ownershipKind,
+            holderId,
+            color: holder?.color || '#5a3810',
+            accent: 'rgba(20,8,0,0.78)',
+          }, { compact: true })}
         </span>
         <span class="revocation-target-place">
+          ${renderTitleBadge(state, titleKind, { holderId, themeId, compact: true, label: titleType === 'strategos' ? 'Strategos seat' : 'Bishop seat' })}
           ${renderProvinceBadge(state, theme, { compact: true })}
         </span>
       </span>
@@ -322,13 +329,19 @@ function renderRevocationTargetBadge(state, target) {
   }
 
   if (kind === 'theme') {
+    const holderId = theme.owner;
+    const holder = getPlayer(state, holderId);
     return `
       <span class="revocation-target-card estate">
         <span class="revocation-target-kind">
-          <span class="revocation-target-label">Estate</span>
+          ${renderOwnershipBadge(state, {
+            kind: 'estate',
+            holderId,
+            color: holder?.color || '#5a3810',
+            accent: 'rgba(20,8,0,0.78)',
+          }, { compact: true })}
         </span>
         <span class="revocation-target-place">
-          ${renderProvinceOwnerMarker(state, theme, { compact: true })}
           ${renderProvinceBadge(state, theme, { compact: true })}
         </span>
       </span>
@@ -363,58 +376,154 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
   if (!draft.assignments) draft.assignments = { ...initial };
   const titleKeys = Object.keys(MAJOR_TITLES);
   const eligible = state.players.filter((player) => player.id !== state.basileusId);
+  const distribution = MAJOR_TITLE_DISTRIBUTION[state.players.length] || eligible.map(() => 1);
+  const sortedDistribution = distribution.slice().sort((a, b) => b - a);
+  const maxCopies = Math.max(1, ...sortedDistribution);
   const hasAssignment = (titleKey) => {
     const value = draft.assignments[titleKey];
     return value != null && value !== '' && Number.isInteger(Number(value));
   };
+  const countAssignments = (skipTitleKey = null) => Object.entries(draft.assignments || {})
+    .reduce((counts, [titleKey, assignedPlayerId]) => {
+      if (titleKey === skipTitleKey) return counts;
+      const assigned = Number(assignedPlayerId);
+      if (!Number.isInteger(assigned)) return counts;
+      counts[assigned] = (counts[assigned] || 0) + 1;
+      return counts;
+    }, {});
+  const assignedCounts = countAssignments();
   const complete = titleKeys.every(hasAssignment);
   const validation = complete
     ? validateMajorTitleAssignments(state, state.basileusId, draft.assignments)
     : { ok: false, reason: 'Assign every major office before confirming.' };
   const canConfirm = isBasileus && validation.ok;
   const rerender = () => renderTitleRedistributionPanel(container, state, playerId, callbacks, options);
+  const selectedPlayerId = Number.isInteger(Number(draft.selectedTitlePlayerId))
+    ? Number(draft.selectedTitlePlayerId)
+    : null;
+  const selectedPlayer = selectedPlayerId == null ? null : getPlayer(state, selectedPlayerId);
+  const ruleText = sortedDistribution.length
+    ? `Final spread must be ${sortedDistribution.join('-')} among the non-Basileus players.`
+    : 'Assign each office to a non-Basileus player.';
 
   container.innerHTML = `
     <section class="phase-card title-redistribution-panel">
-      <h3>Redistribute Major Titles</h3>
-      <p class="section-hint">${isBasileus ? 'Assign each major office to an eligible player before Court opens.' : 'Waiting for the Basileus to assign the major titles.'}</p>
-      <div class="title-redist-stack">
+      <h3>Assign Major Offices</h3>
+      <p class="section-hint">${isBasileus ? `Place player cards into the four office slots. ${ruleText}` : 'Waiting for the Basileus to assign the major offices.'}</p>
+      <div class="title-redist-board">
         ${Object.entries(MAJOR_TITLES).map(([titleKey, title]) => {
           const assigned = hasAssignment(titleKey) ? Number(draft.assignments[titleKey]) : null;
           const assignedPlayer = Number.isInteger(assigned) ? getPlayer(state, assigned) : null;
           return `
-            <section class="title-redist-row">
-              <header class="title-redist-row-head">
+            <section class="title-redist-slot${selectedPlayer ? ' can-fill' : ''}${assignedPlayer ? ' filled' : ''}" data-title-slot="${titleKey}" tabindex="${isBasileus ? '0' : '-1'}">
+              <header class="title-redist-slot-head">
                 ${renderTitleBadge(state, titleKey, { holderId: assignedPlayer?.id, compact: false, label: title.name })}
-                ${assignedPlayer ? `<span class="title-redist-arrow">→</span> ${renderPlayerRoleName(state, assignedPlayer)}` : '<span class="muted">vacant</span>'}
+                <span class="title-redist-slot-state">${assignedPlayer ? 'Assigned' : selectedPlayer ? 'Click to place' : 'Empty'}</span>
               </header>
-              <input type="hidden" data-title-assignment="${titleKey}" value="${assignedPlayer?.id ?? ''}">
-              ${isBasileus ? renderPlayerChoiceGrid(state, {
-                attr: 'title-redist-pick',
-                selectedId: assignedPlayer?.id ?? null,
-                excludeIds: [state.basileusId],
-                players: eligible,
-              }).replace('player-choice-grid', `player-choice-grid title-redist-grid-${titleKey}`) : ''}
+              <div class="title-redist-slot-body">
+                ${assignedPlayer ? `
+                  <div class="title-redist-assigned" style="${getPlayerStyleAttr(state, assignedPlayer.id)}">
+                    <span class="candidate-crest">${playerInitial(assignedPlayer)}</span>
+                    <span class="candidate-name">${escapeHtml(playerDisplayLabel(assignedPlayer))}</span>
+                  </div>
+                  ${isBasileus ? `<button type="button" class="title-redist-clear" data-title-clear="${titleKey}" aria-label="Clear ${escapeHtml(title.name)}">Clear</button>` : ''}
+                ` : `
+                  <span class="title-redist-empty">${selectedPlayer ? `Place ${escapeHtml(playerDisplayLabel(selectedPlayer))}` : 'Choose a player card below'}</span>
+                `}
+              </div>
             </section>
           `;
         }).join('')}
       </div>
+      ${isBasileus ? `
+        <div class="title-redist-tray" aria-label="Available players">
+          <div class="title-redist-tray-head">
+            <span>Player cards</span>
+            <span>${selectedPlayer ? `Selected: ${escapeHtml(playerDisplayLabel(selectedPlayer))}` : 'Click or drag a card into a slot'}</span>
+          </div>
+          <div class="title-redist-token-grid">
+            ${eligible.flatMap((player) => (
+              Array.from({ length: maxCopies }, (_, copyIndex) => {
+                const used = assignedCounts[player.id] || 0;
+                const available = copyIndex >= used;
+                const selected = selectedPlayerId === player.id && available;
+                return `
+                  <button type="button"
+                    class="title-redist-player-token${selected ? ' selected' : ''}${available ? '' : ' used'}"
+                    style="${getPlayerStyleAttr(state, player.id)}"
+                    data-title-token-player="${player.id}"
+                    data-title-token-copy="${copyIndex}"
+                    draggable="${available ? 'true' : 'false'}"
+                    ${available ? '' : 'disabled'}
+                    aria-pressed="${selected ? 'true' : 'false'}">
+                    <span class="candidate-crest">${playerInitial(player)}</span>
+                    <span class="candidate-name">${escapeHtml(playerDisplayLabel(player))}</span>
+                    <span class="candidate-tag">${available ? `Card ${copyIndex + 1}` : 'Placed'}</span>
+                  </button>
+                `;
+              })
+            )).join('')}
+          </div>
+        </div>
+      ` : ''}
       <p class="form-error" data-role="title-reassignment-error">${complete && !validation.ok ? escapeHtml(validation.reason || '') : ''}</p>
       <div class="panel-actions">
-        <button type="button" class="btn-primary" data-action="confirm-title-redistribution" ${canConfirm ? '' : 'disabled'}>Confirm Titles</button>
+        <button type="button" class="btn-primary" data-action="confirm-title-redistribution" ${canConfirm ? '' : 'disabled'}>${validation.ok ? 'Lock Offices' : 'Finish Office Slots'}</button>
       </div>
     </section>
   `;
 
   if (isBasileus) {
-    titleKeys.forEach((titleKey) => {
-      const scope = container.querySelector(`.title-redist-grid-${titleKey}`);
-      if (!scope) return;
-      scope.querySelectorAll('[data-title-redist-pick]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          draft.assignments[titleKey] = Number(btn.dataset.titleRedistPick);
-          rerender();
-        });
+    const assignTitle = (titleKey, nextPlayerId) => {
+      if (!titleKeys.includes(titleKey) || !Number.isInteger(nextPlayerId)) return false;
+      const nextCounts = countAssignments(titleKey);
+      if ((nextCounts[nextPlayerId] || 0) >= maxCopies) return false;
+      draft.assignments[titleKey] = nextPlayerId;
+      const remainingAfterAssign = maxCopies - ((countAssignments()[nextPlayerId] || 0));
+      if (draft.selectedTitlePlayerId === nextPlayerId && remainingAfterAssign <= 0) delete draft.selectedTitlePlayerId;
+      return true;
+    };
+
+    container.querySelectorAll('[data-title-token-player]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.disabled) return;
+        draft.selectedTitlePlayerId = Number(button.dataset.titleTokenPlayer);
+        rerender();
+      });
+      button.addEventListener('dragstart', (event) => {
+        if (button.disabled) return;
+        event.dataTransfer?.setData('text/plain', button.dataset.titleTokenPlayer || '');
+        event.dataTransfer?.setData('application/x-title-player', button.dataset.titleTokenPlayer || '');
+      });
+    });
+
+    container.querySelectorAll('[data-title-slot]').forEach((slot) => {
+      slot.addEventListener('click', (event) => {
+        if (event.target?.closest?.('[data-title-clear]')) return;
+        if (draft.selectedTitlePlayerId == null) return;
+        if (assignTitle(slot.dataset.titleSlot, Number(draft.selectedTitlePlayerId))) rerender();
+      });
+      slot.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (draft.selectedTitlePlayerId == null) return;
+        event.preventDefault();
+        if (assignTitle(slot.dataset.titleSlot, Number(draft.selectedTitlePlayerId))) rerender();
+      });
+      slot.addEventListener('dragover', (event) => {
+        event.preventDefault();
+      });
+      slot.addEventListener('drop', (event) => {
+        event.preventDefault();
+        const raw = event.dataTransfer?.getData('application/x-title-player') || event.dataTransfer?.getData('text/plain');
+        if (assignTitle(slot.dataset.titleSlot, Number(raw))) rerender();
+      });
+    });
+
+    container.querySelectorAll('[data-title-clear]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        delete draft.assignments[button.dataset.titleClear];
+        rerender();
       });
     });
   }
@@ -1053,11 +1162,11 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
   container.innerHTML = `
     <section class="phase-card estates-panel">
       <header class="estates-head">
-        <h3>Estates</h3>
+        <h3>Buy Land</h3>
         <div class="estates-head-meta">
           <span class="estates-ready-count">${readyCount}/${state.players.length} ready</span>
           <span class="estates-reserve" title="Your unreserved gold">
-            <span class="reserve-label">Your reserve</span>
+            <span class="reserve-label">Gold available</span>
             ${formatGoldHtml(reserve)}
           </span>
         </div>
@@ -1073,7 +1182,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
             const maxBid = bidAmounts.at(-1) || 0;
             const cannotAfford = bidAmounts.length === 0;
             const inputValue = ownAmount || minimum;
-            const bidButtonLabel = ownBid ? 'Update' : 'Seal Bid';
+            const bidButtonLabel = ownBid ? 'Update Bid' : 'Place Bid';
             return `
               <article class="estate-card${cannotAfford ? ' disabled' : ''}${ownBid ? ' selected' : ''}" data-estate="${theme.id}" data-map-province="${theme.id}">
                 <div class="estate-card-province">
@@ -1091,13 +1200,17 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
                 </dl>
                 ${ownBid ? `
                   <div class="estate-current-bid owned sealed">
-                    <span class="estate-current-label">Your sealed bid</span>
-                    <span class="estate-current-bidder">Private until reveal</span>
+                    <span class="estate-current-label">Your bid</span>
+                    <span class="estate-current-bidder">Hidden until reveal</span>
                     <span class="estate-current-amount">${formatGoldHtml(ownAmount)}</span>
                   </div>
                 ` : ''}
                 <div class="estate-card-bid">
-                  <input type="number" min="${minimum}" max="${maxBid}" step="1" inputmode="numeric" value="${inputValue}" data-estate-bid="${theme.id}" aria-label="Bid for ${escapeHtml(theme.name)}" ${cannotAfford ? 'disabled' : ''}>
+                  <div class="estate-bid-stepper">
+                    <button type="button" class="estate-bid-step" data-estate-bid-step="${theme.id}" data-delta="-1" aria-label="Lower bid for ${escapeHtml(theme.name)}" ${cannotAfford ? 'disabled' : ''}>-</button>
+                    <input type="number" min="${minimum}" max="${maxBid}" step="1" inputmode="numeric" value="${inputValue}" data-estate-bid="${theme.id}" aria-label="Bid for ${escapeHtml(theme.name)}" ${cannotAfford ? 'disabled' : ''}>
+                    <button type="button" class="estate-bid-step" data-estate-bid-step="${theme.id}" data-delta="1" aria-label="Raise bid for ${escapeHtml(theme.name)}" ${cannotAfford ? 'disabled' : ''}>+</button>
+                  </div>
                   <button type="button" class="btn-primary estate-bid-btn" data-action="bid-estate" data-theme="${theme.id}" ${cannotAfford ? 'disabled' : ''}>${bidButtonLabel}</button>
                 </div>
                 ${cannotAfford ? `<div class="estate-card-warn">Need ${formatGoldHtml(minimum)} of unreserved gold to bid.</div>` : ''}
@@ -1107,10 +1220,23 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
         </div>
       ` : '<div class="panel-empty">No free citizen land this round.</div>'}
       <div class="panel-actions">
-        <button type="button" class="${ready ? 'btn-secondary' : 'btn-primary'}" data-action="confirm-estates">${ready ? 'Stay in Estates' : 'Ready for Deployment'}</button>
+        <button type="button" class="${ready ? 'btn-secondary' : 'btn-primary'}" data-action="confirm-estates">${ready ? 'Keep Editing Bids' : 'Lock Bids'}</button>
       </div>
     </section>
   `;
+  container.querySelectorAll('[data-estate-bid-step]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const themeId = button.dataset.estateBidStep;
+      const input = container.querySelector(`[data-estate-bid="${themeId}"]`);
+      if (!input) return;
+      const min = Number(input.min) || 0;
+      const max = Number(input.max) || min;
+      const delta = Number(button.dataset.delta) || 0;
+      const current = Number(input.value) || min;
+      input.value = String(Math.max(min, Math.min(max, current + delta)));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
   container.querySelectorAll('[data-action="bid-estate"]').forEach((button) => {
     button.addEventListener('click', () => {
       const themeId = button.dataset.theme;
@@ -1170,6 +1296,20 @@ function getDeploymentReadiness(state, playerId, draft, armyKeys) {
   const ranking = ensureDeploymentRanking(state, playerId, draft);
   if (ranking.length !== state.players.length) missing.push('ranking');
   return { ready: missing.length === 0, missing };
+}
+
+function getDeploymentLockHelp(totals, readiness) {
+  if (totals?.overBudget) return 'Mercenaries cost more gold than you have after idle troop income.';
+  if (readiness?.ready) return 'Every army has a funding choice and a destination. You can lock deployment.';
+  const missing = Array.isArray(readiness?.missing) ? readiness.missing : [];
+  const needsFunding = missing.some((entry) => String(entry).endsWith(':funding'));
+  const needsDestination = missing.some((entry) => String(entry).endsWith(':destination'));
+  const needsRanking = missing.includes('ranking');
+  const parts = [];
+  if (needsFunding) parts.push('move each army funding slider');
+  if (needsDestination) parts.push('choose Frontier or Capital for each deployed force');
+  if (needsRanking) parts.push('finish the coup ranking');
+  return `To lock deployment, ${parts.join(', ')}.`;
 }
 
 function getActiveOrderLocks(options = {}) {
@@ -1370,11 +1510,12 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   const deploymentPreview = renderDeploymentPreview(state, playerId, draft, armyKeys);
   const lockNotice = renderOrderLockNotice(state, orderLocks);
   const candidateRanking = renderCandidateRanking(state, playerId, draft, candidateLockedId);
+  const lockHelp = getDeploymentLockHelp(totals, readiness);
 
   container.innerHTML = `
     <section class="phase-card orders-panel">
       <header class="orders-head">
-        <h3>Deployment</h3>
+        <h3>Send Armies</h3>
         <div class="orders-budget${totals.overBudget ? ' over' : ''}" title="Mercenary cost after idle troop income" data-orders-budget>
           <span class="orders-budget-label">Mercs</span>
           <span data-orders-merc-cost>${formatGoldHtml(totals.mercCost, { signed: false })}</span>
@@ -1382,7 +1523,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
           <span data-orders-reserve>${formatGoldHtml(reserve + totals.unfundedGold, { signed: false })}</span>
         </div>
       </header>
-      <p class="section-hint">Funding sends troops to war. Unfunded troops stay home and add gold before mercenaries are paid.</p>
+      <p class="section-hint">Move each army slider to pick how many troops are funded, then choose Frontier or Capital for every deployed force.</p>
       ${alreadyLocked ? '<div class="panel-empty">Deployment orders locked.</div>' : `
         ${lockNotice}
         ${deploymentPreview}
@@ -1398,6 +1539,12 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
             const lockedLabel = lockedDestination === 'capital' ? 'Capital' : lockedDestination === 'frontier' ? 'Frontier' : null;
             const needsFunding = currentFunded == null;
             const needsDestination = !isDeploymentDestination(current.destination);
+            const fundingText = needsFunding ? 'Move slider' : `${currentFunded}/${max} funded`;
+            const destinationText = needsDestination
+              ? 'Choose destination'
+              : current.destination === 'capital'
+                ? 'Capital'
+                : 'Frontier';
             const sourceCount = isStrategosDeploymentArmyKey(officeKey)
               ? getDeploymentArmySourceKeys(state, playerId, officeKey).length
               : 0;
@@ -1410,6 +1557,10 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
                 ${sourceCount > 1 ? `<p class="army-card-sub">${sourceCount} Strategos commands combined.</p>` : ''}
                 ${entry.capitalLocked ? `<p class="army-card-sub">${formatTroopsHtml(entry.capitalLocked)} capital locked</p>` : ''}
                 ${lockedLabel ? `<p class="army-card-sub order-locked-sub">Deal lock: must deploy to ${lockedLabel}.</p>` : ''}
+                <div class="army-card-readiness">
+                  <span class="readiness-pill${needsFunding ? ' missing' : ' ready'}">Funding: ${escapeHtml(fundingText)}</span>
+                  <span class="readiness-pill${needsDestination ? ' missing' : ' ready'}">Destination: ${escapeHtml(destinationText)}</span>
+                </div>
                 <label class="army-card-slider">
                   <span class="army-slider-label">Fund</span>
                   <input type="range" min="0" max="${max}" value="${sliderValue}" data-army-funded="${officeKey}" ${lockedDestination ? 'disabled' : ''}>
@@ -1425,12 +1576,16 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
               </article>
             `;
           }).join('')}
-          <article class="army-card mercenary-card">
+          <article class="army-card mercenary-card${(Number(draft.mercenaries.count) || 0) > 0 && !isDeploymentDestination(draft.mercenaries.destination) ? ' unresolved' : ''}">
             <header class="army-card-head">
               <span class="army-card-title">${renderIcon('troop')} Mercenaries</span>
               <span class="army-card-count">${formatMercenariesHtml(draft.mercenaries.count || 0)}</span>
             </header>
             <p class="army-card-sub">Triangular cost: 1, +2, +3 …</p>
+            <div class="army-card-readiness">
+              <span class="readiness-pill${totals.overBudget ? ' missing' : ' ready'}">Gold: ${totals.overBudget ? 'Too expensive' : 'Affordable'}</span>
+              <span class="readiness-pill${(Number(draft.mercenaries.count) || 0) > 0 && !isDeploymentDestination(draft.mercenaries.destination) ? ' missing' : ' ready'}">Destination: ${(Number(draft.mercenaries.count) || 0) > 0 ? (draft.mercenaries.destination === 'capital' ? 'Capital' : draft.mercenaries.destination === 'frontier' ? 'Frontier' : 'Choose destination') : 'No mercs'}</span>
+            </div>
             <label class="army-card-slider">
               <span class="army-slider-label">Hire</span>
               <input type="range" min="0" max="10" value="${draft.mercenaries.count || 0}" data-mercenary-count>
@@ -1454,6 +1609,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
         </div>
 
         <div class="panel-actions">
+          <p class="deployment-lock-help${readiness.ready && !totals.overBudget ? ' ready' : ''}" data-deployment-lock-help>${escapeHtml(lockHelp)}</p>
           <button type="button" class="btn-primary" data-action="lock-orders" ${totals.overBudget || !readiness.ready ? 'disabled' : ''}>${totals.overBudget ? 'Need More Gold' : readiness.ready ? 'Lock Deployment' : 'Finish Deployment'}</button>
         </div>
       `}
@@ -1474,6 +1630,11 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
     if (lockButton) {
       lockButton.disabled = nextTotals.overBudget || !nextReadiness.ready;
       lockButton.textContent = nextTotals.overBudget ? 'Need More Gold' : nextReadiness.ready ? 'Lock Deployment' : 'Finish Deployment';
+    }
+    const lockHelpEl = container.querySelector('[data-deployment-lock-help]');
+    if (lockHelpEl) {
+      lockHelpEl.textContent = getDeploymentLockHelp(nextTotals, nextReadiness);
+      lockHelpEl.classList.toggle('ready', nextReadiness.ready && !nextTotals.overBudget);
     }
     const preview = container.querySelector('[data-deployment-preview]');
     if (preview) preview.outerHTML = renderDeploymentPreview(state, playerId, draft, armyKeys);
@@ -1678,6 +1839,84 @@ export function renderResolutionPanel(container, state, options = {}) {
   return renderResolutionPanelDetailed(container, state, options);
 }
 
+function getCurrentOrderRevealEvents(state) {
+  return (state.history || [])
+    .filter((event) => event?.type === 'orders_revealed')
+    .filter((event) => Number(event.round ?? state.round) === Number(state.round))
+    .sort((a, b) => Number(a.actorId) - Number(b.actorId));
+}
+
+function destinationLabel(value) {
+  return value === 'capital' ? 'Capital' : 'Frontier';
+}
+
+function renderDeploymentOfficeRevealRows(state, playerId, offices) {
+  if (!offices.length) return '';
+  return `
+    <div class="deployment-reveal-office-list">
+      ${offices.map((office) => {
+        const totalTroops = Math.max(0, Number(office.totalTroops) || 0);
+        const fundedTroops = Math.max(0, Number(office.fundedTroops) || 0);
+        const unfundedTroops = Math.max(0, Number(office.unfundedTroops) || 0);
+        const capitalTroops = Math.max(0, Number(office.capitalTroops) || 0);
+        const frontierTroops = Math.max(0, Number(office.frontierTroops) || 0);
+        return `
+          <div class="deployment-reveal-office-row">
+            <span class="deployment-reveal-office-name">${renderArmyOfficeBadge(state, office.officeKey, playerId)}</span>
+            <span>${formatTroopsHtml(fundedTroops)} funded of ${formatTroopsHtml(totalTroops)}</span>
+            <span>${formatTroopsHtml(unfundedTroops)} stayed home</span>
+            <span>${destinationLabel(office.destination)}: ${formatTroopsHtml(office.destination === 'capital' ? capitalTroops : frontierTroops)}</span>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderDeploymentRevealSection(state) {
+  const events = getCurrentOrderRevealEvents(state);
+  if (!events.length) return '';
+  return `
+    <article class="result-card deployment-reveal-card">
+      <header class="result-card-head">
+        <span class="result-card-kicker">Deployment Reveal</span>
+        <span class="result-card-against">funded troops, troops kept home, mercenaries, and destinations</span>
+      </header>
+      <div class="deployment-reveal-list">
+        ${events.map((event) => {
+          const details = event.details || {};
+          const playerId = Number(event.actorId);
+          const player = getPlayer(state, playerId);
+          const offices = Array.isArray(details.offices) ? details.offices : [];
+          const fundedTroops = offices.reduce((total, office) => total + Math.max(0, Number(office.fundedTroops) || 0), 0);
+          const unfundedTroops = offices.reduce((total, office) => total + Math.max(0, Number(office.unfundedTroops) || 0), 0);
+          const capitalTroops = Math.max(0, Number(details.capitalTroops) || 0);
+          const frontierTroops = Math.max(0, Number(details.frontierTroops) || 0);
+          const passiveCapitalSupport = Math.max(0, Number(details.passiveCapitalSupport) || 0);
+          const mercenaries = details.mercenaries || {};
+          const mercenaryCount = Math.max(0, Number(mercenaries.count) || 0);
+          const mercenaryDestination = mercenaryCount > 0 ? destinationLabel(mercenaries.destination) : 'None';
+          return `
+            <section class="deployment-reveal-player">
+              <header class="deployment-reveal-player-head">
+                ${player ? renderPlayerRoleName(state, player) : escapeHtml(event.actorName || `Player ${playerId + 1}`)}
+                <span>${formatTroopsHtml(capitalTroops)} Capital · ${formatTroopsHtml(frontierTroops)} Frontier</span>
+              </header>
+              <div class="deployment-reveal-pills">
+                <span>Funded ${formatTroopsHtml(fundedTroops)}</span>
+                <span>Stayed home ${formatTroopsHtml(unfundedTroops)}</span>
+                <span>Mercenaries ${formatMercenariesHtml(mercenaryCount)} ${mercenaryCount ? `to ${mercenaryDestination}` : ''}</span>
+                <span>Passive capital support ${renderValue('troop', passiveCapitalSupport, { displayValue: Math.round(passiveCapitalSupport * 100) / 100 })}</span>
+              </div>
+              ${renderDeploymentOfficeRevealRows(state, playerId, offices)}
+            </section>
+          `;
+        }).join('')}
+      </div>
+    </article>
+  `;
+}
+
 export function renderResolutionPanelDetailed(container, state, options = {}) {
   if (!container || !state) return;
   const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards.filter((reward) => !reward.resolved) : [];
@@ -1686,6 +1925,7 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
   const empireFell = Boolean(war?.reachedCPL) || state.gameOver?.type === 'fall';
   const invasionName = state.currentInvasion?.name || 'the invader';
 
+  const deploymentRevealSection = renderDeploymentRevealSection(state);
   const warSection = war ? renderWarResultCard(state, war, invasionName, empireFell) : '';
   const coupSection = coup ? renderCoupResultCard(state, coup) : '';
   const rewardsSection = rewards.length ? renderDefenderRewardSection(state, rewards) : '';
@@ -1698,8 +1938,9 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
 
   container.innerHTML = `
     <section class="phase-card resolution-panel">
-      <h3>Resolution</h3>
+      <h3>Resolve Turn</h3>
       ${empireFallenBanner}
+      ${deploymentRevealSection}
       ${warSection}
       ${coupSection}
       ${rewardsSection}

@@ -120,11 +120,11 @@ test('title redistribution panel is its own phase panel', () => {
 
   renderTitleRedistributionPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /Redistribute Major Titles/);
-  assert.match(container.innerHTML, /data-title-assignment="DOM_EAST"/);
-  assert.match(container.innerHTML, /data-title-assignment="DOM_EAST" value=""/);
+  assert.match(container.innerHTML, /Assign Major Offices/);
+  assert.match(container.innerHTML, /data-title-slot="DOM_EAST"/);
+  assert.match(container.innerHTML, /title-redist-player-token/);
   assert.match(container.innerHTML, /data-action="confirm-title-redistribution" disabled/);
-  assert.match(container.innerHTML, /Confirm Titles/);
+  assert.match(container.innerHTML, /Finish Office Slots/);
 });
 
 test('court panel exposes only role-legal appointments and no legacy army buying', () => {
@@ -245,8 +245,8 @@ test('court estate revocations show owner color without the old separator', () =
 
   assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
   assert.match(container.innerHTML, /revocation-target-card estate/);
-  assert.match(container.innerHTML, /province-owner-marker compact/);
-  assert.equal(container.innerHTML.includes(`--province-owner-color: ${state.players[2].color};`), true);
+  assert.match(container.innerHTML, /ownership-badge ownership-badge-estate compact/);
+  assert.equal(container.innerHTML.includes(`--ownership-color: ${state.players[2].color};`), true);
   assert.equal(container.innerHTML.includes('Estate —'), false);
   assert.equal(container.innerHTML.includes('Estate â€”'), false);
 });
@@ -305,11 +305,11 @@ test('estates panel lists free land bids before deployment', () => {
 
   renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /Estates/);
+  assert.match(container.innerHTML, /Buy Land/);
   assert.match(container.innerHTML, /data-estate-bid="OPS"/);
   assert.match(container.innerHTML, /max="4"[^>]*step="1"[^>]*data-estate-bid="OPS"/);
   assert.match(container.innerHTML, /0\/4 ready/);
-  assert.match(container.innerHTML, /Ready for Deployment/);
+  assert.match(container.innerHTML, /Lock Bids/);
 });
 
 test('estates panel marks the active sealed bid', () => {
@@ -327,8 +327,8 @@ test('estates panel marks the active sealed bid', () => {
   renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /estate-card selected/);
-  assert.match(container.innerHTML, /Your sealed bid/);
-  assert.match(container.innerHTML, />Update</);
+  assert.match(container.innerHTML, /Your bid/);
+  assert.match(container.innerHTML, />Update Bid</);
 });
 
 test('province card sync ignores nested estate bid controls', () => {
@@ -362,10 +362,10 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
 
   renderOrdersPanel(container, state, state.basileusId, {}, { uiState });
 
-  assert.match(container.innerHTML, /Deployment/);
+  assert.match(container.innerHTML, /Send Armies/);
   assert.match(container.innerHTML, /Funding/);
   assert.match(container.innerHTML, /Mercs/);
-  assert.match(container.innerHTML, /Unfunded troops stay home/);
+  assert.match(container.innerHTML, /Move each army slider/);
   assert.match(container.innerHTML, /Capital troops/);
   assert.match(container.innerHTML, /through ranking/);
   assert.match(container.innerHTML, /Passive support/);
@@ -566,12 +566,12 @@ test('empire fall still shows the resolution result before final reckoning', () 
   });
 
   const shell = body.children[0];
-  assert.match(panel.innerHTML, /sidebar-panel-title">Resolution/);
-  assert.match(shell.innerHTML, /<h3>Resolution<\/h3>/);
+  assert.match(panel.innerHTML, /sidebar-panel-title">Resolve Turn/);
+  assert.match(shell.innerHTML, /<h3>Resolve Turn<\/h3>/);
   assert.match(shell.innerHTML, /Empire Fallen/);
   assert.match(shell.innerHTML, /Empire falls/);
   assert.doesNotMatch(shell.innerHTML, /Final Reckoning/);
-  assert.equal(shell.continueButton.textContent, 'Final Reckoning');
+  assert.equal(shell.continueButton.textContent, 'Final Score');
 });
 
 test('default interface opens the action lane and keeps support panels collapsed', () => {
@@ -654,7 +654,7 @@ test('notification panel labels deployment actions with updated vocabulary', () 
   renderNotificationsPanel(panel, state, privateData, uiState, 'seat-0');
 
   assert.match(panel.innerHTML, /Private Inbox/);
-  assert.match(panel.innerHTML, /Deployment/);
+  assert.match(panel.innerHTML, /Send Armies/);
   assert.match(panel.innerHTML, /tone-neutral/);
   assert.match(panel.innerHTML, /tone-negative/);
   assert.match(panel.innerHTML, /tone-positive/);
@@ -716,7 +716,7 @@ test('final scoring view uses income-share scoring categories', () => {
 
   const html = renderScoringHtml(state);
 
-  assert.match(html, /Final Reckoning/);
+  assert.match(html, /Final Score/);
   assert.match(html, /Highest point total wins/);
   assert.match(html, /Each 10% share/);
   assert.match(html, /Profit income/);
@@ -736,7 +736,7 @@ test('fallen empire final scoring makes the collective loss explicit', () => {
 
   const html = renderScoringHtml(state);
 
-  assert.match(html, /Final Reckoning/);
+  assert.match(html, /Final Score/);
   assert.match(html, /Empire Fallen/);
   assert.match(html, /Everyone lost/);
   assert.match(html, /strongest position/);

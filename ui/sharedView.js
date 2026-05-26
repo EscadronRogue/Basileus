@@ -298,37 +298,37 @@ function markRenderedNotificationsRead(uiState, container) {
 
 export const PHASE_NAMES = {
   setup: 'Setup',
-  invasion: 'Invasion',
-  title_redistribution: 'Title Redistribution',
-  income: 'Income',
-  court: 'Court',
-  estates: 'Estates',
-  deployment: 'Deployment',
-  resolution: 'Resolution',
-  cleanup: 'Cleanup',
-  scoring: 'Final Scoring',
+  invasion: 'Draw Threat',
+  title_redistribution: 'Assign Offices',
+  income: 'Collect Income',
+  court: 'Appoint & Revoke',
+  estates: 'Buy Land',
+  deployment: 'Send Armies',
+  resolution: 'Resolve Turn',
+  cleanup: 'Next Turn',
+  scoring: 'Final Score',
 };
 
 export const PHASE_TOOLTIPS = {
   setup: 'Provinces, titles and starting gold are dealt out.',
-  invasion: 'A turn begins with an invasion, and its route shows which provinces are at risk.',
-  title_redistribution: 'A newly installed Basileus redistributes the major titles before Court.',
-  income: 'Provinces pay out gold and raise troops automatically.',
-  court: 'Each office may make up to two appointments or revocations before income.',
-  estates: 'Dynasties submit sealed bids for private land.',
-  deployment: 'Each player funds armies, hires mercenaries, chooses destinations, ranks claimants, and can withhold support from any claimant.',
-  resolution: 'Coup is decided first by Capital rankings and passive support, then the war by Frontier troops vs invader strength.',
-  cleanup: 'Per-turn state clears before the next turn.',
+  invasion: 'Reveal the invader and the threatened route for this turn.',
+  title_redistribution: 'A new Basileus assigns the four major offices before appointments begin.',
+  income: 'Provinces pay gold and raise troops automatically.',
+  court: 'Office holders appoint or revoke Strategoi, Bishops, and private estates.',
+  estates: 'Players place hidden bids to buy private land.',
+  deployment: 'Fund armies, hire mercenaries, choose Frontier or Capital, and rank coup candidates.',
+  resolution: 'Reveal deployments, resolve the coup, then resolve the war.',
+  cleanup: 'Clear turn state before the next threat is drawn.',
   scoring: `Each ${SCORE_SHARE_STEP_PERCENT}% share of gold reserves, profit income, and combined office income scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY} per category.`,
 };
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
-  title_redistribution: 'Redistribute Major Titles',
-  court: 'Imperial Court',
-  estates: 'Estates',
-  deployment: 'Deployment',
-  resolution: 'Resolution',
-  scoring: 'Final Reckoning',
+  title_redistribution: 'Assign Major Offices',
+  court: 'Appoint & Revoke',
+  estates: 'Buy Land',
+  deployment: 'Send Armies',
+  resolution: 'Resolve Turn',
+  scoring: 'Final Score',
 };
 
 export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
@@ -341,7 +341,7 @@ export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
 };
 
 function getActionPanelTitle(state) {
-  if (shouldRenderFinalReckoning(state)) return 'Final Reckoning';
+  if (shouldRenderFinalReckoning(state)) return 'Final Score';
   return ACTION_PANEL_TITLE_BY_PHASE[state?.phase] || 'Action Panel';
 }
 
@@ -499,14 +499,14 @@ export function renderActionShell(panel, state, uiState) {
 
 function getNotificationActionLabel(action) {
   return {
-    open_court: 'Court',
+    open_court: 'Appoint & Revoke',
     open_deals: 'Deals',
-    open_estates: 'Estates',
-    open_orders: 'Deployment',
-    open_deployment: 'Deployment',
+    open_estates: 'Buy Land',
+    open_orders: 'Send Armies',
+    open_deployment: 'Send Armies',
     open_history: 'History',
-    open_resolution: 'Resolution',
-    open_title_redistribution: 'Titles',
+    open_resolution: 'Resolve Turn',
+    open_title_redistribution: 'Offices',
   }[action] || 'Notice';
 }
 
@@ -661,7 +661,7 @@ export function renderScoringHtml(state, options = {}) {
 
   return `
     <div class="scoring-panel${empireFallen ? ' empire-fallen-scoring' : ''}">
-      <h3>Final Reckoning</h3>
+      <h3>Final Score</h3>
       ${summary}
       <div class="score-list">
         ${scores.map((score) => {
@@ -814,7 +814,7 @@ export function renderGameActionPanel({
         break;
       }
 
-      continueButton.textContent = resolution.continueText || (state.gameOver?.type === 'fall' ? 'Final Reckoning' : 'Continue');
+      continueButton.textContent = resolution.continueText || (state.gameOver?.type === 'fall' ? 'Final Score' : 'Continue');
       continueButton.addEventListener('click', () => {
         resolution.continue?.(shell);
       });

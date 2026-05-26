@@ -94,6 +94,9 @@ const MAP_FILTER_TO_MARKER_KIND = Object.freeze({
 const FILTER_VISUAL_PROPS = [
   '--province-filter-fill-color',
   '--province-filter-outline-color',
+  '--province-filter-cartouche-fill-color',
+  '--province-filter-cartouche-border-color',
+  '--province-filter-cartouche-ink-color',
 ];
 
 // Region outlines are rendered in their own layer and clipped to each
@@ -1478,6 +1481,7 @@ export function updateMapState(state, mapFilter = activeMapFilter) {
       updateMapCartoucheMarkers(cart, state, theme);
       const baseClasses = `map-cartouche${provinceId === 'CPL' ? ' is-capital' : ''}`;
       cart.className.baseVal = `${baseClasses} ${ownership.classes.join(' ')} ${filterClasses.join(' ')}`.trim();
+      applyProvinceFilterStyle(cart, filterStyle);
     }
   }
 
@@ -1503,31 +1507,49 @@ function buildMapFilterAttributions(state, filterId) {
 function resolveProvinceFilterStyle(state, theme, attribution) {
   if (activeMapFilter === MAP_FILTERS.REGIONS) return null;
   if (!theme || theme.id === 'CPL' || !attribution || attribution.playerId == null) {
-    return { classes: ['map-filtered', 'map-filter-neutral'] };
+    return {
+      classes: ['map-filtered', 'map-filter-neutral'],
+      fill: '#ffffff',
+      outline: 'rgba(46,30,15,0.22)',
+      cartFill: '#ffffff',
+      cartOutline: 'rgba(46,30,15,0.30)',
+      cartInk: 'var(--umber-1)',
+    };
   }
 
   const player = state.players.find((candidate) => candidate.id === attribution.playerId);
-  if (!player) return { classes: ['map-filtered', 'map-filter-neutral'] };
+  if (!player) {
+    return {
+      classes: ['map-filtered', 'map-filter-neutral'],
+      fill: '#ffffff',
+      outline: 'rgba(46,30,15,0.22)',
+      cartFill: '#ffffff',
+      cartOutline: 'rgba(46,30,15,0.30)',
+      cartInk: 'var(--umber-1)',
+    };
+  }
 
   const color = player.color || '#5a3810';
   const direct = Boolean(attribution.direct);
   return {
     classes: ['map-filtered', direct ? 'map-filter-direct' : 'map-filter-indirect'],
-    fill: direct
-      ? `color-mix(in srgb, ${color} 78%, var(--parch-0) 22%)`
-      : `color-mix(in srgb, ${color} 34%, var(--parch-0) 66%)`,
-    outline: direct
-      ? `color-mix(in srgb, ${color} 82%, #1f1208 18%)`
-      : `color-mix(in srgb, ${color} 56%, var(--parch-2) 44%)`,
+    fill: color,
+    outline: color,
+    cartFill: color,
+    cartOutline: color,
+    cartInk: '#ffffff',
   };
 }
 
 function applyProvinceFilterStyle(element, filterStyle) {
   if (!element?.style) return;
   FILTER_VISUAL_PROPS.forEach((property) => element.style.removeProperty(property));
-  if (!filterStyle || filterStyle.classes?.includes('map-filter-neutral')) return;
+  if (!filterStyle) return;
   if (filterStyle.fill) element.style.setProperty('--province-filter-fill-color', filterStyle.fill);
   if (filterStyle.outline) element.style.setProperty('--province-filter-outline-color', filterStyle.outline);
+  if (filterStyle.cartFill) element.style.setProperty('--province-filter-cartouche-fill-color', filterStyle.cartFill);
+  if (filterStyle.cartOutline) element.style.setProperty('--province-filter-cartouche-border-color', filterStyle.cartOutline);
+  if (filterStyle.cartInk) element.style.setProperty('--province-filter-cartouche-ink-color', filterStyle.cartInk);
 }
 
 // Single source of truth for the ownership-derived state class set used by

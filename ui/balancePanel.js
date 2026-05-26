@@ -1146,9 +1146,12 @@ export function renderBalancePanel(container, state, options = {}) {
   const balance = buildBalanceOfPower(state);
   const incomeFlow = balance.income?.flow || buildIncomeFlow(state);
   const badge = getHeaderBadge(state, balance.scores, balance.winners);
+  const usesLiveProjection = state.phase !== 'scoring' && !state.gameOver;
   const hint = balance.empireFallen
     ? 'The empire has fallen. These standings rank the final balance of power, but no dynasty wins.'
-    : 'Gold reserves score alongside Profit and combined Office income shares.';
+    : usesLiveProjection
+      ? 'Gold is current; Profit and Office shares project from the board as it stands now.'
+      : 'Gold reserves score alongside Profit and combined Office income shares.';
 
   container.classList.toggle('panel-collapsed', !isOpen);
   container.innerHTML = `

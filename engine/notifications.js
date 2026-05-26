@@ -159,10 +159,17 @@ function getRevokedPlayerIds(event) {
   return [...new Set(ids.filter(Number.isInteger))];
 }
 
+function isCourtEventStillOpen(state, event) {
+  return event?.category === 'court'
+    && state?.phase === 'court'
+    && Number(event.round ?? state.round) === Number(state.round);
+}
+
 function buildRevocationNotifications(state, viewerId, notifications) {
   const normalizedViewerId = normalizePlayerId(viewerId);
   for (const event of state.history || []) {
     if (!REVOCATION_EVENT_TYPES.has(event.type)) continue;
+    if (isCourtEventStillOpen(state, event)) continue;
     if (!getRevokedPlayerIds(event).includes(normalizedViewerId)) continue;
     pushNotification(notifications, {
       id: `history:${event.id}:revoked:${viewerId}`,
@@ -246,6 +253,7 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
     }
 
     if (event.type === 'appoint_strategos' || event.type === 'appoint_bishop') {
+      if (isCourtEventStillOpen(state, event)) continue;
       if (normalizePlayerId(details.appointeeId) === normalizedViewerId) {
         pushHistoryNotification(notifications, event, viewerId, {
           kind: 'appointment',

@@ -545,6 +545,8 @@ test('private estate revocation preserves seated offices and notifies the estate
   assert.equal(state.courtActions.revokedThisTurn['minor:OPS:bishop'], undefined);
   assert.equal(state.history.find((event) => event.type === 'revoke_theme')?.details?.compensation, 1);
 
+  assert.equal(buildPrivateNotifications(state, 2).notifications.some((notice) => notice.kind === 'revocation'), false);
+  state.phase = 'income';
   const ownerNotices = buildPrivateNotifications(state, 2).notifications;
   assert.equal(ownerNotices.some((notice) => notice.kind === 'revocation' && /private ownership/.test(notice.body)), true);
   assert.equal(ownerNotices.find((notice) => notice.kind === 'revocation')?.tone, 'negative');
@@ -591,6 +593,8 @@ test('private notifications cover personal toned chronicle news without turn pro
 
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
   assert.equal(appointment.ok, true);
+  assert.equal(buildPrivateNotifications(state, 2).notifications.some((notice) => notice.kind === 'appointment'), false);
+  state.phase = 'income';
   const appointmentNotice = buildPrivateNotifications(state, 2).notifications.find((notice) => notice.kind === 'appointment');
   assert.equal(appointmentNotice?.tone, 'positive');
   assert.equal(appointmentNotice?.toast, true);
@@ -1235,7 +1239,8 @@ test('final scoring uses last income phase shares without free citizens', () => 
 
   const balance = buildBalanceOfPower(state);
   assert.equal(balance.categories.some((entry) => entry.slices.some((slice) => slice.kind === 'free')), false);
-  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 4);
+  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 31);
+  assert.equal(balance.categories.find((entry) => entry.key === 'estate').slices.find((slice) => slice.playerId === 3).value, 30);
   assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 20);
 });
 

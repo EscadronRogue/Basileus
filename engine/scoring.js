@@ -81,8 +81,7 @@ function scoreCategory(state, category, income) {
   });
 }
 
-export function buildFinalScores(state) {
-  const income = getScoringIncome(state);
+function buildScoresWithIncome(state, income) {
   const categoryScores = new Map();
 
   for (const category of SCORE_CATEGORIES) {
@@ -125,15 +124,24 @@ export function buildFinalScores(state) {
   };
 }
 
+export function buildFinalScores(state) {
+  return buildScoresWithIncome(state, getScoringIncome(state));
+}
+
 export function getPlayerFinalScore(state, playerId) {
   return buildFinalScores(state).scores.find((score) => score.playerId === playerId) || null;
 }
 
-// Per-category share breakdown used by the Balance of Power panel. The pies
-// use the same last-income totals as scoring, so the visible share always
-// matches the points share.
+function getBalanceIncome(state) {
+  if (state?.phase === 'scoring' || state?.gameOver) return getScoringIncome(state);
+  return runIncome(state);
+}
+
+// Per-category share breakdown used by the Balance of Power panel. During
+// active turns this projects from the current board; final scoring still uses
+// the last resolved income through buildFinalScores().
 export function buildBalanceOfPower(state) {
-  const final = buildFinalScores(state);
+  const final = buildScoresWithIncome(state, getBalanceIncome(state));
   const scoreByPlayer = new Map(final.scores.map((entry) => [entry.playerId, entry]));
 
   const categories = SCORE_CATEGORIES.map((category) => {
