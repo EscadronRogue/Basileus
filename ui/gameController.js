@@ -72,6 +72,11 @@ export class GameController {
     this.assignPlayerFirstNames();
 
     await createMapSVG('mapContainer', {
+      mapFilter: this.uiState.mapFilter,
+      onMapFilterChange: (filterId) => {
+        this.uiState.mapFilter = filterId;
+        this.render();
+      },
       onProvinceSelect: (provinceId) => {
         this.selectProvince(provinceId);
       },

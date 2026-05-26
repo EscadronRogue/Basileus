@@ -21,7 +21,13 @@ import {
   getOfficeHolder,
   pickInvasionTemplate,
 } from './state.js';
-import { readTroopEntry, runIncome } from './cascade.js';
+import {
+  buildProvinceChurchAttributions,
+  buildProvinceEstateAttributions,
+  buildProvinceTroopAttributions,
+  readTroopEntry,
+  runIncome,
+} from './cascade.js';
 import { applyInvasionResult, resolveInvasion } from './combat.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { serializePublicGameState } from './publicState.js';
@@ -256,6 +262,62 @@ test('income routes estates, bishops, strategos troops, and occupied bishop valu
   const bishopRoute = result.flow.sections.find((section) => section.key === 'church').routes.find((route) => route.key === 'bishops');
   assert.equal(bishopRoute.total, 2);
   assert.deepEqual(bishopRoute.recipients, [{ playerId: 1, value: 2 }]);
+});
+
+test('province attributions expose direct and office-routed map filter recipients', () => {
+  const state = makeState();
+  state.themes.OPS.owner = 2;
+  state.themes.KAP.strategos = 3;
+  state.themes.HEL.bishop = 2;
+
+  const estateAttributions = buildProvinceEstateAttributions(state);
+  assert.deepEqual(
+    {
+      playerId: estateAttributions.OPS.playerId,
+      mode: estateAttributions.OPS.mode,
+      direct: estateAttributions.OPS.direct,
+    },
+    { playerId: 2, mode: 'estate', direct: true },
+  );
+
+  const troopAttributions = buildProvinceTroopAttributions(state);
+  assert.deepEqual(
+    {
+      playerId: troopAttributions.KAP.playerId,
+      mode: troopAttributions.KAP.mode,
+      direct: troopAttributions.KAP.direct,
+      officeKey: troopAttributions.KAP.officeKey,
+    },
+    { playerId: 3, mode: 'strategos', direct: true, officeKey: 'STRAT_KAP' },
+  );
+  assert.deepEqual(
+    {
+      playerId: troopAttributions.OPS.playerId,
+      mode: troopAttributions.OPS.mode,
+      direct: troopAttributions.OPS.direct,
+      officeKey: troopAttributions.OPS.officeKey,
+    },
+    { playerId: 1, mode: 'major-office', direct: false, officeKey: 'DOM_EAST' },
+  );
+
+  const churchAttributions = buildProvinceChurchAttributions(state);
+  assert.deepEqual(
+    {
+      playerId: churchAttributions.HEL.playerId,
+      mode: churchAttributions.HEL.mode,
+      direct: churchAttributions.HEL.direct,
+    },
+    { playerId: 2, mode: 'bishop', direct: true },
+  );
+  assert.deepEqual(
+    {
+      playerId: churchAttributions.OPS.playerId,
+      mode: churchAttributions.OPS.mode,
+      direct: churchAttributions.OPS.direct,
+      officeKey: churchAttributions.OPS.officeKey,
+    },
+    { playerId: 1, mode: 'patriarch', direct: false, officeKey: 'PATRIARCH' },
+  );
 });
 
 test('title redistribution opens court before starting income', () => {

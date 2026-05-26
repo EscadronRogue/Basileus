@@ -31,6 +31,7 @@ export function createDefaultUiState() {
     },
     sections: {},
     dashboardFocus: null,
+    mapFilter: 'regions',
     drafts: {},
     actionError: '',
     notifications: {
@@ -849,7 +850,7 @@ export function renderGameFrame({
   if (!state) return;
   renderTopBar(state);
   renderConnectionBadge?.();
-  updateMapState(state);
+  updateMapState(state, uiState?.mapFilter || 'regions');
   drawInvasionRoute(state.currentInvasion);
   setSelectedProvince(selectedProvinceId);
   renderPlayerDashboard(

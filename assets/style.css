@@ -58,6 +58,7 @@
   --empire-border: #2e1e0f;
   --empire-border-hover: #4a3018;
   --capital-fill:  #9a7010;
+  --map-filter-neutral-fill: #e8ddbf;
 
   /* Typography */
   --font-display: 'Cinzel', 'Trajan Pro', Georgia, serif;
@@ -363,11 +364,17 @@ body::before {
     0 0 0 2px rgba(168,116,32,0.58);
 }
 
+.map-controls-root {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
 .map-controls {
   position: absolute;
   right: 10px;
   bottom: 10px;
-  z-index: 3;
   display: inline-flex;
   gap: 4px;
   padding: 4px;
@@ -392,6 +399,56 @@ body::before {
 .map-control-btn:hover {
   border-color: var(--gold-1);
   background: rgba(240,228,198,0.96);
+}
+
+.map-filter-controls {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: min(520px, calc(100% - 20px));
+  padding: 4px;
+  border: 1px solid rgba(100,70,20,0.20);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.88);
+  box-shadow: var(--shadow-card);
+  pointer-events: auto;
+}
+
+.map-controls,
+.map-filter-controls {
+  pointer-events: auto;
+}
+
+.map-filter-btn {
+  min-height: 34px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid rgba(168,116,32,0.28);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.92);
+  color: var(--umber-1);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.map-filter-btn:hover {
+  border-color: var(--gold-1);
+  background: rgba(240,228,198,0.96);
+}
+
+.map-filter-btn.active {
+  border-color: rgba(46,30,15,0.84);
+  background: var(--gold-1);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.68);
+  box-shadow: inset 0 0 0 1px rgba(240,200,90,0.46);
 }
 
 .game-map {
@@ -1010,6 +1067,34 @@ body::before {
   flex-wrap: wrap;
   gap: 7px;
   margin-top: 10px;
+}
+
+.dashboard-holdings {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.dashboard-holding-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 6px 7px;
+  border: 1px solid rgba(240,200,90,0.24);
+  border-radius: var(--r-sm);
+  background: rgba(255,250,230,0.08);
+}
+
+.dashboard-holding-kind {
+  display: inline-flex;
+}
+
+.dashboard-holding-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
 }
 
 .action-error {
@@ -2301,6 +2386,17 @@ body::before {
   fill: var(--province-fill-color, rgba(230,218,190,0.42));
   fill-opacity: 1;
 }
+.province-shape.map-filtered {
+  fill: var(--province-filter-fill-color, var(--map-filter-neutral-fill, color-mix(in srgb, var(--parch-2) 54%, #ffffff 46%)));
+  fill-opacity: 1;
+}
+.province-shape.map-filter-indirect {
+  filter: saturate(0.86);
+}
+.province-shape.map-filter-neutral {
+  fill: var(--map-filter-neutral-fill, color-mix(in srgb, var(--parch-2) 54%, #ffffff 46%));
+  filter: saturate(0.55);
+}
 .province-shape.selected,
 .province-shape.selected:hover,
 .province-shape.selected.hovered {
@@ -2336,12 +2432,32 @@ body::before {
   stroke: var(--province-lost-map-outline-color, var(--province-lost-outline-color, var(--province-outline-color, var(--region-border, var(--empire-border)))));
   stroke-opacity: 0.78;
 }
+.region-stroke.map-filtered {
+  stroke: var(--province-filter-outline-color, rgba(92,70,38,0.62));
+}
+.region-stroke.map-filter-direct {
+  stroke-width: 4.1;
+  stroke-opacity: 1;
+  filter: drop-shadow(0 0 0.55px rgba(250,230,160,0.65));
+}
+.region-stroke.map-filter-indirect {
+  stroke-width: 2.05;
+  stroke-opacity: 0.72;
+}
+.region-stroke.map-filter-neutral {
+  stroke-width: 1.55;
+  stroke-opacity: 0.34;
+}
 .region-stroke.hovered  { stroke-width: 3.1; stroke-opacity: 1; }
 .region-stroke.selected,
 .region-stroke.selected.hovered {
   stroke-width: 3.5;
   stroke-opacity: 1;
   filter: drop-shadow(0 0 0.5px rgba(255,255,255,0.25));
+}
+.region-stroke.map-filter-direct.selected,
+.region-stroke.map-filter-direct.selected.hovered {
+  stroke-width: 4.6;
 }
 
 .province-hitbox {
@@ -2427,6 +2543,23 @@ body::before {
   stroke: rgba(20,8,0,0.92);
   stroke-width: 0.16;
   filter: drop-shadow(0 0.08px 0 rgba(255,250,220,0.6));
+}
+.map-cart-marker.promoted {
+  stroke: rgba(250,226,150,0.98);
+  stroke-width: 0.26;
+  filter:
+    drop-shadow(0 0 0.42px rgba(20,8,0,0.86))
+    drop-shadow(0 0 0.55px rgba(250,226,150,0.78));
+}
+.game-map.map-filter-estates .map-cart-marker:not(.map-cart-marker-estate),
+.game-map.map-filter-strategoi .map-cart-marker:not(.map-cart-marker-strategos),
+.game-map.map-filter-bishops .map-cart-marker:not(.map-cart-marker-bishop) {
+  opacity: 0.18;
+}
+.game-map.map-filter-estates .map-cart-marker-estate,
+.game-map.map-filter-strategoi .map-cart-marker-strategos,
+.game-map.map-filter-bishops .map-cart-marker-bishop {
+  opacity: 1;
 }
 
 /* Capital cartouche: text leans into the imperial gold a touch more */
@@ -2607,6 +2740,17 @@ body::before {
   text-shadow: 0 1px 0 rgba(20,8,0,0.45);
 }
 
+.province-token-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.province-token.has-ownership {
+  align-items: center;
+  white-space: normal;
+}
+
 .province-token.occupied {
   --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, var(--province-fill-color, var(--free-fill))));
   --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
@@ -2631,6 +2775,84 @@ body::before {
 .province-owner-marker.compact {
   width: 11px;
   height: 11px;
+}
+
+.ownership-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.province-token .ownership-badges {
+  padding-left: 7px;
+  margin-left: 2px;
+  border-left: 1px solid rgba(240,200,90,0.42);
+}
+
+.ownership-badge {
+  --ownership-color: #5a3810;
+  --ownership-accent: rgba(20,8,0,0.76);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--ownership-accent) 72%, #ffffff 28%);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(255,250,226,0.18), rgba(20,8,0,0.20)),
+    var(--ownership-color);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.34),
+    0 1px 1px rgba(46,30,15,0.18);
+}
+
+.ownership-badge.compact {
+  padding: 1px 5px 1px 3px;
+  font-size: 9px;
+}
+
+.ownership-mark {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  background: #ffffff;
+  border: 1px solid rgba(20,8,0,0.78);
+  box-shadow: 0 1px 0 rgba(20,8,0,0.36);
+}
+
+.ownership-badge-estate .ownership-mark {
+  border-radius: 50%;
+}
+
+.ownership-badge-strategos .ownership-mark {
+  border-radius: 1px;
+}
+
+.ownership-badge-bishop .ownership-mark {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid #ffffff;
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ownership-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Title cartouches (Basileus, Strategos of X, Bishop of Y, …).

@@ -2,6 +2,11 @@ import { PROVINCES } from '../data/provinces.js';
 import { getProvinceRegionPalette, getRegionColor } from '../ui/labels.js';
 import { formatPlayerLabel } from '../engine/state.js';
 import {
+  buildProvinceChurchAttributions,
+  buildProvinceEstateAttributions,
+  buildProvinceTroopAttributions,
+} from '../engine/cascade.js';
+import {
   ensureSvgIconSymbols,
   svgUseIcon,
   buildSvgValueGroup,
@@ -66,6 +71,31 @@ const PATH_PARAM_COUNTS = Object.freeze({
 });
 const CURVE_EPSILON = 1e-9;
 
+export const MAP_FILTERS = Object.freeze({
+  REGIONS: 'regions',
+  ESTATES: 'estates',
+  STRATEGOI: 'strategoi',
+  BISHOPS: 'bishops',
+});
+
+const MAP_FILTER_LABELS = Object.freeze({
+  [MAP_FILTERS.REGIONS]: 'Regions',
+  [MAP_FILTERS.ESTATES]: 'Estates',
+  [MAP_FILTERS.STRATEGOI]: 'Strategoi',
+  [MAP_FILTERS.BISHOPS]: 'Bishops',
+});
+
+const MAP_FILTER_TO_MARKER_KIND = Object.freeze({
+  [MAP_FILTERS.ESTATES]: 'estate',
+  [MAP_FILTERS.STRATEGOI]: 'strategos',
+  [MAP_FILTERS.BISHOPS]: 'bishop',
+});
+
+const FILTER_VISUAL_PROPS = [
+  '--province-filter-fill-color',
+  '--province-filter-outline-color',
+];
+
 // Region outlines are rendered in their own layer and clipped to each
 // province interior. The stroke itself is drawn at double the visible width,
 // so clipping it to the province makes the outline behave like an inset inner
@@ -80,6 +110,8 @@ let selectedProvinceId = null;
 let hoveredProvinceId = null;
 let viewportLayer = null;
 let latestMapState = null;
+let activeMapFilter = MAP_FILTERS.REGIONS;
+let mapFilterChangeHandler = null;
 let mapView = { zoom: 1, panX: 0, panY: 0 };
 let gestureState = createGestureState();
 let mapShellResizeObserver = null;
@@ -91,6 +123,8 @@ export async function createMapSVG(containerId, options = {}) {
 
   provinceSelectHandler = options.onProvinceSelect || null;
   provinceHoverHandler = options.onProvinceHover || null;
+  mapFilterChangeHandler = options.onMapFilterChange || null;
+  activeMapFilter = normalizeMapFilter(options.mapFilter || MAP_FILTERS.REGIONS);
   provinceCentroids = {};
   invasionOrigins = {};
   selectedProvinceId = null;
@@ -385,8 +419,36 @@ function handleMapKeyDown(svg, event) {
 }
 
 function createMapControls(svg) {
+  const root = document.createElement('div');
+  root.className = 'map-controls-root';
+
+  const filterControls = document.createElement('div');
+  filterControls.className = 'map-filter-controls';
+  filterControls.setAttribute('aria-label', 'Map filters');
+
+  for (const [filterId, label] of Object.entries(MAP_FILTER_LABELS)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'map-filter-btn';
+    button.textContent = label;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('data-map-filter', filterId);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveMapFilter(filterId);
+      if (typeof mapFilterChangeHandler === 'function') {
+        mapFilterChangeHandler(filterId);
+      } else if (latestMapState) {
+        updateMapState(latestMapState, filterId);
+      }
+    });
+    filterControls.appendChild(button);
+  }
+
   const controls = document.createElement('div');
-  controls.className = 'map-controls';
+  controls.className = 'map-controls map-zoom-controls';
   controls.setAttribute('aria-label', 'Map zoom controls');
 
   const makeButton = (label, title, action) => {
@@ -409,7 +471,27 @@ function createMapControls(svg) {
     makeButton('-', 'Zoom out', () => zoomMapAtCenter(svg, 1 / MAP_ZOOM_STEP)),
     makeButton('1:1', 'Reset map view', () => resetMapView(svg)),
   );
-  return controls;
+  root.append(filterControls, controls);
+  updateMapFilterControlState(root);
+  return root;
+}
+
+function normalizeMapFilter(filterId) {
+  return Object.values(MAP_FILTERS).includes(filterId) ? filterId : MAP_FILTERS.REGIONS;
+}
+
+function setActiveMapFilter(filterId) {
+  activeMapFilter = normalizeMapFilter(filterId);
+  updateMapFilterControlState();
+}
+
+function updateMapFilterControlState(root = (typeof document !== 'undefined' ? document : null)) {
+  if (!root?.querySelectorAll) return;
+  root.querySelectorAll('[data-map-filter]').forEach((button) => {
+    const active = button.dataset.mapFilter === activeMapFilter;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
 }
 
 
@@ -1187,7 +1269,7 @@ function updateMapCartoucheMarkers(cart, state, theme) {
 
   const valuePositions = getMapValuePairCenters(cart, provinceValueEntries(theme));
   const markers = getMapCartoucheMarkers(state, theme, valuePositions);
-  const nextSig = markers.map((marker) => `${marker.kind}:${marker.ownerId}:${marker.color}:${marker.x.toFixed(3)}`).join('|');
+  const nextSig = markers.map((marker) => `${marker.kind}:${marker.ownerId}:${marker.color}:${marker.x.toFixed(3)}:${marker.promoted ? 'promoted' : 'normal'}`).join('|');
   if (markersGroup.getAttribute('data-marker-sig') === nextSig) return;
 
   markersGroup.replaceChildren();
@@ -1279,21 +1361,22 @@ function getMapValuePairCenters(cart, entries) {
 
 function getMapCartoucheMarkers(state, theme, valuePositions) {
   const markers = [];
+  const promotedKind = MAP_FILTER_TO_MARKER_KIND[activeMapFilter] || null;
 
   if (!theme.occupied && theme.owner !== null && theme.owner !== 'church') {
-    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, 'Private estate', valuePositions));
+    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, 'Private estate', valuePositions, { promoted: promotedKind === 'estate' }));
   }
   if (!theme.occupied && theme.strategos !== null) {
-    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, 'Strategos', valuePositions));
+    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, 'Strategos', valuePositions, { promoted: promotedKind === 'strategos' }));
   }
   if (theme.bishop !== null) {
-    markers.push(createMapCartoucheMarkerData(state, 'bishop', theme.bishop, 'Bishop', valuePositions));
+    markers.push(createMapCartoucheMarkerData(state, 'bishop', theme.bishop, 'Bishop', valuePositions, { promoted: promotedKind === 'bishop' }));
   }
 
   return markers.filter(Boolean);
 }
 
-function createMapCartoucheMarkerData(state, kind, ownerId, label, valuePositions) {
+function createMapCartoucheMarkerData(state, kind, ownerId, label, valuePositions, options = {}) {
   const player = state.players.find((candidate) => candidate.id === ownerId);
   if (!player) return null;
   const x = valuePositions.get(MAP_MARKER_VALUE_KIND[kind]);
@@ -1305,17 +1388,18 @@ function createMapCartoucheMarkerData(state, kind, ownerId, label, valuePosition
     x,
     color: player.color || '#5a3810',
     title: `${label}: ${ownerName}`,
+    promoted: Boolean(options.promoted),
   };
 }
 
 function createMapCartoucheMarker(marker) {
   const shape = marker.kind === 'estate'
-    ? createMapCartoucheCircleMarker(marker.x)
+    ? createMapCartoucheCircleMarker(marker.x, marker.promoted)
     : marker.kind === 'strategos'
-      ? createMapCartoucheSquareMarker(marker.x)
-      : createMapCartoucheTriangleMarker(marker.x);
+      ? createMapCartoucheSquareMarker(marker.x, marker.promoted)
+      : createMapCartoucheTriangleMarker(marker.x, marker.promoted);
 
-  shape.setAttribute('class', `map-cart-marker map-cart-marker-${marker.kind}`);
+  shape.setAttribute('class', `map-cart-marker map-cart-marker-${marker.kind}${marker.promoted ? ' promoted' : ''}`);
   shape.style.fill = marker.color;
 
   const title = document.createElementNS(SVG_NS, 'title');
@@ -1324,26 +1408,28 @@ function createMapCartoucheMarker(marker) {
   return shape;
 }
 
-function createMapCartoucheCircleMarker(x) {
+function createMapCartoucheCircleMarker(x, promoted = false) {
   const shape = document.createElementNS(SVG_NS, 'circle');
   shape.setAttribute('cx', x.toFixed(3));
   shape.setAttribute('cy', '0');
-  shape.setAttribute('r', String(MAP_CART_MARKER_RADIUS));
+  shape.setAttribute('r', String(promoted ? MAP_CART_MARKER_RADIUS * 1.32 : MAP_CART_MARKER_RADIUS));
   return shape;
 }
 
-function createMapCartoucheSquareMarker(x) {
+function createMapCartoucheSquareMarker(x, promoted = false) {
   const shape = document.createElementNS(SVG_NS, 'rect');
-  shape.setAttribute('x', (x - MAP_CART_MARKER_SIZE / 2).toFixed(3));
-  shape.setAttribute('y', (-MAP_CART_MARKER_SIZE / 2).toFixed(3));
-  shape.setAttribute('width', String(MAP_CART_MARKER_SIZE));
-  shape.setAttribute('height', String(MAP_CART_MARKER_SIZE));
+  const size = promoted ? MAP_CART_MARKER_SIZE * 1.32 : MAP_CART_MARKER_SIZE;
+  shape.setAttribute('x', (x - size / 2).toFixed(3));
+  shape.setAttribute('y', (-size / 2).toFixed(3));
+  shape.setAttribute('width', String(size));
+  shape.setAttribute('height', String(size));
   shape.setAttribute('rx', '0.04');
   return shape;
 }
 
-function createMapCartoucheTriangleMarker(x) {
-  const half = MAP_CART_MARKER_SIZE / 2;
+function createMapCartoucheTriangleMarker(x, promoted = false) {
+  const size = promoted ? MAP_CART_MARKER_SIZE * 1.32 : MAP_CART_MARKER_SIZE;
+  const half = size / 2;
   const top = -half;
   const bottom = half;
   const path = document.createElementNS(SVG_NS, 'path');
@@ -1359,22 +1445,31 @@ function createMapCartoucheTriangleMarker(x) {
   return path;
 }
 
-export function updateMapState(state) {
+export function updateMapState(state, mapFilter = activeMapFilter) {
   latestMapState = state;
+  setActiveMapFilter(mapFilter);
+  const mapSvg = typeof document !== 'undefined' ? document.getElementById('gameMap') : null;
+  applyMapFilterClass(mapSvg, activeMapFilter);
+  const filterAttributions = buildMapFilterAttributions(state, activeMapFilter);
+
   for (const [provinceId, theme] of Object.entries(state.themes)) {
     const shape = document.querySelector(`.province-shape[data-id="${provinceId}"]`);
     const regionStroke = document.querySelector(`.region-stroke[data-id="${provinceId}"]`);
     const cart = document.querySelector(`.map-cartouche[data-id="${provinceId}"]`);
 
     const ownership = resolveProvinceOwnership(provinceId, theme);
+    const filterStyle = resolveProvinceFilterStyle(state, theme, filterAttributions[provinceId]);
+    const filterClasses = filterStyle?.classes || [];
 
-    // Province shape and outline use the province's region palette; ownership
-    // is carried by the cartouche markers.
+    // Default map keeps the province region palette; active filters recolor
+    // the land while the cartouche markers keep local title ownership visible.
     if (shape) {
-      shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')}`.trim();
+      shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')} ${filterClasses.join(' ')}`.trim();
+      applyProvinceFilterStyle(shape, filterStyle);
     }
     if (regionStroke) {
-      regionStroke.className.baseVal = `region-stroke province-${provinceId} ${ownership.classes.join(' ')}`.trim();
+      regionStroke.className.baseVal = `region-stroke province-${provinceId} ${ownership.classes.join(' ')} ${filterClasses.join(' ')}`.trim();
+      applyProvinceFilterStyle(regionStroke, filterStyle);
     }
 
     // Map cartouche follows the same region palette as the province.
@@ -1382,13 +1477,57 @@ export function updateMapState(state) {
       updateMapCartoucheValues(cart, theme);
       updateMapCartoucheMarkers(cart, state, theme);
       const baseClasses = `map-cartouche${provinceId === 'CPL' ? ' is-capital' : ''}`;
-      cart.className.baseVal = `${baseClasses} ${ownership.classes.join(' ')}`.trim();
+      cart.className.baseVal = `${baseClasses} ${ownership.classes.join(' ')} ${filterClasses.join(' ')}`.trim();
     }
   }
 
   updateThreatOverlay(state);
   updateBadges(state);
   applyProvinceInteractionState();
+}
+
+function applyMapFilterClass(svg, filterId) {
+  if (!svg?.classList) return;
+  for (const value of Object.values(MAP_FILTERS)) {
+    svg.classList.toggle(`map-filter-${value}`, value === filterId);
+  }
+}
+
+function buildMapFilterAttributions(state, filterId) {
+  if (filterId === MAP_FILTERS.ESTATES) return buildProvinceEstateAttributions(state);
+  if (filterId === MAP_FILTERS.STRATEGOI) return buildProvinceTroopAttributions(state);
+  if (filterId === MAP_FILTERS.BISHOPS) return buildProvinceChurchAttributions(state);
+  return {};
+}
+
+function resolveProvinceFilterStyle(state, theme, attribution) {
+  if (activeMapFilter === MAP_FILTERS.REGIONS) return null;
+  if (!theme || theme.id === 'CPL' || !attribution || attribution.playerId == null) {
+    return { classes: ['map-filtered', 'map-filter-neutral'] };
+  }
+
+  const player = state.players.find((candidate) => candidate.id === attribution.playerId);
+  if (!player) return { classes: ['map-filtered', 'map-filter-neutral'] };
+
+  const color = player.color || '#5a3810';
+  const direct = Boolean(attribution.direct);
+  return {
+    classes: ['map-filtered', direct ? 'map-filter-direct' : 'map-filter-indirect'],
+    fill: direct
+      ? `color-mix(in srgb, ${color} 78%, var(--parch-0) 22%)`
+      : `color-mix(in srgb, ${color} 34%, var(--parch-0) 66%)`,
+    outline: direct
+      ? `color-mix(in srgb, ${color} 82%, #1f1208 18%)`
+      : `color-mix(in srgb, ${color} 56%, var(--parch-2) 44%)`,
+  };
+}
+
+function applyProvinceFilterStyle(element, filterStyle) {
+  if (!element?.style) return;
+  FILTER_VISUAL_PROPS.forEach((property) => element.style.removeProperty(property));
+  if (!filterStyle || filterStyle.classes?.includes('map-filter-neutral')) return;
+  if (filterStyle.fill) element.style.setProperty('--province-filter-fill-color', filterStyle.fill);
+  if (filterStyle.outline) element.style.setProperty('--province-filter-outline-color', filterStyle.outline);
 }
 
 // Single source of truth for the ownership-derived state class set used by

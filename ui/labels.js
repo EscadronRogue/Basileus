@@ -148,6 +148,89 @@ function getProvinceOwnerLabel(state, theme) {
   return formatPlayerLabel(player) || `Player ${Number(theme.owner) + 1}`;
 }
 
+const OWNERSHIP_KIND_META = {
+  estate: {
+    label: 'Estate',
+    title: 'Private estate',
+  },
+  strategos: {
+    label: 'Strategos',
+    title: 'Strategos',
+  },
+  bishop: {
+    label: 'Bishop',
+    title: 'Bishop',
+  },
+};
+
+function getOwnershipHolderLabel(state, playerId) {
+  const player = getPlayer(state, playerId);
+  return formatPlayerLabel(player) || `Player ${Number(playerId) + 1}`;
+}
+
+export function getProvinceOwnershipEntries(state, themeOrId) {
+  const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
+  if (!theme) return [];
+  const entries = [];
+  const palette = getProvinceRegionPalette(theme);
+
+  if (Number.isInteger(theme.owner)) {
+    entries.push({
+      kind: 'estate',
+      holderId: theme.owner,
+      color: getPlayer(state, theme.owner)?.color || '#5a3810',
+      accent: palette.outline,
+    });
+  }
+  if (theme.strategos != null) {
+    entries.push({
+      kind: 'strategos',
+      holderId: theme.strategos,
+      color: getPlayer(state, theme.strategos)?.color || '#5a3810',
+      accent: palette.outline,
+    });
+  }
+  if (theme.bishop != null) {
+    entries.push({
+      kind: 'bishop',
+      holderId: theme.bishop,
+      color: getPlayer(state, theme.bishop)?.color || '#5a3810',
+      accent: palette.outline,
+    });
+  }
+
+  return entries;
+}
+
+export function renderOwnershipBadge(state, entry, options = {}) {
+  if (!entry || !OWNERSHIP_KIND_META[entry.kind]) return '';
+  const meta = OWNERSHIP_KIND_META[entry.kind];
+  const holder = getOwnershipHolderLabel(state, entry.holderId);
+  const text = options.hideHolder ? meta.label : `${meta.label} ${holder}`;
+  const title = `${meta.title}: ${holder}`;
+  const classes = [
+    'ownership-badge',
+    `ownership-badge-${entry.kind}`,
+    options.compact ? 'compact' : '',
+  ].filter(Boolean).join(' ');
+  return `
+    <span class="${classes}" style="--ownership-color: ${entry.color}; --ownership-accent: ${entry.accent || 'rgba(20,8,0,0.75)'};" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+      <span class="ownership-mark" aria-hidden="true"></span>
+      <span class="ownership-text">${escapeHtml(text)}</span>
+    </span>
+  `;
+}
+
+export function renderProvinceOwnershipBadges(state, themeOrId, options = {}) {
+  const entries = getProvinceOwnershipEntries(state, themeOrId);
+  if (!entries.length) return options.fallback || '';
+  const classes = [
+    'ownership-badges',
+    options.compact ? 'compact' : '',
+  ].filter(Boolean).join(' ');
+  return `<span class="${classes}">${entries.map((entry) => renderOwnershipBadge(state, entry, options)).join('')}</span>`;
+}
+
 // Plain-text value codes stay available for history summaries, ARIA labels,
 // tooltips, and tests even though visible DOM uses icon cartouches.
 export function formatProvinceValuesText(theme) {
@@ -192,9 +275,16 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   const values = options.showValues && valuesHtml
     ? `<span class="province-token-values">${valuesHtml}</span>`
     : '';
+  const ownership = options.showOwnership
+    ? renderProvinceOwnershipBadges(state, theme, {
+      compact: options.compactOwnership ?? true,
+      hideHolder: options.hideOwnershipHolder ?? false,
+    })
+    : '';
   const classes = [
     'province-token',
     options.compact ? 'compact' : '',
+    ownership ? 'has-ownership' : '',
     churchValue > 0 ? 'has-church' : '',
     theme.occupied ? 'occupied' : '',
   ].filter(Boolean).join(' ');
@@ -204,7 +294,7 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   const tooltip = valuesText
     ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
     : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
-  return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}">${escapeHtml(theme.name)}${values}</span>`;
+  return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}"><span class="province-token-name">${escapeHtml(theme.name)}</span>${values}${ownership}</span>`;
 }
 
 export function renderProvinceOwnerMarker(state, themeOrId, options = {}) {

@@ -16,7 +16,7 @@ const FLOW_REGION_ROUTES = {
   [REGIONS.SEA]: 'sea_pool',
 };
 
-function getRegionalCommandKey(region) {
+export function getRegionalCommandKey(region) {
   if (region === REGIONS.EAST) return 'DOM_EAST';
   if (region === REGIONS.WEST) return 'DOM_WEST';
   if (region === REGIONS.SEA) return 'ADMIRAL';
@@ -273,6 +273,140 @@ export function computeChurchCascade(state, churchPool = 0) {
   const patriarchId = findTitleHolder(state, 'PATRIARCH');
   if (patriarchId != null) addIncome(income, patriarchId, Math.max(0, Number(churchPool) || 0));
   return income;
+}
+
+function createProvinceAttribution(theme, playerId, value, options = {}) {
+  return {
+    themeId: theme.id,
+    playerId: playerId == null ? null : Number(playerId),
+    value: Math.max(0, Number(value) || 0),
+    route: options.route || null,
+    officeKey: options.officeKey || null,
+    mode: options.mode || 'direct',
+    direct: options.direct !== false,
+  };
+}
+
+function pushProvinceAttribution(target, attribution) {
+  if (!attribution?.themeId || attribution.value <= 0) return;
+  target[attribution.themeId] = attribution;
+}
+
+function allocateRegionalTroopSources(state, region, sources) {
+  const domesticKey = getRegionalCommandKey(region);
+  const domesticId = domesticKey ? findTitleHolder(state, domesticKey) : null;
+  const route = FLOW_REGION_ROUTES[region] || null;
+  const result = {};
+  let cascadeSlot = 0;
+
+  for (const source of sources) {
+    const value = Math.max(0, Number(source.value) || 0);
+    if (value <= 0) continue;
+
+    const allocations = new Map();
+    for (let index = 0; index < value; index += 1) {
+      const officeKey = cascadeSlot % 3 === 2
+        ? 'BASILEUS'
+        : (domesticId != null ? domesticKey : 'BASILEUS');
+      cascadeSlot += 1;
+      const holderId = getOfficeHolder(state, officeKey);
+      const key = `${officeKey}:${holderId ?? 'none'}`;
+      const current = allocations.get(key) || { officeKey, playerId: holderId, value: 0 };
+      current.value += 1;
+      allocations.set(key, current);
+    }
+
+    const primary = [...allocations.values()]
+      .sort((left, right) => (right.value - left.value) || String(left.officeKey).localeCompare(String(right.officeKey)))[0];
+    if (!primary) continue;
+    result[source.theme.id] = createProvinceAttribution(source.theme, primary.playerId, value, {
+      route,
+      officeKey: primary.officeKey,
+      mode: primary.officeKey === 'BASILEUS' ? 'basileus' : 'major-office',
+      direct: false,
+    });
+  }
+
+  return result;
+}
+
+export function buildProvinceEstateAttributions(state) {
+  const attributions = {};
+  for (const theme of Object.values(state?.themes || {})) {
+    if (!theme || theme.id === 'CPL' || theme.occupied || !Number.isInteger(theme.owner)) continue;
+    const value = getThemeOwnerIncome(theme);
+    pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.owner, value, {
+      route: 'estates',
+      mode: 'estate',
+      direct: true,
+    }));
+  }
+  return attributions;
+}
+
+export function buildProvinceTroopAttributions(state) {
+  const attributions = {};
+  const regionalSources = Object.fromEntries(ECONOMIC_REGIONS.map((region) => [region, []]));
+
+  for (const theme of Object.values(state?.themes || {})) {
+    if (!theme || theme.id === 'CPL' || theme.occupied) continue;
+    const value = getThemeTroopCount(theme);
+    if (value <= 0) continue;
+
+    if (theme.strategos != null) {
+      pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.strategos, value, {
+        route: 'strategoi',
+        officeKey: `STRAT_${theme.id}`,
+        mode: 'strategos',
+        direct: true,
+      }));
+      continue;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(regionalSources, theme.region)) {
+      regionalSources[theme.region].push({ theme, value });
+    }
+  }
+
+  for (const region of ECONOMIC_REGIONS) {
+    Object.assign(attributions, allocateRegionalTroopSources(state, region, regionalSources[region]));
+  }
+
+  return attributions;
+}
+
+export function buildProvinceChurchAttributions(state) {
+  const attributions = {};
+  const patriarchId = findTitleHolder(state, 'PATRIARCH');
+
+  for (const theme of Object.values(state?.themes || {})) {
+    if (!theme || theme.id === 'CPL') continue;
+    const value = theme.occupied
+      ? Math.max(0, Number(theme.origin?.C) || 0)
+      : getThemeChurchValue(theme);
+    if (value <= 0) continue;
+
+    if (theme.bishop != null) {
+      pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.bishop, value, {
+        route: 'bishops',
+        officeKey: `BISHOP_${theme.id}`,
+        mode: 'bishop',
+        direct: true,
+      }));
+      continue;
+    }
+
+    if (!theme.occupied) {
+      pushProvinceAttribution(attributions, createProvinceAttribution(theme, patriarchId, value, {
+        route: 'patriarch',
+        officeKey: 'PATRIARCH',
+        mode: 'patriarch',
+        direct: false,
+      }));
+    }
+  }
+
+  return attributions;
 }
 
 export function runIncome(state) {

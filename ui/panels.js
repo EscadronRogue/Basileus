@@ -48,6 +48,7 @@ import { renderIcon, renderValue } from './icons.js';
 import {
   getPlayerStyleAttr,
   renderPlayerRoleName,
+  renderOwnershipBadge,
   renderProvinceBadge,
   renderProvinceOwnerMarker,
   renderThemeOfficeBadge,
@@ -245,7 +246,7 @@ function renderProvinceChoiceGrid(state, themes, options = {}) {
             aria-pressed="${isSelected ? 'true' : 'false'}"
             title="${escapeHtml(disabledReason ? `${theme.name} - ${disabledReason}` : theme.name)}"
             ${disabledReason ? 'disabled aria-disabled="true"' : ''}>
-            ${renderProvinceBadge(state, theme, { showValues: true })}
+            ${renderProvinceBadge(state, theme, { showValues: true, showOwnership: true })}
           </button>
         `;
       }).join('')}
@@ -490,6 +491,45 @@ function getPlayerPrimaryRoleLabel(state, playerId) {
   return getOfficeDisplayName(state, roleKey);
 }
 
+function getDashboardHoldings(state, playerId) {
+  const themes = Object.values(state?.themes || {}).filter((theme) => theme?.id !== 'CPL');
+  return {
+    estate: themes.filter((theme) => !theme.occupied && theme.owner === playerId),
+    strategos: themes.filter((theme) => !theme.occupied && theme.strategos === playerId),
+    bishop: themes.filter((theme) => theme.bishop === playerId),
+  };
+}
+
+function renderDashboardHoldingRow(state, playerId, kind, themes) {
+  if (!themes.length) return '';
+  const player = getPlayer(state, playerId);
+  const label = renderOwnershipBadge(state, {
+    kind,
+    holderId: playerId,
+    color: player?.color || '#5a3810',
+    accent: 'rgba(20,8,0,0.76)',
+  }, { compact: true, hideHolder: true });
+  return `
+    <div class="dashboard-holding-row dashboard-holding-${kind}">
+      <span class="dashboard-holding-kind">${label}</span>
+      <span class="dashboard-holding-list">
+        ${themes.map((theme) => renderProvinceBadge(state, theme, { compact: true })).join(' ')}
+      </span>
+    </div>
+  `;
+}
+
+function renderDashboardHoldings(state, playerId) {
+  const holdings = getDashboardHoldings(state, playerId);
+  const rows = [
+    renderDashboardHoldingRow(state, playerId, 'estate', holdings.estate),
+    renderDashboardHoldingRow(state, playerId, 'strategos', holdings.strategos),
+    renderDashboardHoldingRow(state, playerId, 'bishop', holdings.bishop),
+  ].filter(Boolean);
+  if (!rows.length) return '';
+  return `<div class="dashboard-holdings">${rows.join('')}</div>`;
+}
+
 export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null, options = {}) {
   if (!container || !state) return;
   void selectedProvinceId;
@@ -548,6 +588,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
           </div>
         ` : ''}
         <div class="dashboard-token-row">${titles || '<span class="muted">No major office</span>'}</div>
+        ${renderDashboardHoldings(state, playerId)}
       </div>
       ` : ''}
     </div>
@@ -603,7 +644,7 @@ function renderCourtAppointments(state, playerId, draft) {
     const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
     const ready = Boolean(target && appointee);
     const preview = ready
-      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'STRATEGOS', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
+      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'STRATEGOS', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true, showOwnership: true })}`
       : null;
     sections.push(renderAppointmentSection({
       kind: 'strategos',
@@ -624,7 +665,7 @@ function renderCourtAppointments(state, playerId, draft) {
     const appointee = appoint.playerId != null ? getPlayer(state, appoint.playerId) : null;
     const ready = Boolean(target && appointee);
     const preview = ready
-      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'BISHOP', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
+      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'BISHOP', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true, showOwnership: true })}`
       : null;
     sections.push(renderAppointmentSection({
       kind: 'bishop',
@@ -748,7 +789,7 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
       : '';
     const ready = Boolean(target && appointee && bishops.some((theme) => theme.id === target.id) && !selectedReason);
     const preview = ready
-      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'BISHOP', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
+      ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'BISHOP', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true, showOwnership: true })}`
       : selectedReason
         ? `<span class="muted">Cannot appoint: ${escapeHtml(selectedReason)}</span>`
         : null;
@@ -782,7 +823,7 @@ function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
     : '';
   const ready = Boolean(target && appointee && strategoi.some((theme) => theme.id === target.id) && !selectedReason);
   const preview = ready
-    ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'STRATEGOS', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true })}`
+    ? `${renderPlayerRoleName(state, appointee)} → ${renderTitleBadge(state, 'STRATEGOS', { holderId: appointee.id, themeId: target.id, compact: true })} of ${renderProvinceBadge(state, target, { compact: true, showOwnership: true })}`
     : selectedReason
       ? `<span class="muted">Cannot appoint: ${escapeHtml(selectedReason)}</span>`
       : null;

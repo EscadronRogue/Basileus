@@ -977,6 +977,11 @@ export class MultiplayerController {
   async ensureMap() {
     if (document.getElementById('gameMap')) return;
     await createMapSVG('mapContainer', {
+      mapFilter: this.uiState.mapFilter,
+      onMapFilterChange: (filterId) => {
+        this.uiState.mapFilter = filterId;
+        this.renderGame();
+      },
       onProvinceSelect: (provinceId) => {
         this.selectProvince(provinceId);
       },
