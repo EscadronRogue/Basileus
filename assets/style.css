@@ -2846,6 +2846,16 @@ body::before {
   padding: 1px 5px 1px 3px;
   font-size: 9px;
 }
+.ownership-badge.vacant {
+  --ownership-color: var(--parch-0);
+  color: var(--umber-2);
+  text-shadow: none;
+  border-style: dashed;
+}
+.ownership-badge.vacant .ownership-mark {
+  background: rgba(255,252,240,0.92);
+  border-color: var(--ownership-accent, rgba(20,8,0,0.72));
+}
 
 .ownership-mark {
   flex: 0 0 auto;
@@ -5151,6 +5161,25 @@ textarea {
   opacity: 0.38;
   stroke-dasharray: 5 7;
 }
+.court-wire-board.many-bound .court-wire-link.bound {
+  opacity: 0.04;
+  transition: opacity 0.12s;
+}
+.court-wire-board.many-bound .court-wire-link.bound.is-wire-focused,
+.court-wire-board.many-bound .court-wire-link.bound:hover {
+  opacity: 1;
+}
+.court-wire-board.many-bound .court-wire-link.bound:not(.is-wire-focused):not(:hover) .court-wire-scissors {
+  opacity: 0;
+}
+@media (hover: none) {
+  .court-wire-board.many-bound .court-wire-link.bound {
+    opacity: 0.16;
+  }
+  .court-wire-board.many-bound .court-wire-link.bound .court-wire-scissors {
+    opacity: 0.76;
+  }
+}
 .court-wire-hit {
   stroke: transparent;
   stroke-width: 22px;
@@ -5305,6 +5334,35 @@ textarea {
   gap: 4px;
   margin-top: 8px;
 }
+.court-wire-note-details {
+  display: block;
+  border: 1px dashed rgba(168,116,32,0.26);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.50);
+}
+.court-wire-note-details summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 6px 9px;
+  color: var(--umber-3);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.court-wire-note-details summary:focus-visible {
+  outline: 2px solid rgba(168,116,32,0.50);
+  outline-offset: 2px;
+}
+.court-wire-note-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 7px 7px;
+}
 .court-wire-note {
   display: block;
   padding: 5px 7px;
@@ -5354,101 +5412,49 @@ textarea {
   font-style: italic;
 }
 .court-link-seat-token {
-  --seat-accent: var(--umber-1);
-  --seat-color: var(--seat-accent);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 7px;
+  display: inline-grid;
+  grid-template-rows: auto auto;
+  justify-items: stretch;
+  gap: 3px;
   width: 100%;
   max-width: 178px;
   min-width: 0;
-  padding: 4px 7px 5px;
-  border: 2px solid color-mix(in srgb, var(--seat-color) 78%, var(--umber-1) 22%);
-  border-radius: var(--r-sm);
-  background:
-    repeating-linear-gradient(45deg, rgba(255,250,225,0.10) 0 1px, transparent 1px 5px),
-    linear-gradient(180deg, rgba(255,252,240,0.90), rgba(245,233,200,0.72));
-  box-shadow:
-    inset 0 0 0 1px rgba(240,200,90,0.28),
-    0 1px 2px rgba(46,30,15,0.12);
 }
-.court-link-seat-token.tied {
-  --seat-color: var(--player-color, var(--seat-accent));
-}
-.court-link-seat-token.strategos {
-  --seat-accent: var(--crimson-1);
-}
-.court-link-seat-token.bishop {
-  --seat-accent: var(--church-1);
-}
-.court-link-seat-token.estate {
-  --seat-accent: var(--gold-1);
-}
-.court-link-seat-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-}
-.court-link-seat-mark .ownership-badge {
-  width: 24px;
-  height: 24px;
-  justify-content: center;
-  padding: 0;
-  border-width: 2px;
-}
-.court-link-seat-mark .ownership-badge.compact {
-  padding: 0;
-}
-.court-link-seat-mark .ownership-text {
-  display: none;
-}
-.court-link-seat-mark .ownership-mark {
-  width: 12px;
-  height: 12px;
-}
-.court-link-seat-mark .ownership-badge-bishop .ownership-mark {
-  width: 0;
-  height: 0;
-  border-left-width: 6px;
-  border-right-width: 6px;
-  border-bottom-width: 12px;
-}
-.court-seat-open-badge {
-  color: var(--umber-1);
-  text-shadow: none;
-}
-.court-link-seat-copy-inner {
+.court-link-seat-title,
+.court-link-seat-province {
   display: flex;
+  justify-content: flex-end;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-  line-height: 1.05;
-}
-.court-link-seat-kind,
-.court-link-seat-place {
-  display: block;
   max-width: 100%;
+}
+.court-link-seat-token .title-token.compact,
+.court-link-seat-token .province-token.compact,
+.court-link-seat-token .ownership-badge.compact {
+  width: 100%;
+  max-width: 100%;
+  justify-content: center;
+  min-height: 21px;
+  padding: 3px 7px 4px;
+  font-size: 9.5px;
+  line-height: 1.05;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.court-link-seat-kind {
-  color: var(--seat-color);
-  font-family: var(--font-display);
+.court-link-seat-token .province-token.compact {
+  min-height: 19px;
+  padding-block: 2px 3px;
   font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.45px;
-  text-transform: uppercase;
 }
-.court-link-seat-place {
-  color: var(--umber-1);
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
+.court-link-seat-token .ownership-badge.compact {
+  min-height: 21px;
+}
+.court-link-seat-token .province-token-name,
+.court-link-seat-token .ownership-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .court-power-done {
   border: 1px solid rgba(168,116,32,0.16);
@@ -6317,7 +6323,7 @@ textarea {
   grid-template-rows: 16px calc(var(--wire-rows) * var(--wire-step));
   gap: 4px 88px;
   min-height: calc((var(--wire-rows) * var(--wire-step)) + 20px);
-  margin-top: 10px;
+  margin-top: 0;
   overflow: visible;
 }
 .title-redist-wire-board .title-redist-offices,
@@ -6339,7 +6345,10 @@ textarea {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  gap: 8px;
+  align-items: center;
   justify-content: flex-end;
   text-align: right;
   cursor: pointer;
@@ -6354,12 +6363,24 @@ textarea {
   border-color: var(--player-color, var(--gold-1));
 }
 .title-redist-office-copy {
+  display: flex;
+  justify-self: end;
+  width: 100%;
+  max-width: 168px;
+  min-width: 0;
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
 }
 .title-redist-office-copy .title-token {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 100%;
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .title-redist-wire-board .title-redist-slot-state {
   font-size: 8.5px;
