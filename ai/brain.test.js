@@ -25,7 +25,7 @@ import {
 import { applyLegalAction, listLegalCourtActions, listLegalEstateActions } from './legalActions.js';
 import { getAiMemory, getRelationship } from './memory.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
-import { simulateGames } from './simulate.js';
+import { simulateGame, simulateGames } from './simulate.js';
 import { chooseStrategicEstateActions } from './strategy.js';
 import { scoreAggregateTrainingShape, trainStrategyWeights } from './train.js';
 import { GREEK_FIRST_NAMES, pickUniqueGreekFirstName } from './greekNames.js';
@@ -588,7 +588,6 @@ test('AI simulation runner completes deterministic all-AI games', () => {
     deckSize: 2,
     seed: 91,
     samples: 2,
-    policies: ['strategic', 'random', 'defender', 'profiteer'],
   });
 
   assert.equal(result.games, 3);
@@ -599,6 +598,28 @@ test('AI simulation runner completes deterministic all-AI games', () => {
   assert.equal(result.estates.bidGoldPerGame > 0, true);
   assert.equal(result.fallPressure.target, 'acceptable 25%-75%, ideal 40%-50%');
   assert.equal(result.diagnostics.some((entry) => entry.includes('Low self-claim') || entry.includes('Low estate bidding')), false);
+});
+
+test('AI simulation runner uses saved tuned opponents by default', () => {
+  const game = simulateGame({
+    playerCount: 4,
+    deckSize: 1,
+    seed: 91,
+    samples: 0,
+  });
+
+  assert.deepEqual([...new Set(Object.values(game.policyIds))], ['tuned']);
+  assert.equal(Object.values(game.opponentIds).every((id) => String(id || '').startsWith('tuned-')), true);
+});
+
+test('AI simulation runner rejects untuned policies outside training', () => {
+  assert.throws(() => simulateGames({
+    games: 1,
+    playerCount: 4,
+    deckSize: 1,
+    seed: 91,
+    policies: ['strategic', 'random'],
+  }), /not a saved tuned AI/);
 });
 
 test('AI training harness evaluates strategy weight profiles', () => {

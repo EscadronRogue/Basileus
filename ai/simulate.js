@@ -9,6 +9,7 @@ import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopEntry, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
 import { createAIMeta } from './brain.js';
+import { loadTunedOpponentRosterSync } from './nodeOpponentRoster.js';
 
 const DEFAULT_OPTIONS = {
   games: 100,
@@ -19,6 +20,7 @@ const DEFAULT_OPTIONS = {
   samples: 5,
   historyEnabled: true,
   policies: null,
+  allowUntunedPolicies: false,
 };
 
 const FALL_RATE_ACCEPTABLE_MIN = 0.25;
@@ -333,11 +335,74 @@ function rememberSample(stats, game) {
   if (replaceIndex >= 0) stats.samples[replaceIndex] = compactGameSample(game);
 }
 
-function resolveSeatPolicy(options, seatId) {
+function policyIdFor(policy) {
+  if (typeof policy === 'string') return policy;
+  return policy?.policy?.policyId || policy?.policyId || policy?.policy || policy?.id || '';
+}
+
+function policyLabel(policy) {
+  if (typeof policy === 'string') return policy;
+  return policy?.label || policy?.firstName || policy?.id || policyIdFor(policy) || 'unknown';
+}
+
+function policyWeightsFor(policy) {
+  return policy?.policy?.strategyWeights || policy?.strategyWeights || policy?.weights || {};
+}
+
+function isTunedPolicy(policy) {
+  return policyIdFor(policy) === 'tuned' && Object.keys(policyWeightsFor(policy)).length > 0;
+}
+
+function aiPlayerFromTunedOpponent(opponent) {
+  return {
+    opponent,
+    displayName: opponent.firstName || opponent.label || opponent.id || 'Tuned AI',
+    opponentId: opponent.id || null,
+    policy: opponent.policy || {
+      policyId: 'tuned',
+      strategyWeights: opponent.strategyWeights || opponent.weights || {},
+    },
+    strategyWeights: opponent.strategyWeights || opponent.policy?.strategyWeights || opponent.weights || {},
+  };
+}
+
+function aiPlayerFromPolicy(policy, options) {
+  if (!options.allowUntunedPolicies && !isTunedPolicy(policy)) {
+    throw new Error(
+      `Simulation policy "${policyLabel(policy)}" is not a saved tuned AI. `
+        + 'Non-tuned policies are only allowed by the training harness.',
+    );
+  }
+  if (isTunedPolicy(policy) && (policy.id || policy.firstName || policy.policy)) {
+    return aiPlayerFromTunedOpponent(policy);
+  }
+  return { policy };
+}
+
+function getExplicitSeatPolicy(options, seatId) {
   const policies = options.policies;
-  if (!policies) return 'strategic';
-  if (Array.isArray(policies)) return policies[seatId % policies.length] || 'strategic';
+  if (!policies) return null;
+  if (Array.isArray(policies)) return policies[seatId % policies.length] || null;
   return policies;
+}
+
+function resolveSeatAiPlayer(options, seatId, seed, tunedRoster) {
+  const explicitPolicy = getExplicitSeatPolicy(options, seatId);
+  if (explicitPolicy) {
+    if (typeof explicitPolicy === 'string') {
+      const tunedOpponent = tunedRoster.find((opponent) => opponent.id === explicitPolicy);
+      if (tunedOpponent) return aiPlayerFromTunedOpponent(tunedOpponent);
+    }
+    return aiPlayerFromPolicy(explicitPolicy, options);
+  }
+
+  if (!tunedRoster.length) {
+    throw new Error('No tuned AI opponents found. Run npm run train:ai first, then simulate saved tuned opponents.');
+  }
+
+  const baseSeed = Math.max(0, Number(seed) || 0);
+  const index = (baseSeed + seatId) % tunedRoster.length;
+  return aiPlayerFromTunedOpponent(tunedRoster[index]);
 }
 
 function createAllAiGame(options, seed) {
@@ -348,8 +413,9 @@ function createAllAiGame(options, seed) {
     historyEnabled: options.historyEnabled !== false,
   });
   setDealParticipantIds(state, state.players.map((player) => player.id));
+  const tunedRoster = loadTunedOpponentRosterSync();
   const aiPlayers = Object.fromEntries(
-    state.players.map((player) => [player.id, { policy: resolveSeatPolicy(options, player.id) }]),
+    state.players.map((player) => [player.id, resolveSeatAiPlayer(options, player.id, seed, tunedRoster)]),
   );
   const meta = createAIMeta(state, { humanPlayerIds: [], aiPlayers });
   const context = {};
@@ -401,6 +467,7 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
     rounds: state.round,
     fall: state.gameOver?.type === 'fall',
     policyIds: Object.fromEntries(Object.entries(meta.players || {}).map(([playerId, entry]) => [playerId, entry.policyId || 'strategic'])),
+    opponentIds: Object.fromEntries(Object.entries(meta.players || {}).map(([playerId, entry]) => [playerId, entry.opponentId || null])),
     finalScores: final.scores.map((entry) => ({
       playerId: entry.playerId,
       points: entry.points,
@@ -454,6 +521,7 @@ export function simulateGames(rawOptions = {}) {
     samples: Math.max(0, toInt(rawOptions.samples, DEFAULT_OPTIONS.samples)),
     historyEnabled: rawOptions.historyEnabled !== false,
     policies: rawOptions.policies || null,
+    allowUntunedPolicies: Boolean(rawOptions.allowUntunedPolicies),
   };
   const stats = emptyStats(options);
   for (let gameIndex = 0; gameIndex < options.games; gameIndex += 1) {
@@ -595,6 +663,10 @@ function parseArgs(argv) {
       options.json = true;
       continue;
     }
+    if (key === 'allow-untuned-policies') {
+      options.allowUntunedPolicies = true;
+      continue;
+    }
     if (key === 'no-history') {
       options.historyEnabled = false;
       continue;
@@ -615,6 +687,7 @@ function parseArgs(argv) {
 function formatReport(result) {
   const lines = [
     `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} turns, seed ${result.options.seed}`,
+    result.options.policies ? null : 'Opponents: saved tuned AI roster',
     `Completion: ${result.completed}/${result.games} complete, stuck ${result.stuck}, fall rate ${Math.round(result.fallRate * 100)}% (${result.fallPressure.band}), avg rounds ${result.averageRounds}`,
     `War: victory ${Math.round(result.wars.victoryRate * 100)}%, stalemate ${Math.round(result.wars.stalemateRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, avg margin ${result.wars.averageMargin}`,
     `Coup: throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, self top-preference ${Math.round(result.coups.selfPreferenceRate * 100)}%, incumbent backing ${Math.round(result.coups.incumbentBackRate * 100)}%`,
@@ -623,7 +696,7 @@ function formatReport(result) {
     `Scoring: winner ${result.scoring.winnerScore}, average ${result.scoring.averageScore}, gap ${result.scoring.pointGap}`,
     'Diagnostics:',
     ...result.diagnostics.map((entry) => `- ${entry}`),
-  ];
+  ].filter(Boolean);
   if (result.options.policies) {
     const policies = Array.isArray(result.options.policies) ? result.options.policies.join(', ') : result.options.policies;
     lines.splice(1, 0, `Policies: ${policies}`);

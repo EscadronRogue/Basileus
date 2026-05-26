@@ -638,6 +638,7 @@ export function evaluateStrategyWeights(weights, rawOptions = {}, profileIndex =
       seed: scenario.seed,
       maxSteps: options.maxSteps,
       policies,
+      allowUntunedPolicies: true,
       historyEnabled: true,
       samples: 0,
     }, 0);

@@ -60,7 +60,7 @@ npm run serve:multiplayer
 | --- | --- |
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
-| `npm run simulate:ai -- --games 200 --players 5 --deck 9` | Runs deterministic all-AI simulation batches and reports aggregate behavior. |
+| `npm run simulate:ai -- --games 200 --players 5 --deck 9` | Runs deterministic all-AI simulation batches with saved tuned opponents and reports aggregate behavior. |
 | `npm run train:ai -- --generations 3 --population 10 --games 24` | Tunes strategy weights against a mixed AI policy league and saves the best tuned opponent. |
 | `npm run test:economy` | Engine/economy rules tests. |
 | `npm run test:ai` | Strategic AI and legal-action smoke tests. |
