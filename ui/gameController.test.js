@@ -224,7 +224,7 @@ test('court panel keeps mixed actions open but blocks same-turn title reversals'
 
   assert.match(container.innerHTML, /1\/2 actions \(1 appointment\)/);
   assert.match(container.innerHTML, /1 action remains for this office/);
-  assert.match(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*aria-disabled="true"[^>]*>/);
   assert.match(container.innerHTML, /was appointed this turn and cannot be revoked until next turn/);
   assert.doesNotMatch(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"[^>]*disabled[^>]*>/);
 });
@@ -244,8 +244,9 @@ test('court estate revocations show owner color without the old separator', () =
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
-  assert.match(container.innerHTML, /revocation-target-card estate/);
-  assert.match(container.innerHTML, /ownership-badge ownership-badge-estate compact/);
+  assert.match(container.innerHTML, /court-link-row-bound/);
+  assert.match(container.innerHTML, /ownership-badge ownership-badge-estate/);
+  assert.match(container.innerHTML, /data-link-revoke="theme:OPS"/);
   assert.equal(container.innerHTML.includes(`--ownership-color: ${state.players[2].color};`), true);
   assert.equal(container.innerHTML.includes('Estate —'), false);
   assert.equal(container.innerHTML.includes('Estate â€”'), false);
@@ -268,7 +269,7 @@ test('court panel disables recently bought estate revocations', () => {
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"[^>]*aria-disabled="true"[^>]*>/);
   assert.match(container.innerHTML, /bought last turn and cannot be revoked until next turn/);
 });
 
@@ -530,6 +531,36 @@ test('coup resolution shows supporters and zero-capital claimant picks', () => {
   assert.match(container.innerHTML, /Coup/);
   assert.match(container.innerHTML, /vote-supporters/);
   assert.match(container.innerHTML, /No capital troops from/);
+});
+
+test('deployment reveal is collapsed under the coup breakdown', () => {
+  const state = makeState();
+  state.phase = 'resolution';
+  state.lastCoupResult = {
+    winner: 2,
+    votes: { 2: 3 },
+    contributions: [{ playerId: 0, candidateId: 2, troops: 3 }],
+    ballots: [{ playerId: 0, candidateId: 2, troops: 3 }],
+  };
+  state.history.push({
+    type: 'orders_revealed',
+    round: state.round,
+    actorId: 0,
+    actorName: 'Phokas',
+    details: {
+      capitalTroops: 3,
+      frontierTroops: 0,
+      passiveCapitalSupport: 0,
+      mercenaries: { count: 0, destination: null },
+      offices: [{ officeKey: 'BASILEUS', totalTroops: 3, fundedTroops: 3, unfundedTroops: 0, capitalTroops: 3, frontierTroops: 0, destination: 'capital' }],
+    },
+  });
+  const container = makePanelContainer();
+
+  renderResolutionPanel(container, state);
+
+  assert.match(container.innerHTML, /<details class="deployment-reveal-details">/);
+  assert.equal(container.innerHTML.indexOf('Coup') < container.innerHTML.indexOf('Deployment Details'), true);
 });
 
 test('empire fall still shows the resolution result before final reckoning', () => {

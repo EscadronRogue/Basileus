@@ -194,6 +194,12 @@ function bindSelectAction(container, selector, callback) {
   });
 }
 
+function datasetKeyFromSelector(selector) {
+  const match = String(selector || '').match(/\[data-([a-z0-9-]+)/i);
+  if (!match) return null;
+  return match[1].replace(/-([a-z0-9])/gi, (_, char) => char.toUpperCase());
+}
+
 function renderPickerStep(num, label) {
   return `<div class="picker-step"><span class="picker-step-no">${num}</span><span class="picker-step-label">${label}</span></div>`;
 }
@@ -421,12 +427,20 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
                 <span class="title-redist-slot-state">${assignedPlayer ? 'Assigned' : selectedPlayer ? 'Click to place' : 'Empty'}</span>
               </header>
               <div class="title-redist-slot-body">
+                <span class="title-redist-rope ${assignedPlayer ? 'bound' : 'open'}" aria-hidden="${assignedPlayer ? 'false' : 'true'}">
+                  <span class="rope-knot"></span>
+                  <span class="rope-strand"></span>
+                  ${assignedPlayer && isBasileus
+                    ? `<button type="button" class="rope-cut-btn title-redist-clear" data-title-clear="${titleKey}" aria-label="Cut link from ${escapeHtml(title.name)}">&#9986;</button>`
+                    : '<span class="rope-loose-end"></span>'}
+                  <span class="rope-strand"></span>
+                  <span class="rope-knot"></span>
+                </span>
                 ${assignedPlayer ? `
                   <div class="title-redist-assigned" style="${getPlayerStyleAttr(state, assignedPlayer.id)}">
                     <span class="candidate-crest">${playerInitial(assignedPlayer)}</span>
                     <span class="candidate-name">${escapeHtml(playerDisplayLabel(assignedPlayer))}</span>
                   </div>
-                  ${isBasileus ? `<button type="button" class="title-redist-clear" data-title-clear="${titleKey}" aria-label="Clear ${escapeHtml(title.name)}">Clear</button>` : ''}
                 ` : `
                   <span class="title-redist-empty">${selectedPlayer ? `Place ${escapeHtml(playerDisplayLabel(selectedPlayer))}` : 'Choose a player card below'}</span>
                 `}
@@ -879,6 +893,245 @@ function renderCourtPowerBadge(state, playerId, powerKey) {
   });
 }
 
+function courtSeatLabel(kind) {
+  if (kind === 'strategos') return 'Strategos seat';
+  if (kind === 'bishop') return 'Bishop seat';
+  if (kind === 'estate') return 'Private estate';
+  return 'Seat';
+}
+
+function renderCourtLinkSeat(state, kind, theme, holderId = null) {
+  if (!theme) return '';
+  const titleKind = kind === 'bishop' ? 'BISHOP' : kind === 'strategos' ? 'STRATEGOS' : null;
+  return `
+    <span class="court-link-seat-token ${escapeHtml(kind)}">
+      ${titleKind
+        ? renderTitleBadge(state, titleKind, { holderId, themeId: theme.id, compact: true, label: courtSeatLabel(kind) })
+        : `<span class="revocation-target-label">Estate</span>`}
+      ${renderProvinceBadge(state, theme, { compact: true, showOwnership: kind === 'estate' })}
+    </span>
+  `;
+}
+
+function renderCourtLinkHolder(state, kind, holderId) {
+  const holder = getPlayer(state, holderId);
+  if (!holder) {
+    return `<span class="court-link-open-end">${escapeHtml(courtSeatLabel(kind))} open</span>`;
+  }
+  return `
+    <span class="court-link-holder-card" style="${getPlayerStyleAttr(state, holder.id)}">
+      <span class="candidate-crest">${playerInitial(holder)}</span>
+      <span class="candidate-name">${escapeHtml(playerDisplayLabel(holder))}</span>
+      ${renderOwnershipBadge(state, {
+        kind,
+        holderId,
+        color: holder.color || '#5a3810',
+        accent: 'rgba(20,8,0,0.78)',
+      })}
+    </span>
+  `;
+}
+
+function renderCourtLinkRope({ bound = false, targetValue = '', disabledReason = '', label = 'Cut link' } = {}) {
+  const stateClass = bound ? 'bound' : 'open';
+  return `
+    <span class="court-link-rope ${stateClass}" aria-hidden="${bound ? 'false' : 'true'}">
+      <span class="rope-knot"></span>
+      <span class="rope-strand"></span>
+      ${bound
+        ? `<button type="button" class="rope-cut-btn" data-link-revoke="${escapeHtml(targetValue)}" aria-label="${escapeHtml(label)}" ${disabledChoiceAttrs(disabledReason, label)}>&#9986;</button>`
+        : '<span class="rope-loose-end"></span>'}
+      <span class="rope-strand"></span>
+      <span class="rope-knot"></span>
+    </span>
+  `;
+}
+
+function renderCourtAppointmentLinkSection({
+  state,
+  playerId,
+  powerKey,
+  draft,
+  targets,
+  kind,
+  targetAttr,
+  playerAttr,
+  action,
+  buttonLabel,
+}) {
+  if (!targets.length) return '';
+  const activeThemeId = draft.themeId || targets[0]?.id || null;
+  const selectedTheme = draft.themeId ? state.themes?.[draft.themeId] : null;
+  const selectedPlayer = draft.playerId != null ? getPlayer(state, draft.playerId) : null;
+  const selectedReason = selectedTheme && selectedPlayer
+    ? getAppointmentDisabledReason(state, playerId, powerKey, selectedTheme.id, selectedPlayer.id)
+    : '';
+  const selectedReady = Boolean(
+    selectedTheme
+    && selectedPlayer
+    && targets.some((theme) => theme.id === selectedTheme.id)
+    && !selectedReason
+  );
+  return `
+    <section class="court-link-section court-appoint-section" data-appointment="${kind}">
+      <header class="court-link-section-head">
+        <span class="appointment-section-title">Appoint</span>
+        <span class="court-link-section-note">Tie a seat to a dynasty</span>
+      </header>
+      <div class="court-link-board">
+        ${targets.map((theme) => {
+          const targetDisabledReason = getTargetDisabledReason(state, playerId, powerKey, theme.id);
+          const isPicked = draft.themeId === theme.id;
+          const isActive = activeThemeId === theme.id;
+          const rowReason = isPicked ? selectedReason : targetDisabledReason;
+          return `
+            <article class="court-link-row court-link-row-open${isPicked ? ' selected' : ''}${targetDisabledReason ? ' disabled' : ''}" data-link-kind="${kind}">
+              <button type="button"
+                class="court-link-seat-btn${isPicked ? ' selected' : ''}"
+                data-${targetAttr}="${theme.id}"
+                data-map-province="${theme.id}"
+                aria-pressed="${isPicked ? 'true' : 'false'}"
+                ${disabledChoiceAttrs(targetDisabledReason, `${courtSeatLabel(kind)} in ${theme.name}`)}>
+                ${renderCourtLinkSeat(state, kind, theme)}
+              </button>
+              ${renderCourtLinkRope({ bound: false })}
+              <div class="court-link-holder court-link-holder-open">
+                ${isActive ? `
+                  <div class="court-link-player-grid">
+                    ${renderPlayerChoiceGrid(state, {
+                      attr: playerAttr,
+                      selectedId: draft.playerId,
+                      getDisabledReason: (player) => getAppointeeDisabledReason(state, playerId, powerKey, targets, player.id, theme.id),
+                    })}
+                  </div>
+                  ${rowReason ? `<div class="court-link-warning">${escapeHtml(rowReason)}</div>` : ''}
+                  <div class="panel-actions court-link-actions">
+                    <button type="button" class="btn-primary" data-action="${action}" aria-label="${escapeHtml(buttonLabel)}" ${selectedReady && isPicked ? '' : 'disabled'}>Tie Rope</button>
+                  </div>
+                ` : `<span class="court-link-open-end">Pick this seat to choose a player</span>`}
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function describeRevocationLinkTarget(state, target) {
+  const [kind, themeId, titleType] = String(target?.value || '').split(':');
+  const theme = state.themes?.[themeId];
+  if (!theme) return null;
+  if (kind === 'minor') {
+    const linkKind = titleType === 'bishop' ? 'bishop' : 'strategos';
+    const holderId = linkKind === 'bishop' ? theme.bishop : theme.strategos;
+    return {
+      kind: linkKind,
+      theme,
+      holderId,
+      seatHtml: renderCourtLinkSeat(state, linkKind, theme, holderId),
+      holderHtml: renderCourtLinkHolder(state, linkKind, holderId),
+      label: target?.label || `${courtSeatLabel(linkKind)} in ${theme.name}`,
+    };
+  }
+  if (kind === 'theme') {
+    return {
+      kind: 'estate',
+      theme,
+      holderId: theme.owner,
+      seatHtml: renderCourtLinkSeat(state, 'estate', theme, theme.owner),
+      holderHtml: renderCourtLinkHolder(state, 'estate', theme.owner),
+      label: target?.label || `Estate in ${theme.name}`,
+    };
+  }
+  return null;
+}
+
+function renderCourtRevocationLinkRow(state, target, selectedValue) {
+  const link = describeRevocationLinkTarget(state, target);
+  if (!link) return '';
+  const disabledReason = target.disabledReason || '';
+  const selected = target.value === selectedValue;
+  return `
+    <article class="court-link-row court-link-row-bound${selected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
+      data-revoke-pick="${escapeHtml(target.value)}"
+      data-map-province="${escapeHtml(link.theme.id)}"
+      data-link-kind="${escapeHtml(link.kind)}"
+      aria-pressed="${selected ? 'true' : 'false'}"
+      ${disabledReason ? 'aria-disabled="true"' : ''}
+      title="${escapeHtml(disabledReason || link.label)}">
+      <div class="court-link-seat-static">${link.seatHtml}</div>
+      ${renderCourtLinkRope({
+        bound: true,
+        targetValue: target.value,
+        disabledReason,
+        label: `Cut ${link.label}`,
+      })}
+      <div class="court-link-holder">${link.holderHtml}</div>
+      ${disabledReason ? `<div class="court-link-warning">${escapeHtml(disabledReason)}</div>` : ''}
+    </article>
+  `;
+}
+
+function renderCourtAppointmentsForPowerLinked(state, playerId, draft, powerKey) {
+  if (powerKey === 'BASILEUS') return '';
+  if (powerKey === 'PATRIARCH') {
+    return renderCourtAppointmentLinkSection({
+      state,
+      playerId,
+      powerKey,
+      draft: draft.appointBishop || {},
+      targets: getBishopTargets(state, playerId),
+      kind: 'bishop',
+      targetAttr: 'bishop-theme-pick',
+      playerAttr: 'bishop-player-pick',
+      action: 'appoint-bishop',
+      buttonLabel: 'Appoint Bishop',
+    });
+  }
+  return renderCourtAppointmentLinkSection({
+    state,
+    playerId,
+    powerKey,
+    draft: draft.appointStrategos || {},
+    targets: getStrategosTargets(state, playerId, powerKey),
+    kind: 'strategos',
+    targetAttr: 'strategos-theme-pick',
+    playerAttr: 'strategos-player-pick',
+    action: 'appoint-strategos',
+    buttonLabel: 'Appoint Strategos',
+  });
+}
+
+function renderCourtRevocationsForPowerLinked(state, playerId, draft, powerKey) {
+  const targets = getRevocationTargets(state, playerId, powerKey)
+    .map((target) => {
+      const result = validateCourtPayload(state, playerId, { action: 'revoke', value: target.value });
+      return { ...target, disabledReason: result.ok ? '' : result.reason };
+    });
+  if (!targets.length) return '';
+  const selectedValue = draft.revoke?.target || null;
+  const selectedTarget = targets.find((target) => target.value === selectedValue);
+  return `
+    <section class="court-link-section court-revoke-section">
+      <header class="court-link-section-head">
+        <span class="appointment-section-title">Revoke</span>
+        <span class="court-link-section-note">Cut the rope from a seat or estate</span>
+      </header>
+      <div class="court-link-board">
+        ${targets.map((target) => renderCourtRevocationLinkRow(state, target, selectedValue)).join('')}
+      </div>
+      <div class="appointment-preview court-link-preview">
+        ${selectedTarget
+          ? selectedTarget.disabledReason
+            ? `<span class="muted">Cannot cut this link: ${escapeHtml(selectedTarget.disabledReason)}</span>`
+            : `<span class="danger">Ready to cut</span> ${describeRevocationLinkTarget(state, selectedTarget)?.seatHtml || escapeHtml(selectedTarget.label)}`
+          : '<span class="muted">Pick a link for details, or cut it with the scissors.</span>'}
+      </div>
+    </section>
+  `;
+}
+
 function renderCourtAppointmentsForPower(state, playerId, draft, powerKey) {
   if (powerKey === 'BASILEUS') {
     void state;
@@ -1032,8 +1285,8 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const passed = isCourtPowerPassed(state, playerId, powerKey);
   const exhausted = isCourtPowerExhausted(state, playerId, powerKey);
   const usedSummary = usedKinds.length ? usedKinds.join(', ') : getCourtPowerActionKind(state, playerId, powerKey);
-  const appointHtml = renderCourtAppointmentsForPower(state, playerId, draft, powerKey);
-  const revokeHtml = renderCourtRevocationsForPower(state, playerId, draft, powerKey);
+  const appointHtml = renderCourtAppointmentsForPowerLinked(state, playerId, draft, powerKey);
+  const revokeHtml = renderCourtRevocationsForPowerLinked(state, playerId, draft, powerKey);
   const actionLimit = getCourtPowerActionLimit(powerKey);
   const remainingActions = Math.max(0, actionLimit - actionCount);
   const usedParts = [
@@ -1062,7 +1315,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const body = exhausted
     ? `<div class="panel-empty court-power-done">${doneText}</div>`
     : `
-        <div class="court-choice-lane">
+        <div class="court-link-stack">
           ${powerKey === 'BASILEUS' ? '' : appointHtml || '<div class="choice-grid-empty">No appointments available</div>'}
           ${revokeHtml || '<div class="choice-grid-empty">No revocations available</div>'}
         </div>
@@ -1111,10 +1364,11 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
 
   // Picker click handlers — store in draft, re-render to update visuals.
   const onPick = (selector, draftKey, prop, transform = (v) => v) => {
+    const datasetKey = datasetKeyFromSelector(selector);
     container.querySelectorAll(selector).forEach((btn) => {
       btn.addEventListener('click', () => {
         if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
-        const value = transform(btn.dataset[Object.keys(btn.dataset)[0]] ?? '');
+        const value = transform(btn.dataset[datasetKey] ?? '');
         const next = { ...(draft[draftKey] || {}), [prop]: value };
         draft[draftKey] = next;
         rerender();
@@ -1145,6 +1399,15 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
     const target = draft.revoke?.target;
     if (!target) return;
     callbacks.revoke?.(target);
+  });
+  container.querySelectorAll('[data-link-revoke]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (button.disabled || button.getAttribute('aria-disabled') === 'true') return;
+      const target = button.dataset.linkRevoke;
+      if (!target) return;
+      callbacks.revoke?.(target);
+    });
   });
   bindSelectAction(container, '[data-action="pass-court-power"]', (btn) => {
     const powerKey = btn.dataset.courtPassPower;
@@ -1877,7 +2140,12 @@ function renderDeploymentRevealSection(state) {
   const events = getCurrentOrderRevealEvents(state);
   if (!events.length) return '';
   return `
-    <article class="result-card deployment-reveal-card">
+    <details class="deployment-reveal-details">
+      <summary class="deployment-reveal-summary">
+        <span>Deployment Details</span>
+        <span>funding, mercenaries, and destinations</span>
+      </summary>
+      <article class="result-card deployment-reveal-card">
       <header class="result-card-head">
         <span class="result-card-kicker">Deployment Reveal</span>
         <span class="result-card-against">funded troops, troops kept home, mercenaries, and destinations</span>
@@ -1913,7 +2181,8 @@ function renderDeploymentRevealSection(state) {
           `;
         }).join('')}
       </div>
-    </article>
+      </article>
+    </details>
   `;
 }
 
@@ -1940,9 +2209,9 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
     <section class="phase-card resolution-panel">
       <h3>Resolve Turn</h3>
       ${empireFallenBanner}
-      ${deploymentRevealSection}
       ${warSection}
       ${coupSection}
+      ${deploymentRevealSection}
       ${rewardsSection}
       <div class="panel-actions">
         <button type="button" class="btn-primary" data-action="continue">Continue</button>
