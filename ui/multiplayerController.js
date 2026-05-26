@@ -815,11 +815,11 @@ export class MultiplayerController {
         <h1>BASILEUS</h1>
         <p class="setup-subtitle">Private live room</p>
         <div class="multiplayer-room-meta">
-          <div><strong>Room code:</strong> <span class="room-code">${this.roomSnapshot.roomCode}</span></div>
-          <div><strong>Status:</strong> ${this.connectionState === 'connected' ? 'Connected' : this.connectionState}</div>
-          <div><strong>You:</strong> ${this.playerName}</div>
+          <div><strong>Room code:</strong> <span class="room-code">${escapeHtml(this.roomSnapshot.roomCode)}</span></div>
+          <div><strong>Status:</strong> ${escapeHtml(this.connectionState === 'connected' ? 'Connected' : this.connectionState)}</div>
+          <div><strong>You:</strong> ${escapeHtml(this.playerName)}</div>
         </div>
-        ${this.lastError ? `<div class="multiplayer-banner error">${this.lastError}</div>` : ''}
+        ${this.lastError ? `<div class="multiplayer-banner error">${escapeHtml(this.lastError)}</div>` : ''}
         <div class="setup-field">
           <label>Dynasties</label>
           ${isHost ? `
@@ -827,7 +827,7 @@ export class MultiplayerController {
               ${[3, 4, 5].map((count) => `<option value="${count}" ${count === config.playerCount ? 'selected' : ''}>${count} dynasties</option>`).join('')}
             </select>
             ${renderRoomChoiceButtons('roomPlayerCount', [3, 4, 5].map((count) => ({ value: count, label: `${count} dynasties` })), config.playerCount)}
-          ` : `<div class="setup-hint">${config.playerCount} dynasties</div>`}
+          ` : `<div class="setup-hint">${escapeHtml(config.playerCount)} dynasties</div>`}
         </div>
         <div class="setup-field">
           <label>Game Length</label>
@@ -836,12 +836,12 @@ export class MultiplayerController {
               ${[6, 9, 12].map((count) => `<option value="${count}" ${count === turnCount ? 'selected' : ''}>${count} turns</option>`).join('')}
             </select>
             ${renderRoomChoiceButtons('roomTurnCount', [6, 9, 12].map((count) => ({ value: count, label: `${count} turns` })), turnCount)}
-          ` : `<div class="setup-hint">${turnCount} turns</div>`}
+          ` : `<div class="setup-hint">${escapeHtml(turnCount)} turns</div>`}
         </div>
         <div class="setup-field">
           <label>Seed</label>
-          ${isHost ? `<input type="text" id="roomSeedInput" value="${config.seed || ''}" placeholder="Leave blank for random">`
-            : `<div class="setup-hint">${config.seed || 'Random on start'}</div>`}
+          ${isHost ? `<input type="text" id="roomSeedInput" value="${escapeHtml(config.seed || '')}" placeholder="Leave blank for random">`
+            : `<div class="setup-hint">${escapeHtml(config.seed || 'Random on start')}</div>`}
         </div>
         <div class="setup-field">
           <label>Dynasties</label>

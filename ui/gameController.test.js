@@ -6,7 +6,7 @@ import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
 import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
 import { hydratePublicState, serializePublicGameState } from '../engine/publicState.js';
-import { renderProvinceBadge, formatProvinceValuesText } from './labels.js';
+import { renderPlayerRoleName, renderProvinceBadge, formatProvinceValuesText } from './labels.js';
 import {
   renderCourtPanel,
   renderEstatesPanel,
@@ -101,6 +101,16 @@ test('province badges render the updated P/T/C economy and hide capital values',
   assert.equal(formatProvinceValuesText(state.themes.CPL), '');
   assert.match(renderProvinceBadge(state, 'OPS', { showValues: true }), /P1 T1 C1/);
   assert.doesNotMatch(renderProvinceBadge(state, 'CPL', { showValues: true }), /province-token-values/);
+});
+
+test('player cartouches escape custom multiplayer names', () => {
+  const state = makeState();
+  state.players[1].firstName = '<img src=x onerror=alert(1)>';
+
+  const html = renderPlayerRoleName(state, state.players[1]);
+
+  assert.equal(html.includes(`&lt;img src=x onerror=alert(1)&gt; ${state.players[1].dynasty}`), true);
+  assert.doesNotMatch(html, /<img src=x/);
 });
 
 test('title redistribution panel is its own phase panel', () => {

@@ -595,6 +595,10 @@ test('AI simulation runner completes deterministic all-AI games', () => {
   assert.equal(result.completed + result.stuck, 3);
   assert.equal(result.resolutions > 0, true);
   assert.equal(Number.isFinite(result.scoring.winnerScore), true);
+  assert.equal(result.estates.bidsPerGame > 0, true);
+  assert.equal(result.estates.bidGoldPerGame > 0, true);
+  assert.equal(result.fallPressure.target, 'acceptable 25%-75%, ideal 40%-50%');
+  assert.equal(result.diagnostics.some((entry) => entry.includes('Low self-claim') || entry.includes('Low estate bidding')), false);
 });
 
 test('AI training harness evaluates strategy weight profiles', () => {

@@ -14,6 +14,15 @@ import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyle } from '../engine/state.js';
 import { renderIcon, provinceValueEntries } from './icons.js';
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const FREE_FILL = '#6a4a8a';
 const CAPITAL_FILL = '#E49B0F';
 const OCCUPIED_FILL = '#625c52';
@@ -165,8 +174,9 @@ export function renderProvinceValuesHtml(theme) {
 // ── Cartouche renderers ───────────────────────────────────────────────
 
 export function renderPlayerRoleName(state, player, fallback = '') {
-  if (!player) return fallback;
-  return `<span class="player-role-name" style="${getPlayerStyleAttr(state, player.id)}" title="${formatPlayerLabel(player)}">${formatPlayerLabel(player)}</span>`;
+  if (!player) return escapeHtml(fallback);
+  const label = escapeHtml(formatPlayerLabel(player));
+  return `<span class="player-role-name" style="${getPlayerStyleAttr(state, player.id)}" title="${label}">${label}</span>`;
 }
 
 export function renderPlayerRoleNameById(state, playerId, fallback = null) {
@@ -194,7 +204,7 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
   const tooltip = valuesText
     ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
     : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
-  return `<span class="${classes}" data-province-token="${theme.id}" style="${getProvinceStyleAttr(state, theme)}" title="${tooltip}">${theme.name}${values}</span>`;
+  return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}">${escapeHtml(theme.name)}${values}</span>`;
 }
 
 export function renderProvinceOwnerMarker(state, themeOrId, options = {}) {
@@ -206,7 +216,7 @@ export function renderProvinceOwnerMarker(state, themeOrId, options = {}) {
     'province-owner-marker',
     options.compact ? 'compact' : '',
   ].filter(Boolean).join(' ');
-  return `<span class="${classes}" style="--province-owner-color: ${getProvinceOwnerColor(state, theme)};" title="${markerLabel}" aria-label="${markerLabel}"></span>`;
+  return `<span class="${classes}" style="--province-owner-color: ${getProvinceOwnerColor(state, theme)};" title="${escapeHtml(markerLabel)}" aria-label="${escapeHtml(markerLabel)}"></span>`;
 }
 
 export function renderProvinceBadgeList(state, themeIds = []) {
@@ -272,7 +282,7 @@ export function renderTitleBadge(state, kind, options = {}) {
     : `--cart-bg: ${bg}; --cart-border: ${outline};`;
   const text = label || TITLE_DEFAULT_LABELS[kind] || kind;
   const classes = ['title-token', vacant ? 'vacant' : '', compact ? 'compact' : ''].filter(Boolean).join(' ');
-  return `<span class="${classes}" style="${styleAttr}" title="${text}">${text}</span>`;
+  return `<span class="${classes}" style="${styleAttr}" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
 }
 
 // Convenience: "<Strategos> of <Land>" or "<Bishop> of <Land>", both as

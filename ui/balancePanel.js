@@ -165,7 +165,7 @@ function renderPieSvg(state, category) {
     const end = Math.min(cursor, 1);
     const color = getSliceColor(state, slice);
     const title = `${getSliceLabel(state, slice)} - ${formatShare(slice.share)} (${slice.points} pt${slice.points === 1 ? '' : 's'})`;
-    return `<path d="${describeSlicePath(start, end, radius)}" fill="${color}" stroke="rgba(20,8,0,0.45)" stroke-width="0.6"><title>${title}</title></path>`;
+    return `<path d="${describeSlicePath(start, end, radius)}" fill="${color}" stroke="rgba(20,8,0,0.45)" stroke-width="0.6"><title>${escapeHtml(title)}</title></path>`;
   }).join('');
 
   return `
@@ -186,7 +186,7 @@ function renderLegend(state, category) {
     return `
       <div class="balance-legend-row" style="${getPlayerStyleAttr(state, slice.playerId)}">
         <span class="balance-legend-dot" style="background:var(--player-color)"></span>
-        <span class="balance-legend-name">${name}</span>
+        <span class="balance-legend-name">${escapeHtml(name)}</span>
         <span class="balance-legend-share">${formatShare(slice.share)}</span>
         <span class="balance-legend-points" title="Each ${SCORE_SHARE_STEP_PERCENT}% of this category scores 1 point (max ${SCORE_MAX_POINTS_PER_CATEGORY}).">${slice.points}</span>
       </div>
@@ -236,7 +236,7 @@ function renderCategoryValueChip(category, value) {
 }
 
 function renderValueChip(iconKind, value, label) {
-  const title = label ? ` title="${label}"` : '';
+  const title = label ? ` title="${escapeHtml(label)}"` : '';
   return `<span class="value ${iconKind}"${title}>${renderIcon(iconKind)}<span class="value-num">${value}</span></span>`;
 }
 

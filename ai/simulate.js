@@ -21,6 +21,11 @@ const DEFAULT_OPTIONS = {
   policies: null,
 };
 
+const FALL_RATE_ACCEPTABLE_MIN = 0.25;
+const FALL_RATE_IDEAL_MIN = 0.4;
+const FALL_RATE_IDEAL_MAX = 0.5;
+const FALL_RATE_ACCEPTABLE_MAX = 0.75;
+
 function toInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) ? parsed : fallback;
@@ -68,6 +73,7 @@ function emptyStats(options) {
     },
     estates: {
       bids: 0,
+      bidGold: 0,
       bought: 0,
       goldSpent: 0,
     },
@@ -221,17 +227,18 @@ function collectResolution(stats, state) {
   }
 }
 
-function collectHistory(stats, state) {
-  for (const event of state.history || []) {
+function collectEventStats(stats, state) {
+  for (const event of state.log || []) {
     if (event.type === 'appoint_strategos') stats.court.appointStrategos += 1;
     else if (event.type === 'appoint_bishop') stats.court.appointBishop += 1;
-    else if (event.type === 'revoke_minor_title') stats.court.revokeMinor += 1;
+    else if (event.type === 'revoke_minor') stats.court.revokeMinor += 1;
     else if (event.type === 'revoke_theme') stats.court.revokeTheme += 1;
     else if (event.type === 'land_bid') {
       stats.estates.bids += 1;
-      stats.estates.goldSpent += Number(event.details?.bid) || 0;
-    } else if (event.type === 'buy_theme') {
+      stats.estates.bidGold += Number(event.bid) || 0;
+    } else if (event.type === 'buy') {
       stats.estates.bought += 1;
+      stats.estates.goldSpent += Number(event.cost) || 0;
     }
   }
 }
@@ -382,7 +389,7 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
 
   if (!state.gameOver && state.phase !== 'scoring' && reason === 'complete') reason = 'stuck';
 
-  collectHistory(localStats, state);
+  collectEventStats(localStats, state);
   collectScoring(localStats, state);
   const appointmentStatsByPlayer = collectAppointmentStatsByPlayer(state);
 
@@ -457,10 +464,41 @@ export function simulateGames(rawOptions = {}) {
   return normalizeStats(stats);
 }
 
+function describeFallPressure(fallRate) {
+  const rounded = round(fallRate, 3);
+  if (fallRate < FALL_RATE_ACCEPTABLE_MIN) {
+    return {
+      band: 'low',
+      rate: rounded,
+      target: 'acceptable 25%-75%, ideal 40%-50%',
+    };
+  }
+  if (fallRate > FALL_RATE_ACCEPTABLE_MAX) {
+    return {
+      band: 'high',
+      rate: rounded,
+      target: 'acceptable 25%-75%, ideal 40%-50%',
+    };
+  }
+  if (fallRate >= FALL_RATE_IDEAL_MIN && fallRate <= FALL_RATE_IDEAL_MAX) {
+    return {
+      band: 'ideal',
+      rate: rounded,
+      target: 'acceptable 25%-75%, ideal 40%-50%',
+    };
+  }
+  return {
+    band: fallRate < FALL_RATE_IDEAL_MIN ? 'acceptable-low' : 'acceptable-high',
+    rate: rounded,
+    target: 'acceptable 25%-75%, ideal 40%-50%',
+  };
+}
+
 function normalizeStats(stats) {
   const games = Math.max(1, stats.games);
   const resolutions = Math.max(1, stats.resolutions);
   const orders = Math.max(1, stats.deployment.orders);
+  const fallRate = stats.falls / games;
   const categories = {};
   for (const [key, bucket] of Object.entries(stats.scoring.categories)) {
     const count = Math.max(1, bucket.count);
@@ -476,7 +514,8 @@ function normalizeStats(stats) {
     games: stats.games,
     completed: stats.completed,
     stuck: stats.stuck,
-    fallRate: round(stats.falls / games, 3),
+    fallRate: round(fallRate, 3),
+    fallPressure: describeFallPressure(fallRate),
     averageRounds: round(stats.rounds / games),
     resolutions: stats.resolutions,
     wars: {
@@ -490,6 +529,7 @@ function normalizeStats(stats) {
     },
     coups: {
       throneChangeRate: round(stats.coups.throneChanges / resolutions, 3),
+      selfPreferenceRate: round(stats.coups.selfClaims / orders, 3),
       selfClaimRate: round(stats.coups.selfClaims / orders, 3),
       incumbentBackRate: round(stats.coups.incumbentBacks / orders, 3),
       otherBackRate: round(stats.coups.otherBacks / orders, 3),
@@ -505,6 +545,7 @@ function normalizeStats(stats) {
     court: Object.fromEntries(Object.entries(stats.court).map(([key, value]) => [key, round(value / games)])),
     estates: {
       bidsPerGame: round(stats.estates.bids / games),
+      bidGoldPerGame: round(stats.estates.bidGold / games),
       purchasesPerGame: round(stats.estates.bought / games),
       goldSpentPerGame: round(stats.estates.goldSpent / games),
     },
@@ -524,25 +565,23 @@ function buildDiagnostics(stats, games, resolutions, orders) {
   const diagnostics = [];
   const fallRate = stats.falls / games;
   const defeatRate = stats.wars.defeat / Math.max(1, resolutions);
-  const selfClaimRate = stats.coups.selfClaims / Math.max(1, orders);
-  const estateBidsPerGame = stats.estates.bids / games;
   const idlePerOrder = stats.deployment.idleTroops / Math.max(1, orders);
   const capitalPerOrder = stats.deployment.capitalTroops / Math.max(1, orders);
   const fundedPerOrder = stats.deployment.fundedTroops / Math.max(1, orders);
   const frontierPerOrder = stats.deployment.frontierTroops / Math.max(1, orders);
   const averageMargin = stats.wars.marginTotal / Math.max(1, resolutions);
+  const fallPressure = describeFallPressure(fallRate);
+  const fallPct = Math.round(fallRate * 100);
 
-  if (fallRate > 0.75) diagnostics.push('Excessive empire-fall rate: AI is letting Constantinople collapse too often.');
-  else if (fallRate > 0.55) diagnostics.push('High empire-fall pressure: AI may be too fearless; inspect thin war margins, under-funding, or excessive capital coup pressure.');
-  if (fallRate < 0.25 && averageMargin > 5) diagnostics.push('Low empire-fall pressure with safe war margins: AI may be too prudent.');
-  else if (fallRate < 0.45 && averageMargin > 5) diagnostics.push('Below-target empire-fall pressure: AI may be too prudent; inspect surplus defense, heavy funding, or timid coup pressure.');
-  if (defeatRate > 0.45) diagnostics.push('Frequent invasion defeats: frontier valuation is probably too low.');
-  if (averageMargin > 9) diagnostics.push('High surplus war margins: AI is probably over-defending instead of converting troops into coups or gold.');
-  if (selfClaimRate < 0.08) diagnostics.push('Low self-claim rate: AI may be too loyal to incumbents and missing coup windows.');
-  if (estateBidsPerGame < stats.options.playerCount) diagnostics.push('Low estate bidding: AI is leaving cheap profit-share tools untouched.');
-  if (fundedPerOrder > frontierPerOrder + capitalPerOrder - 0.5 && idlePerOrder < 0.4 && averageMargin > 8) diagnostics.push('Low idle conversion with safe frontiers: AI may be over-funding troops.');
-  if (idlePerOrder > capitalPerOrder + 2) diagnostics.push('High idle troop conversion: AI may be overvaluing gold reserves over power projection.');
-  if (!diagnostics.length) diagnostics.push('No obvious aggregate pathology detected; inspect sample games or compare against tuned variants.');
+  if (stats.stuck > 0) diagnostics.push('Some simulated games became stuck; inspect sample seeds before trusting aggregate behavior.');
+  if (fallPressure.band === 'ideal') diagnostics.push(`Empire-fall rate ${fallPct}% is in the ideal 40%-50% band.`);
+  else if (fallPressure.band === 'low') diagnostics.push(`Empire-fall rate ${fallPct}% is below the acceptable 25%-75% band; check whether this scenario is unusually safe.`);
+  else if (fallPressure.band === 'high') diagnostics.push(`Empire-fall rate ${fallPct}% is above the acceptable 25%-75% band; check whether this scenario is unusually punishing.`);
+  else diagnostics.push(`Empire-fall rate ${fallPct}% is acceptable (${fallPressure.target}).`);
+  if (fallRate < FALL_RATE_ACCEPTABLE_MIN && averageMargin > 9) diagnostics.push('War margins are very safe in this simulation sample; compare against replayed games before changing AI behavior.');
+  if (fallRate > FALL_RATE_ACCEPTABLE_MAX && defeatRate > 0.6) diagnostics.push('Invasion defeats are frequent in this high-fall sample; inspect the invasion mix and seeds.');
+  if (fundedPerOrder > frontierPerOrder + capitalPerOrder - 0.5 && idlePerOrder < 0.4 && averageMargin > 10) diagnostics.push('Most available troops are funded while war margins are large; this is a simulation review note, not an AI defect by itself.');
+  if (idlePerOrder > capitalPerOrder + 2 && fallRate > FALL_RATE_ACCEPTABLE_MAX) diagnostics.push('Idle troop conversion is high in a high-fall sample; inspect replay seeds before tuning.');
   return diagnostics;
 }
 
@@ -576,11 +615,11 @@ function parseArgs(argv) {
 function formatReport(result) {
   const lines = [
     `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} turns, seed ${result.options.seed}`,
-    `Completion: ${result.completed}/${result.games} complete, stuck ${result.stuck}, fall rate ${Math.round(result.fallRate * 100)}%, avg rounds ${result.averageRounds}`,
+    `Completion: ${result.completed}/${result.games} complete, stuck ${result.stuck}, fall rate ${Math.round(result.fallRate * 100)}% (${result.fallPressure.band}), avg rounds ${result.averageRounds}`,
     `War: victory ${Math.round(result.wars.victoryRate * 100)}%, stalemate ${Math.round(result.wars.stalemateRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, avg margin ${result.wars.averageMargin}`,
-    `Coup: throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, self-claims ${Math.round(result.coups.selfClaimRate * 100)}%, incumbent backing ${Math.round(result.coups.incumbentBackRate * 100)}%`,
+    `Coup: throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, self top-preference ${Math.round(result.coups.selfPreferenceRate * 100)}%, incumbent backing ${Math.round(result.coups.incumbentBackRate * 100)}%`,
     `Deployment/order: frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}, idle ${result.deployment.idleTroopsPerOrder}, mercs ${result.deployment.mercenariesPerOrder}`,
-    `Estates/game: bids ${result.estates.bidsPerGame}, purchases ${result.estates.purchasesPerGame}, gold spent ${result.estates.goldSpentPerGame}`,
+    `Estates/game: bid submissions ${result.estates.bidsPerGame}, winning purchases ${result.estates.purchasesPerGame}, submitted bid total ${result.estates.bidGoldPerGame}, winning spend ${result.estates.goldSpentPerGame}`,
     `Scoring: winner ${result.scoring.winnerScore}, average ${result.scoring.averageScore}, gap ${result.scoring.pointGap}`,
     'Diagnostics:',
     ...result.diagnostics.map((entry) => `- ${entry}`),
