@@ -14,6 +14,7 @@ import { PROVINCES } from '../data/provinces.js';
 import {
   createGameState,
   createInvasionInstance,
+  canTriggerInvasion,
   getEmpireProvinceStrength,
   getInvasionStrengthBounds,
   getPlayer,
@@ -920,12 +921,14 @@ test('limited invasions are skipped when every target province is already lost',
   assert.equal(state.round, 2);
   assert.equal(state.maxRounds, 3);
   assert.equal(state.currentInvasion.id, 'capital_test');
-  assert.deepEqual(state.invasionDeck.map((invasion) => invasion.id), ['limited_test']);
+  assert.equal(state.invasionDeck.length, 1);
+  assert.notEqual(state.invasionDeck[0].id, 'limited_test');
+  assert.equal(canTriggerInvasion(state, state.invasionDeck[0]), true);
   assert.equal(state.log.some((entry) => entry.type === 'invasion_skipped' && entry.invader === 'Limited Test'), true);
   assert.equal(state.history.some((entry) => entry.type === 'invasion_skipped'), true);
 });
 
-test('turns continue when no invasion can currently launch', () => {
+test('skipped invasions are replaced so every non-final turn draws an invasion', () => {
   const state = makeState();
   state.round = 1;
   state.phase = 'cleanup';
@@ -946,17 +949,30 @@ test('turns continue when no invasion can currently launch', () => {
 
   assert.equal(state.round, 2);
   assert.equal(state.maxRounds, 3);
-  assert.equal(state.currentInvasion, null);
-  assert.deepEqual(state.invasionDeck.map((invasion) => invasion.id), ['limited_test']);
-  assert.equal(state.log.some((entry) => entry.type === 'no_invasion' && entry.round === 2), true);
-  assert.equal(state.history.some((entry) => entry.type === 'no_invasion' && entry.round === 2), true);
+  assert.notEqual(state.currentInvasion, null);
+  assert.notEqual(state.currentInvasion.id, 'limited_test');
+  assert.equal(canTriggerInvasion(state, state.currentInvasion), true);
+  assert.deepEqual(state.invasionDeck, []);
+  assert.equal(state.log.some((entry) => entry.type === 'invasion_skipped' && entry.invader === 'Limited Test'), true);
+  assert.equal(state.history.some((entry) => entry.type === 'invasion_skipped'), true);
+  assert.equal(state.log.some((entry) => entry.type === 'no_invasion' && entry.round === 2), false);
+  assert.equal(state.history.some((entry) => entry.type === 'no_invasion' && entry.round === 2), false);
+});
 
+test('empty invasion decks are replenished before non-final turns', () => {
+  const state = makeState();
+  state.round = 1;
   state.phase = 'cleanup';
-  state.themes.SAM.occupied = false;
+  state.maxRounds = 3;
+  state.invasionDeck = [];
+
   phaseInvasion(state);
 
-  assert.equal(state.round, 3);
-  assert.equal(state.currentInvasion.id, 'limited_test');
+  assert.equal(state.round, 2);
+  assert.notEqual(state.currentInvasion, null);
+  assert.equal(canTriggerInvasion(state, state.currentInvasion), true);
+  assert.equal(state.log.some((entry) => entry.type === 'no_invasion' && entry.round === 2), false);
+  assert.equal(state.history.some((entry) => entry.type === 'no_invasion' && entry.round === 2), false);
 });
 
 test('reconquered provinces auto-restore and reward the top defender next round', () => {

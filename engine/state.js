@@ -33,8 +33,8 @@ export function rollRange(min, max, rng) {
   return min + Math.floor(rng() * (max - min + 1));
 }
 
-export function pickInvasionTemplate(rng) {
-  const weightedInvasions = INVASIONS
+function pickWeightedInvasionTemplate(invasions, rng, emptyMessage) {
+  const weightedInvasions = invasions
     .map((invasion) => ({
       invasion,
       weight: Math.max(0, Number(invasion.drawWeight) || 0),
@@ -42,7 +42,7 @@ export function pickInvasionTemplate(rng) {
     .filter(({ weight }) => weight > 0);
   const totalWeight = weightedInvasions.reduce((sum, { weight }) => sum + weight, 0);
   if (totalWeight <= 0) {
-    throw new Error('At least one invasion must have a positive draw weight.');
+    throw new Error(emptyMessage);
   }
 
   const ticket = rng() * totalWeight;
@@ -52,6 +52,22 @@ export function pickInvasionTemplate(rng) {
     if (ticket < cumulativeWeight) return invasion;
   }
   return weightedInvasions[weightedInvasions.length - 1].invasion;
+}
+
+export function pickInvasionTemplate(rng) {
+  return pickWeightedInvasionTemplate(
+    INVASIONS,
+    rng,
+    'At least one invasion must have a positive draw weight.',
+  );
+}
+
+export function pickTriggerableInvasionTemplate(state, rng) {
+  return pickWeightedInvasionTemplate(
+    INVASIONS.filter((invasion) => canTriggerInvasion(state, invasion)),
+    rng,
+    'At least one triggerable invasion must have a positive draw weight.',
+  );
 }
 
 const PLAYER_ROLE_TEXT_STYLES = {
@@ -144,6 +160,7 @@ export function hasImperialTargetOnInvasionRoute(state, invasion) {
 }
 
 export function canTriggerInvasion(state, invasion) {
+  if (!invasion) return false;
   if (!invasionRequiresImperialTarget(invasion)) return true;
   return hasImperialTargetOnInvasionRoute(state, invasion);
 }

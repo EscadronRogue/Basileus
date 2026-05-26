@@ -310,7 +310,7 @@ export const PHASE_NAMES = {
 
 export const PHASE_TOOLTIPS = {
   setup: 'Provinces, titles and starting gold are dealt out.',
-  invasion: 'A turn begins. If a triggerable invasion is drawn, its route shows which provinces are at risk.',
+  invasion: 'A turn begins with an invasion, and its route shows which provinces are at risk.',
   title_redistribution: 'A newly installed Basileus redistributes the major titles before Court.',
   income: 'Provinces pay out gold and raise troops automatically.',
   court: 'Each office may make up to two appointments or revocations before income.',

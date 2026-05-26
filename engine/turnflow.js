@@ -6,9 +6,11 @@ import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
 import {
   canTriggerInvasion,
+  createInvasionInstance,
   getOfficeDisplayName,
   getPlayer,
   getPlayerMercenaryOrder,
+  pickTriggerableInvasionTemplate,
   prepareInvasionForDraw,
   rollInvasionStrength,
 } from './state.js';
@@ -38,33 +40,45 @@ function phasePreCourt(state) {
 function drawNextTriggerableInvasion(state) {
   const skipped = [];
   if (!Array.isArray(state.invasionDeck)) state.invasionDeck = [];
-  const drawCount = state.invasionDeck.length;
-  for (let i = 0; i < drawCount; i++) {
+
+  const createReplacement = () => {
+    return createInvasionInstance(pickTriggerableInvasionTemplate(state, state.rng), state.rng);
+  };
+
+  const maxDraws = Math.max(1, state.invasionDeck.length) + 20;
+  for (let i = 0; i < maxDraws; i++) {
+    if (state.invasionDeck.length === 0) {
+      state.invasionDeck.push(createReplacement());
+    }
+
     const invasion = state.invasionDeck.shift();
     if (canTriggerInvasion(state, invasion)) {
-      state.invasionDeck.push(...skipped);
       return { invasion, skipped };
     }
+
     skipped.push(invasion);
+
+    state.invasionDeck.push(createReplacement());
   }
-  state.invasionDeck.push(...skipped);
-  return { invasion: null, skipped };
+
+  throw new Error('Unable to draw a triggerable invasion.');
 }
 
 function recordSkippedInvasions(state, skipped, attemptedRound) {
   if (!skipped.length) return;
   if (!Array.isArray(state.skippedInvasions)) state.skippedInvasions = [];
   state.skippedInvasions.push(...skipped.map((invasion) => ({
-    id: invasion.id,
-    name: invasion.name,
+    id: invasion?.id || 'unknown_invasion',
+    name: invasion?.name || invasion?.id || 'Unknown invasion',
     round: attemptedRound,
     reason: 'no_imperial_targets',
   })));
 
   for (const invasion of skipped) {
+    const invaderName = invasion?.name || invasion?.id || 'Unknown invasion';
     state.log.push({
       type: 'invasion_skipped',
-      invader: invasion.name,
+      invader: invaderName,
       reason: 'no_imperial_targets',
       round: attemptedRound,
     });
@@ -72,11 +86,11 @@ function recordSkippedInvasions(state, skipped, attemptedRound) {
       category: 'system',
       type: 'invasion_skipped',
       round: attemptedRound,
-      summary: `${invasion.name} does not launch because none of its target provinces remain under imperial control.`,
+      summary: `${invaderName} does not launch because none of its target provinces remain under imperial control.`,
       details: {
-        invader: invasion.name,
+        invader: invaderName,
         reason: 'no_imperial_targets',
-        route: Array.isArray(invasion.route) ? invasion.route.slice() : [],
+        route: Array.isArray(invasion?.route) ? invasion.route.slice() : [],
       },
     });
   }
@@ -183,24 +197,6 @@ export function phaseInvasion(state) {
   state.currentInvasion = null;
   state.invasionStrength = 0;
   recordSkippedInvasions(state, skipped, attemptedRound);
-
-  if (!invasion) {
-    state.log.push({
-      type: 'no_invasion',
-      reason: skipped.length ? 'no_triggerable_invasions' : 'empty_invasion_deck',
-      round: state.round,
-    });
-    recordHistoryEvent(state, {
-      category: 'system',
-      type: 'no_invasion',
-      summary: `Round ${state.round} begins without an invasion.`,
-      details: {
-        reason: skipped.length ? 'no_triggerable_invasions' : 'empty_invasion_deck',
-        skipped: skipped.map((item) => item?.name || item?.id || 'Unknown invasion'),
-      },
-    });
-    return;
-  }
 
   state.currentInvasion = prepareInvasionForDraw(state, invasion, state.rng);
   state.log.push({
