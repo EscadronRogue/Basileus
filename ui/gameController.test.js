@@ -123,6 +123,8 @@ test('title redistribution panel is its own phase panel', () => {
   assert.match(container.innerHTML, /Assign Major Offices/);
   assert.match(container.innerHTML, /data-title-slot="DOM_EAST"/);
   assert.match(container.innerHTML, /title-redist-player-token/);
+  assert.match(container.innerHTML, /court-wire-seat-socket/);
+  assert.match(container.innerHTML, /court-wire-player-socket/);
   assert.match(container.innerHTML, /data-action="confirm-title-redistribution" disabled/);
   assert.match(container.innerHTML, /Finish Office Slots/);
 });
@@ -160,6 +162,8 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(patriarchPanel.innerHTML, /data-strategos-theme-pick=/);
   assert.match(patriarchPanel.innerHTML, /data-bishop-theme-pick=/);
   assert.match(patriarchPanel.innerHTML, /Revoke/);
+  assert.match(patriarchPanel.innerHTML, /Strategos [^<]*Opsikion/i);
+  assert.doesNotMatch(patriarchPanel.innerHTML, /court-link-seat-province/);
   assert.doesNotMatch(patriarchPanel.innerHTML, /Gift/);
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
 });
@@ -182,6 +186,25 @@ test('court panel disables appointments blocked by current legality', () => {
   assert.match(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
   assert.match(container.innerHTML, /data-bishop-player-pick="1"[^>]*disabled[^>]*>/);
   assert.match(container.innerHTML, /You cannot appoint yourself twice in a row/);
+});
+
+test('court wire layout does not draw ownership ropes for open seats', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, 3, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-wire-seat-start="strategos:/);
+  assert.doesNotMatch(container.innerHTML, /data-wire-line-key="strategos:/);
+  assert.doesNotMatch(container.innerHTML, /court-wire-link bound/);
 });
 
 test('court panel validates multiplayer public snapshots without private logs', () => {
@@ -248,6 +271,7 @@ test('court estate revocations show owner color without the old separator', () =
   assert.match(container.innerHTML, /ownership-badge ownership-badge-estate/);
   assert.match(container.innerHTML, /data-link-revoke="theme:OPS"/);
   assert.equal(container.innerHTML.includes(`--ownership-color: ${state.players[2].color};`), true);
+  assert.match(container.innerHTML, /Estate [^<]*Opsikion/i);
   assert.equal(container.innerHTML.includes('Estate —'), false);
   assert.equal(container.innerHTML.includes('Estate â€”'), false);
 });

@@ -206,8 +206,8 @@ export function renderOwnershipBadge(state, entry, options = {}) {
   if (!entry || !OWNERSHIP_KIND_META[entry.kind]) return '';
   const meta = OWNERSHIP_KIND_META[entry.kind];
   const holder = getOwnershipHolderLabel(state, entry.holderId);
-  const text = options.hideHolder ? meta.label : `${meta.label} ${holder}`;
-  const title = `${meta.title}: ${holder}`;
+  const text = options.label || (options.hideHolder ? meta.label : `${meta.label} ${holder}`);
+  const title = options.title || `${meta.title}: ${holder}`;
   const classes = [
     'ownership-badge',
     `ownership-badge-${entry.kind}`,
@@ -360,8 +360,8 @@ function getTitleBackgroundColor(state, holderId) {
   return getPlayer(state, holderId)?.color || '#5a3810';
 }
 
-// Render a title cartouche. For STRATEGOS/BISHOP the caller is expected
-// to pair it with the land's province cartouche (e.g. "<title> of <land>").
+// Render a title cartouche. Callers can fold contextual land names into
+// options.label when a single combined cartouche reads better.
 export function renderTitleBadge(state, kind, options = {}) {
   const { holderId = null, themeId = null, label = null, compact = false } = options;
   const outline = getTitleOutlineColor(state, kind, themeId);

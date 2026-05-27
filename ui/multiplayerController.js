@@ -745,6 +745,14 @@ export class MultiplayerController {
       'deal-accept': (payload) => this.send('court_action', { action: 'deal-accept', ...payload }),
       'deal-refuse': (payload) => this.send('court_action', { action: 'deal-refuse', ...payload }),
       'confirm-court': () => this.send('confirm_court'),
+      'submit-court-plan': ({ actions = [], passPowers = [] } = {}) => {
+        actions.forEach((action) => this.send('court_action', action));
+        passPowers.forEach((powerKey) => this.send('court_action', {
+          action: 'pass-court-power',
+          powerKey,
+        }));
+        if (!actions.length && !passPowers.length) this.send('confirm_court');
+      },
       'appoint-strategos': (titleKey, themeId, appointeeId) => this.send('court_action', {
         action: 'appoint-strategos',
         titleKey,
@@ -770,6 +778,14 @@ export class MultiplayerController {
   createEstateHandlers() {
     return {
       buy: (themeId, data = {}) => this.send('estate_action', { action: 'buy', themeId, amount: data.amount }),
+      submitEstatePlan: ({ bids = [] } = {}) => {
+        bids.forEach((bid) => this.send('estate_action', {
+          action: 'buy',
+          themeId: bid.themeId,
+          amount: bid.amount,
+        }));
+        this.send('confirm_estates');
+      },
     };
   }
 

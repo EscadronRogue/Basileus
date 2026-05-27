@@ -774,6 +774,7 @@ export function renderGameActionPanel({
     case 'estates':
       renderEstatesPanel(shell, state, activePlayerId, {
         buy: handlers.estates?.buy,
+        submitEstatePlan: handlers.estates?.submitEstatePlan,
         confirmEstates: handlers.confirmEstates,
       }, { uiState });
       break;

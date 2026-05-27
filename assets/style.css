@@ -5147,6 +5147,12 @@ textarea {
 .court-wire-link.pending .court-wire-visible {
   stroke-dasharray: 10 6;
 }
+.court-wire-link.planned-revoke .court-wire-visible {
+  stroke-dasharray: 6 5;
+  filter:
+    drop-shadow(0 1px 1px rgba(30,16,0,0.18))
+    drop-shadow(0 0 5px rgba(150,28,36,0.22));
+}
 .court-wire-link.drawing .court-wire-shadow,
 .court-wire-link.drawing .court-wire-visible {
   pointer-events: none;
@@ -5158,11 +5164,11 @@ textarea {
     drop-shadow(0 0 5px color-mix(in srgb, var(--wire-color, var(--gold-1)) 46%, transparent));
 }
 .court-wire-link.disabled .court-wire-visible {
-  opacity: 0.38;
+  opacity: 1;
   stroke-dasharray: 5 7;
 }
 .court-wire-board.many-bound .court-wire-link.bound {
-  opacity: 0.04;
+  opacity: 1;
   transition: opacity 0.12s;
 }
 .court-wire-board.many-bound .court-wire-link.bound.is-wire-focused,
@@ -5170,14 +5176,14 @@ textarea {
   opacity: 1;
 }
 .court-wire-board.many-bound .court-wire-link.bound:not(.is-wire-focused):not(:hover) .court-wire-scissors {
-  opacity: 0;
+  opacity: 1;
 }
 @media (hover: none) {
   .court-wire-board.many-bound .court-wire-link.bound {
-    opacity: 0.16;
+    opacity: 1;
   }
   .court-wire-board.many-bound .court-wire-link.bound .court-wire-scissors {
-    opacity: 0.76;
+    opacity: 1;
   }
 }
 .court-wire-hit {
@@ -5321,7 +5327,7 @@ textarea {
 }
 .court-wire-seat.disabled {
   cursor: not-allowed;
-  opacity: 0.54;
+  opacity: 1;
 }
 .court-wire-warning {
   grid-row: var(--wire-row);
@@ -5412,28 +5418,20 @@ textarea {
   font-style: italic;
 }
 .court-link-seat-token {
-  display: inline-grid;
-  grid-template-rows: auto auto;
-  justify-items: stretch;
-  gap: 3px;
-  width: 100%;
-  max-width: 178px;
-  min-width: 0;
-}
-.court-link-seat-title,
-.court-link-seat-province {
-  display: flex;
+  display: inline-flex;
+  align-items: stretch;
   justify-content: flex-end;
+  width: 100%;
+  max-width: 210px;
   min-width: 0;
-  max-width: 100%;
 }
 .court-link-seat-token .title-token.compact,
-.court-link-seat-token .province-token.compact,
 .court-link-seat-token .ownership-badge.compact {
   width: 100%;
   max-width: 100%;
   justify-content: center;
-  min-height: 21px;
+  box-sizing: border-box;
+  min-height: 27px;
   padding: 3px 7px 4px;
   font-size: 9.5px;
   line-height: 1.05;
@@ -5441,15 +5439,9 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.court-link-seat-token .province-token.compact {
-  min-height: 19px;
-  padding-block: 2px 3px;
-  font-size: 9px;
-}
 .court-link-seat-token .ownership-badge.compact {
-  min-height: 21px;
+  min-height: 27px;
 }
-.court-link-seat-token .province-token-name,
 .court-link-seat-token .ownership-text {
   min-width: 0;
   overflow: hidden;

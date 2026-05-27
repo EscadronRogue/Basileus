@@ -12,7 +12,7 @@ import {
   getCourtPowerUseMode,
   getUsedCourtPowers,
   getAvailableLandBidGold,
-  getLandBidAmountOptions,
+  getLandBidCommitment,
   isCourtPowerExhausted,
   isCourtPowerPassed,
   isCourtPowerUsed,
@@ -200,7 +200,7 @@ function bindWireDraftMotion(container) {
       const x = ((clientX - rect.left) / Math.max(rect.width, 1)) * 1000;
       const y = ((clientY - rect.top) / Math.max(rect.height, 1)) * height;
       return {
-        x: Math.max(335, Math.min(665, x)),
+        x: Math.max(0, Math.min(1000, x)),
         y: Math.max(0, Math.min(height, y)),
       };
     };
@@ -225,6 +225,125 @@ function bindWireDraftMotion(container) {
       socket.addEventListener('focus', snapToSocket);
     });
   });
+}
+
+function getWireSvgPoint(svg, element) {
+  if (!svg || !element) return null;
+  const svgRect = svg.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  const viewBox = svg.viewBox?.baseVal;
+  const width = viewBox?.width || 1000;
+  const height = viewBox?.height || Number(svg.getAttribute('viewBox')?.split(/\s+/).at(3)) || 58;
+  return {
+    x: ((elementRect.left + elementRect.width / 2 - svgRect.left) / Math.max(svgRect.width, 1)) * width,
+    y: ((elementRect.top + elementRect.height / 2 - svgRect.top) / Math.max(svgRect.height, 1)) * height,
+  };
+}
+
+function findWireRowByKey(board, key) {
+  return [...board.querySelectorAll('[data-wire-row-key]')]
+    .find((row) => row.dataset.wireRowKey === key) || null;
+}
+
+function findWirePlayerRow(board, playerId, copyIndex = '') {
+  return [...board.querySelectorAll('[data-wire-player-row]')]
+    .find((row) => (
+      row.dataset.wirePlayerRow === String(playerId)
+      && (copyIndex === '' || row.dataset.wirePlayerCopy === String(copyIndex))
+    )) || null;
+}
+
+function setWireLineEndpoint(group, x1, y1, x2, y2) {
+  group.querySelectorAll('.court-wire-line').forEach((line) => {
+    line.setAttribute('x1', String(Math.round(x1)));
+    line.setAttribute('y1', String(Math.round(y1)));
+    line.setAttribute('x2', String(Math.round(x2)));
+    line.setAttribute('y2', String(Math.round(y2)));
+  });
+  group.querySelectorAll('.court-wire-scissors, .court-wire-tie-label').forEach((label) => {
+    label.setAttribute('x', String(Math.round((x1 + x2) / 2)));
+    label.setAttribute('y', String(Math.round((y1 + y2) / 2)));
+  });
+}
+
+function updateWireGeometry(container) {
+  container.querySelectorAll('[data-court-wire-board]').forEach((board) => {
+    const svg = board.querySelector('.court-wire-svg');
+    if (!svg) return;
+    board.querySelectorAll('[data-wire-line-key]').forEach((group) => {
+      const seatRow = findWireRowByKey(board, group.dataset.wireLineKey);
+      const playerRow = findWirePlayerRow(board, group.dataset.wireToPlayer, group.dataset.wireToCopy || '');
+      const start = getWireSvgPoint(svg, seatRow?.querySelector('.court-wire-seat-socket'));
+      const end = getWireSvgPoint(svg, playerRow?.querySelector('.court-wire-player-socket'));
+      if (!start || !end) return;
+      setWireLineEndpoint(group, start.x, start.y, end.x, end.y);
+    });
+    board.querySelectorAll('[data-wire-draft-key]').forEach((group) => {
+      const seatRow = findWireRowByKey(board, group.dataset.wireDraftKey);
+      const start = getWireSvgPoint(svg, seatRow?.querySelector('.court-wire-seat-socket'));
+      if (!start) return;
+      group.querySelectorAll('[data-wire-draft-line]').forEach((line) => {
+        line.setAttribute('x1', String(Math.round(start.x)));
+        line.setAttribute('y1', String(Math.round(start.y)));
+      });
+    });
+  });
+}
+
+function bindWireGeometry(container) {
+  if (typeof container.__courtWireGeometryCleanup === 'function') {
+    container.__courtWireGeometryCleanup();
+  }
+  const update = () => updateWireGeometry(container);
+  let frame = null;
+  const scheduleUpdate = () => {
+    if (frame != null) return;
+    if (typeof requestAnimationFrame === 'function') {
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        update();
+      });
+    } else {
+      frame = setTimeout(() => {
+        frame = null;
+        update();
+      }, 0);
+    }
+  };
+  const observed = [];
+  const resizeObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(scheduleUpdate)
+    : null;
+  if (resizeObserver) {
+    container
+      .querySelectorAll('[data-court-wire-board], .court-wire-seat, .court-wire-player, .court-wire-svg')
+      .forEach((node) => {
+        resizeObserver.observe(node);
+        observed.push(node);
+      });
+  }
+  const onResize = () => scheduleUpdate();
+  if (typeof window !== 'undefined') window.addEventListener('resize', onResize);
+  const laterUpdates = [120, 360].map((delay) => {
+    const timer = setTimeout(update, delay);
+    if (typeof timer?.unref === 'function') timer.unref();
+    return timer;
+  });
+  container.__courtWireGeometryCleanup = () => {
+    if (frame != null) {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+      else clearTimeout(frame);
+      frame = null;
+    }
+    laterUpdates.forEach((timer) => clearTimeout(timer));
+    if (resizeObserver) {
+      observed.forEach((node) => resizeObserver.unobserve(node));
+      resizeObserver.disconnect();
+    }
+    if (typeof window !== 'undefined') window.removeEventListener('resize', onResize);
+  };
+  update();
+  scheduleUpdate();
 }
 
 function bindWireFocus(container) {
@@ -325,12 +444,30 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
     }))
   ));
   const tokenRowByKey = new Map(playerTokens.map((token, index) => [tokenKey(token.player.id, token.copyIndex), index]));
+  const titleRowByKey = new Map();
+  const usedTitleRows = new Set();
+  titleEntries.forEach(([titleKey], index) => {
+    if (hasAssignment(titleKey)) {
+      const assignedPlayerId = Number(draft.assignments[titleKey]);
+      const copyIndex = usedByTitle[titleKey];
+      const tokenRow = tokenRowByKey.get(tokenKey(assignedPlayerId, copyIndex));
+      if (tokenRow != null) {
+        titleRowByKey.set(titleKey, tokenRow);
+        usedTitleRows.add(tokenRow);
+        return;
+      }
+    }
+    const nextRow = Array.from({ length: Math.max(titleEntries.length, playerTokens.length, 1) }, (_, row) => row)
+      .find((row) => !usedTitleRows.has(row)) ?? index;
+    titleRowByKey.set(titleKey, nextRow);
+    usedTitleRows.add(nextRow);
+  });
   const selectedToken = playerTokens.find((token) => (
     token.available
     && token.player.id === selectedPlayerId
     && token.copyIndex === selectedCopyIndex
   )) || null;
-  const rows = Math.max(titleEntries.length, playerTokens.length, 1);
+  const rows = Math.max(titleEntries.length, playerTokens.length, Math.max(-1, ...titleRowByKey.values()) + 1, 1);
   const height = rows * 58;
   const selectedTitle = selectedTitleKey ? MAJOR_TITLES[selectedTitleKey] : null;
   const titleLineHtml = titleEntries.map(([titleKey, title], titleIndex) => {
@@ -340,15 +477,16 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
     const copyIndex = usedByTitle[titleKey];
     const tokenRow = tokenRowByKey.get(tokenKey(assignedPlayerId, copyIndex));
     if (!assignedPlayer || tokenRow == null) return '';
-    return renderCourtWireLine({ label: title.name }, titleIndex, tokenRow, assignedPlayer, {
+    return renderCourtWireLine({ key: titleKey, label: title.name }, titleRowByKey.get(titleKey) ?? titleIndex, tokenRow, assignedPlayer, {
       kind: 'bound',
       lineKey: titleKey,
+      toCopyIndex: copyIndex,
       label: `Cut ${title.name} from ${playerDisplayLabel(assignedPlayer)}`,
       actionAttrs: `data-title-clear="${escapeHtml(titleKey)}" aria-label="${escapeHtml(`Cut ${title.name} from ${playerDisplayLabel(assignedPlayer)}`)}"`,
     });
   }).join('');
   const draftLineHtml = wireTitleKey && selectedTitle && !hasAssignment(wireTitleKey)
-    ? renderCourtDraftWire({ label: selectedTitle.name }, titleKeys.indexOf(wireTitleKey))
+    ? renderCourtDraftWire({ key: wireTitleKey, label: selectedTitle.name }, titleRowByKey.get(wireTitleKey) ?? titleKeys.indexOf(wireTitleKey))
     : '';
   const selectedSummary = wireTitleKey && selectedTitle
     ? `Guide the rope from ${selectedTitle.name} to a dynasty circle.`
@@ -378,7 +516,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
           return `
             <button type="button"
               class="court-wire-seat title-redist-slot${isSelected ? ' selected' : ''}${isBasileus && !assignedPlayer ? ' can-fill' : ''}${assignedPlayer ? ' filled' : ''}"
-              style="--wire-row: ${index + 1}; ${assignedPlayer ? getPlayerStyleAttr(state, assignedPlayer.id) : ''}"
+              style="--wire-row: ${(titleRowByKey.get(titleKey) ?? index) + 1}; ${assignedPlayer ? getPlayerStyleAttr(state, assignedPlayer.id) : ''}"
               data-title-slot="${titleKey}"
               data-wire-row-key="${escapeHtml(titleKey)}"
               tabindex="${isBasileus ? '0' : '-1'}"
@@ -387,7 +525,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
                 ${renderTitleBadge(state, titleKey, { holderId: assignedPlayer?.id, compact: true, label: title.name })}
                 <span class="title-redist-slot-state">${assignedPlayer ? 'Tied' : isSelected ? 'Selected' : 'Open'}</span>
               </span>
-              <span class="court-wire-socket" ${isBasileus && !assignedPlayer ? `data-title-wire-start="${escapeHtml(titleKey)}"` : ''} aria-hidden="true"></span>
+              <span class="court-wire-socket court-wire-seat-socket" ${isBasileus && !assignedPlayer ? `data-title-wire-start="${escapeHtml(titleKey)}"` : ''} aria-hidden="true"></span>
             </button>
           `;
         }).join('')}
@@ -403,12 +541,14 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
               <button type="button"
                 class="court-wire-player title-redist-player-token${selected ? ' selected' : ''}${token.available ? '' : ' used'}"
                 style="--wire-row: ${index + 1}; ${getPlayerStyleAttr(state, token.player.id)}"
+                data-wire-player-row="${token.player.id}"
+                data-wire-player-copy="${token.copyIndex}"
                 data-title-token-player="${token.player.id}"
                 data-title-token-copy="${token.copyIndex}"
                 draggable="${isBasileus && token.available ? 'true' : 'false'}"
                 ${isBasileus && !token.available ? 'disabled' : ''}
                 aria-pressed="${selected ? 'true' : 'false'}">
-                <span class="court-wire-socket" ${isBasileus && token.available ? `data-title-wire-finish="${token.player.id}" data-title-wire-copy="${token.copyIndex}"` : ''} aria-hidden="true"></span>
+                <span class="court-wire-socket court-wire-player-socket" ${isBasileus && token.available ? `data-title-wire-finish="${token.player.id}" data-title-wire-copy="${token.copyIndex}"` : ''} aria-hidden="true"></span>
                 <span class="candidate-crest">${playerInitial(token.player)}</span>
                 <span class="candidate-name">${escapeHtml(playerDisplayLabel(token.player))}</span>
                 <span class="candidate-tag">${token.available ? `Copy ${token.copyIndex + 1}` : 'Tied'}</span>
@@ -425,6 +565,10 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
       </div>
     </section>
   `;
+
+  bindWireGeometry(container);
+  bindWireDraftMotion(container);
+  bindWireFocus(container);
 
   if (isBasileus) {
     const assignTitle = (titleKey, nextPlayerId) => {
@@ -472,9 +616,6 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
         }
       });
     });
-
-    bindWireDraftMotion(container);
-    bindWireFocus(container);
 
     container.querySelectorAll('[data-title-token-player]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -801,16 +942,21 @@ function renderCourtSeatTitleCartouche(state, kind, theme, holderId) {
       holderId: holder?.id ?? null,
       themeId: theme.id,
       compact: true,
-      label: courtSeatShortLabel(kind),
+      label: `${courtSeatShortLabel(kind)} ${theme.name}`,
     });
   }
   if (kind === 'estate' && holder) {
+    const palette = getProvinceRegionPalette(theme);
     return renderOwnershipBadge(state, {
       kind,
       holderId: holder.id,
       color: holder.color || '#5a3810',
-      accent: 'rgba(20,8,0,0.76)',
-    }, { compact: true, hideHolder: true });
+      accent: palette.outline,
+    }, {
+      compact: true,
+      label: `Estate ${theme.name}`,
+      title: `Private estate in ${theme.name}: ${playerDisplayLabel(holder)}`,
+    });
   }
   if (kind === 'estate') {
     const palette = getProvinceRegionPalette(theme);
@@ -819,7 +965,7 @@ function renderCourtSeatTitleCartouche(state, kind, theme, holderId) {
         style="--ownership-accent: ${palette.outline};"
         title="Private estate" aria-label="Private estate">
         <span class="ownership-mark" aria-hidden="true"></span>
-        <span class="ownership-text">Estate</span>
+        <span class="ownership-text">${escapeHtml(`Estate ${theme.name}`)}</span>
       </span>
     `;
   }
@@ -833,8 +979,7 @@ function renderCourtLinkSeat(state, kind, theme, holderId = null) {
     <span class="court-link-seat-token ${escapeHtml(kind)}${holder ? ' tied' : ' open'}"
       ${holder ? `style="${getPlayerStyleAttr(state, holder.id)}"` : ''}
       title="${escapeHtml(`${courtSeatLabel(kind)} in ${theme.name}${holder ? `: ${playerDisplayLabel(holder)}` : ''}`)}">
-      <span class="court-link-seat-title">${renderCourtSeatTitleCartouche(state, kind, theme, holder?.id ?? null)}</span>
-      <span class="court-link-seat-province">${renderProvinceBadge(state, theme, { compact: true })}</span>
+      ${renderCourtSeatTitleCartouche(state, kind, theme, holder?.id ?? null)}
     </span>
   `;
 }
@@ -868,6 +1013,87 @@ function describeRevocationLinkTarget(state, target) {
 
 function courtConnectionKey(kind, themeId) {
   return `${kind}:${themeId}`;
+}
+
+function normalizeWirePlayerId(value) {
+  if (value == null || value === '') return null;
+  const playerId = Number(value);
+  return Number.isInteger(playerId) ? playerId : null;
+}
+
+function ensureCourtPlan(draft) {
+  if (!Array.isArray(draft.plannedActions)) draft.plannedActions = [];
+  if (!Array.isArray(draft.plannedPassPowers)) draft.plannedPassPowers = [];
+  return draft.plannedActions;
+}
+
+function courtPlanActionKey(action) {
+  if (!action) return '';
+  if (action.action === 'revoke') return `revoke:${action.value}`;
+  if (action.action === 'appoint-bishop') return `bishop:${action.themeId}`;
+  if (action.action === 'appoint-strategos') return `strategos:${action.themeId}`;
+  return `${action.action}:${action.powerKey || ''}`;
+}
+
+function courtPlanActionPower(action) {
+  return action?.powerKey || action?.titleKey || '';
+}
+
+function validateCourtPlan(state, playerId, actions) {
+  const clone = cloneStateForValidation(state);
+  for (const action of actions) {
+    const result = applyCourtAction(clone, playerId, action);
+    if (!result?.ok) return result || { ok: false, reason: 'Could not plan that action.' };
+  }
+  return { ok: true };
+}
+
+function queueCourtPlannedAction(state, playerId, draft, action) {
+  const actions = ensureCourtPlan(draft);
+  const actionKey = courtPlanActionKey(action);
+  const nextActions = actions
+    .filter((entry) => courtPlanActionKey(entry) !== actionKey)
+    .concat(action);
+  const validation = validateCourtPlan(state, playerId, nextActions);
+  if (!validation.ok) {
+    draft.planError = validation.reason || 'That plan is not legal.';
+    return false;
+  }
+  draft.plannedActions = nextActions;
+  delete draft.planError;
+  return true;
+}
+
+function removeCourtPlannedAction(draft, actionKey) {
+  ensureCourtPlan(draft);
+  draft.plannedActions = draft.plannedActions.filter((entry) => courtPlanActionKey(entry) !== actionKey);
+  delete draft.planError;
+}
+
+function toggleCourtPlannedRevocation(state, playerId, draft, powerKey, value) {
+  const actionKey = `revoke:${value}`;
+  if (ensureCourtPlan(draft).some((entry) => courtPlanActionKey(entry) === actionKey)) {
+    removeCourtPlannedAction(draft, actionKey);
+    return true;
+  }
+  return queueCourtPlannedAction(state, playerId, draft, {
+    action: 'revoke',
+    value,
+    powerKey,
+  });
+}
+
+function getPlannedCourtActionsForPower(draft, powerKey) {
+  return ensureCourtPlan(draft).filter((action) => courtPlanActionPower(action) === powerKey);
+}
+
+function getPlannedActionForEntry(entry, plannedActions) {
+  return plannedActions.find((action) => {
+    if (action.action === 'revoke') return entry.revokeValue && action.value === entry.revokeValue;
+    if (action.action === 'appoint-bishop') return entry.kind === 'bishop' && action.themeId === entry.theme.id;
+    if (action.action === 'appoint-strategos') return entry.kind === 'strategos' && action.themeId === entry.theme.id;
+    return false;
+  }) || null;
 }
 
 function getCourtAppointmentDraft(draft, kind) {
@@ -944,7 +1170,8 @@ function courtWireY(index) {
 function renderCourtWireSeat(entry, index, active) {
   const selectedClass = active ? ' selected' : '';
   const disabledReason = entry.mode === 'bound' ? entry.revokeDisabledReason : entry.targetDisabledReason;
-  const startAttrs = entry.mode === 'open'
+  const canStartWire = entry.mode === 'open';
+  const startAttrs = canStartWire
     ? `
       data-wire-seat-start="${escapeHtml(entry.key)}"
       data-wire-kind="${escapeHtml(entry.kind)}"
@@ -954,7 +1181,7 @@ function renderCourtWireSeat(entry, index, active) {
     : '';
   return `
     <button type="button"
-      class="court-wire-seat court-link-connection ${entry.mode}${selectedClass}${disabledReason ? ' disabled' : ''}"
+      class="court-wire-seat court-link-connection ${entry.mode}${entry.plannedRevoke ? ' planned-revoke' : ''}${selectedClass}${disabledReason ? ' disabled' : ''}"
       style="--wire-row: ${index + 1};"
       data-link-kind="${escapeHtml(entry.kind)}"
       data-wire-row-key="${escapeHtml(entry.key)}"
@@ -1000,6 +1227,7 @@ function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, p
     <button type="button"
       class="court-wire-player${linked ? ' linked' : ''}${selected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
       style="--wire-row: ${index + 1}; ${getPlayerStyleAttr(state, player.id)}"
+      data-wire-player-row="${player.id}"
       ${dataAttrs}
       ${disabledReason ? disabledChoiceAttrs(disabledReason, playerDisplayLabel(player)) : ''}>
       <span class="court-wire-socket court-wire-player-socket" ${socketAttrs} aria-hidden="true"></span>
@@ -1020,8 +1248,9 @@ function renderCourtWireLine(entry, entryIndex, playerIndex, player, options = {
   const actionAttrs = options.actionAttrs || '';
   const label = options.label || entry.label;
   const lineKey = options.lineKey || entry.key || '';
+  const toCopy = options.toCopyIndex == null ? '' : ` data-wire-to-copy="${escapeHtml(options.toCopyIndex)}"`;
   return `
-    <g class="court-wire-link ${options.kind || entry.mode}${disabledReason ? ' disabled' : ''}" ${lineKey ? `data-wire-line-key="${escapeHtml(lineKey)}"` : ''}>
+    <g class="court-wire-link ${options.kind || entry.mode}${disabledReason ? ' disabled' : ''}" ${lineKey ? `data-wire-line-key="${escapeHtml(lineKey)}"` : ''} data-wire-to-player="${player.id}"${toCopy}>
       <line class="court-wire-line court-wire-shadow" x1="335" y1="${y1}" x2="665" y2="${y2}"></line>
       <line class="court-wire-line court-wire-visible"
         x1="335" y1="${y1}" x2="665" y2="${y2}"
@@ -1032,7 +1261,7 @@ function renderCourtWireLine(entry, entryIndex, playerIndex, player, options = {
         x1="335" y1="${y1}" x2="665" y2="${y2}"
         ${actionAttrs}
         ${disabledReason ? disabledChoiceAttrs(disabledReason, label) : `title="${escapeHtml(label)}"`}></line>
-      ${options.kind === 'bound'
+      ${options.kind === 'bound' || options.kind === 'planned-revoke'
         ? `<text class="court-wire-scissors" x="${midX}" y="${midY}" ${actionAttrs} ${disabledReason ? disabledChoiceAttrs(disabledReason, label) : `title="${escapeHtml(label)}"`}>&#9986;</text>`
         : ''}
       ${options.kind === 'pending'
@@ -1047,7 +1276,7 @@ function renderCourtDraftWire(entry, entryIndex) {
   const y = courtWireY(entryIndex);
   const label = `Tie ${entry.label}`;
   return `
-    <g class="court-wire-link drawing" aria-label="${escapeHtml(label)}">
+    <g class="court-wire-link drawing" data-wire-draft-key="${escapeHtml(entry.key || '')}" aria-label="${escapeHtml(label)}">
       <line class="court-wire-line court-wire-shadow" x1="335" y1="${y}" x2="500" y2="${y}" data-wire-draft-line></line>
       <line class="court-wire-line court-wire-visible"
         x1="335" y1="${y}" x2="500" y2="${y}"
@@ -1058,30 +1287,111 @@ function renderCourtDraftWire(entry, entryIndex) {
   `;
 }
 
-function renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry) {
+function layoutCourtWireRows(entries, players) {
+  const ownerGroups = new Map();
+  const unowned = [];
+  entries.forEach((entry) => {
+    const holderId = normalizeWirePlayerId(entry.plannedHolderId ?? (entry.mode === 'bound' ? entry.holderId : null));
+    if (holderId != null) {
+      const key = holderId;
+      if (!ownerGroups.has(key)) ownerGroups.set(key, []);
+      ownerGroups.get(key).push(entry);
+    } else {
+      unowned.push(entry);
+    }
+  });
+
+  const entryRows = new Map();
+  const playerRows = new Map();
+  const hasOwnerGroups = ownerGroups.size > 0;
+  let cursor = 0;
+
+  if (hasOwnerGroups) {
+    players.forEach((player) => {
+      const group = ownerGroups.get(player.id) || [];
+      if (group.length) {
+        group.forEach((entry, index) => entryRows.set(entry.key, cursor + index));
+        playerRows.set(player.id, cursor + Math.floor((group.length - 1) / 2));
+        cursor += group.length + 1;
+      } else {
+        playerRows.set(player.id, cursor);
+        cursor += 1;
+      }
+    });
+    unowned.forEach((entry) => {
+      entryRows.set(entry.key, cursor);
+      cursor += 1;
+    });
+  } else {
+    const rowCount = Math.max(entries.length, players.length, 1);
+    entries.forEach((entry, index) => entryRows.set(entry.key, index));
+    players.forEach((player, index) => {
+      const row = players.length <= 1 ? Math.floor((rowCount - 1) / 2) : Math.round((index * (rowCount - 1)) / Math.max(players.length - 1, 1));
+      playerRows.set(player.id, row);
+    });
+    cursor = rowCount;
+  }
+
+  const maxEntryRow = Math.max(-1, ...entryRows.values());
+  const maxPlayerRow = Math.max(-1, ...playerRows.values());
+  return {
+    entryRows,
+    playerRows,
+    rows: Math.max(cursor, maxEntryRow + 1, maxPlayerRow + 1, 1),
+  };
+}
+
+function renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout) {
   const lines = [];
   entries.forEach((entry, entryIndex) => {
-    if (entry.mode !== 'bound') return;
-    const holder = getPlayer(state, entry.holderId);
-    const playerIndex = players.findIndex((player) => player.id === holder?.id);
-    lines.push(renderCourtWireLine(entry, entryIndex, playerIndex, holder, {
-      kind: 'bound',
-      label: `Revoke ${entry.label}`,
+    const linePlayerId = normalizeWirePlayerId(entry.plannedHolderId ?? (entry.mode === 'bound' ? entry.holderId : null));
+    if (linePlayerId == null) return;
+    const holder = getPlayer(state, linePlayerId);
+    const entryRow = layout?.entryRows?.get(entry.key) ?? entryIndex;
+    const playerIndex = layout?.playerRows?.get(holder?.id) ?? players.findIndex((player) => player.id === holder?.id);
+    const isPlannedAppointment = entry.mode === 'planned';
+    const isPlannedRevoke = Boolean(entry.plannedRevoke);
+    lines.push(renderCourtWireLine(entry, entryRow, playerIndex, holder, {
+      kind: isPlannedAppointment ? 'pending' : isPlannedRevoke ? 'planned-revoke' : 'bound',
+      label: isPlannedAppointment
+        ? `Planned appointment: ${entry.label}`
+        : isPlannedRevoke
+          ? `Undo planned revocation: ${entry.label}`
+          : `Revoke ${entry.label}`,
       disabledReason: entry.revokeDisabledReason || '',
-      actionAttrs: `data-link-revoke="${escapeHtml(entry.revokeValue)}" data-revoke-pick="${escapeHtml(entry.revokeValue)}" aria-label="${escapeHtml(`Revoke ${entry.label}`)}"`,
+      lineKey: entry.key,
+      actionAttrs: isPlannedAppointment
+        ? `data-plan-remove="${escapeHtml(courtPlanActionKey(entry.plannedAction))}" aria-label="${escapeHtml(`Remove planned appointment for ${entry.label}`)}"`
+        : `data-link-revoke="${escapeHtml(entry.revokeValue)}" data-revoke-pick="${escapeHtml(entry.revokeValue)}" aria-label="${escapeHtml(isPlannedRevoke ? `Undo planned revocation: ${entry.label}` : `Revoke ${entry.label}`)}"`,
     }));
   });
 
   const wireStart = draft.wireStart || null;
   if (activeOpenEntry && wireStart?.kind === activeOpenEntry.kind && wireStart?.themeId === activeOpenEntry.theme.id) {
     const entryIndex = entries.findIndex((entry) => entry.key === activeOpenEntry.key);
-    lines.push(renderCourtDraftWire(activeOpenEntry, entryIndex));
+    const entryRow = layout?.entryRows?.get(activeOpenEntry.key) ?? entryIndex;
+    lines.push(renderCourtDraftWire(activeOpenEntry, entryRow));
   }
   return lines.join('');
 }
 
 function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
-  const entries = buildCourtConnectionEntries(state, playerId, powerKey);
+  const plannedActions = getPlannedCourtActionsForPower(draft, powerKey);
+  const entries = buildCourtConnectionEntries(state, playerId, powerKey).map((entry) => {
+    const plannedAction = getPlannedActionForEntry(entry, plannedActions);
+    if (!plannedAction) return entry;
+    if (plannedAction.action === 'revoke') {
+      return { ...entry, plannedAction, plannedRevoke: true };
+    }
+    const plannedHolderId = Number(plannedAction.appointeeId);
+    return {
+      ...entry,
+      mode: 'planned',
+      plannedAction,
+      plannedHolderId,
+      seatHtml: renderCourtLinkSeat(state, entry.kind, entry.theme, plannedHolderId),
+    };
+  });
   if (!entries.length) return '';
   const players = state.players || [];
   const openEntries = entries.filter((entry) => entry.mode === 'open');
@@ -1097,8 +1407,12 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
   const selectedKeys = new Set([wireKey, selectedStrategos, selectedBishop].filter(Boolean));
   const activeOpenEntry = openEntries.find((entry) => selectedKeys.has(entry.key)) || openEntries[0] || null;
   const activeKey = activeOpenEntry?.key || null;
-  const linkedPlayerIds = new Set(entries.filter((entry) => entry.mode === 'bound').map((entry) => entry.holderId));
-  const rows = Math.max(entries.length, players.length, 1);
+  const layout = layoutCourtWireRows(entries, players);
+  const linkedPlayerIds = new Set(entries
+    .map((entry) => entry.plannedHolderId ?? (entry.mode === 'bound' ? entry.holderId : null))
+    .map(normalizeWirePlayerId)
+    .filter((id) => id != null));
+  const rows = layout.rows;
   const height = rows * 58;
   const openCount = openEntries.length;
   const boundCount = entries.length - openCount;
@@ -1112,19 +1426,23 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
     <section class="court-link-section court-wire-section">
       <header class="court-link-section-head">
         <span class="appointment-section-title">Links</span>
-        <span class="court-link-section-note">${boundCount} tied, ${openCount} open. Click a seat circle, guide the rope, then click a dynasty circle. Click a tied rope to Revoke.</span>
+        <span class="court-link-section-note">${boundCount} tied, ${openCount} open. Click a seat circle, guide the rope, then click a dynasty circle. Click a tied rope to plan a revocation.</span>
       </header>
       <div class="court-wire-board${wireKey ? ' tying' : ''}${boundCount > 8 ? ' many-bound' : ''}" style="--wire-rows: ${rows};" data-court-wire-board data-court-power-key="${escapeHtml(powerKey || '')}">
         <div class="court-wire-col-head seats">Seats</div>
         <div class="court-wire-col-head players">Dynasties</div>
         <div class="court-wire-seats">
-          ${entries.map((entry, index) => renderCourtWireSeat(entry, index, entry.key === activeKey)).join('')}
+          ${entries
+            .slice()
+            .sort((left, right) => (layout.entryRows.get(left.key) ?? 0) - (layout.entryRows.get(right.key) ?? 0))
+            .map((entry) => renderCourtWireSeat(entry, layout.entryRows.get(entry.key) ?? 0, entry.key === activeKey))
+            .join('')}
         </div>
         <svg class="court-wire-svg" viewBox="0 0 1000 ${height}" preserveAspectRatio="none" aria-hidden="false">
-          ${renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry)}
+          ${renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout)}
         </svg>
         <div class="court-wire-players">
-          ${players.map((player, index) => renderCourtWirePlayerButton(state, player, index, activeOpenEntry, draft, playerId, powerKey, linkedPlayerIds)).join('')}
+          ${players.map((player) => renderCourtWirePlayerButton(state, player, layout.playerRows.get(player.id) ?? 0, activeOpenEntry, draft, playerId, powerKey, linkedPlayerIds)).join('')}
         </div>
       </div>
       ${warningRows.length ? `
@@ -1166,6 +1484,8 @@ function courtPowerCountLabel(count, singular, plural = `${singular}s`) {
 }
 
 function renderCourtPowerCard(state, playerId, draft, powerKey) {
+  const plannedActions = getPlannedCourtActionsForPower(draft, powerKey);
+  const plannedPass = ensureCourtPlan(draft) && draft.plannedPassPowers.includes(powerKey);
   const usedKinds = getCourtPowerActionKinds(state, playerId, powerKey);
   const appointmentCount = getCourtPowerAppointmentCount(state, playerId, powerKey);
   const revocationCount = getCourtPowerRevocationCount(state, playerId, powerKey);
@@ -1181,7 +1501,11 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     appointmentCount ? courtPowerCountLabel(appointmentCount, 'appointment') : '',
     revocationCount ? courtPowerCountLabel(revocationCount, 'revocation') : '',
   ].filter(Boolean).join(', ');
-  const stateText = actionCount
+  const stateText = plannedPass
+    ? 'Planned skip'
+    : plannedActions.length
+      ? `${plannedActions.length} planned`
+      : actionCount
     ? `${actionCount}/${actionLimit} actions${usedParts ? ` (${usedParts})` : ''}`
     : passed
       ? 'Passed'
@@ -1207,7 +1531,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
           ${connectionsHtml || '<div class="choice-grid-empty">No links available</div>'}
         </div>
         <div class="panel-actions court-pass-actions">
-          <button type="button" class="btn-secondary" data-action="pass-court-power" data-court-pass-power="${escapeHtml(powerKey)}">${actionCount ? 'Pass Remaining' : 'Pass'}</button>
+          <button type="button" class="btn-secondary" data-action="pass-court-power" data-court-pass-power="${escapeHtml(powerKey)}">${plannedPass ? 'Undo Skip' : actionCount ? 'Plan Skip Rest' : 'Plan Skip'}</button>
         </div>
       `;
   const cardClass = [
@@ -1236,14 +1560,28 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
   if (!draft.appointStrategos) draft.appointStrategos = {};
   if (!draft.appointBishop) draft.appointBishop = {};
   if (!draft.revoke) draft.revoke = {};
+  ensureCourtPlan(draft);
   const powerKeys = getVisibleCourtPowerKeys(state, activePlayerId);
   const confirmed = Boolean(state.courtActions?.playerConfirmed?.has(activePlayerId));
   const rerender = () => renderCourtPanel(container, state, activePlayerId, callbacks, options);
+  const plannedCount = draft.plannedActions.length;
+  const plannedPassCount = draft.plannedPassPowers.length;
+  const hasPlan = plannedCount > 0 || plannedPassCount > 0;
   container.innerHTML = `
     <section class="phase-card court-panel">
       ${powerKeys.length ? `
         <div class="court-power-stack">
           ${powerKeys.map((powerKey) => renderCourtPowerCard(state, activePlayerId, draft, powerKey)).join('')}
+        </div>
+        <div class="appointment-preview court-plan-preview">
+          ${hasPlan
+            ? `${plannedCount} planned action${plannedCount === 1 ? '' : 's'}${plannedPassCount ? `, ${plannedPassCount} planned skip${plannedPassCount === 1 ? '' : 's'}` : ''}. Lock to commit, or reset to change everything.`
+            : 'Plan appointments, revocations, or skips. Nothing is committed until you lock.'}
+        </div>
+        ${draft.planError ? `<p class="form-error">${escapeHtml(draft.planError)}</p>` : ''}
+        <div class="panel-actions court-plan-actions">
+          <button type="button" class="btn-secondary" data-action="reset-court-plan" ${hasPlan ? '' : 'disabled'}>Reset Plan</button>
+          <button type="button" class="btn-primary" data-action="confirm-court-plan">${hasPlan ? 'Lock Planned Actions' : 'Lock No Actions'}</button>
         </div>
       ` : `<div class="panel-empty">${confirmed ? 'Court business complete.' : 'No court actions available.'}</div>`}
     </section>
@@ -1282,20 +1620,15 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
       const disabledReason = getAppointmentDisabledReason(state, activePlayerId, powerKey, themeId, playerId);
       if (disabledReason) return;
       delete draft.wireStart;
-      if (kind === 'bishop') {
-        draft.appointBishop = { themeId, playerId };
-        callbacks['appoint-bishop']?.(themeId, playerId);
-      } else {
-        draft.appointStrategos = { themeId, playerId };
-        callbacks['appoint-strategos']?.(
-          regionTitleFor(state.themes[themeId]),
-          themeId,
-          playerId,
-        );
-      }
+      const plannedAction = kind === 'bishop'
+        ? { action: 'appoint-bishop', themeId, appointeeId: playerId, powerKey }
+        : { action: 'appoint-strategos', titleKey: regionTitleFor(state.themes[themeId]), themeId, appointeeId: playerId, powerKey };
+      queueCourtPlannedAction(state, activePlayerId, draft, plannedAction);
+      rerender();
     });
   });
 
+  bindWireGeometry(container);
   bindWireDraftMotion(container);
   bindWireFocus(container);
 
@@ -1324,20 +1657,64 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
       if (button.disabled || button.getAttribute('aria-disabled') === 'true') return;
       const target = button.dataset.linkRevoke;
       if (!target) return;
-      callbacks.revoke?.(target);
+      const powerKey = button.closest('[data-court-power]')?.dataset.courtPower || '';
+      toggleCourtPlannedRevocation(state, activePlayerId, draft, powerKey, target);
+      rerender();
+    });
+  });
+  container.querySelectorAll('[data-plan-remove]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      removeCourtPlannedAction(draft, button.dataset.planRemove || '');
+      rerender();
     });
   });
   bindSelectAction(container, '[data-action="pass-court-power"]', (btn) => {
     const powerKey = btn.dataset.courtPassPower;
     if (!powerKey) return;
-    callbacks['pass-court-power']?.(powerKey);
+    ensureCourtPlan(draft);
+    if (draft.plannedPassPowers.includes(powerKey)) {
+      draft.plannedPassPowers = draft.plannedPassPowers.filter((entry) => entry !== powerKey);
+    } else {
+      draft.plannedPassPowers.push(powerKey);
+    }
+    rerender();
+  });
+  bindSelectAction(container, '[data-action="reset-court-plan"]', () => {
+    draft.plannedActions = [];
+    draft.plannedPassPowers = [];
+    delete draft.wireStart;
+    delete draft.planError;
+    rerender();
+  });
+  bindSelectAction(container, '[data-action="confirm-court-plan"]', () => {
+    const actions = ensureCourtPlan(draft).slice();
+    const plannedCounts = actions.reduce((counts, action) => {
+      const powerKey = courtPlanActionPower(action);
+      counts[powerKey] = (counts[powerKey] || 0) + 1;
+      return counts;
+    }, {});
+    const passPowers = powerKeys.filter((powerKey) => (
+      getCourtPowerActionCount(state, activePlayerId, powerKey) + (plannedCounts[powerKey] || 0) < getCourtPowerActionLimit(powerKey)
+    ));
+    callbacks['submit-court-plan']?.({ actions, passPowers });
   });
 }
 
-export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
+export function renderEstatesPanel(container, state, playerId, callbacks = {}, options = {}) {
   const freeThemes = getFreeThemes(state);
   const activeBidderId = Number(playerId);
-  const reserve = getAvailableLandBidGold(state, activeBidderId);
+  const draft = getDraftBucket(options.uiState, state, 'estates', playerId);
+  if (!draft.bids) {
+    draft.bids = {};
+    freeThemes.forEach((theme) => {
+      const ownBid = getPlayerLandBid(state, theme.id, activeBidderId);
+      if (ownBid) draft.bids[theme.id] = Number(ownBid.amount) || 0;
+    });
+  }
+  const spendableGold = getAvailableLandBidGold(state, activeBidderId) + getLandBidCommitment(state, activeBidderId);
+  const draftCommitment = Object.values(draft.bids).reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+  const reserve = Math.max(0, spendableGold - draftCommitment);
   const ready = Boolean(state.estatesReady?.[playerId]);
   const readyCount = state.players.filter((entry) => Boolean(state.estatesReady?.[entry.id])).length;
   container.innerHTML = `
@@ -1358,14 +1735,14 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
             const minimum = getMinimumLandBid(state, theme.id);
             const value = getThemeLandPrice(theme);
             const ownBid = getPlayerLandBid(state, theme.id, activeBidderId);
-            const ownAmount = Number(ownBid?.amount) || 0;
-            const bidAmounts = getLandBidAmountOptions(state, activeBidderId, theme.id);
-            const maxBid = bidAmounts.at(-1) || 0;
-            const cannotAfford = bidAmounts.length === 0;
-            const inputValue = ownAmount || minimum;
-            const bidButtonLabel = ownBid ? 'Update Bid' : 'Place Bid';
+            const plannedAmount = Number(draft.bids[theme.id]) || 0;
+            const committedElsewhere = draftCommitment - plannedAmount;
+            const maxBid = Math.max(0, spendableGold - committedElsewhere);
+            const cannotAfford = maxBid < minimum;
+            const inputValue = plannedAmount || minimum;
+            const bidButtonLabel = ownBid ? 'Update Bid' : plannedAmount ? 'Update Plan' : 'Plan Bid';
             return `
-              <article class="estate-card${cannotAfford ? ' disabled' : ''}${ownBid ? ' selected' : ''}" data-estate="${theme.id}" data-map-province="${theme.id}">
+              <article class="estate-card${cannotAfford ? ' disabled' : ''}${plannedAmount ? ' selected' : ''}" data-estate="${theme.id}" data-map-province="${theme.id}">
                 <div class="estate-card-province">
                   ${renderProvinceBadge(state, theme, { showValues: true })}
                 </div>
@@ -1379,11 +1756,11 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
                     <dd>${formatGoldHtml(minimum)}</dd>
                   </div>
                 </dl>
-                ${ownBid ? `
+                ${plannedAmount ? `
                   <div class="estate-current-bid owned sealed">
                     <span class="estate-current-label">Your bid</span>
-                    <span class="estate-current-bidder">Hidden until reveal</span>
-                    <span class="estate-current-amount">${formatGoldHtml(ownAmount)}</span>
+                    <span class="estate-current-bidder">Not locked yet</span>
+                    <span class="estate-current-amount">${formatGoldHtml(plannedAmount)}</span>
                   </div>
                 ` : ''}
                 <div class="estate-card-bid">
@@ -1400,7 +1777,11 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
           }).join('')}
         </div>
       ` : '<div class="panel-empty">No free citizen land this round.</div>'}
+      <div class="appointment-preview estate-plan-preview">
+        ${draftCommitment ? `${formatGoldHtml(draftCommitment)} planned in sealed bids. Lock to commit, or reset to restore your current bids.` : 'Plan sealed bids first. Nothing is committed until you lock.'}
+      </div>
       <div class="panel-actions">
+        <button type="button" class="btn-secondary" data-action="reset-estate-plan" ${draftCommitment ? '' : 'disabled'}>Reset Bids</button>
         <button type="button" class="${ready ? 'btn-secondary' : 'btn-primary'}" data-action="confirm-estates">${ready ? 'Keep Editing Bids' : 'Lock Bids'}</button>
       </div>
     </section>
@@ -1422,10 +1803,24 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}) {
     button.addEventListener('click', () => {
       const themeId = button.dataset.theme;
       container.querySelector(`[data-estate="${themeId}"]`)?.classList.add('is-pressing');
-      callbacks.buy?.(themeId, { amount: Number(container.querySelector(`[data-estate-bid="${themeId}"]`)?.value) });
+      draft.bids[themeId] = Number(container.querySelector(`[data-estate-bid="${themeId}"]`)?.value) || 0;
+      renderEstatesPanel(container, state, playerId, callbacks, options);
     });
   });
-  bindSelectAction(container, '[data-action="confirm-estates"]', () => callbacks.confirmEstates?.());
+  bindSelectAction(container, '[data-action="reset-estate-plan"]', () => {
+    delete draft.bids;
+    renderEstatesPanel(container, state, playerId, callbacks, options);
+  });
+  bindSelectAction(container, '[data-action="confirm-estates"]', () => {
+    if (ready) {
+      callbacks.confirmEstates?.();
+      return;
+    }
+    const bids = Object.entries(draft.bids || {})
+      .filter(([, amount]) => Number(amount) > 0)
+      .map(([themeId, amount]) => ({ themeId, amount: Number(amount) }));
+    callbacks.submitEstatePlan?.({ bids });
+  });
 }
 
 function getPlayerArmyKeys(state, playerId) {

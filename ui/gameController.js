@@ -321,6 +321,36 @@ export class GameController {
         this.ensureHumanFocus();
         this.render();
       },
+      'submit-court-plan': ({ actions = [], passPowers = [] } = {}) => {
+        let result = { ok: true };
+        const isDone = () => this.state.phase !== 'court' || this.state.courtActions?.playerConfirmed?.has(playerId);
+        for (const action of actions) {
+          if (isDone()) break;
+          result = handleHumanCourtAction(this.state, this.aiMeta, this, playerId, action);
+          if (!result.ok) break;
+        }
+        if (result.ok) {
+          for (const powerKey of passPowers) {
+            if (isDone()) break;
+            result = handleHumanCourtAction(this.state, this.aiMeta, this, playerId, {
+              action: 'pass-court-power',
+              powerKey,
+            });
+            if (!result.ok) break;
+          }
+        }
+        if (result.ok && !isDone() && actions.length === 0 && passPowers.length === 0) {
+          result = handleHumanCourtConfirmation(this.state, this.aiMeta, this, playerId);
+        }
+        if (!result.ok) {
+          this.setActionError(result.reason);
+          this.render();
+          return;
+        }
+        this.clearActionError();
+        this.ensureHumanFocus();
+        this.render();
+      },
       'appoint-strategos': (titleKey, themeId, appointeeId) => dispatch({
         action: 'appoint-strategos', titleKey, themeId, appointeeId,
       }),
@@ -333,13 +363,29 @@ export class GameController {
   }
 
   createEstateHandlers(playerId) {
+    const submitOne = (themeId, amount) => handleHumanEstateAction(this.state, this.aiMeta, this, playerId, {
+      action: 'buy',
+      themeId,
+      amount,
+    });
     return {
       buy: (themeId, data = {}) => {
-        const result = handleHumanEstateAction(this.state, this.aiMeta, this, playerId, {
-          action: 'buy',
-          themeId,
-          amount: data.amount,
-        });
+        const result = submitOne(themeId, data.amount);
+        if (!result.ok) {
+          this.setActionError(result.reason);
+          this.render();
+          return;
+        }
+        this.clearActionError();
+        this.render();
+      },
+      submitEstatePlan: ({ bids = [] } = {}) => {
+        let result = { ok: true };
+        for (const bid of bids) {
+          result = submitOne(bid.themeId, bid.amount);
+          if (!result.ok) break;
+        }
+        if (result.ok) result = handleEstatesConfirmation(this.state, this.aiMeta, this, playerId);
         if (!result.ok) {
           this.setActionError(result.reason);
           this.render();
