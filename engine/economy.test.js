@@ -807,6 +807,23 @@ test('deployment schema funds armies, pays unfunded troops, and stores mercenary
   assert.equal(state.allOrders[0].armies.BASILEUS.funded, 1);
 });
 
+test('deployment defaults army funding when only a destination is chosen', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.currentTroops = { BASILEUS: { normal: 3, capitalLocked: 0 } };
+  getPlayer(state, 0).gold = 0;
+
+  const result = submitHumanOrders(state, 0, {
+    armies: { BASILEUS: { destination: 'capital' } },
+    mercenaries: { count: 0 },
+    candidate: 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(state.allOrders[0].armies.BASILEUS.funded, 2);
+  assert.equal(getPlayer(state, 0).gold, 1);
+});
+
 test("deployment bundles a player's strategos troops into one army", () => {
   const state = makeState();
   state.phase = 'deployment';

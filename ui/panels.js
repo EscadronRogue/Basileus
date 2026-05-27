@@ -31,6 +31,7 @@ import {
   placeCoupCandidateAfterPlayer,
 } from '../engine/coup.js';
 import {
+  getDefaultDeploymentFunding,
   getDeploymentArmyDisplayName,
   getDeploymentArmySourceKeys,
   getDeploymentArmyTroopEntry,
@@ -1809,9 +1810,12 @@ function getArmyMaxTroops(state, playerId, officeKey) {
   return getDeploymentArmyTroopTotal(state, playerId, officeKey);
 }
 
-function ensureDeploymentDraft(state, draft, armyKeys) {
+function ensureDeploymentDraft(state, playerId, draft, armyKeys) {
   for (const officeKey of armyKeys) {
     if (!draft.armies[officeKey]) draft.armies[officeKey] = {};
+    const max = getArmyMaxTroops(state, playerId, officeKey);
+    const funded = normalizedFunded(draft.armies[officeKey].funded, max);
+    draft.armies[officeKey].funded = funded == null ? getDefaultDeploymentFunding(max) : funded;
   }
 }
 
@@ -1840,7 +1844,6 @@ function getDeploymentReadiness(state, playerId, draft, armyKeys) {
     const max = getArmyMaxTroops(state, playerId, officeKey);
     if (max <= 0) continue;
     const order = draft.armies?.[officeKey] || {};
-    if (normalizedFunded(order.funded, max) == null) missing.push(`${officeKey}:funding`);
     if (!isDeploymentDestination(order.destination)) missing.push(`${officeKey}:destination`);
   }
   const mercenaryCount = Math.max(0, Number(draft.mercenaries?.count) || 0);
@@ -1854,13 +1857,11 @@ function getDeploymentReadiness(state, playerId, draft, armyKeys) {
 
 function getDeploymentLockHelp(totals, readiness) {
   if (totals?.overBudget) return 'Mercenaries cost more gold than you have after idle troop income.';
-  if (readiness?.ready) return 'Every army has a funding choice and a destination. You can lock deployment.';
+  if (readiness?.ready) return 'Every army has a destination. Funding is already set and can be adjusted before lock.';
   const missing = Array.isArray(readiness?.missing) ? readiness.missing : [];
-  const needsFunding = missing.some((entry) => String(entry).endsWith(':funding'));
   const needsDestination = missing.some((entry) => String(entry).endsWith(':destination'));
   const needsRanking = missing.includes('ranking');
   const parts = [];
-  if (needsFunding) parts.push('move each army funding slider');
   if (needsDestination) parts.push('choose Frontier or Capital for each deployed force');
   if (needsRanking) parts.push('finish the coup ranking');
   return `To lock deployment, ${parts.join(', ')}.`;
@@ -1894,7 +1895,7 @@ function getDraftArmyBreakdown(state, playerId, draft, armyKeys) {
     const pool = getDeploymentArmyTroopEntry(state, playerId, officeKey);
     const totalTroops = pool.normal + pool.capitalLocked;
     const order = draft.armies?.[officeKey] || {};
-    const funded = normalizedFunded(order.funded, totalTroops) ?? 0;
+    const funded = normalizedFunded(order.funded, totalTroops) ?? getDefaultDeploymentFunding(totalTroops);
     const fundedLocked = Math.min(pool.capitalLocked, funded);
     const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
     const destination = isDeploymentDestination(order.destination) ? order.destination : null;
@@ -1917,9 +1918,11 @@ function getDraftArmyBreakdown(state, playerId, draft, armyKeys) {
 }
 
 function getDeploymentTotals(state, playerId, draft, armyKeys, reserve) {
-  const unfundedGold = armyKeys.reduce((sum, key) => (
-    sum + Math.max(0, getArmyMaxTroops(state, playerId, key) - (Number(draft.armies[key]?.funded) || 0))
-  ), 0);
+  const unfundedGold = armyKeys.reduce((sum, key) => {
+    const max = getArmyMaxTroops(state, playerId, key);
+    const funded = normalizedFunded(draft.armies[key]?.funded, max) ?? getDefaultDeploymentFunding(max);
+    return sum + Math.max(0, max - funded);
+  }, 0);
   const mercCost = getMercenaryHireCost(0, draft.mercenaries.count || 0);
   return {
     mercCost,
@@ -2053,7 +2056,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   const armyKeys = getPlayerArmyKeys(state, playerId);
   const player = getPlayer(state, playerId);
   const reserve = Math.max(0, Number(player?.gold) || 0);
-  ensureDeploymentDraft(state, draft, armyKeys);
+  ensureDeploymentDraft(state, playerId, draft, armyKeys);
   const orderLocks = getActiveOrderLocks(options);
   applyOrderLocksToDraft(state, playerId, draft, orderLocks);
   ensureDeploymentRanking(state, playerId, draft, orderLocks?.ok ? orderLocks.candidateId : null);
@@ -2077,7 +2080,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
           <span data-orders-reserve>${formatGoldHtml(reserve + totals.unfundedGold, { signed: false })}</span>
         </div>
       </header>
-      <p class="section-hint">Move each army slider to pick how many troops are funded, then choose Frontier or Capital for every deployed force.</p>
+      <p class="section-hint">Funding starts in the middle of each army. Choose Frontier or Capital for every deployed force, then adjust funding if you want.</p>
       ${alreadyLocked ? '<div class="panel-empty">Deployment orders locked.</div>' : `
         ${lockNotice}
         ${deploymentPreview}
@@ -2086,14 +2089,13 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
             const entry = getDeploymentArmyTroopEntry(state, playerId, officeKey);
             const max = getArmyMaxTroops(state, playerId, officeKey);
             const current = draft.armies[officeKey];
-            const currentFunded = normalizedFunded(current.funded, max);
-            const sliderValue = currentFunded ?? 0;
-            const idleGold = currentFunded == null ? null : Math.max(0, max - currentFunded);
+            const currentFunded = normalizedFunded(current.funded, max) ?? getDefaultDeploymentFunding(max);
+            const sliderValue = currentFunded;
+            const idleGold = Math.max(0, max - currentFunded);
             const lockedDestination = lockedDestinations[officeKey] || null;
             const lockedLabel = lockedDestination === 'capital' ? 'Capital' : lockedDestination === 'frontier' ? 'Frontier' : null;
-            const needsFunding = currentFunded == null;
             const needsDestination = !isDeploymentDestination(current.destination);
-            const fundingText = needsFunding ? 'Move slider' : `${currentFunded}/${max} funded`;
+            const fundingText = `${currentFunded}/${max} funded`;
             const destinationText = needsDestination
               ? 'Choose destination'
               : current.destination === 'capital'
@@ -2103,7 +2105,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
               ? getDeploymentArmySourceKeys(state, playerId, officeKey).length
               : 0;
             return `
-              <article class="army-card${needsFunding || needsDestination ? ' unresolved' : ''}" data-army-card="${officeKey}">
+              <article class="army-card${needsDestination ? ' unresolved' : ''}" data-army-card="${officeKey}">
                 <header class="army-card-head">
                   <span class="army-card-title">${renderArmyOfficeBadge(state, officeKey, playerId)}</span>
                   <span class="army-card-count">${formatTroopsHtml(max, { label: 'Troops' })}</span>
@@ -2112,15 +2114,15 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
                 ${entry.capitalLocked ? `<p class="army-card-sub">${formatTroopsHtml(entry.capitalLocked)} capital locked</p>` : ''}
                 ${lockedLabel ? `<p class="army-card-sub order-locked-sub">Deal lock: must deploy to ${lockedLabel}.</p>` : ''}
                 <div class="army-card-readiness">
-                  <span class="readiness-pill${needsFunding ? ' missing' : ' ready'}">Funding: ${escapeHtml(fundingText)}</span>
+                  <span class="readiness-pill ready">Funding: ${escapeHtml(fundingText)}</span>
                   <span class="readiness-pill${needsDestination ? ' missing' : ' ready'}">Destination: ${escapeHtml(destinationText)}</span>
                 </div>
                 <label class="army-card-slider">
                   <span class="army-slider-label">Fund</span>
                   <input type="range" min="0" max="${max}" value="${sliderValue}" data-army-funded="${officeKey}" ${lockedDestination ? 'disabled' : ''}>
                   <span class="army-slider-readout">
-                    <span class="army-slider-num${needsFunding ? ' unresolved' : ''}" data-funded-readout="${officeKey}">${needsFunding ? 'Pick' : currentFunded}</span>
-                    <span class="army-slider-cost" data-funded-cost="${officeKey}" title="Gold from idle troops">${idleGold == null ? '<span class="muted">Pick</span>' : formatGoldHtml(idleGold, { signed: true, tone: 'income' })}</span>
+                    <span class="army-slider-num" data-funded-readout="${officeKey}">${currentFunded}</span>
+                    <span class="army-slider-cost" data-funded-cost="${officeKey}" title="Gold from idle troops">${formatGoldHtml(idleGold, { signed: true, tone: 'income' })}</span>
                   </span>
                 </label>
                 <div class="segmented-control">
@@ -2378,9 +2380,17 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
     requestFrame(() => autofocusCandidate.focus?.());
   }
   bindSelectAction(container, '[data-action="lock-orders"]', () => {
+    ensureDeploymentDraft(state, playerId, draft, armyKeys);
     ensureDeploymentRanking(state, playerId, draft, candidateLockedId);
+    const armies = Object.fromEntries(armyKeys.map((officeKey) => {
+      const max = getArmyMaxTroops(state, playerId, officeKey);
+      return [officeKey, {
+        ...draft.armies[officeKey],
+        funded: normalizedFunded(draft.armies[officeKey]?.funded, max) ?? getDefaultDeploymentFunding(max),
+      }];
+    }));
     callbacks.lockOrders?.({
-      armies: draft.armies,
+      armies,
       mercenaries: draft.mercenaries,
       ranking: draft.ranking.slice(),
       candidateSupport: { ...normalizeCoupSupport(state, draft.candidateSupport, candidateLockedId) },

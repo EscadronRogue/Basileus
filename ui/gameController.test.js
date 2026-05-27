@@ -612,7 +612,7 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.match(container.innerHTML, /Send Armies/);
   assert.match(container.innerHTML, /Funding/);
   assert.match(container.innerHTML, /Mercs/);
-  assert.match(container.innerHTML, /Move each army slider/);
+  assert.match(container.innerHTML, /Funding starts in the middle/);
   assert.match(container.innerHTML, /Capital troops/);
   assert.match(container.innerHTML, /through ranking/);
   assert.match(container.innerHTML, /Passive support/);
@@ -627,7 +627,7 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.match(container.innerHTML, /Lock Deployment/);
 });
 
-test('fresh deployment panel requires explicit funding and destination', () => {
+test('fresh deployment panel defaults funding and requires only a destination', () => {
   const state = makeState();
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;
@@ -639,10 +639,36 @@ test('fresh deployment panel requires explicit funding and destination', () => {
   renderOrdersPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /army-card unresolved/);
-  assert.match(container.innerHTML, /data-funded-readout="BASILEUS"[^>]*>Pick</);
+  assert.match(container.innerHTML, /data-funded-readout="BASILEUS"[^>]*>1</);
+  assert.match(container.innerHTML, /Funding: 1\/2 funded/);
+  assert.doesNotMatch(container.innerHTML, /Move slider/);
   assert.doesNotMatch(container.innerHTML, /class="candidate-row selected/);
   assert.match(container.innerHTML, /Finish Deployment/);
   assert.match(container.innerHTML, /btn-primary btn-commit" data-action="lock-orders" disabled/);
+});
+
+test('deployment panel can lock after destination without touching funding slider', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.players[state.basileusId].gold = 0;
+  state.currentTroops = {
+    BASILEUS: { normal: 3, capitalLocked: 0 },
+  };
+  const container = makePanelContainer();
+  const uiState = createDefaultUiState();
+  uiState.drafts[`deployment:${state.round}:${state.basileusId}`] = {
+    armies: {
+      BASILEUS: { destination: 'capital' },
+    },
+    mercenaries: { count: 0, destination: null },
+    candidate: state.basileusId,
+  };
+
+  renderOrdersPanel(container, state, state.basileusId, {}, { uiState });
+
+  assert.match(container.innerHTML, /data-funded-readout="BASILEUS"[^>]*>2</);
+  assert.match(container.innerHTML, /value="2" data-army-funded="BASILEUS"/);
+  assert.match(container.innerHTML, /btn-primary btn-commit" data-action="lock-orders" >Lock Deployment/);
 });
 
 test('deployment ranking can withhold support from the first dynasty', () => {

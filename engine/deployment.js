@@ -3,6 +3,11 @@ import { getOfficeDisplayName, getOfficeHolder } from './state.js';
 
 export const STRATEGOS_DEPLOYMENT_ARMY_KEY = 'STRAT_ALL';
 
+export function getDefaultDeploymentFunding(totalTroops) {
+  const max = Math.max(0, Number(totalTroops) || 0);
+  return Math.ceil(max / 2);
+}
+
 export function isStrategosOfficeKey(officeKey) {
   const key = String(officeKey || '');
   return key.startsWith('STRAT_') && key !== STRATEGOS_DEPLOYMENT_ARMY_KEY;

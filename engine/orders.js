@@ -2,6 +2,7 @@ import { normalizeOrdersWithDealLocks, getSpendableGold } from './deals.js';
 import { getPlayer } from './state.js';
 import { getMercenaryHireCost } from './rules.js';
 import {
+  getDefaultDeploymentFunding,
   getDeploymentArmyDisplayName,
   getDeploymentArmySourceKeys,
   getDeploymentArmyTroopTotal,
@@ -130,13 +131,13 @@ function validateArmyOrders(state, playerId, armies) {
       };
       continue;
     }
-    if (order.funded == null || order.funded === '' || !Number.isInteger(Number(order.funded))) {
-      return orderFailure(`Choose troop funding for ${getDeploymentArmyDisplayName(state, playerId, officeKey)}.`);
-    }
+    const funded = order.funded == null || order.funded === '' || !Number.isInteger(Number(order.funded))
+      ? getDefaultDeploymentFunding(max)
+      : toInt(order.funded, 0);
     const destination = normalizeDestination(order.destination);
     if (!destination) return orderFailure(`Choose a destination for ${getDeploymentArmyDisplayName(state, playerId, officeKey)}.`);
     normalized[officeKey] = {
-      funded: Math.max(0, Math.min(max, toInt(order.funded, 0))),
+      funded: Math.max(0, Math.min(max, funded)),
       destination,
     };
   }
@@ -171,9 +172,11 @@ function validateRanking(state, playerId, orders) {
 }
 
 function getUnfundedGold(state, playerId, armies) {
-  return Object.entries(armies).reduce((total, [officeKey, order]) => (
-    total + Math.max(0, getOfficeMaxTroops(state, playerId, officeKey) - (Number(order.funded) || 0))
-  ), 0);
+  return Object.entries(armies).reduce((total, [officeKey, order]) => {
+    const max = getOfficeMaxTroops(state, playerId, officeKey);
+    const funded = Number.isInteger(Number(order.funded)) ? Number(order.funded) : getDefaultDeploymentFunding(max);
+    return total + Math.max(0, max - funded);
+  }, 0);
 }
 
 export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = {}) {

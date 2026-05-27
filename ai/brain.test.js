@@ -434,19 +434,28 @@ test('AI deployment keeps funding troops when underfunding risks Constantinople'
   assert.equal(frontierTroopsFromOrders(orders) >= state.currentTroops.DOM_EAST.normal, true);
 });
 
-test('deployment submission rejects implicit army and mercenary defaults', () => {
+test('deployment submission defaults army funding but still rejects missing destinations', () => {
   const state = makeState();
   state.phase = 'deployment';
   state.currentTroops = {
     BASILEUS: { normal: 2, capitalLocked: 0 },
   };
 
-  const missingArmy = submitHumanOrders(state, 0, {
+  const missingArmyDestination = submitHumanOrders(state, 0, {
     mercenaries: { count: 0, destination: 'frontier' },
     candidate: 0,
   });
-  assert.equal(missingArmy.ok, false);
-  assert.match(missingArmy.reason, /funding/);
+  assert.equal(missingArmyDestination.ok, false);
+  assert.match(missingArmyDestination.reason, /destination/);
+
+  const destinationOnly = submitHumanOrders(state, 0, {
+    armies: { BASILEUS: { destination: 'frontier' } },
+    mercenaries: { count: 0, destination: 'frontier' },
+    candidate: 0,
+  });
+  assert.equal(destinationOnly.ok, true);
+  assert.equal(destinationOnly.orders.armies.BASILEUS.funded, 1);
+  delete state.allOrders[0];
 
   const defaultRanking = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 2, destination: 'frontier' } },

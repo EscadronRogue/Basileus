@@ -19,6 +19,7 @@ import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
 import { getPreferredCoupCandidate, normalizeCoupRanking } from './coup.js';
 import {
+  getDefaultDeploymentFunding,
   getDeploymentArmyDisplayName,
   getDeploymentArmyTroopEntry,
   getDeploymentArmyTroopTotal,
@@ -135,7 +136,8 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
     const totalTroops = pool.normal + pool.capitalLocked;
     if (totalTroops <= 0) continue;
     const order = orders.armies?.[officeKey] || {};
-    const funded = Math.max(0, Math.min(totalTroops, Number(order.funded) || 0));
+    const rawFunded = Number.isInteger(Number(order.funded)) ? Number(order.funded) : getDefaultDeploymentFunding(totalTroops);
+    const funded = Math.max(0, Math.min(totalTroops, rawFunded));
     const fundedLocked = Math.min(pool.capitalLocked, funded);
     const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
     const destination = normalizeDestination(order.destination);
@@ -355,27 +357,43 @@ export function submitOrders(state, playerId, orders) {
   if (!player) return { ok: false, reason: 'Player not found.' };
   if (state.allOrders?.[playerId]) return { ok: false, reason: 'Orders are already locked for this seat.' };
 
+  const normalizedOrders = {
+    ...(orders || {}),
+    armies: { ...(orders?.armies || {}) },
+  };
   let unfundedGold = 0;
   for (const officeKey of getOrderArmyKeys(state, playerId)) {
     const total = getArmySize(state, playerId, officeKey);
-    const funded = Math.max(0, Math.min(total, Number(orders.armies?.[officeKey]?.funded) || 0));
+    const order = normalizedOrders.armies?.[officeKey] || {};
+    const rawFunded = Number.isInteger(Number(order.funded)) ? Number(order.funded) : getDefaultDeploymentFunding(total);
+    const funded = Math.max(0, Math.min(total, rawFunded));
+    normalizedOrders.armies[officeKey] = {
+      ...order,
+      funded,
+      destination: normalizeDestination(order.destination),
+    };
     unfundedGold += total - funded;
   }
 
-  const mercCount = Math.max(0, Math.min(10, Number(orders.mercenaries?.count) || 0));
+  const mercCount = Math.max(0, Math.min(10, Number(normalizedOrders.mercenaries?.count) || 0));
+  normalizedOrders.mercenaries = {
+    ...(normalizedOrders.mercenaries || {}),
+    count: mercCount,
+    destination: normalizeDestination(normalizedOrders.mercenaries?.destination),
+  };
   const mercCost = getMercenaryHireCost(0, mercCount);
   player.gold += unfundedGold;
   player.gold -= mercCost;
   if (mercCount > 0) {
     state.mercenaryOrders[playerId] = {
       count: mercCount,
-      destination: normalizeDestination(orders.mercenaries?.destination),
+      destination: normalizedOrders.mercenaries.destination,
     };
   }
 
-  state.allOrders[playerId] = orders;
-  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
-  const preferredCandidateId = getPreferredCoupCandidate(state, playerId, { ...orders, ranking });
+  state.allOrders[playerId] = normalizedOrders;
+  const ranking = normalizeCoupRanking(state, playerId, normalizedOrders.ranking, normalizedOrders.candidate);
+  const preferredCandidateId = getPreferredCoupCandidate(state, playerId, { ...normalizedOrders, ranking });
   recordHistoryEvent(state, {
     category: 'orders',
     type: 'orders_submitted',
