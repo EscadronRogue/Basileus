@@ -360,6 +360,12 @@ function getTitleBackgroundColor(state, holderId) {
   return getPlayer(state, holderId)?.color || '#5a3810';
 }
 
+function renderTitleBadgeMarker(kind) {
+  if (kind !== 'STRATEGOS' && kind !== 'BISHOP') return '';
+  const markerKind = kind.toLowerCase();
+  return `<span class="title-token-mark title-token-mark-${markerKind}" aria-hidden="true"></span>`;
+}
+
 // Render a title cartouche. Callers can fold contextual land names into
 // options.label when a single combined cartouche reads better.
 export function renderTitleBadge(state, kind, options = {}) {
@@ -372,7 +378,7 @@ export function renderTitleBadge(state, kind, options = {}) {
     : `--cart-bg: ${bg}; --cart-border: ${outline};`;
   const text = label || TITLE_DEFAULT_LABELS[kind] || kind;
   const classes = ['title-token', vacant ? 'vacant' : '', compact ? 'compact' : ''].filter(Boolean).join(' ');
-  return `<span class="${classes}" style="${styleAttr}" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+  return `<span class="${classes}" style="${styleAttr}" title="${escapeHtml(text)}">${renderTitleBadgeMarker(kind)}<span class="title-token-text">${escapeHtml(text)}</span></span>`;
 }
 
 // Convenience: "<Strategos> of <Land>" or "<Bishop> of <Land>", both as

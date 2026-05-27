@@ -163,6 +163,8 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(patriarchPanel.innerHTML, /data-bishop-theme-pick=/);
   assert.match(patriarchPanel.innerHTML, /Revoke/);
   assert.match(patriarchPanel.innerHTML, /Strategos [^<]*Opsikion/i);
+  assert.match(patriarchPanel.innerHTML, /title-token-mark-strategos/);
+  assert.match(patriarchPanel.innerHTML, /title-token-mark-bishop/);
   assert.doesNotMatch(patriarchPanel.innerHTML, /court-link-seat-province/);
   assert.doesNotMatch(patriarchPanel.innerHTML, /Gift/);
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
@@ -205,6 +207,62 @@ test('court wire layout does not draw ownership ropes for open seats', () => {
   assert.match(container.innerHTML, /data-wire-seat-start="strategos:/);
   assert.doesNotMatch(container.innerHTML, /data-wire-line-key="strategos:/);
   assert.doesNotMatch(container.innerHTML, /court-wire-link bound/);
+});
+
+test('court plan preview cuts revoked links instead of dimming them', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  state.themes.KAP.strategos = 3;
+  const uiState = createDefaultUiState();
+  uiState.drafts[`court:${state.round}:1`] = {
+    plannedActions: [{ action: 'revoke', value: 'minor:KAP:strategos', powerKey: 'DOM_EAST' }],
+    plannedPassPowers: [],
+  };
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, 1, {}, { uiState });
+
+  assert.match(container.innerHTML, /court-link-connection cut/);
+  assert.match(container.innerHTML, /1 cut/);
+  assert.doesNotMatch(container.innerHTML, /data-wire-line-key="strategos:KAP"/);
+  assert.doesNotMatch(container.innerHTML, /planned-revoke|pending/);
+});
+
+test('court plan preview shows new appointments as tied ropes', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  const uiState = createDefaultUiState();
+  uiState.drafts[`court:${state.round}:3`] = {
+    plannedActions: [{
+      action: 'appoint-strategos',
+      titleKey: 'ADMIRAL',
+      themeId: 'AEG',
+      appointeeId: 2,
+      powerKey: 'ADMIRAL',
+    }],
+    plannedPassPowers: [],
+  };
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, 3, {}, { uiState });
+
+  assert.match(container.innerHTML, /class="court-wire-link bound" data-wire-line-key="strategos:AEG"/);
+  assert.match(container.innerHTML, /data-plan-remove="strategos:AEG"/);
+  assert.doesNotMatch(container.innerHTML, /court-wire-link pending/);
 });
 
 test('court panel validates multiplayer public snapshots without private logs', () => {
@@ -271,6 +329,7 @@ test('court estate revocations show owner color without the old separator', () =
   assert.match(container.innerHTML, /ownership-badge ownership-badge-estate/);
   assert.match(container.innerHTML, /data-link-revoke="theme:OPS"/);
   assert.equal(container.innerHTML.includes(`--ownership-color: ${state.players[2].color};`), true);
+  assert.match(container.innerHTML, /--ownership-accent: [^;]+;/);
   assert.match(container.innerHTML, /Estate [^<]*Opsikion/i);
   assert.equal(container.innerHTML.includes('Estate —'), false);
   assert.equal(container.innerHTML.includes('Estate â€”'), false);

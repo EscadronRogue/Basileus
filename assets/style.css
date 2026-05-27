@@ -2902,7 +2902,40 @@ body::before {
   border-style: dashed;
 }
 .title-token.vacant .v,
-.title-token.vacant .province-token-values { color: inherit; }
+.title-token.vacant .province-token-values,
+.title-token.vacant .title-token-text { color: inherit; }
+
+.title-token-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-token-mark {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  background: rgba(255,252,240,0.96);
+  border: 1.5px solid rgba(20,8,0,0.78);
+  box-shadow: 0 1px 0 rgba(20,8,0,0.36);
+}
+
+.title-token-mark-strategos {
+  border-radius: 1px;
+}
+
+.title-token-mark-bishop {
+  width: 0;
+  height: 0;
+  border-left: 5.5px solid transparent;
+  border-right: 5.5px solid transparent;
+  border-bottom: 10px solid rgba(255,252,240,0.96);
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.42));
+}
 
 /* Compact title-token shares the same compact rules as province-token. */
 .title-token.compact {
@@ -5144,15 +5177,6 @@ textarea {
   pointer-events: stroke;
   cursor: pointer;
 }
-.court-wire-link.pending .court-wire-visible {
-  stroke-dasharray: 10 6;
-}
-.court-wire-link.planned-revoke .court-wire-visible {
-  stroke-dasharray: 6 5;
-  filter:
-    drop-shadow(0 1px 1px rgba(30,16,0,0.18))
-    drop-shadow(0 0 5px rgba(150,28,36,0.22));
-}
 .court-wire-link.drawing .court-wire-shadow,
 .court-wire-link.drawing .court-wire-visible {
   pointer-events: none;
@@ -5294,6 +5318,10 @@ textarea {
 }
 .court-wire-seat .court-wire-socket {
   border-color: var(--umber-1);
+}
+.court-wire-seat.cut .court-wire-socket {
+  cursor: default;
+  border-style: dashed;
 }
 .court-wire-player .candidate-crest {
   width: 23px;
@@ -5441,6 +5469,7 @@ textarea {
 }
 .court-link-seat-token .ownership-badge.compact {
   min-height: 27px;
+  border: 5px solid var(--ownership-accent, rgba(20,8,0,0.76));
 }
 .court-link-seat-token .ownership-text {
   min-width: 0;

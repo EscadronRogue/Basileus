@@ -1181,7 +1181,7 @@ function renderCourtWireSeat(entry, index, active) {
     : '';
   return `
     <button type="button"
-      class="court-wire-seat court-link-connection ${entry.mode}${entry.plannedRevoke ? ' planned-revoke' : ''}${selectedClass}${disabledReason ? ' disabled' : ''}"
+      class="court-wire-seat court-link-connection ${entry.mode}${selectedClass}${disabledReason ? ' disabled' : ''}"
       style="--wire-row: ${index + 1};"
       data-link-kind="${escapeHtml(entry.kind)}"
       data-wire-row-key="${escapeHtml(entry.key)}"
@@ -1261,11 +1261,8 @@ function renderCourtWireLine(entry, entryIndex, playerIndex, player, options = {
         x1="335" y1="${y1}" x2="665" y2="${y2}"
         ${actionAttrs}
         ${disabledReason ? disabledChoiceAttrs(disabledReason, label) : `title="${escapeHtml(label)}"`}></line>
-      ${options.kind === 'bound' || options.kind === 'planned-revoke'
+      ${options.kind === 'bound'
         ? `<text class="court-wire-scissors" x="${midX}" y="${midY}" ${actionAttrs} ${disabledReason ? disabledChoiceAttrs(disabledReason, label) : `title="${escapeHtml(label)}"`}>&#9986;</text>`
-        : ''}
-      ${options.kind === 'pending'
-        ? `<text class="court-wire-tie-label" x="${midX}" y="${midY}" ${actionAttrs} ${disabledReason ? disabledChoiceAttrs(disabledReason, label) : `title="${escapeHtml(label)}"`}>Tie</text>`
         : ''}
     </g>
   `;
@@ -1350,19 +1347,16 @@ function renderCourtWireLines(state, entries, players, draft, playerId, powerKey
     const entryRow = layout?.entryRows?.get(entry.key) ?? entryIndex;
     const playerIndex = layout?.playerRows?.get(holder?.id) ?? players.findIndex((player) => player.id === holder?.id);
     const isPlannedAppointment = entry.mode === 'planned';
-    const isPlannedRevoke = Boolean(entry.plannedRevoke);
     lines.push(renderCourtWireLine(entry, entryRow, playerIndex, holder, {
-      kind: isPlannedAppointment ? 'pending' : isPlannedRevoke ? 'planned-revoke' : 'bound',
+      kind: 'bound',
       label: isPlannedAppointment
-        ? `Planned appointment: ${entry.label}`
-        : isPlannedRevoke
-          ? `Undo planned revocation: ${entry.label}`
-          : `Revoke ${entry.label}`,
+        ? `Cut planned appointment: ${entry.label}`
+        : `Revoke ${entry.label}`,
       disabledReason: entry.revokeDisabledReason || '',
       lineKey: entry.key,
       actionAttrs: isPlannedAppointment
         ? `data-plan-remove="${escapeHtml(courtPlanActionKey(entry.plannedAction))}" aria-label="${escapeHtml(`Remove planned appointment for ${entry.label}`)}"`
-        : `data-link-revoke="${escapeHtml(entry.revokeValue)}" data-revoke-pick="${escapeHtml(entry.revokeValue)}" aria-label="${escapeHtml(isPlannedRevoke ? `Undo planned revocation: ${entry.label}` : `Revoke ${entry.label}`)}"`,
+        : `data-link-revoke="${escapeHtml(entry.revokeValue)}" data-revoke-pick="${escapeHtml(entry.revokeValue)}" aria-label="${escapeHtml(`Revoke ${entry.label}`)}"`,
     }));
   });
 
@@ -1381,7 +1375,13 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
     const plannedAction = getPlannedActionForEntry(entry, plannedActions);
     if (!plannedAction) return entry;
     if (plannedAction.action === 'revoke') {
-      return { ...entry, plannedAction, plannedRevoke: true };
+      return {
+        ...entry,
+        mode: 'cut',
+        plannedAction,
+        holderId: null,
+        seatHtml: renderCourtLinkSeat(state, entry.kind, entry.theme, null),
+      };
     }
     const plannedHolderId = Number(plannedAction.appointeeId);
     return {
@@ -1415,18 +1415,19 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
   const rows = layout.rows;
   const height = rows * 58;
   const openCount = openEntries.length;
-  const boundCount = entries.length - openCount;
+  const cutCount = entries.filter((entry) => entry.mode === 'cut').length;
+  const boundCount = entries.filter((entry) => entry.mode === 'bound' || entry.mode === 'planned').length;
   const warningRows = entries
     .map((entry) => ({
       label: entry.label,
-      reason: entry.mode === 'bound' ? entry.revokeDisabledReason : entry.targetDisabledReason,
+      reason: entry.mode === 'bound' ? entry.revokeDisabledReason : entry.mode === 'cut' ? '' : entry.targetDisabledReason,
     }))
     .filter((entry) => entry.reason);
   return `
     <section class="court-link-section court-wire-section">
       <header class="court-link-section-head">
         <span class="appointment-section-title">Links</span>
-        <span class="court-link-section-note">${boundCount} tied, ${openCount} open. Click a seat circle, guide the rope, then click a dynasty circle. Click a tied rope to plan a revocation.</span>
+        <span class="court-link-section-note">${boundCount} tied, ${openCount} open${cutCount ? `, ${cutCount} cut` : ''}. Click a seat circle, guide the rope, then click a dynasty circle. Click a tied rope to cut it.</span>
       </header>
       <div class="court-wire-board${wireKey ? ' tying' : ''}${boundCount > 8 ? ' many-bound' : ''}" style="--wire-rows: ${rows};" data-court-wire-board data-court-power-key="${escapeHtml(powerKey || '')}">
         <div class="court-wire-col-head seats">Seats</div>
