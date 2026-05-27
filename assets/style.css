@@ -5725,8 +5725,12 @@ textarea {
   font-size: 9.5px;
   line-height: 1.05;
 }
+.court-link-seat-token .province-office-prefix {
+  flex: 0 0 auto;
+  max-width: none;
+}
 .court-link-seat-token .province-office-kind {
-  max-width: 72px;
+  max-width: none;
 }
 .court-link-seat-token .title-token.compact,
 .court-link-seat-token .ownership-badge.compact {
@@ -5762,6 +5766,91 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (max-width: 820px) {
+  .court-link-section {
+    padding: 11px 10px;
+  }
+  .court-link-section-note {
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+  .court-wire-board {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4px clamp(28px, 7vw, 54px);
+  }
+  .court-wire-seat-copy {
+    width: min(220px, 100%);
+  }
+  .court-link-seat-token {
+    max-width: 100%;
+  }
+  .court-link-seat-token .province-office-token {
+    min-height: 39px;
+    padding: 5px 7px 6px;
+    border-width: 4px;
+    font-size: 10.5px;
+    line-height: 1.14;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .court-link-seat-token .province-office-prefix {
+    max-width: 100%;
+    padding-right: 5px;
+  }
+  .court-link-seat-token .province-office-kind,
+  .court-link-seat-token .province-token-name {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .court-link-seat-token .title-token.compact,
+  .court-link-seat-token .ownership-badge.compact {
+    min-height: 34px;
+    padding: 4px 7px 5px;
+    font-size: 10.5px;
+    line-height: 1.15;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .court-link-seat-token .ownership-text {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 560px) {
+  .court-link-section {
+    padding: 10px 8px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .court-wire-board {
+    min-width: 560px;
+    gap: 4px 64px;
+  }
+  .court-wire-seat,
+  .court-wire-player {
+    gap: 7px;
+  }
+  .court-wire-seat-copy {
+    width: min(220px, 100%);
+  }
+  .court-link-seat-token .province-office-token {
+    min-height: 38px;
+    padding: 5px 8px 6px;
+    border-width: 4px;
+    font-size: 10.5px;
+  }
+  .court-link-seat-token .province-office-prefix {
+    gap: 3px;
+    padding-right: 5px;
+  }
 }
 .court-power-done {
   border: 1px solid rgba(168,116,32,0.16);
