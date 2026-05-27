@@ -47,12 +47,12 @@ import {
 import { renderIcon, renderValue } from './icons.js';
 import {
   getPlayerStyleAttr,
-  getProvinceRegionPalette,
   renderCartouchedText,
   renderPlayerChip,
   renderPlayerRoleName,
   renderOwnershipBadge,
   renderProvinceBadge,
+  renderProvinceOfficeBadge,
   renderThemeOfficeBadge,
   renderTitleBadge,
 } from './labels.js';
@@ -551,8 +551,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
                 ${isBasileus && !token.available ? 'disabled' : ''}
                 aria-pressed="${selected ? 'true' : 'false'}">
                 <span class="court-wire-socket court-wire-player-socket" ${isBasileus && token.available ? `data-title-wire-finish="${token.player.id}" data-title-wire-copy="${token.copyIndex}"` : ''} aria-hidden="true"></span>
-                <span class="candidate-crest">${playerInitial(token.player)}</span>
-                <span class="candidate-name">${escapeHtml(playerDisplayLabel(token.player))}</span>
+                ${renderPlayerChip(state, token.player)}
                 <span class="candidate-tag">${token.available ? `Copy ${token.copyIndex + 1}` : 'Tied'}</span>
               </button>
             `;
@@ -917,19 +916,6 @@ function courtSeatLabel(kind) {
   return 'Seat';
 }
 
-function courtSeatShortLabel(kind) {
-  if (kind === 'strategos') return 'Strategos';
-  if (kind === 'bishop') return 'Bishop';
-  if (kind === 'estate') return 'Estate';
-  return 'Seat';
-}
-
-function courtSeatTitleKind(kind) {
-  if (kind === 'strategos') return 'STRATEGOS';
-  if (kind === 'bishop') return 'BISHOP';
-  return null;
-}
-
 function courtSeatHolder(state, holderId) {
   if (holderId == null || holderId === '') return null;
   const playerId = Number(holderId);
@@ -938,41 +924,10 @@ function courtSeatHolder(state, holderId) {
 
 function renderCourtSeatTitleCartouche(state, kind, theme, holderId) {
   const holder = courtSeatHolder(state, holderId);
-  const titleKind = courtSeatTitleKind(kind);
-  if (titleKind) {
-    return `${renderTitleBadge(state, titleKind, {
-      holderId: holder?.id ?? null,
-      themeId: theme.id,
-      compact: true,
-      label: courtSeatShortLabel(kind),
-    })} of ${renderProvinceBadge(state, theme, { compact: true })}`;
-  }
-  if (kind === 'estate' && holder) {
-    const palette = getProvinceRegionPalette(theme);
-    return `${renderOwnershipBadge(state, {
-      kind,
-      holderId: holder.id,
-      color: holder.color || '#5a3810',
-      accent: palette.outline,
-    }, {
-      compact: true,
-      label: 'Estate',
-      title: `Private estate in ${theme.name}: ${playerDisplayLabel(holder)}`,
-    })} in ${renderProvinceBadge(state, theme, { compact: true })}`;
-  }
-  if (kind === 'estate') {
-    const palette = getProvinceRegionPalette(theme);
-    return `
-      <span class="ownership-badge ownership-badge-estate compact vacant"
-        style="--ownership-accent: ${palette.outline};"
-        title="Private estate" aria-label="Private estate">
-        <span class="ownership-mark" aria-hidden="true"></span>
-        <span class="ownership-text">Estate</span>
-      </span>
-      in ${renderProvinceBadge(state, theme, { compact: true })}
-    `;
-  }
-  return '';
+  return renderProvinceOfficeBadge(state, kind, theme, {
+    holderId: holder?.id ?? null,
+    compact: true,
+  });
 }
 
 function renderCourtLinkSeat(state, kind, theme, holderId = null) {
@@ -1234,8 +1189,7 @@ function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, p
       ${dataAttrs}
       ${disabledReason ? disabledChoiceAttrs(disabledReason, playerDisplayLabel(player)) : ''}>
       <span class="court-wire-socket court-wire-player-socket" ${socketAttrs} aria-hidden="true"></span>
-      <span class="candidate-crest">${playerInitial(player)}</span>
-      <span class="candidate-name">${escapeHtml(playerDisplayLabel(player))}</span>
+      ${renderPlayerChip(state, player)}
     </button>
   `;
 }
@@ -1489,7 +1443,6 @@ function courtPowerCountLabel(count, singular, plural = `${singular}s`) {
 
 function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const plannedActions = getPlannedCourtActionsForPower(draft, powerKey);
-  const plannedPass = ensureCourtPlan(draft) && draft.plannedPassPowers.includes(powerKey);
   const usedKinds = getCourtPowerActionKinds(state, playerId, powerKey);
   const appointmentCount = getCourtPowerAppointmentCount(state, playerId, powerKey);
   const revocationCount = getCourtPowerRevocationCount(state, playerId, powerKey);
@@ -1505,9 +1458,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     appointmentCount ? courtPowerCountLabel(appointmentCount, 'appointment') : '',
     revocationCount ? courtPowerCountLabel(revocationCount, 'revocation') : '',
   ].filter(Boolean).join(', ');
-  const stateText = plannedPass
-    ? 'Planned skip'
-    : plannedActions.length
+  const stateText = plannedActions.length
       ? `${plannedActions.length} planned`
       : actionCount
     ? `${actionCount}/${actionLimit} actions${usedParts ? ` (${usedParts})` : ''}`
@@ -1533,9 +1484,6 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     : `
         <div class="court-link-stack">
           ${connectionsHtml || '<div class="choice-grid-empty">No links available</div>'}
-        </div>
-        <div class="panel-actions court-pass-actions">
-          <button type="button" class="btn-secondary btn-skip" data-action="pass-court-power" data-court-pass-power="${escapeHtml(powerKey)}">${plannedPass ? 'Undo Skip' : actionCount ? 'Plan Skip Rest' : 'Plan Skip'}</button>
         </div>
       `;
   const cardClass = [
@@ -1569,8 +1517,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
   const confirmed = Boolean(state.courtActions?.playerConfirmed?.has(activePlayerId));
   const rerender = () => renderCourtPanel(container, state, activePlayerId, callbacks, options);
   const plannedCount = draft.plannedActions.length;
-  const plannedPassCount = draft.plannedPassPowers.length;
-  const hasPlan = plannedCount > 0 || plannedPassCount > 0;
+  const hasPlan = plannedCount > 0;
   container.innerHTML = `
     <section class="phase-card court-panel">
       ${powerKeys.length ? `
@@ -1579,8 +1526,8 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
         </div>
         <div class="appointment-preview court-plan-preview">
           ${hasPlan
-            ? `${plannedCount} planned action${plannedCount === 1 ? '' : 's'}${plannedPassCount ? `, ${plannedPassCount} planned skip${plannedPassCount === 1 ? '' : 's'}` : ''}. Lock to commit, or reset to change everything.`
-            : 'Plan appointments, revocations, or skips. Nothing is committed until you lock.'}
+            ? `${plannedCount} planned action${plannedCount === 1 ? '' : 's'}. Lock to commit, or reset to change everything.`
+            : 'Plan appointments or revocations. Nothing is committed until you lock.'}
         </div>
         ${draft.planError ? `<p class="form-error">${escapeHtml(draft.planError)}</p>` : ''}
         <div class="panel-actions court-plan-actions action-priority">
@@ -1672,17 +1619,6 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
       removeCourtPlannedAction(draft, button.dataset.planRemove || '');
       rerender();
     });
-  });
-  bindSelectAction(container, '[data-action="pass-court-power"]', (btn) => {
-    const powerKey = btn.dataset.courtPassPower;
-    if (!powerKey) return;
-    ensureCourtPlan(draft);
-    if (draft.plannedPassPowers.includes(powerKey)) {
-      draft.plannedPassPowers = draft.plannedPassPowers.filter((entry) => entry !== powerKey);
-    } else {
-      draft.plannedPassPowers.push(powerKey);
-    }
-    rerender();
   });
   bindSelectAction(container, '[data-action="reset-court-plan"]', () => {
     draft.plannedActions = [];
@@ -1968,7 +1904,7 @@ function renderOrderLockNotice(state, orderLocks) {
   const rows = [];
   if (orderLocks.candidateId != null) {
     const candidate = getPlayer(state, Number(orderLocks.candidateId));
-    rows.push(`Coup rank: ${renderPlayerChip(state, candidate, `Player ${Number(orderLocks.candidateId) + 1}`)} stays pledged`);
+    rows.push(`Coup rank: ${renderPlayerChip(state, candidate, `Player ${Number(orderLocks.candidateId) + 1}`, { variant: 'light' })} stays pledged`);
   }
   for (const office of orderLocks.officeSelections || []) {
     const destination = office.destination === 'capital' ? 'Capital' : 'Frontier';
@@ -1993,7 +1929,7 @@ function renderDeploymentPreview(state, playerId, draft, armyKeys) {
   const candidateSupport = normalizeCoupSupport(state, draft.candidateSupport);
   const topSupportedId = ranking.find((candidateId) => candidateSupport[candidateId] !== false);
   const topPreference = getPlayer(state, topSupportedId ?? playerId);
-  const preferenceLabel = topPreference ? renderPlayerChip(state, topPreference) : 'Rank claimants';
+  const preferenceLabel = topPreference ? renderPlayerChip(state, topPreference, '', { variant: 'light' }) : 'Rank claimants';
   return `
     <div class="deployment-preview" data-deployment-preview>
       <div class="deployment-preview-row">
@@ -2685,7 +2621,7 @@ function renderCoupResultCard(state, coup) {
   const zeroBallotSummary = zeroBallots.length
     ? `No capital troops from ${zeroBallots.map((ballot) => {
       const voter = getPlayer(state, Number(ballot.playerId));
-      return renderPlayerChip(state, voter, `Player ${Number(ballot.playerId) + 1}`);
+      return renderPlayerChip(state, voter, `Player ${Number(ballot.playerId) + 1}`, { variant: 'light' });
     }).join(' ')}.`
     : '';
 
@@ -2717,7 +2653,7 @@ function renderCoupResultCard(state, coup) {
                         const value = Number(entry.votes ?? entry.troops) || 0;
                         const sourceLabel = entry.passive
                           ? escapeHtml(entry.supportLabel || 'Passive support')
-                          : renderPlayerChip(state, supporter, `Player ${Number(entry.playerId) + 1}`);
+                          : renderPlayerChip(state, supporter, `Player ${Number(entry.playerId) + 1}`, { variant: 'light' });
                         return `${sourceLabel} ${renderValue('troop', value, { signed: entry.passive, displayValue: Math.round(value * 100) / 100 })}`;
                       }).join(' ')}
                     </span>

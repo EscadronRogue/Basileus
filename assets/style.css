@@ -951,20 +951,20 @@ body::before {
   background: rgba(247,253,239,0.97);
 }
 
-.notification-toast strong,
-.notification-toast span {
+.notification-toast > div > strong,
+.notification-toast > div > span {
   display: block;
   overflow-wrap: anywhere;
 }
 
-.notification-toast strong {
+.notification-toast > div > strong {
   font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
 }
 
-.notification-toast span {
+.notification-toast > div > span {
   margin-top: 2px;
   font-size: 12px;
   color: var(--umber-2);
@@ -2768,6 +2768,18 @@ body::before {
   text-shadow: 0 1px 0 rgba(20,8,0,0.45);
 }
 
+.province-token.cartouche-light {
+  gap: 4px;
+  padding: 2px 7px 3px;
+  border-width: 2px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  letter-spacing: 0.15px;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.34),
+    0 1px 1px rgba(46,30,15,0.12);
+}
+
 .province-token-name {
   min-width: 0;
   overflow: hidden;
@@ -2816,6 +2828,64 @@ body::before {
   padding-left: 7px;
   margin-left: 2px;
   border-left: 1px solid rgba(240,200,90,0.42);
+}
+
+.province-office-token {
+  align-items: center;
+}
+
+.province-office-prefix {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 58%;
+  padding-right: 7px;
+  margin-right: 1px;
+  border-right: 1px solid rgba(240,200,90,0.42);
+}
+
+.province-office-kind {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.province-office-mark {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  background: var(--office-holder-color, rgba(255,252,240,0.96));
+  border: 1.4px solid rgba(20,8,0,0.78);
+  box-shadow: 0 1px 0 rgba(20,8,0,0.34);
+}
+
+.province-office-token-estate .province-office-mark {
+  border-radius: 50%;
+}
+
+.province-office-token-strategos .province-office-mark {
+  border-radius: 1px;
+}
+
+.province-office-token-bishop .province-office-mark {
+  width: 0;
+  height: 0;
+  border-left: 5.5px solid transparent;
+  border-right: 5.5px solid transparent;
+  border-bottom: 10px solid var(--office-holder-color, rgba(255,252,240,0.96));
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.42));
+}
+
+.province-office-token.vacant-office {
+  border-style: dashed;
+}
+
+.province-office-token.vacant-office .province-office-mark {
+  --office-holder-color: rgba(255,252,240,0.96);
 }
 
 .ownership-badge {
@@ -3135,6 +3205,17 @@ body::before {
   vertical-align: baseline;
   white-space: nowrap;
 }
+.player-chip.cartouche-light {
+  gap: 4px;
+  padding: 1px 7px 1px 3px;
+  border-width: 1.5px;
+  font-size: 10.5px;
+  letter-spacing: 0.15px;
+  line-height: 1.2;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.34),
+    0 1px 1px rgba(46,30,15,0.12);
+}
 .player-chip .chip-label {
   min-width: 0;
   overflow: hidden;
@@ -3154,6 +3235,11 @@ body::before {
   font-weight: 700;
   color: #fff;
   flex-shrink: 0;
+}
+.player-chip.cartouche-light .chip-initial {
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
 }
 .player-chip .icon { color: #fff; }
 
@@ -5424,6 +5510,18 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.court-wire-player .player-chip,
+.title-redist-player-token .player-chip {
+  max-width: min(260px, 100%);
+  border-width: 2px;
+  font-size: 12px;
+}
+.court-wire-player .player-chip .chip-initial,
+.title-redist-player-token .player-chip .chip-initial {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
 .court-wire-player.disabled {
   cursor: not-allowed;
   opacity: 0.42;
@@ -5537,13 +5635,22 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
   width: 100%;
   max-width: 260px;
   min-width: 0;
-  color: var(--umber-3);
-  font-family: var(--font-body);
-  font-size: 10.5px;
+}
+.court-link-seat-token .province-office-token {
+  width: 100%;
+  max-width: 100%;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  min-height: 29px;
+  padding: 3px 7px 4px;
+  font-size: 9.5px;
+  line-height: 1.05;
+}
+.court-link-seat-token .province-office-kind {
+  max-width: 72px;
 }
 .court-link-seat-token .title-token.compact,
 .court-link-seat-token .ownership-badge.compact {
@@ -5560,7 +5667,7 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.court-link-seat-token .province-token.compact {
+.court-link-seat-token .province-token.compact:not(.province-office-token) {
   flex: 1 1 88px;
   min-width: 0;
   max-width: 132px;
@@ -5584,13 +5691,6 @@ textarea {
   border: 1px solid rgba(168,116,32,0.16);
   background: rgba(255,252,240,0.55);
 }
-.court-pass-actions {
-  justify-content: flex-end;
-}
-.panel-actions.court-pass-actions .btn-skip {
-  flex: 0 1 auto;
-}
-
 /* ── Estates panel: gold reserve + per-province bid cards ── */
 .estates-head {
   display: flex;
@@ -6238,7 +6338,6 @@ textarea {
     0 4px 18px rgba(168,116,32,0.24);
 }
 .btn-reset,
-.btn-skip,
 .btn-save {
   box-shadow: var(--shadow-inset);
 }
@@ -6252,19 +6351,6 @@ textarea {
 .btn-reset:hover:not(:disabled) {
   border-color: rgba(74,48,24,0.48);
   background: rgba(255,252,240,0.82);
-  color: var(--umber-1);
-}
-.btn-skip {
-  flex: 0 1 auto;
-  min-height: 38px;
-  padding-inline: 14px;
-  border-color: rgba(74,48,24,0.24);
-  background: rgba(255,252,240,0.60);
-  color: var(--umber-2);
-}
-.btn-skip:hover:not(:disabled) {
-  border-color: rgba(74,48,24,0.44);
-  background: rgba(255,252,240,0.86);
   color: var(--umber-1);
 }
 .btn-save {
@@ -6315,7 +6401,6 @@ textarea {
   flex: 2 1 220px;
 }
 .panel-actions.action-priority .btn-reset,
-.panel-actions.action-priority .btn-skip,
 .panel-actions.action-priority .btn-save {
   flex: 0 1 auto;
 }
@@ -6334,7 +6419,6 @@ textarea {
     flex: 1 1 100%;
   }
   .panel-actions.action-priority .btn-reset,
-  .panel-actions.action-priority .btn-skip,
   .panel-actions.action-priority .btn-save {
     order: 1;
     flex: 1 1 auto;

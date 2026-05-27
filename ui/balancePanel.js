@@ -186,7 +186,7 @@ function renderLegend(state, category) {
     return `
       <div class="balance-legend-row" style="${getPlayerStyleAttr(state, slice.playerId)}">
         <span class="balance-legend-dot" style="background:var(--player-color)"></span>
-        <span class="balance-legend-name">${renderPlayerChip(state, player, name)}</span>
+        <span class="balance-legend-name">${renderPlayerChip(state, player, name, { variant: 'light' })}</span>
         <span class="balance-legend-share">${formatShare(slice.share)}</span>
         <span class="balance-legend-points" title="Each ${SCORE_SHARE_STEP_PERCENT}% of this category scores 1 point (max ${SCORE_MAX_POINTS_PER_CATEGORY}).">${slice.points}</span>
       </div>

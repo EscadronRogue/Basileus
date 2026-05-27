@@ -131,7 +131,7 @@ test('running text upgrades player and province mentions into cartouches', () =>
 
   assert.match(html, /&lt;b&gt;/);
   assert.doesNotMatch(html, /<b>/);
-  assert.match(html, /class="player-chip"/);
+  assert.match(html, /class="player-chip cartouche-light"/);
   assert.match(html, /data-province-token="OPS"/);
 });
 
@@ -169,8 +169,8 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(basileusPanel.innerHTML, /Choose actions/);
   assert.match(basileusPanel.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
   assert.match(basileusPanel.innerHTML, /data-revoke-pick="theme:OPS"/);
-  assert.match(basileusPanel.innerHTML, /data-action="pass-court-power"/);
-  assert.match(basileusPanel.innerHTML, /btn-secondary btn-skip" data-action="pass-court-power"/);
+  assert.doesNotMatch(basileusPanel.innerHTML, /data-action="pass-court-power"/);
+  assert.doesNotMatch(basileusPanel.innerHTML, /btn-skip/);
   assert.match(basileusPanel.innerHTML, /btn-secondary btn-reset" data-action="reset-court-plan"/);
   assert.match(basileusPanel.innerHTML, /btn-primary btn-commit" data-action="confirm-court-plan"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Empress|Chief of Eunuchs/);
@@ -187,9 +187,10 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(patriarchPanel.innerHTML, /data-strategos-theme-pick=/);
   assert.match(patriarchPanel.innerHTML, /data-bishop-theme-pick=/);
   assert.match(patriarchPanel.innerHTML, /Revoke/);
-  assert.match(patriarchPanel.innerHTML, /Strategos [^<]*Opsikion/i);
-  assert.match(patriarchPanel.innerHTML, /title-token-mark-strategos/);
-  assert.match(patriarchPanel.innerHTML, /title-token-mark-bishop/);
+  assert.match(patriarchPanel.innerHTML, /province-office-token-strategos/);
+  assert.match(patriarchPanel.innerHTML, /data-province-token="OPS"/);
+  assert.match(patriarchPanel.innerHTML, /province-office-token-bishop/);
+  assert.match(patriarchPanel.innerHTML, /province-office-mark/);
   assert.doesNotMatch(patriarchPanel.innerHTML, /court-link-seat-province/);
   assert.doesNotMatch(patriarchPanel.innerHTML, /Gift/);
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
@@ -351,11 +352,11 @@ test('court estate revocations show owner color without the old separator', () =
 
   assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
   assert.match(container.innerHTML, /court-link-connection bound/);
-  assert.match(container.innerHTML, /ownership-badge ownership-badge-estate/);
+  assert.match(container.innerHTML, /province-office-token-estate/);
   assert.match(container.innerHTML, /data-link-revoke="theme:OPS"/);
-  assert.equal(container.innerHTML.includes(`--ownership-color: ${state.players[2].color};`), true);
-  assert.match(container.innerHTML, /--ownership-accent: [^;]+;/);
-  assert.match(container.innerHTML, /Estate [^<]*Opsikion/i);
+  assert.equal(container.innerHTML.includes(`--office-holder-color: ${state.players[2].color};`), true);
+  assert.match(container.innerHTML, /<span class="province-office-kind">Estate<\/span>/);
+  assert.match(container.innerHTML, /<span class="province-token-name">Opsikion<\/span>/);
   assert.equal(container.innerHTML.includes('Estate —'), false);
   assert.equal(container.innerHTML.includes('Estate â€”'), false);
 });
@@ -381,7 +382,7 @@ test('court panel disables recently bought estate revocations', () => {
   assert.match(container.innerHTML, /bought last turn and cannot be revoked until next turn/);
 });
 
-test('court panel lets a player pass one office while keeping other offices available', () => {
+test('court panel shows passed offices while other offices remain available', () => {
   const state = makeState();
   state.phase = 'court';
   state.courtActions = {
@@ -394,16 +395,17 @@ test('court panel lets a player pass one office while keeping other offices avai
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
-  assert.match(container.innerHTML, /data-court-pass-power="DOM_EAST"/);
-  assert.match(container.innerHTML, /data-court-pass-power="PATRIARCH"/);
+  assert.match(container.innerHTML, /data-court-power="DOM_EAST"/);
+  assert.match(container.innerHTML, /data-court-power="PATRIARCH"/);
+  assert.doesNotMatch(container.innerHTML, /data-court-pass-power=/);
 
   const pass = applyCourtAction(state, 1, { action: 'pass-court-power', powerKey: 'DOM_EAST' });
   assert.equal(pass.ok, true);
   renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /passed with no action recorded/);
-  assert.doesNotMatch(container.innerHTML, /data-court-pass-power="DOM_EAST"/);
-  assert.match(container.innerHTML, /data-court-pass-power="PATRIARCH"/);
+  assert.match(container.innerHTML, /data-court-power="PATRIARCH"/);
+  assert.doesNotMatch(container.innerHTML, /data-court-pass-power=/);
 });
 
 test('estates panel lists free land bids before deployment', () => {

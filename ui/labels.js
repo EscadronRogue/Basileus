@@ -272,22 +272,34 @@ function getPlayerChipInitial(player, label = '') {
   return source ? source[0].toUpperCase() : '?';
 }
 
-export function renderPlayerChip(state, player, fallback = '') {
+function normalizeCartoucheVariant(options = {}) {
+  if (options === 'light' || options === 'strong') return options;
+  if (options?.light) return 'light';
+  return options?.variant || '';
+}
+
+export function renderPlayerChip(state, player, fallback = '', options = {}) {
+  if (fallback && typeof fallback === 'object') {
+    options = fallback;
+    fallback = '';
+  }
   const labelText = player ? formatPlayerLabel(player) : fallback;
   if (!labelText) return '';
   if (!player) return escapeHtml(labelText);
   const label = escapeHtml(labelText);
+  const variant = normalizeCartoucheVariant(options);
+  const classes = ['player-chip', variant ? `cartouche-${variant}` : ''].filter(Boolean).join(' ');
   return `
-    <span class="player-chip" style="${getPlayerStyleAttr(state, player.id)}" title="${label}">
+    <span class="${classes}" style="${getPlayerStyleAttr(state, player.id)}" title="${label}">
       <span class="chip-initial" aria-hidden="true">${escapeHtml(getPlayerChipInitial(player, labelText))}</span>
       <span class="chip-label">${label}</span>
     </span>
   `;
 }
 
-export function renderPlayerChipById(state, playerId, fallback = null) {
+export function renderPlayerChipById(state, playerId, fallback = null, options = {}) {
   const player = getPlayer(state, playerId);
-  return renderPlayerChip(state, player, fallback ?? `Player ${Number(playerId) + 1}`);
+  return renderPlayerChip(state, player, fallback ?? `Player ${Number(playerId) + 1}`, options);
 }
 
 export function renderProvinceBadge(state, themeOrId, options = {}) {
@@ -304,9 +316,11 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
       hideHolder: options.hideOwnershipHolder ?? false,
     })
     : '';
+  const variant = normalizeCartoucheVariant(options);
   const classes = [
     'province-token',
     options.compact ? 'compact' : '',
+    variant ? `cartouche-${variant}` : '',
     ownership ? 'has-ownership' : '',
     churchValue > 0 ? 'has-church' : '',
     theme.occupied ? 'occupied' : '',
@@ -318,6 +332,62 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
     ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
     : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
   return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}"><span class="province-token-name">${escapeHtml(theme.name)}</span>${values}${ownership}</span>`;
+}
+
+function getProvinceOfficeHolderId(theme, kind, explicitHolderId = undefined) {
+  if (explicitHolderId !== undefined) return explicitHolderId;
+  if (kind === 'estate') return theme.owner;
+  if (kind === 'strategos') return theme.strategos;
+  if (kind === 'bishop') return theme.bishop;
+  return null;
+}
+
+export function renderProvinceOfficeBadge(state, kind, themeOrId, options = {}) {
+  const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
+  const meta = OWNERSHIP_KIND_META[kind];
+  if (!theme || !meta) return options.fallback || '';
+  const holderId = getProvinceOfficeHolderId(theme, kind, options.holderId);
+  const holder = holderId != null && holderId !== '' && Number.isInteger(Number(holderId))
+    ? getPlayer(state, Number(holderId))
+    : null;
+  const officeColor = holder?.color || 'rgba(255,252,240,0.96)';
+  const valuesHtml = renderProvinceValuesHtml(theme);
+  const values = options.showValues && valuesHtml
+    ? `<span class="province-token-values">${valuesHtml}</span>`
+    : '';
+  const ownership = options.showOwnership
+    ? renderProvinceOwnershipBadges(state, theme, {
+      compact: options.compactOwnership ?? true,
+      hideHolder: options.hideOwnershipHolder ?? false,
+    })
+    : '';
+  const variant = normalizeCartoucheVariant(options);
+  const label = options.label || meta.label;
+  const classes = [
+    'province-token',
+    'province-office-token',
+    `province-office-token-${kind}`,
+    options.compact ? 'compact' : '',
+    variant ? `cartouche-${variant}` : '',
+    holder ? '' : 'vacant-office',
+    ownership ? 'has-ownership' : '',
+    Math.max(0, Number(theme.C) || 0) > 0 ? 'has-church' : '',
+    theme.occupied ? 'occupied' : '',
+  ].filter(Boolean).join(' ');
+  const valuesText = formatProvinceValuesText(theme);
+  const holderText = holder ? `: ${formatPlayerLabel(holder)}` : '';
+  const title = `${label} in ${theme.name}${holderText}${valuesText ? ` - ${valuesText}` : ''}`;
+  const styleAttr = `${getProvinceStyleAttr(state, theme)} --office-holder-color: ${officeColor};`;
+  return `
+    <span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${styleAttr}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+      <span class="province-office-prefix">
+        <span class="province-office-mark" aria-hidden="true"></span>
+        <span class="province-office-kind">${escapeHtml(label)}</span>
+      </span>
+      <span class="province-token-name">${escapeHtml(theme.name)}</span>
+      ${values}${ownership}
+    </span>
+  `;
 }
 
 export function renderProvinceOwnerMarker(state, themeOrId, options = {}) {
@@ -363,6 +433,7 @@ function uniqueMentionTokens(tokens) {
 function buildCartoucheMentionTokens(state, options = {}) {
   if (!state) return [];
   const tokens = [];
+  const variant = options.variant || 'light';
   if (options.players !== false) {
     for (const player of state.players || []) {
       const fallbackLabel = Number.isInteger(Number(player?.id)) ? `Player ${Number(player.id) + 1}` : '';
@@ -370,7 +441,7 @@ function buildCartoucheMentionTokens(state, options = {}) {
         if (!text) continue;
         tokens.push({
           text,
-          html: () => renderPlayerChip(state, player),
+          html: () => renderPlayerChip(state, player, '', { variant }),
         });
       }
     }
@@ -380,7 +451,7 @@ function buildCartoucheMentionTokens(state, options = {}) {
       if (!theme?.name) continue;
       tokens.push({
         text: theme.name,
-        html: () => renderProvinceBadge(state, theme, { compact: true }),
+        html: () => renderProvinceBadge(state, theme, { compact: true, variant }),
       });
     }
   }
@@ -479,6 +550,10 @@ export function renderTitleBadge(state, kind, options = {}) {
 export function renderThemeOfficeBadge(state, kind, themeId) {
   const theme = state.themes[themeId];
   if (!theme) return '';
-  const holderId = kind === 'STRATEGOS' ? theme.strategos : theme.bishop;
-  return `${renderTitleBadge(state, kind, { holderId, themeId, compact: true })} of ${renderProvinceBadge(state, theme, { compact: true })}`;
+  const officeKind = kind === 'BISHOP' ? 'bishop' : 'strategos';
+  const holderId = officeKind === 'strategos' ? theme.strategos : theme.bishop;
+  return renderProvinceOfficeBadge(state, officeKind, theme, {
+    holderId,
+    compact: true,
+  });
 }
