@@ -148,6 +148,9 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(basileusPanel.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
   assert.match(basileusPanel.innerHTML, /data-revoke-pick="theme:OPS"/);
   assert.match(basileusPanel.innerHTML, /data-action="pass-court-power"/);
+  assert.match(basileusPanel.innerHTML, /btn-secondary btn-skip" data-action="pass-court-power"/);
+  assert.match(basileusPanel.innerHTML, /btn-secondary btn-reset" data-action="reset-court-plan"/);
+  assert.match(basileusPanel.innerHTML, /btn-primary btn-commit" data-action="confirm-court-plan"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /Empress|Chief of Eunuchs/);
   assert.doesNotMatch(basileusPanel.innerHTML, />Appoint</);
   assert.doesNotMatch(basileusPanel.innerHTML, /End Court/);
@@ -479,7 +482,7 @@ test('fresh deployment panel requires explicit funding and destination', () => {
   assert.match(container.innerHTML, /data-funded-readout="BASILEUS"[^>]*>Pick</);
   assert.doesNotMatch(container.innerHTML, /class="candidate-row selected/);
   assert.match(container.innerHTML, /Finish Deployment/);
-  assert.match(container.innerHTML, /data-action="lock-orders" disabled/);
+  assert.match(container.innerHTML, /btn-primary btn-commit" data-action="lock-orders" disabled/);
 });
 
 test('deployment ranking can withhold support from the first dynasty', () => {
@@ -533,7 +536,7 @@ test('deployment panel bundles strategos commands and does not require idle merc
   assert.match(container.innerHTML, /2 Strategos commands combined/);
   assert.doesNotMatch(container.innerHTML, /data-army-card="STRAT_OPS"/);
   assert.doesNotMatch(container.innerHTML, /data-army-card="STRAT_KAP"/);
-  assert.match(container.innerHTML, /data-action="lock-orders" >Lock Deployment/);
+  assert.match(container.innerHTML, /btn-primary btn-commit" data-action="lock-orders" >Lock Deployment/);
 });
 
 test('deployment panel surfaces deal-forced coup support before lock-in', () => {

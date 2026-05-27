@@ -697,13 +697,15 @@ export class MultiplayerController {
           <div class="setup-actions">${seatButtons}</div>
         </div>
       ` : ''}
-      <div class="multiplayer-banner">
-        <strong>Recovery Save</strong>
-        <span>Download the full server state so this match can be restored if the host service restarts.</span>
-        <div class="setup-actions">
-          <button class="btn-secondary" type="button" data-action="save-multiplayer-room">Save Match</button>
+      <details class="multiplayer-banner multiplayer-save-fold">
+        <summary>
+          <strong>Recovery Save</strong>
+          <span>Download the full server state if the host service restarts.</span>
+        </summary>
+        <div class="setup-actions multiplayer-save-actions">
+          <button class="btn-secondary btn-save" type="button" data-action="save-multiplayer-room">Save Match</button>
         </div>
-      </div>
+      </details>
     `;
     body.appendChild(section);
 

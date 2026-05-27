@@ -560,8 +560,8 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
       </section>
       ${isBasileus ? `<div class="appointment-preview title-redist-link-preview">${escapeHtml(selectedSummary)}</div>` : ''}
       <p class="form-error" data-role="title-reassignment-error">${complete && !validation.ok ? escapeHtml(validation.reason || '') : ''}</p>
-      <div class="panel-actions">
-        <button type="button" class="btn-primary" data-action="confirm-title-redistribution" ${canConfirm ? '' : 'disabled'}>${validation.ok ? 'Lock Offices' : 'Finish Office Slots'}</button>
+      <div class="panel-actions action-priority">
+        <button type="button" class="btn-primary btn-commit" data-action="confirm-title-redistribution" ${canConfirm ? '' : 'disabled'}>${validation.ok ? 'Lock Offices' : 'Finish Office Slots'}</button>
       </div>
     </section>
   `;
@@ -1532,7 +1532,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
           ${connectionsHtml || '<div class="choice-grid-empty">No links available</div>'}
         </div>
         <div class="panel-actions court-pass-actions">
-          <button type="button" class="btn-secondary" data-action="pass-court-power" data-court-pass-power="${escapeHtml(powerKey)}">${plannedPass ? 'Undo Skip' : actionCount ? 'Plan Skip Rest' : 'Plan Skip'}</button>
+          <button type="button" class="btn-secondary btn-skip" data-action="pass-court-power" data-court-pass-power="${escapeHtml(powerKey)}">${plannedPass ? 'Undo Skip' : actionCount ? 'Plan Skip Rest' : 'Plan Skip'}</button>
         </div>
       `;
   const cardClass = [
@@ -1580,9 +1580,9 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
             : 'Plan appointments, revocations, or skips. Nothing is committed until you lock.'}
         </div>
         ${draft.planError ? `<p class="form-error">${escapeHtml(draft.planError)}</p>` : ''}
-        <div class="panel-actions court-plan-actions">
-          <button type="button" class="btn-secondary" data-action="reset-court-plan" ${hasPlan ? '' : 'disabled'}>Reset Plan</button>
-          <button type="button" class="btn-primary" data-action="confirm-court-plan">${hasPlan ? 'Lock Planned Actions' : 'Lock No Actions'}</button>
+        <div class="panel-actions court-plan-actions action-priority">
+          <button type="button" class="btn-secondary btn-reset" data-action="reset-court-plan" ${hasPlan ? '' : 'disabled'}>Reset Plan</button>
+          <button type="button" class="btn-primary btn-commit" data-action="confirm-court-plan">${hasPlan ? 'Lock Planned Actions' : 'Lock No Actions'}</button>
         </div>
       ` : `<div class="panel-empty">${confirmed ? 'Court business complete.' : 'No court actions available.'}</div>`}
     </section>
@@ -1781,9 +1781,9 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
       <div class="appointment-preview estate-plan-preview">
         ${draftCommitment ? `${formatGoldHtml(draftCommitment)} planned in sealed bids. Lock to commit, or reset to restore your current bids.` : 'Plan sealed bids first. Nothing is committed until you lock.'}
       </div>
-      <div class="panel-actions">
-        <button type="button" class="btn-secondary" data-action="reset-estate-plan" ${draftCommitment ? '' : 'disabled'}>Reset Bids</button>
-        <button type="button" class="${ready ? 'btn-secondary' : 'btn-primary'}" data-action="confirm-estates">${ready ? 'Keep Editing Bids' : 'Lock Bids'}</button>
+      <div class="panel-actions action-priority">
+        <button type="button" class="btn-secondary btn-reset" data-action="reset-estate-plan" ${draftCommitment ? '' : 'disabled'}>Reset Bids</button>
+        <button type="button" class="${ready ? 'btn-secondary btn-reset' : 'btn-primary btn-commit'}" data-action="confirm-estates">${ready ? 'Keep Editing Bids' : 'Lock Bids'}</button>
       </div>
     </section>
   `;
@@ -2185,9 +2185,9 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
           ${candidateRanking}
         </div>
 
-        <div class="panel-actions">
+        <div class="panel-actions action-priority">
           <p class="deployment-lock-help${readiness.ready && !totals.overBudget ? ' ready' : ''}" data-deployment-lock-help>${escapeHtml(lockHelp)}</p>
-          <button type="button" class="btn-primary" data-action="lock-orders" ${totals.overBudget || !readiness.ready ? 'disabled' : ''}>${totals.overBudget ? 'Need More Gold' : readiness.ready ? 'Lock Deployment' : 'Finish Deployment'}</button>
+          <button type="button" class="btn-primary btn-commit" data-action="lock-orders" ${totals.overBudget || !readiness.ready ? 'disabled' : ''}>${totals.overBudget ? 'Need More Gold' : readiness.ready ? 'Lock Deployment' : 'Finish Deployment'}</button>
         </div>
       `}
     </section>
@@ -2527,8 +2527,8 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
       ${coupSection}
       ${deploymentRevealSection}
       ${rewardsSection}
-      <div class="panel-actions">
-        <button type="button" class="btn-primary" data-action="continue">Continue</button>
+      <div class="panel-actions action-priority">
+        <button type="button" class="btn-primary btn-commit" data-action="continue">Continue</button>
       </div>
     </section>
   `;
