@@ -5588,14 +5588,6 @@ textarea {
   cursor: not-allowed;
   opacity: 0.42;
 }
-.court-wire-player.cooldown:not(.disabled) {
-  opacity: 0.64;
-  filter: grayscale(0.85) saturate(0.42);
-}
-.court-wire-player.cooldown:not(.disabled):hover,
-.court-wire-player.cooldown:not(.disabled):focus-visible {
-  opacity: 0.84;
-}
 .court-wire-seat.disabled {
   cursor: not-allowed;
   opacity: 0.52;

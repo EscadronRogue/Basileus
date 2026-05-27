@@ -1018,23 +1018,6 @@ function validateCourtPayloadWithDraft(state, playerId, draft, payload) {
   return validateCourtPlan(state, playerId, getCourtPlanActionsWithCandidate(draft, payload));
 }
 
-function getCourtDraftPreviewState(state, playerId, draft) {
-  const clone = cloneStateForValidation(state);
-  for (const action of ensureCourtPlan(draft)) {
-    const result = applyCourtAction(clone, playerId, action);
-    if (!result?.ok) break;
-  }
-  return clone;
-}
-
-function getCourtDraftCooldowns(state, playerId, draft) {
-  const preview = getCourtDraftPreviewState(state, playerId, draft);
-  const revocationTargetId = Number(getPlayer(preview, playerId)?.revocationCooldown?.lastRevokedPlayerId);
-  return {
-    revocationTargetId: Number.isInteger(revocationTargetId) ? revocationTargetId : null,
-  };
-}
-
 function queueCourtPlannedAction(state, playerId, draft, action) {
   const nextActions = getCourtPlanActionsWithCandidate(draft, action);
   const validation = validateCourtPlan(state, playerId, nextActions);
@@ -1179,13 +1162,9 @@ function renderCourtWireSeat(entry, index, active) {
   `;
 }
 
-function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, playerId, powerKey, linkedPlayerIds, cooldowns = {}) {
+function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, playerId, powerKey, linkedPlayerIds) {
   const isActiveOpen = Boolean(activeEntry);
   const linked = linkedPlayerIds.has(player.id);
-  const revocationLocked = cooldowns.revocationTargetId === player.id;
-  const revocationLockReason = revocationLocked
-    ? `${playerDisplayLabel(player)} was the last dynasty revoked. Revoke someone else before targeting them again.`
-    : '';
   let disabledReason = '';
   let selected = false;
   let dataAttrs = '';
@@ -1212,15 +1191,11 @@ function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, p
     : '';
   return `
     <button type="button"
-      class="court-wire-player${linked ? ' linked' : ''}${selected ? ' selected' : ''}${revocationLocked ? ' cooldown' : ''}${disabledReason ? ' disabled' : ''}"
+      class="court-wire-player${linked ? ' linked' : ''}${selected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
       style="--wire-row: ${index + 1}; ${getPlayerStyleAttr(state, player.id)}"
       data-wire-player-row="${player.id}"
       ${dataAttrs}
-      ${disabledReason
-        ? disabledChoiceAttrs(disabledReason, playerDisplayLabel(player))
-        : revocationLockReason
-          ? `title="${escapeHtml(revocationLockReason)}" aria-label="${escapeHtml(`${playerDisplayLabel(player)} - ${revocationLockReason}`)}"`
-          : ''}>
+      ${disabledReason ? disabledChoiceAttrs(disabledReason, playerDisplayLabel(player)) : ''}>
       <span class="court-wire-socket court-wire-player-socket" ${socketAttrs} aria-hidden="true"></span>
       ${renderPlayerChip(state, player)}
     </button>
@@ -1361,7 +1336,6 @@ function renderCourtWireLines(state, entries, players, draft, playerId, powerKey
 
 function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
   const plannedActions = getPlannedCourtActionsForPower(draft, powerKey);
-  const cooldowns = getCourtDraftCooldowns(state, playerId, draft);
   const entries = buildCourtConnectionEntries(state, playerId, powerKey, draft).map((entry) => {
     const plannedAction = getPlannedActionForEntry(entry, plannedActions);
     if (!plannedAction) return entry;
@@ -1434,7 +1408,7 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
           ${renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout)}
         </svg>
         <div class="court-wire-players">
-          ${players.map((player) => renderCourtWirePlayerButton(state, player, layout.playerRows.get(player.id) ?? 0, activeOpenEntry, draft, playerId, powerKey, linkedPlayerIds, cooldowns)).join('')}
+          ${players.map((player) => renderCourtWirePlayerButton(state, player, layout.playerRows.get(player.id) ?? 0, activeOpenEntry, draft, playerId, powerKey, linkedPlayerIds)).join('')}
         </div>
       </div>
       ${warningRows.length ? `

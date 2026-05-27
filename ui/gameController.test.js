@@ -322,7 +322,7 @@ test('court panel applies revocation cooldown to the current draft sequence', ()
 
   assert.doesNotMatch(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*aria-disabled="true"[^>]*>/);
   assert.match(container.innerHTML, /data-revoke-pick="minor:OPT:strategos"[^>]*aria-disabled="true"[^>]*>/);
-  assert.match(container.innerHTML, /class="court-wire-player[^"]*cooldown[^"]*"[^>]*data-wire-player-row="3"/);
+  assert.doesNotMatch(container.innerHTML, /court-wire-player[^"]*cooldown/);
 });
 
 test('court panel applies self-appointment cooldown to the current draft sequence', () => {
@@ -335,6 +335,7 @@ test('court panel applies self-appointment cooldown to the current draft sequenc
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
+  state.players[1].revocationCooldown = { lastRevokedPlayerId: 2 };
   const container = makePanelContainer();
   const selfDraft = createDefaultUiState();
   selfDraft.drafts[`court:${state.round}:1`] = {
@@ -351,6 +352,8 @@ test('court panel applies self-appointment cooldown to the current draft sequenc
   renderCourtPanel(container, state, 1, {}, { uiState: selfDraft });
 
   assert.match(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
+  assert.doesNotMatch(container.innerHTML, /data-strategos-player-pick="2"[^>]*disabled[^>]*>/);
+  assert.doesNotMatch(container.innerHTML, /class="court-wire-player[^"]*cooldown[^"]*"[^>]*data-wire-player-row="2"/);
   assert.match(container.innerHTML, /You cannot appoint yourself twice in a row/);
 
   state.players[1].appointmentCooldown = { selfLocked: true };
