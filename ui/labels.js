@@ -267,6 +267,29 @@ export function renderPlayerRoleNameById(state, playerId, fallback = null) {
   return renderPlayerRoleName(state, player, fallback ?? `Player ${Number(playerId) + 1}`);
 }
 
+function getPlayerChipInitial(player, label = '') {
+  const source = (player?.dynasty || label || '').trim();
+  return source ? source[0].toUpperCase() : '?';
+}
+
+export function renderPlayerChip(state, player, fallback = '') {
+  const labelText = player ? formatPlayerLabel(player) : fallback;
+  if (!labelText) return '';
+  if (!player) return escapeHtml(labelText);
+  const label = escapeHtml(labelText);
+  return `
+    <span class="player-chip" style="${getPlayerStyleAttr(state, player.id)}" title="${label}">
+      <span class="chip-initial" aria-hidden="true">${escapeHtml(getPlayerChipInitial(player, labelText))}</span>
+      <span class="chip-label">${label}</span>
+    </span>
+  `;
+}
+
+export function renderPlayerChipById(state, playerId, fallback = null) {
+  const player = getPlayer(state, playerId);
+  return renderPlayerChip(state, player, fallback ?? `Player ${Number(playerId) + 1}`);
+}
+
 export function renderProvinceBadge(state, themeOrId, options = {}) {
   const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
   if (!theme) return options.fallback || '';
@@ -314,6 +337,75 @@ export function renderProvinceBadgeList(state, themeIds = []) {
     .map((themeId) => renderProvinceBadge(state, themeId, { compact: true }))
     .filter(Boolean);
   return badges.length ? badges.join(' ') : 'none';
+}
+
+function isMentionBoundary(char) {
+  return !char || !/[\p{L}\p{N}]/u.test(char);
+}
+
+function mentionFitsAt(text, token, index) {
+  if (!token?.text || !text.startsWith(token.text, index)) return false;
+  return isMentionBoundary(text[index - 1]) && isMentionBoundary(text[index + token.text.length]);
+}
+
+function uniqueMentionTokens(tokens) {
+  const seen = new Set();
+  return tokens
+    .filter((token) => token?.text && token.text.trim())
+    .filter((token) => {
+      if (seen.has(token.text)) return false;
+      seen.add(token.text);
+      return true;
+    })
+    .sort((left, right) => right.text.length - left.text.length);
+}
+
+function buildCartoucheMentionTokens(state, options = {}) {
+  if (!state) return [];
+  const tokens = [];
+  if (options.players !== false) {
+    for (const player of state.players || []) {
+      const fallbackLabel = Number.isInteger(Number(player?.id)) ? `Player ${Number(player.id) + 1}` : '';
+      for (const text of [formatPlayerLabel(player), player?.dynasty, fallbackLabel]) {
+        if (!text) continue;
+        tokens.push({
+          text,
+          html: () => renderPlayerChip(state, player),
+        });
+      }
+    }
+  }
+  if (options.provinces !== false) {
+    for (const theme of Object.values(state.themes || {})) {
+      if (!theme?.name) continue;
+      tokens.push({
+        text: theme.name,
+        html: () => renderProvinceBadge(state, theme, { compact: true }),
+      });
+    }
+  }
+  return uniqueMentionTokens(tokens);
+}
+
+export function renderCartouchedText(state, text, options = {}) {
+  const raw = String(text ?? '');
+  if (!raw) return '';
+  const tokens = buildCartoucheMentionTokens(state, options);
+  if (!tokens.length) return escapeHtml(raw);
+
+  let html = '';
+  let index = 0;
+  while (index < raw.length) {
+    const token = tokens.find((candidate) => mentionFitsAt(raw, candidate, index));
+    if (token) {
+      html += token.html();
+      index += token.text.length;
+      continue;
+    }
+    html += escapeHtml(raw[index]);
+    index += 1;
+  }
+  return html;
 }
 
 // ── Title cartouche ───────────────────────────────────────────────────

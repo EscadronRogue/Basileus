@@ -17,7 +17,7 @@ import {
   renderTitleRedistributionPanel,
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
-import { getPlayerStyleAttr, renderPlayerRoleName } from './labels.js';
+import { getPlayerStyleAttr, renderCartouchedText, renderPlayerRoleName } from './labels.js';
 import { renderIconSet } from './icons.js';
 
 export function createDefaultUiState() {
@@ -73,7 +73,7 @@ export function setPanelOpen(uiState, panelKey, open) {
   uiState.panels[panelKey] = Boolean(open);
 }
 
-const PROVINCE_INTERACTIVE_SELECTOR = '[data-map-province], [data-estate]';
+const PROVINCE_INTERACTIVE_SELECTOR = '[data-map-province], [data-province-token], [data-estate]';
 const NESTED_INTERACTIVE_CONTROL_SELECTOR = [
   'a[href]',
   'button',
@@ -90,6 +90,7 @@ const provinceSyncAborters = new WeakMap();
 
 function getProvinceInterfaceId(element) {
   return element?.dataset?.mapProvince
+    || element?.dataset?.provinceToken
     || element?.dataset?.estate
     || '';
 }
@@ -524,7 +525,7 @@ function getToastNotifications(notifications, uiState, scopeKey) {
     .slice(0, 3);
 }
 
-function renderNotificationCard(notification, uiState, scopeKey) {
+function renderNotificationCard(notification, uiState, scopeKey, state = null) {
   const read = isNotificationRead(uiState, scopeKey, notification.id);
   const tone = getNotificationTone(notification);
   return `
@@ -532,8 +533,8 @@ function renderNotificationCard(notification, uiState, scopeKey) {
       data-notification-id="${escapeHtml(notification.id)}"
       data-notification-scope="${escapeHtml(scopeKey)}">
       <div class="notification-card-main">
-        <div class="notification-title">${escapeHtml(notification.title)}</div>
-        <div class="notification-body">${escapeHtml(notification.body || '')}</div>
+        <div class="notification-title">${renderCartouchedText(state, notification.title)}</div>
+        <div class="notification-body">${renderCartouchedText(state, notification.body || '')}</div>
       </div>
       <div class="notification-meta">
         <span>${getNotificationActionLabel(notification.action)}</span>
@@ -543,7 +544,7 @@ function renderNotificationCard(notification, uiState, scopeKey) {
   `;
 }
 
-function renderNotificationToasts(notifications, uiState, scopeKey) {
+function renderNotificationToasts(notifications, uiState, scopeKey, state = null) {
   const toasts = getToastNotifications(notifications, uiState, scopeKey);
   if (!toasts.length) return '';
   return `
@@ -553,8 +554,8 @@ function renderNotificationToasts(notifications, uiState, scopeKey) {
         return `
         <div class="notification-toast tone-${tone}" data-notification-id="${escapeHtml(notification.id)}" data-notification-scope="${escapeHtml(scopeKey)}">
           <div>
-            <strong>${escapeHtml(notification.title)}</strong>
-            <span>${escapeHtml(notification.body || '')}</span>
+            <strong>${renderCartouchedText(state, notification.title)}</strong>
+            <span>${renderCartouchedText(state, notification.body || '')}</span>
           </div>
           <button type="button" aria-label="Dismiss notification" data-notification-scope="${escapeHtml(scopeKey)}" data-notification-dismiss="${escapeHtml(notification.id)}">&times;</button>
         </div>
@@ -614,12 +615,12 @@ export function renderNotificationsPanel(panel, state, privateData, uiState, sco
         <div class="sidebar-panel-body">
           ${notifications.length ? `
             <div class="notification-list">
-              ${notifications.map((notification) => renderNotificationCard(notification, uiState, scopeKey)).join('')}
+              ${notifications.map((notification) => renderNotificationCard(notification, uiState, scopeKey, state)).join('')}
             </div>
           ` : '<div class="notification-empty">No private notices right now.</div>'}
         </div>
       ` : ''}
-      ${renderNotificationToasts(notifications, uiState, scopeKey)}
+      ${renderNotificationToasts(notifications, uiState, scopeKey, state)}
     </div>
   `;
   scheduleNotificationToastDismissal(panel, notifications, uiState, scopeKey, onAutoDismiss);
@@ -743,7 +744,7 @@ export function renderGameActionPanel({
   }
 
   if (error) {
-    body.innerHTML = `<div class="action-error" role="alert">${escapeHtml(error)}</div>`;
+    body.innerHTML = `<div class="action-error" role="alert">${renderCartouchedText(state, error)}</div>`;
   }
 
   const shell = document.createElement('div');

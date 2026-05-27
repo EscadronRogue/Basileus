@@ -6,7 +6,12 @@ import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
 import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
 import { hydratePublicState, serializePublicGameState } from '../engine/publicState.js';
-import { renderPlayerRoleName, renderProvinceBadge, formatProvinceValuesText } from './labels.js';
+import {
+  renderCartouchedText,
+  renderPlayerRoleName,
+  renderProvinceBadge,
+  formatProvinceValuesText,
+} from './labels.js';
 import {
   renderCourtPanel,
   renderEstatesPanel,
@@ -17,6 +22,7 @@ import {
 } from './panels.js';
 import {
   createDefaultUiState,
+  bindProvinceInterfaceSync,
   getPhaseRenderKey,
   getPlayerTabEconomy,
   isNestedProvinceControlClick,
@@ -96,10 +102,14 @@ function withFakeDocument(callback) {
 
 test('province badges render the updated P/T/C economy and hide capital values', () => {
   const state = makeState();
+  const provinceHtml = renderProvinceBadge(state, 'OPS', { showValues: true });
 
   assert.equal(formatProvinceValuesText(state.themes.OPS), 'P1 T1 C1');
   assert.equal(formatProvinceValuesText(state.themes.CPL), '');
-  assert.match(renderProvinceBadge(state, 'OPS', { showValues: true }), /P1 T1 C1/);
+  assert.match(provinceHtml, /province-token-values/);
+  assert.match(provinceHtml, /icon-gold/);
+  assert.match(provinceHtml, /icon-troop/);
+  assert.match(provinceHtml, /icon-church/);
   assert.doesNotMatch(renderProvinceBadge(state, 'CPL', { showValues: true }), /province-token-values/);
 });
 
@@ -111,6 +121,18 @@ test('player cartouches escape custom multiplayer names', () => {
 
   assert.equal(html.includes(`&lt;img src=x onerror=alert(1)&gt; ${state.players[1].dynasty}`), true);
   assert.doesNotMatch(html, /<img src=x/);
+});
+
+test('running text upgrades player and province mentions into cartouches', () => {
+  const state = makeState();
+  const text = `<b>${state.players[1].dynasty}</b> negotiated in ${state.themes.OPS.name}.`;
+
+  const html = renderCartouchedText(state, text);
+
+  assert.match(html, /&lt;b&gt;/);
+  assert.doesNotMatch(html, /<b>/);
+  assert.match(html, /class="player-chip"/);
+  assert.match(html, /data-province-token="OPS"/);
 });
 
 test('title redistribution panel is its own phase panel', () => {
@@ -428,6 +450,56 @@ test('province card sync ignores nested estate bid controls', () => {
   assert.equal(isNestedProvinceControlClick(bidInput, estateCard), true);
   assert.equal(isNestedProvinceControlClick(bidButton, estateCard), true);
   assert.equal(isNestedProvinceControlClick(provinceButtonLabel, provinceButton), false);
+});
+
+test('standalone province cartouches participate in hover and selection sync', () => {
+  const handlers = {};
+  const classes = new Set();
+  const token = {
+    dataset: { provinceToken: 'OPS' },
+    parentElement: null,
+    classList: {
+      add: (...names) => names.forEach((name) => classes.add(name)),
+      remove: (...names) => names.forEach((name) => classes.delete(name)),
+    },
+    addEventListener(type, handler) {
+      handlers[type] = handler;
+    },
+    closest(selector) {
+      return selector.includes('data-province-token') ? this : null;
+    },
+  };
+  const rootHandlers = {};
+  const root = {
+    contains: (element) => element === token,
+    querySelectorAll(selector) {
+      if (selector === '.map-selected, .map-hovered') return [];
+      if (selector.includes('data-province-token')) return [token];
+      return [];
+    },
+    addEventListener(type, handler) {
+      rootHandlers[type] = handler;
+    },
+  };
+  const hoverEvents = [];
+  let selectedProvince = null;
+
+  bindProvinceInterfaceSync({
+    root,
+    selectedProvinceId: 'OPS',
+    hoveredProvinceId: 'OPS',
+    onSelectProvince: (provinceId) => { selectedProvince = provinceId; },
+    onHoverProvince: (provinceId) => hoverEvents.push(provinceId),
+  });
+
+  assert.equal(classes.has('map-selected'), true);
+  assert.equal(classes.has('map-hovered'), true);
+  handlers.pointerenter();
+  handlers.pointerleave();
+  rootHandlers.click({ target: token });
+
+  assert.deepEqual(hoverEvents, ['OPS', null]);
+  assert.equal(selectedProvince, 'OPS');
 });
 
 test('deployment panel uses funded armies and mercenary slider schema', () => {

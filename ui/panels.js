@@ -48,6 +48,8 @@ import { renderIcon, renderValue } from './icons.js';
 import {
   getPlayerStyleAttr,
   getProvinceRegionPalette,
+  renderCartouchedText,
+  renderPlayerChip,
   renderPlayerRoleName,
   renderOwnershipBadge,
   renderProvinceBadge,
@@ -703,7 +705,7 @@ export function renderHistoryPanel(container, state, options = {}) {
                 <span class="history-entry-round">R${entry.round}</span>
                 <span class="history-entry-phase">${escapeHtml(entry.phase)}</span>
               </header>
-              <div class="history-entry-summary">${escapeHtml(entry.summary)}</div>
+              <div class="history-entry-summary">${renderCartouchedText(state, entry.summary)}</div>
             </article>
           `).join('') : '<div class="panel-empty">No history yet.</div>'}
         </div>
@@ -938,25 +940,25 @@ function renderCourtSeatTitleCartouche(state, kind, theme, holderId) {
   const holder = courtSeatHolder(state, holderId);
   const titleKind = courtSeatTitleKind(kind);
   if (titleKind) {
-    return renderTitleBadge(state, titleKind, {
+    return `${renderTitleBadge(state, titleKind, {
       holderId: holder?.id ?? null,
       themeId: theme.id,
       compact: true,
-      label: `${courtSeatShortLabel(kind)} ${theme.name}`,
-    });
+      label: courtSeatShortLabel(kind),
+    })} of ${renderProvinceBadge(state, theme, { compact: true })}`;
   }
   if (kind === 'estate' && holder) {
     const palette = getProvinceRegionPalette(theme);
-    return renderOwnershipBadge(state, {
+    return `${renderOwnershipBadge(state, {
       kind,
       holderId: holder.id,
       color: holder.color || '#5a3810',
       accent: palette.outline,
     }, {
       compact: true,
-      label: `Estate ${theme.name}`,
+      label: 'Estate',
       title: `Private estate in ${theme.name}: ${playerDisplayLabel(holder)}`,
-    });
+    })} in ${renderProvinceBadge(state, theme, { compact: true })}`;
   }
   if (kind === 'estate') {
     const palette = getProvinceRegionPalette(theme);
@@ -965,8 +967,9 @@ function renderCourtSeatTitleCartouche(state, kind, theme, holderId) {
         style="--ownership-accent: ${palette.outline};"
         title="Private estate" aria-label="Private estate">
         <span class="ownership-mark" aria-hidden="true"></span>
-        <span class="ownership-text">${escapeHtml(`Estate ${theme.name}`)}</span>
+        <span class="ownership-text">Estate</span>
       </span>
+      in ${renderProvinceBadge(state, theme, { compact: true })}
     `;
   }
   return '';
@@ -1965,11 +1968,11 @@ function renderOrderLockNotice(state, orderLocks) {
   const rows = [];
   if (orderLocks.candidateId != null) {
     const candidate = getPlayer(state, Number(orderLocks.candidateId));
-    rows.push(`Coup rank: ${escapeHtml(playerDisplayLabel(candidate))} stays pledged`);
+    rows.push(`Coup rank: ${renderPlayerChip(state, candidate, `Player ${Number(orderLocks.candidateId) + 1}`)} stays pledged`);
   }
   for (const office of orderLocks.officeSelections || []) {
     const destination = office.destination === 'capital' ? 'Capital' : 'Frontier';
-    rows.push(`${escapeHtml(office.officeName || office.officeKey)} -> ${destination}`);
+    rows.push(`${renderCartouchedText(state, office.officeName || office.officeKey)} -> ${destination}`);
   }
   if (!rows.length) return '';
 
@@ -1990,7 +1993,7 @@ function renderDeploymentPreview(state, playerId, draft, armyKeys) {
   const candidateSupport = normalizeCoupSupport(state, draft.candidateSupport);
   const topSupportedId = ranking.find((candidateId) => candidateSupport[candidateId] !== false);
   const topPreference = getPlayer(state, topSupportedId ?? playerId);
-  const preferenceLabel = topPreference ? escapeHtml(playerDisplayLabel(topPreference)) : 'Rank claimants';
+  const preferenceLabel = topPreference ? renderPlayerChip(state, topPreference) : 'Rank claimants';
   return `
     <div class="deployment-preview" data-deployment-preview>
       <div class="deployment-preview-row">
@@ -2682,8 +2685,8 @@ function renderCoupResultCard(state, coup) {
   const zeroBallotSummary = zeroBallots.length
     ? `No capital troops from ${zeroBallots.map((ballot) => {
       const voter = getPlayer(state, Number(ballot.playerId));
-      return `${escapeHtml(playerDisplayLabel(voter))}`;
-    }).join(', ')}.`
+      return renderPlayerChip(state, voter, `Player ${Number(ballot.playerId) + 1}`);
+    }).join(' ')}.`
     : '';
 
   return `
@@ -2714,7 +2717,7 @@ function renderCoupResultCard(state, coup) {
                         const value = Number(entry.votes ?? entry.troops) || 0;
                         const sourceLabel = entry.passive
                           ? escapeHtml(entry.supportLabel || 'Passive support')
-                          : escapeHtml(playerDisplayLabel(supporter));
+                          : renderPlayerChip(state, supporter, `Player ${Number(entry.playerId) + 1}`);
                         return `${sourceLabel} ${renderValue('troop', value, { signed: entry.passive, displayValue: Math.round(value * 100) / 100 })}`;
                       }).join(' ')}
                     </span>

@@ -466,6 +466,7 @@ body::before {
   -webkit-user-select: none;
   -webkit-user-drag: none;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .game-map:focus-visible { outline: none; }
@@ -2724,6 +2725,7 @@ body::before {
   line-height: 1.5;
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  text-transform: none;
   white-space: nowrap;
   overflow-wrap: anywhere;
   vertical-align: baseline;
@@ -3108,6 +3110,8 @@ body::before {
 .player-chip {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
   gap: 6px;
   padding: 3px 9px 3px 4px;
   border: 2px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
@@ -3122,12 +3126,19 @@ body::before {
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.5px;
+  line-height: 1.25;
+  text-transform: none;
   box-shadow:
     inset 0 0 0 1px rgba(240,200,90,0.5),
     inset 0 1px 0 rgba(255,250,228,0.18),
     inset 0 -1px 0 rgba(20,8,0,0.22);
   vertical-align: baseline;
   white-space: nowrap;
+}
+.player-chip .chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .player-chip .chip-initial {
   width: 18px;
@@ -4548,6 +4559,18 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.balance-legend-name .player-chip {
+  max-width: 100%;
+  padding: 2px 7px 2px 3px;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+  vertical-align: middle;
+}
+.balance-legend-name .player-chip .chip-initial {
+  width: 15px;
+  height: 15px;
+  font-size: 8.5px;
+}
 
 .balance-legend-share {
   font-family: var(--font-display);
@@ -5512,15 +5535,20 @@ textarea {
 }
 .court-link-seat-token {
   display: inline-flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: flex-end;
+  gap: 4px;
   width: 100%;
-  max-width: 210px;
+  max-width: 260px;
   min-width: 0;
+  color: var(--umber-3);
+  font-family: var(--font-body);
+  font-size: 10.5px;
 }
 .court-link-seat-token .title-token.compact,
 .court-link-seat-token .ownership-badge.compact {
-  width: 100%;
+  flex: 0 1 auto;
+  width: auto;
   max-width: 100%;
   justify-content: center;
   box-sizing: border-box;
@@ -5531,6 +5559,16 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.court-link-seat-token .province-token.compact {
+  flex: 1 1 88px;
+  min-width: 0;
+  max-width: 132px;
+  justify-content: center;
+  padding: 3px 7px 4px;
+  border-width: 4px;
+  font-size: 9.5px;
+  line-height: 1.05;
 }
 .court-link-seat-token .ownership-badge.compact {
   min-height: 27px;
@@ -5803,6 +5841,15 @@ textarea {
   background: rgba(255,252,240,0.78);
   border: 1px solid rgba(168,116,32,0.18);
   color: var(--umber-2);
+}
+.deployment-preview-note .player-chip,
+.order-lock-list .player-chip,
+.order-lock-list .province-token.compact,
+.vote-supporters .player-chip,
+.vote-zero-list .player-chip {
+  margin: 0 2px;
+  vertical-align: middle;
+  font-style: normal;
 }
 .army-card {
   display: flex;
@@ -7518,13 +7565,21 @@ textarea {
 }
 
 .estate-card[data-map-province]:not(.disabled),
-[data-map-province] .province-token {
+[data-map-province] .province-token,
+.province-token[data-province-token] {
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled .province-token[data-province-token],
+.disabled .province-token[data-province-token] {
+  cursor: default;
 }
 
 .province-token.map-hovered,
 .choice-btn.map-hovered .province-token,
-.estate-card.map-hovered .province-token {
+.estate-card.map-hovered .province-token,
+.court-wire-seat.map-hovered .province-token {
   filter: brightness(1.07) saturate(1.04);
   box-shadow:
     inset 0 0 0 1px rgba(240,200,90,0.72),
@@ -7534,7 +7589,8 @@ textarea {
 
 .province-token.map-selected,
 .choice-btn.map-selected .province-token,
-.estate-card.map-selected .province-token {
+.estate-card.map-selected .province-token,
+.court-wire-seat.map-selected .province-token {
   filter: brightness(1.06) saturate(1.06);
   box-shadow:
     inset 0 0 0 1px rgba(240,200,90,0.90),
@@ -7546,6 +7602,18 @@ textarea {
 .choice-btn.map-hovered,
 .choice-btn.map-selected {
   filter: brightness(1.04);
+}
+
+.notification-title .player-chip,
+.notification-title .province-token.compact,
+.notification-body .player-chip,
+.notification-body .province-token.compact,
+.history-entry-summary .player-chip,
+.history-entry-summary .province-token.compact,
+.action-error .player-chip,
+.action-error .province-token.compact {
+  margin: 0 2px;
+  vertical-align: middle;
 }
 
 .estate-card.map-hovered:not(.disabled),
