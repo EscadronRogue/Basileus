@@ -1130,8 +1130,20 @@ function buildCourtConnectionEntries(state, playerId, powerKey, draft) {
   return entries;
 }
 
-function courtWireY(index) {
-  return 29 + (Math.max(0, Number(index) || 0) * 58);
+const COURT_WIRE_STEP = 58;
+const COURT_WIRE_NARROW_STEP = 76;
+
+function getCourtWireStep() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return COURT_WIRE_STEP;
+  }
+  return window.matchMedia('(max-width: 560px)').matches
+    ? COURT_WIRE_NARROW_STEP
+    : COURT_WIRE_STEP;
+}
+
+function courtWireY(index, step = COURT_WIRE_STEP) {
+  return Math.round(step / 2) + (Math.max(0, Number(index) || 0) * step);
 }
 
 function renderCourtWireSeat(entry, index, active) {
@@ -1205,8 +1217,9 @@ function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, p
 
 function renderCourtWireLine(entry, entryIndex, playerIndex, player, options = {}) {
   if (!player || playerIndex < 0) return '';
-  const y1 = courtWireY(entryIndex);
-  const y2 = courtWireY(playerIndex);
+  const step = options.step || COURT_WIRE_STEP;
+  const y1 = courtWireY(entryIndex, step);
+  const y2 = courtWireY(playerIndex, step);
   const midX = 510;
   const midY = Math.round((y1 + y2) / 2);
   const stroke = escapeHtml(player.color || '#5a3810');
@@ -1234,9 +1247,9 @@ function renderCourtWireLine(entry, entryIndex, playerIndex, player, options = {
   `;
 }
 
-function renderCourtDraftWire(entry, entryIndex) {
+function renderCourtDraftWire(entry, entryIndex, step = COURT_WIRE_STEP) {
   if (!entry || entryIndex < 0) return '';
-  const y = courtWireY(entryIndex);
+  const y = courtWireY(entryIndex, step);
   const label = `Tie ${entry.label}`;
   return `
     <g class="court-wire-link drawing" data-wire-draft-key="${escapeHtml(entry.key || '')}" aria-label="${escapeHtml(label)}">
@@ -1304,7 +1317,7 @@ function layoutCourtWireRows(entries, players) {
   };
 }
 
-function renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout) {
+function renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout, wireStep = COURT_WIRE_STEP) {
   const lines = [];
   entries.forEach((entry, entryIndex) => {
     const linePlayerId = normalizeWirePlayerId(entry.plannedHolderId ?? (entry.mode === 'bound' ? entry.holderId : null));
@@ -1320,6 +1333,7 @@ function renderCourtWireLines(state, entries, players, draft, playerId, powerKey
         : `Revoke ${entry.label}`,
       disabledReason: entry.revokeDisabledReason || '',
       lineKey: entry.key,
+      step: wireStep,
       actionAttrs: isPlannedAppointment
         ? `data-plan-remove="${escapeHtml(courtPlanActionKey(entry.plannedAction))}" aria-label="${escapeHtml(`Remove planned appointment for ${entry.label}`)}"`
         : `data-link-revoke="${escapeHtml(entry.revokeValue)}" data-revoke-pick="${escapeHtml(entry.revokeValue)}" aria-label="${escapeHtml(`Revoke ${entry.label}`)}"`,
@@ -1330,7 +1344,7 @@ function renderCourtWireLines(state, entries, players, draft, playerId, powerKey
   if (activeOpenEntry && wireStart?.kind === activeOpenEntry.kind && wireStart?.themeId === activeOpenEntry.theme.id) {
     const entryIndex = entries.findIndex((entry) => entry.key === activeOpenEntry.key);
     const entryRow = layout?.entryRows?.get(activeOpenEntry.key) ?? entryIndex;
-    lines.push(renderCourtDraftWire(activeOpenEntry, entryRow));
+    lines.push(renderCourtDraftWire(activeOpenEntry, entryRow, wireStep));
   }
   return lines.join('');
 }
@@ -1379,7 +1393,8 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
     .map(normalizeWirePlayerId)
     .filter((id) => id != null));
   const rows = layout.rows;
-  const height = rows * 58;
+  const wireStep = getCourtWireStep();
+  const height = rows * wireStep;
   const openCount = openEntries.length;
   const cutCount = entries.filter((entry) => entry.mode === 'cut').length;
   const boundCount = entries.filter((entry) => entry.mode === 'bound' || entry.mode === 'planned').length;
@@ -1395,7 +1410,7 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
         <span class="appointment-section-title">Links</span>
         <span class="court-link-section-note">${boundCount} tied, ${openCount} open${cutCount ? `, ${cutCount} cut` : ''}. Click a seat circle, guide the rope, then click a dynasty circle. Click a tied rope to cut it.</span>
       </header>
-      <div class="court-wire-board${wireKey ? ' tying' : ''}${boundCount > 8 ? ' many-bound' : ''}" style="--wire-rows: ${rows};" data-court-wire-board data-court-power-key="${escapeHtml(powerKey || '')}">
+      <div class="court-wire-board${wireKey ? ' tying' : ''}${boundCount > 8 ? ' many-bound' : ''}" style="--wire-rows: ${rows}; --wire-step: ${wireStep}px;" data-court-wire-board data-court-power-key="${escapeHtml(powerKey || '')}">
         <div class="court-wire-col-head seats">Seats</div>
         <div class="court-wire-col-head players">Dynasties</div>
         <div class="court-wire-seats">
@@ -1406,7 +1421,7 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
             .join('')}
         </div>
         <svg class="court-wire-svg" viewBox="0 0 1000 ${height}" preserveAspectRatio="none" aria-hidden="false">
-          ${renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout)}
+          ${renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout, wireStep)}
         </svg>
         <div class="court-wire-players">
           ${players.map((player) => renderCourtWirePlayerButton(state, player, layout.playerRows.get(player.id) ?? 0, activeOpenEntry, draft, playerId, powerKey, linkedPlayerIds)).join('')}

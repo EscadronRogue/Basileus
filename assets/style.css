@@ -2832,6 +2832,10 @@ body::before {
 
 .province-office-token {
   align-items: center;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  flex-wrap: wrap;
 }
 
 .province-office-prefix {
@@ -2839,7 +2843,7 @@ body::before {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  max-width: 58%;
+  max-width: 100%;
   padding-right: 7px;
   margin-right: 1px;
   border-right: 1px solid rgba(240,200,90,0.42);
@@ -2847,8 +2851,16 @@ body::before {
 
 .province-office-kind {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.province-office-token .province-token-name {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .province-office-mark {
@@ -5724,6 +5736,9 @@ textarea {
   padding: 3px 7px 4px;
   font-size: 9.5px;
   line-height: 1.05;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .court-link-seat-token .province-office-prefix {
   flex: 0 0 auto;
@@ -5792,22 +5807,22 @@ textarea {
     font-size: 10.5px;
     line-height: 1.12;
     gap: 4px;
-    white-space: nowrap;
-    overflow: hidden;
+    white-space: normal;
+    overflow: visible;
     text-overflow: clip;
   }
   .court-link-seat-token .province-office-prefix {
-    flex: 0 1 clamp(48px, 36%, 72px);
-    max-width: clamp(48px, 36%, 72px);
+    flex: 0 0 auto;
+    max-width: 100%;
     min-width: 0;
     padding-right: 5px;
-    overflow: hidden;
+    overflow: visible;
   }
   .court-link-seat-token .province-office-kind,
   .court-link-seat-token .province-token-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
     overflow-wrap: anywhere;
   }
   .court-link-seat-token .province-token-name {
@@ -5832,29 +5847,53 @@ textarea {
 }
 @media (max-width: 560px) {
   .court-link-section {
-    padding: 10px 8px;
+    padding: 10px 4px;
   }
   .court-wire-board {
-    gap: 4px 10px;
+    --wire-step: 76px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4px 4px;
   }
   .court-wire-seat,
   .court-wire-player {
-    gap: 5px;
+    height: auto;
+    min-height: 62px;
+    gap: 4px;
+  }
+  .court-wire-seat {
+    padding-right: 0;
+  }
+  .court-wire-player {
+    padding-left: 0;
+  }
+  .court-wire-socket {
+    width: 15px;
+    height: 15px;
+    border-width: 2.5px;
   }
   .court-wire-seat-copy {
-    width: min(150px, 100%);
+    width: 100%;
   }
   .court-link-seat-token .province-office-token {
-    min-height: 34px;
-    padding: 4px 6px 5px;
+    min-height: 54px;
+    padding: 4px 5px 5px;
     border-width: 3px;
     font-size: 10px;
+    line-height: 1.16;
+    row-gap: 3px;
   }
   .court-link-seat-token .province-office-prefix {
-    flex: 0 0 38px;
-    max-width: 38px;
+    flex: 1 0 100%;
+    max-width: 100%;
     gap: 3px;
-    padding-right: 4px;
+    margin-right: 0;
+    padding-right: 0;
+    padding-bottom: 2px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(240,200,90,0.42);
+  }
+  .court-link-seat-token .province-token-name {
+    flex: 1 0 100%;
   }
 }
 .court-power-done {
