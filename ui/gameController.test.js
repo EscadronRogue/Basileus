@@ -291,6 +291,86 @@ test('court plan preview shows new appointments as tied ropes', () => {
   assert.doesNotMatch(container.innerHTML, /court-wire-link pending/);
 });
 
+test('court panel applies revocation cooldown to the current draft sequence', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  state.players[1].revocationCooldown = { lastRevokedPlayerId: 2 };
+  state.themes.OPS.strategos = 2;
+  state.themes.KAP.strategos = 3;
+  state.themes.OPT.strategos = 3;
+  const container = makePanelContainer();
+
+  renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*aria-disabled="true"[^>]*>/);
+  assert.match(container.innerHTML, /cannot revoke .* twice in a row/);
+
+  const uiState = createDefaultUiState();
+  uiState.drafts[`court:${state.round}:1`] = {
+    plannedActions: [{ action: 'revoke', value: 'minor:KAP:strategos', powerKey: 'DOM_EAST' }],
+    plannedPassPowers: [],
+  };
+
+  renderCourtPanel(container, state, 1, {}, { uiState });
+
+  assert.doesNotMatch(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*aria-disabled="true"[^>]*>/);
+  assert.match(container.innerHTML, /data-revoke-pick="minor:OPT:strategos"[^>]*aria-disabled="true"[^>]*>/);
+  assert.match(container.innerHTML, /class="court-wire-player[^"]*cooldown[^"]*"[^>]*data-wire-player-row="3"/);
+});
+
+test('court panel applies self-appointment cooldown to the current draft sequence', () => {
+  const state = makeState();
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+  const container = makePanelContainer();
+  const selfDraft = createDefaultUiState();
+  selfDraft.drafts[`court:${state.round}:1`] = {
+    plannedActions: [{
+      action: 'appoint-strategos',
+      titleKey: 'DOM_EAST',
+      themeId: 'OPS',
+      appointeeId: 1,
+      powerKey: 'DOM_EAST',
+    }],
+    plannedPassPowers: [],
+  };
+
+  renderCourtPanel(container, state, 1, {}, { uiState: selfDraft });
+
+  assert.match(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /You cannot appoint yourself twice in a row/);
+
+  state.players[1].appointmentCooldown = { selfLocked: true };
+  const unlockedDraft = createDefaultUiState();
+  unlockedDraft.drafts[`court:${state.round}:1`] = {
+    plannedActions: [{
+      action: 'appoint-strategos',
+      titleKey: 'DOM_EAST',
+      themeId: 'OPS',
+      appointeeId: 2,
+      powerKey: 'DOM_EAST',
+    }],
+    plannedPassPowers: [],
+  };
+
+  renderCourtPanel(container, state, 1, {}, { uiState: unlockedDraft });
+
+  assert.doesNotMatch(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
+});
+
 test('court panel validates multiplayer public snapshots without private logs', () => {
   const state = makeState();
   state.phase = 'court';
@@ -330,6 +410,8 @@ test('court panel keeps mixed actions open but blocks same-turn title reversals'
   renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
 
   assert.match(container.innerHTML, /1\/2 actions \(1 appointment\)/);
+  assert.match(container.innerHTML, /court-action-budget/);
+  assert.match(container.innerHTML, /<strong>1<\/strong> left of 2/);
   assert.match(container.innerHTML, /1 action remains for this office/);
   assert.match(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*aria-disabled="true"[^>]*>/);
   assert.match(container.innerHTML, /was appointed this turn and cannot be revoked until next turn/);

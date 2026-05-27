@@ -5234,6 +5234,68 @@ textarea {
   text-transform: uppercase;
   color: var(--umber-3);
 }
+.court-action-budget {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 2px 0 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(168,116,32,0.24);
+  border-radius: var(--r-sm);
+  background: rgba(255,248,224,0.68);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.42);
+}
+.court-action-budget-label,
+.court-action-budget-count,
+.court-action-budget-draft {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.15px;
+  text-transform: uppercase;
+}
+.court-action-budget-label {
+  color: var(--umber-3);
+}
+.court-action-budget-count {
+  color: var(--umber-1);
+}
+.court-action-budget-count strong {
+  font-size: 14px;
+  color: var(--crimson-1);
+}
+.court-action-budget-draft {
+  padding: 2px 7px;
+  border: 1px solid rgba(168,116,32,0.26);
+  border-radius: 999px;
+  background: rgba(255,252,240,0.72);
+  color: var(--gold-1);
+}
+.court-action-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.court-action-pip {
+  width: 18px;
+  height: 8px;
+  border: 1px solid rgba(126,82,21,0.28);
+  border-radius: 999px;
+  background: rgba(255,252,240,0.88);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.45);
+}
+.court-action-pip.used {
+  background: linear-gradient(180deg, rgba(122,80,30,0.82), rgba(85,54,24,0.88));
+  border-color: rgba(71,43,20,0.54);
+}
+.court-action-pip.planned {
+  background: linear-gradient(180deg, rgba(196,42,62,0.88), rgba(139,20,42,0.90));
+  border-color: rgba(117,16,32,0.60);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,236,205,0.30),
+    0 0 0 2px rgba(196,42,62,0.12);
+}
 .court-choice-lane {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
@@ -5526,6 +5588,14 @@ textarea {
   cursor: not-allowed;
   opacity: 0.42;
 }
+.court-wire-player.cooldown:not(.disabled) {
+  opacity: 0.64;
+  filter: grayscale(0.85) saturate(0.42);
+}
+.court-wire-player.cooldown:not(.disabled):hover,
+.court-wire-player.cooldown:not(.disabled):focus-visible {
+  opacity: 0.84;
+}
 .court-wire-seat.disabled {
   cursor: not-allowed;
   opacity: 0.52;
@@ -5599,6 +5669,20 @@ textarea {
   .court-wire-board {
     grid-template-columns: minmax(96px, 1fr) minmax(100px, 1fr);
     gap: 3px 54px;
+  }
+  .court-wire-player .player-chip,
+  .title-redist-player-token .player-chip {
+    white-space: normal;
+    align-items: center;
+    padding-right: 6px;
+  }
+  .court-wire-player .player-chip .chip-label,
+  .title-redist-player-token .player-chip .chip-label {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.05;
   }
   .court-wire-player .candidate-name {
     font-size: 12px;

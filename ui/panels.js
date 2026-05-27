@@ -870,31 +870,31 @@ function getAppointmentPayload(powerKey, targetKey, appointeeId) {
   return { action: 'appoint-strategos', titleKey: powerKey, themeId: targetKey, appointeeId: normalizedAppointeeId };
 }
 
-function getAppointmentDisabledReason(state, playerId, powerKey, targetKey, appointeeId) {
+function getAppointmentDisabledReason(state, playerId, powerKey, targetKey, appointeeId, draft = null) {
   const payload = getAppointmentPayload(powerKey, targetKey, appointeeId);
   if (!payload) return 'Make both picks first.';
-  const result = validateCourtPayload(state, playerId, payload);
+  const result = validateCourtPayloadWithDraft(state, playerId, draft, payload);
   return result.ok ? '' : result.reason;
 }
 
-function getTargetDisabledReason(state, playerId, powerKey, targetKey) {
+function getTargetDisabledReason(state, playerId, powerKey, targetKey, draft = null) {
   let firstReason = '';
   for (const player of state.players || []) {
-    const reason = getAppointmentDisabledReason(state, playerId, powerKey, targetKey, player.id);
+    const reason = getAppointmentDisabledReason(state, playerId, powerKey, targetKey, player.id, draft);
     if (!reason) return '';
     if (!firstReason) firstReason = reason;
   }
   return firstReason || 'No legal appointee right now.';
 }
 
-function getAppointeeDisabledReason(state, playerId, powerKey, targets, appointeeId, selectedTargetKey = null) {
+function getAppointeeDisabledReason(state, playerId, powerKey, targets, appointeeId, selectedTargetKey = null, draft = null) {
   if (selectedTargetKey) {
-    return getAppointmentDisabledReason(state, playerId, powerKey, selectedTargetKey, appointeeId);
+    return getAppointmentDisabledReason(state, playerId, powerKey, selectedTargetKey, appointeeId, draft);
   }
   let firstReason = '';
   for (const target of targets || []) {
     const targetKey = target.key || target.id;
-    const reason = getAppointmentDisabledReason(state, playerId, powerKey, targetKey, appointeeId);
+    const reason = getAppointmentDisabledReason(state, playerId, powerKey, targetKey, appointeeId, draft);
     if (!reason) return '';
     if (!firstReason) firstReason = reason;
   }
@@ -1006,12 +1006,37 @@ function validateCourtPlan(state, playerId, actions) {
   return { ok: true };
 }
 
-function queueCourtPlannedAction(state, playerId, draft, action) {
-  const actions = ensureCourtPlan(draft);
+function getCourtPlanActionsWithCandidate(draft, action) {
   const actionKey = courtPlanActionKey(action);
-  const nextActions = actions
+  return ensureCourtPlan(draft)
     .filter((entry) => courtPlanActionKey(entry) !== actionKey)
     .concat(action);
+}
+
+function validateCourtPayloadWithDraft(state, playerId, draft, payload) {
+  if (!draft) return validateCourtPayload(state, playerId, payload);
+  return validateCourtPlan(state, playerId, getCourtPlanActionsWithCandidate(draft, payload));
+}
+
+function getCourtDraftPreviewState(state, playerId, draft) {
+  const clone = cloneStateForValidation(state);
+  for (const action of ensureCourtPlan(draft)) {
+    const result = applyCourtAction(clone, playerId, action);
+    if (!result?.ok) break;
+  }
+  return clone;
+}
+
+function getCourtDraftCooldowns(state, playerId, draft) {
+  const preview = getCourtDraftPreviewState(state, playerId, draft);
+  const revocationTargetId = Number(getPlayer(preview, playerId)?.revocationCooldown?.lastRevokedPlayerId);
+  return {
+    revocationTargetId: Number.isInteger(revocationTargetId) ? revocationTargetId : null,
+  };
+}
+
+function queueCourtPlannedAction(state, playerId, draft, action) {
+  const nextActions = getCourtPlanActionsWithCandidate(draft, action);
   const validation = validateCourtPlan(state, playerId, nextActions);
   if (!validation.ok) {
     draft.planError = validation.reason || 'That plan is not legal.';
@@ -1058,7 +1083,7 @@ function getCourtAppointmentDraft(draft, kind) {
   return kind === 'bishop' ? (draft.appointBishop || {}) : (draft.appointStrategos || {});
 }
 
-function buildCourtConnectionEntries(state, playerId, powerKey) {
+function buildCourtConnectionEntries(state, playerId, powerKey, draft) {
   const entries = [];
   const seen = new Set();
   const addEntry = (entry) => {
@@ -1069,7 +1094,7 @@ function buildCourtConnectionEntries(state, playerId, powerKey) {
 
   getRevocationTargets(state, playerId, powerKey)
     .map((target) => {
-      const result = validateCourtPayload(state, playerId, { action: 'revoke', value: target.value });
+      const result = validateCourtPayloadWithDraft(state, playerId, draft, { action: 'revoke', value: target.value, powerKey });
       return { ...target, disabledReason: result.ok ? '' : result.reason };
     })
     .forEach((target) => {
@@ -1109,7 +1134,7 @@ function buildCourtConnectionEntries(state, playerId, powerKey) {
       targetAttr,
       playerAttr,
       buttonLabel,
-      targetDisabledReason: getTargetDisabledReason(state, playerId, powerKey, theme.id),
+      targetDisabledReason: getTargetDisabledReason(state, playerId, powerKey, theme.id, draft),
     });
   };
 
@@ -1154,9 +1179,13 @@ function renderCourtWireSeat(entry, index, active) {
   `;
 }
 
-function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, playerId, powerKey, linkedPlayerIds) {
+function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, playerId, powerKey, linkedPlayerIds, cooldowns = {}) {
   const isActiveOpen = Boolean(activeEntry);
   const linked = linkedPlayerIds.has(player.id);
+  const revocationLocked = cooldowns.revocationTargetId === player.id;
+  const revocationLockReason = revocationLocked
+    ? `${playerDisplayLabel(player)} was the last dynasty revoked. Revoke someone else before targeting them again.`
+    : '';
   let disabledReason = '';
   let selected = false;
   let dataAttrs = '';
@@ -1165,7 +1194,7 @@ function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, p
     const targets = activeEntry.kind === 'bishop'
       ? getBishopTargets(state, playerId)
       : getStrategosTargets(state, playerId, powerKey);
-    disabledReason = getAppointeeDisabledReason(state, playerId, powerKey, targets, player.id, activeEntry.theme.id);
+    disabledReason = getAppointeeDisabledReason(state, playerId, powerKey, targets, player.id, activeEntry.theme.id, draft);
     selected = Number(appoint.playerId) === player.id && appoint.themeId === activeEntry.theme.id;
     dataAttrs = `
       data-${activeEntry.targetAttr}="${activeEntry.theme.id}"
@@ -1183,11 +1212,15 @@ function renderCourtWirePlayerButton(state, player, index, activeEntry, draft, p
     : '';
   return `
     <button type="button"
-      class="court-wire-player${linked ? ' linked' : ''}${selected ? ' selected' : ''}${disabledReason ? ' disabled' : ''}"
+      class="court-wire-player${linked ? ' linked' : ''}${selected ? ' selected' : ''}${revocationLocked ? ' cooldown' : ''}${disabledReason ? ' disabled' : ''}"
       style="--wire-row: ${index + 1}; ${getPlayerStyleAttr(state, player.id)}"
       data-wire-player-row="${player.id}"
       ${dataAttrs}
-      ${disabledReason ? disabledChoiceAttrs(disabledReason, playerDisplayLabel(player)) : ''}>
+      ${disabledReason
+        ? disabledChoiceAttrs(disabledReason, playerDisplayLabel(player))
+        : revocationLockReason
+          ? `title="${escapeHtml(revocationLockReason)}" aria-label="${escapeHtml(`${playerDisplayLabel(player)} - ${revocationLockReason}`)}"`
+          : ''}>
       <span class="court-wire-socket court-wire-player-socket" ${socketAttrs} aria-hidden="true"></span>
       ${renderPlayerChip(state, player)}
     </button>
@@ -1328,7 +1361,8 @@ function renderCourtWireLines(state, entries, players, draft, playerId, powerKey
 
 function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
   const plannedActions = getPlannedCourtActionsForPower(draft, powerKey);
-  const entries = buildCourtConnectionEntries(state, playerId, powerKey).map((entry) => {
+  const cooldowns = getCourtDraftCooldowns(state, playerId, draft);
+  const entries = buildCourtConnectionEntries(state, playerId, powerKey, draft).map((entry) => {
     const plannedAction = getPlannedActionForEntry(entry, plannedActions);
     if (!plannedAction) return entry;
     if (plannedAction.action === 'revoke') {
@@ -1400,7 +1434,7 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
           ${renderCourtWireLines(state, entries, players, draft, playerId, powerKey, activeOpenEntry, layout)}
         </svg>
         <div class="court-wire-players">
-          ${players.map((player) => renderCourtWirePlayerButton(state, player, layout.playerRows.get(player.id) ?? 0, activeOpenEntry, draft, playerId, powerKey, linkedPlayerIds)).join('')}
+          ${players.map((player) => renderCourtWirePlayerButton(state, player, layout.playerRows.get(player.id) ?? 0, activeOpenEntry, draft, playerId, powerKey, linkedPlayerIds, cooldowns)).join('')}
         </div>
       </div>
       ${warningRows.length ? `
@@ -1441,6 +1475,31 @@ function courtPowerCountLabel(count, singular, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function renderCourtActionBudget(actionCount, plannedCount, actionLimit, powerLabel) {
+  const committed = Math.max(0, Number(actionCount) || 0);
+  const planned = Math.max(0, Number(plannedCount) || 0);
+  const limit = Math.max(0, Number(actionLimit) || 0);
+  const usedAfterPlan = Math.min(limit, committed + planned);
+  const remaining = Math.max(0, limit - usedAfterPlan);
+  const pips = Array.from({ length: limit }, (_, index) => {
+    const stateClass = index < committed ? 'used' : index < committed + planned ? 'planned' : 'free';
+    return `<span class="court-action-pip ${stateClass}"></span>`;
+  }).join('');
+  const summary = [
+    `${committed} used`,
+    planned ? `${planned} drafted` : '',
+    `${remaining} left`,
+  ].filter(Boolean).join(', ');
+  return `
+    <div class="court-action-budget" aria-label="${escapeHtml(`${powerLabel}: ${summary} out of ${limit} actions.`)}">
+      <span class="court-action-budget-label">Actions</span>
+      <span class="court-action-pips" aria-hidden="true">${pips}</span>
+      <span class="court-action-budget-count"><strong>${remaining}</strong> left of ${limit}</span>
+      ${planned ? `<span class="court-action-budget-draft">${planned} planned</span>` : ''}
+    </div>
+  `;
+}
+
 function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const plannedActions = getPlannedCourtActionsForPower(draft, powerKey);
   const usedKinds = getCourtPowerActionKinds(state, playerId, powerKey);
@@ -1454,6 +1513,8 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const connectionsHtml = renderCourtConnectionsForPower(state, playerId, draft, powerKey);
   const actionLimit = getCourtPowerActionLimit(powerKey);
   const remainingActions = Math.max(0, actionLimit - actionCount);
+  const remainingAfterPlan = Math.max(0, actionLimit - actionCount - plannedActions.length);
+  const powerLabel = getCourtPowerLabel(powerKey);
   const usedParts = [
     appointmentCount ? courtPowerCountLabel(appointmentCount, 'appointment') : '',
     revocationCount ? courtPowerCountLabel(revocationCount, 'revocation') : '',
@@ -1467,6 +1528,8 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
       : 'Choose actions';
   const hint = passed
     ? ''
+    : plannedActions.length
+    ? `${courtPowerCountLabel(remainingAfterPlan, 'action')} will remain if you lock this draft.`
     : actionCount > 0 && !exhausted
     ? `${courtPowerCountLabel(remainingActions, 'action')} remains for this office.`
     : !exhausted && powerKey === 'BASILEUS'
@@ -1500,6 +1563,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
         ${renderCourtPowerBadge(state, playerId, powerKey)}
         <span class="court-power-state">${stateText}</span>
       </header>
+      ${renderCourtActionBudget(actionCount, plannedActions.length, actionLimit, powerLabel)}
       ${hint ? `<p class="section-hint">${hint}</p>` : ''}
       ${body}
     </section>
@@ -1568,7 +1632,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
       const playerId = Number(socket.dataset.wirePlayerFinish);
       if (socket.dataset.wireKind !== kind || socket.dataset.wireThemeId !== themeId) return;
       if (!kind || !themeId || !Number.isInteger(playerId)) return;
-      const disabledReason = getAppointmentDisabledReason(state, activePlayerId, powerKey, themeId, playerId);
+      const disabledReason = getAppointmentDisabledReason(state, activePlayerId, powerKey, themeId, playerId, draft);
       if (disabledReason) return;
       delete draft.wireStart;
       const plannedAction = kind === 'bishop'

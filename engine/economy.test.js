@@ -445,6 +445,42 @@ test('court powers may spend both actions on revocations', () => {
   assert.match(appointment.reason, /already completed its 2 court actions/);
 });
 
+test('revocation cooldown unlocks as soon as another target is revoked', () => {
+  const state = makeState();
+  state.players[1].revocationCooldown = { lastRevokedPlayerId: 2 };
+  state.themes.OPS.strategos = 2;
+  state.themes.KAP.strategos = 3;
+  enterCourt(state);
+
+  const repeatedRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:OPS:strategos' });
+  assert.equal(repeatedRevocation.ok, false);
+  assert.match(repeatedRevocation.reason, /twice in a row/);
+
+  const differentRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:KAP:strategos' });
+  assert.equal(differentRevocation.ok, true);
+
+  const unlockedRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:OPS:strategos' });
+  assert.equal(unlockedRevocation.ok, true);
+  assert.equal(state.themes.OPS.strategos, null);
+});
+
+test('self-appointment cooldown unlocks as soon as someone else is appointed', () => {
+  const state = makeState();
+  state.players[1].appointmentCooldown = { selfLocked: true };
+  enterCourt(state);
+
+  const repeatedSelfAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 1 });
+  assert.equal(repeatedSelfAppointment.ok, false);
+  assert.match(repeatedSelfAppointment.reason, /appoint yourself twice in a row/);
+
+  const otherAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
+  assert.equal(otherAppointment.ok, true);
+
+  const unlockedSelfAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 1 });
+  assert.equal(unlockedSelfAppointment.ok, true);
+  assert.equal(state.themes.OPT.strategos, 1);
+});
+
 test('basileus court power is revocation-only and allows four revocations', () => {
   const state = makeState();
   state.themes.OPS.strategos = 1;
