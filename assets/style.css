@@ -2832,21 +2832,30 @@ body::before {
 
 .province-office-token {
   align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+  text-align: center;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .province-office-prefix {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  padding-right: 7px;
-  margin-right: 1px;
-  border-right: 1px solid rgba(240,200,90,0.42);
+  margin-right: 0;
+  padding-right: 0;
+  padding-bottom: 2px;
+  border-right: 0;
+  border-bottom: 1px solid rgba(240,200,90,0.42);
 }
 
 .province-office-kind {
@@ -2854,13 +2863,17 @@ body::before {
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
+  text-align: center;
 }
 
 .province-office-token .province-token-name {
+  flex: 0 0 auto;
+  width: 100%;
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
   overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .province-office-mark {
@@ -5730,7 +5743,7 @@ textarea {
 .court-link-seat-token .province-office-token {
   width: 100%;
   max-width: 100%;
-  justify-content: flex-start;
+  justify-content: center;
   box-sizing: border-box;
   min-height: 29px;
   padding: 3px 7px 4px;
@@ -5742,7 +5755,7 @@ textarea {
 }
 .court-link-seat-token .province-office-prefix {
   flex: 0 0 auto;
-  max-width: none;
+  max-width: 100%;
 }
 .court-link-seat-token .province-office-kind {
   max-width: none;
@@ -5815,7 +5828,7 @@ textarea {
     flex: 0 0 auto;
     max-width: 100%;
     min-width: 0;
-    padding-right: 5px;
+    padding-right: 0;
     overflow: visible;
   }
   .court-link-seat-token .province-office-kind,
@@ -5826,7 +5839,7 @@ textarea {
     overflow-wrap: anywhere;
   }
   .court-link-seat-token .province-token-name {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
   }
   .court-link-seat-token .title-token.compact,
   .court-link-seat-token .ownership-badge.compact {
@@ -5883,7 +5896,7 @@ textarea {
     row-gap: 3px;
   }
   .court-link-seat-token .province-office-prefix {
-    flex: 1 0 100%;
+    flex: 0 0 auto;
     max-width: 100%;
     gap: 3px;
     margin-right: 0;
@@ -5893,7 +5906,7 @@ textarea {
     border-bottom: 1px solid rgba(240,200,90,0.42);
   }
   .court-link-seat-token .province-token-name {
-    flex: 1 0 100%;
+    flex: 0 0 auto;
   }
 }
 .court-power-done {
