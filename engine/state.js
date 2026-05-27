@@ -282,9 +282,18 @@ export function getPlayer(state, id) {
   return state.players.find((p) => p.id === id);
 }
 
+export function hasAppointmentTargetLock(state, appointerId, appointeeId) {
+  if (!Number.isInteger(appointeeId)) return false;
+  const player = getPlayer(state, appointerId);
+  const lastAppointeeId = Number(player?.appointmentCooldown?.lastAppointeeId);
+  if (Number.isInteger(lastAppointeeId) && lastAppointeeId === appointeeId) return true;
+  return appointeeId === appointerId && Boolean(player?.appointmentCooldown?.selfLocked);
+}
+
 export function hasSelfAppointmentLock(state, playerId) {
   const player = getPlayer(state, playerId);
-  return Boolean(player?.appointmentCooldown?.selfLocked);
+  return hasAppointmentTargetLock(state, playerId, playerId)
+    || Boolean(player?.appointmentCooldown?.selfLocked);
 }
 
 export function recordAppointmentChoice(state, appointerId, appointeeId) {

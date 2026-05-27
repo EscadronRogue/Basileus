@@ -395,9 +395,9 @@ test('court actions are role-filtered and appointment-capped per major title', (
   assert.equal(sameTitleAction.ok, false);
   assert.match(sameTitleAction.reason, /already used 2 appointments/);
 
-  const secondAction = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'KAP', appointeeId: 3 });
+  const secondAction = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'KAP', appointeeId: 0 });
   assert.equal(secondAction.ok, true);
-  assert.equal(state.themes.KAP.bishop, 3);
+  assert.equal(state.themes.KAP.bishop, 0);
 
   const secondBishop = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'ANT', appointeeId: 2 });
   assert.equal(secondBishop.ok, true);
@@ -464,7 +464,24 @@ test('revocation cooldown unlocks as soon as another target is revoked', () => {
   assert.equal(state.themes.OPS.strategos, null);
 });
 
-test('self-appointment cooldown unlocks as soon as someone else is appointed', () => {
+test('appointment cooldown blocks the last appointee across turns until someone else is appointed', () => {
+  const state = makeState();
+  state.players[1].appointmentCooldown = { lastAppointeeId: 2 };
+  enterCourt(state);
+
+  const repeatedAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
+  assert.equal(repeatedAppointment.ok, false);
+  assert.match(repeatedAppointment.reason, /appoint .* twice in a row/);
+
+  const otherAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 3 });
+  assert.equal(otherAppointment.ok, true);
+
+  const unlockedAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 2 });
+  assert.equal(unlockedAppointment.ok, true);
+  assert.equal(state.themes.OPT.strategos, 2);
+});
+
+test('legacy self-appointment cooldown still blocks self until someone else is appointed', () => {
   const state = makeState();
   state.players[1].appointmentCooldown = { selfLocked: true };
   enterCourt(state);
@@ -472,13 +489,6 @@ test('self-appointment cooldown unlocks as soon as someone else is appointed', (
   const repeatedSelfAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 1 });
   assert.equal(repeatedSelfAppointment.ok, false);
   assert.match(repeatedSelfAppointment.reason, /appoint yourself twice in a row/);
-
-  const otherAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
-  assert.equal(otherAppointment.ok, true);
-
-  const unlockedSelfAppointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 1 });
-  assert.equal(unlockedSelfAppointment.ok, true);
-  assert.equal(state.themes.OPT.strategos, 1);
 });
 
 test('basileus court power is revocation-only and allows four revocations', () => {

@@ -196,7 +196,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.doesNotMatch(patriarchPanel.innerHTML, new RegExp('Mercenary Company|Prof' + 'essional|lev' + 'ies', 'i'));
 });
 
-test('court panel disables appointments blocked by current legality', () => {
+test('court panel disables appointment targets blocked by current legality', () => {
   const state = makeState();
   state.phase = 'court';
   state.courtActions = {
@@ -206,14 +206,15 @@ test('court panel disables appointments blocked by current legality', () => {
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.players[1].appointmentCooldown = { selfLocked: true };
+  state.players[1].appointmentCooldown = { lastAppointeeId: 2 };
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, 1, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
-  assert.match(container.innerHTML, /data-bishop-player-pick="1"[^>]*disabled[^>]*>/);
-  assert.match(container.innerHTML, /You cannot appoint yourself twice in a row/);
+  assert.match(container.innerHTML, /data-strategos-player-pick="2"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /data-bishop-player-pick="2"[^>]*disabled[^>]*>/);
+  assert.doesNotMatch(container.innerHTML, /data-strategos-player-pick="1"[^>]*disabled[^>]*>/);
+  assert.match(container.innerHTML, /You cannot appoint .* twice in a row/);
 });
 
 test('court wire layout does not draw ownership ropes for open seats', () => {

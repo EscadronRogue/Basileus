@@ -15,7 +15,7 @@ import {
 import { getSpendableGold } from '../engine/deals.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/turnflow.js';
-import { getFreeThemes, getPlayer } from '../engine/state.js';
+import { getFreeThemes, getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { buildDefaultCoupRanking } from '../engine/coup.js';
@@ -127,10 +127,9 @@ function openBishopThemes(state) {
 }
 
 function appointmentPlayerIds(state, appointerId) {
-  const player = getPlayer(state, appointerId);
   return state.players
     .map((candidate) => candidate.id)
-    .filter((playerId) => !(player?.appointmentCooldown?.selfLocked && playerId === appointerId));
+    .filter((playerId) => !hasAppointmentTargetLock(state, appointerId, playerId));
 }
 
 function appendAppointmentActions(actions, state, playerId) {

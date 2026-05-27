@@ -520,6 +520,8 @@ test('AI court legal actions use the shared two-action court power limit', () =>
 
   const appointmentModeActions = listLegalCourtActions(state, 1);
   assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'appoint-strategos'), true);
+  assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'appoint-strategos' && action.payload?.appointeeId === 2), false);
+  assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'appoint-strategos' && action.payload?.appointeeId === 3), true);
   assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'minor:KAP:strategos'), true);
   assert.equal(appointmentModeActions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'minor:OPS:strategos'), false);
 

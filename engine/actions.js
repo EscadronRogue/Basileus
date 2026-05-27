@@ -3,8 +3,8 @@ import {
   findTitleHolder,
   formatPlayerLabel,
   getPlayer,
+  hasAppointmentTargetLock,
   hasRevocationTargetLock,
-  hasSelfAppointmentLock,
   recordAppointmentChoice,
   recordRevocationChoice,
 } from './state.js';
@@ -292,10 +292,9 @@ export function checkRevocationCurrentTurnAppointment(state, revocationValue) {
 }
 
 function checkAppointmentTargetCooldown(state, appointerId, appointeeId) {
-  if (appointeeId === appointerId && hasSelfAppointmentLock(state, appointerId)) {
-    return fail('You cannot appoint yourself twice in a row. Appoint someone else first.');
-  }
-  return { ok: true };
+  if (!hasAppointmentTargetLock(state, appointerId, appointeeId)) return { ok: true };
+  const targetLabel = appointeeId === appointerId ? 'yourself' : playerName(state, appointeeId);
+  return fail(`You cannot appoint ${targetLabel} twice in a row. Appoint someone else first.`);
 }
 
 function checkRevocationTargetCooldown(state, revokerId, targetPlayerId) {
