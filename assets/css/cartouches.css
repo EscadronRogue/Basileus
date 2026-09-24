@@ -1,0 +1,794 @@
+/* assets/css/cartouches.css - Player/province cartouches, icon and value atoms, chips, finance grid, dashboard head, choice grids. */
+
+/* ── Player & Province Cartouches ─────────────────────────────────────
+   Shared visual grammar: a small Byzantine-style nameplate.
+   • Province cartouche background = mid region wash (--cart-bg)
+   • Province outline    = darker region color (--cart-border)
+   • Inner gold hairline (var(--gold-3)) suggests a leafed manuscript
+     border; subtle parchment-linen overlay keeps the color feeling
+     painted onto vellum rather than flat web-coloured.
+   ────────────────────────────────────────────────────────────────── */
+.player-role-name,
+.province-token,
+.title-token {
+  --cart-bg: var(--parch-3);
+  --cart-border: var(--empire-border);
+
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 11px 6px;
+  border: 5px solid var(--cart-border);
+  border-radius: 3px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  line-height: 1.5;
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  text-transform: none;
+  white-space: nowrap;
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+
+  background-color: var(--cart-bg);
+  background-image:
+    /* fine linen texture */
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,250,225,0.07) 0 1px,
+      transparent 1px 5px
+    ),
+    /* soft top→bottom shading: highlight, ink */
+    linear-gradient(
+      180deg,
+      rgba(255,248,220,0.18) 0%,
+      rgba(20,8,0,0.18) 100%
+    );
+
+  box-shadow:
+    /* gold-leaf inner hairline (sits between the role outline and the fill) */
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    /* upper highlight + lower ink shadow → engraved feel */
+    inset 0 1px 0 rgba(255,250,228,0.16),
+    inset 0 -1px 0 rgba(20,8,0,0.24),
+    /* settled-on-parchment lift */
+    0 1px 0 rgba(255,248,220,0.22),
+    0 1px 2px rgba(46,30,15,0.20);
+}
+
+.player-role-name {
+  --cart-bg: var(--player-color, var(--parch-3));
+  --cart-border: var(--role-outline-color, var(--role-color, var(--empire-border)));
+}
+
+.province-token {
+  --cart-bg: var(--province-cartouche-fill-color, var(--free-fill));
+  --cart-border: var(--province-outline-color, var(--province-region-color, var(--empire-border)));
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.45);
+}
+
+.province-token.cartouche-light {
+  gap: 4px;
+  padding: 2px 7px 3px;
+  border-width: 2px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  letter-spacing: 0.15px;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.34),
+    0 1px 1px rgba(46,30,15,0.12);
+}
+
+.province-token-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.province-token.has-ownership {
+  align-items: center;
+  white-space: normal;
+}
+
+.province-token.occupied {
+  --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, var(--province-fill-color, var(--free-fill))));
+  --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
+}
+
+.province-owner-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--province-owner-color, #5a3810);
+  border: 1.5px solid rgba(20,8,0,0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,250,228,0.36),
+    0 1px 1px rgba(46,30,15,0.22);
+  vertical-align: middle;
+}
+
+.province-owner-marker.compact {
+  width: 11px;
+  height: 11px;
+}
+
+.ownership-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.province-token .ownership-badges {
+  padding-left: 7px;
+  margin-left: 2px;
+  border-left: 1px solid rgba(240,200,90,0.42);
+}
+
+.province-office-token {
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+  text-align: center;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  flex-wrap: nowrap;
+}
+
+.province-office-prefix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin-right: 0;
+  padding-right: 0;
+  padding-bottom: 2px;
+  border-right: 0;
+  border-bottom: 1px solid rgba(240,200,90,0.42);
+}
+
+.province-office-kind {
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  text-align: center;
+}
+
+.province-office-token .province-token-name {
+  flex: 0 0 auto;
+  width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.province-office-mark {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  background: var(--office-holder-color, rgba(255,252,240,0.96));
+  border: 1.4px solid rgba(20,8,0,0.78);
+  box-shadow: 0 1px 0 rgba(20,8,0,0.34);
+}
+
+.province-office-token-estate .province-office-mark {
+  border-radius: 50%;
+}
+
+.province-office-token-strategos .province-office-mark {
+  border-radius: 1px;
+}
+
+.province-office-token-bishop .province-office-mark {
+  width: 0;
+  height: 0;
+  border-left: 5.5px solid transparent;
+  border-right: 5.5px solid transparent;
+  border-bottom: 10px solid var(--office-holder-color, rgba(255,252,240,0.96));
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.42));
+}
+
+.province-office-token.vacant-office {
+  border-style: dashed;
+}
+
+.province-office-token.vacant-office .province-office-mark {
+  --office-holder-color: rgba(255,252,240,0.96);
+}
+
+.ownership-badge {
+  --ownership-color: #5a3810;
+  --ownership-accent: rgba(20,8,0,0.76);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--ownership-accent) 72%, #ffffff 28%);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(255,250,226,0.18), rgba(20,8,0,0.20)),
+    var(--ownership-color);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.34),
+    0 1px 1px rgba(46,30,15,0.18);
+}
+
+.ownership-badge.compact {
+  padding: 1px 5px 1px 3px;
+  font-size: 9px;
+}
+.ownership-badge.vacant {
+  --ownership-color: var(--parch-0);
+  color: var(--umber-2);
+  text-shadow: none;
+  border-style: dashed;
+}
+.ownership-badge.vacant .ownership-mark {
+  background: rgba(255,252,240,0.92);
+  border-color: var(--ownership-accent, rgba(20,8,0,0.72));
+}
+
+.ownership-mark {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  background: #ffffff;
+  border: 1px solid rgba(20,8,0,0.78);
+  box-shadow: 0 1px 0 rgba(20,8,0,0.36);
+}
+
+.ownership-badge-estate .ownership-mark {
+  border-radius: 50%;
+}
+
+.ownership-badge-strategos .ownership-mark {
+  border-radius: 1px;
+}
+
+.ownership-badge-bishop .ownership-mark {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid #ffffff;
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ownership-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Title cartouches (Basileus, Strategos of X, Bishop of Y, …).
+   Outline encodes the role's region; background is the holder's dynasty
+   color, or parchment-cream when the title is vacant. */
+.title-token.vacant {
+  --cart-bg: var(--parch-0);
+  color: var(--umber-2);
+  text-shadow: none;
+  font-style: italic;
+  border-style: dashed;
+}
+.title-token.vacant .v,
+.title-token.vacant .province-token-values,
+.title-token.vacant .title-token-text { color: inherit; }
+
+.title-token-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-token-mark {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  background: rgba(255,252,240,0.96);
+  border: 1.5px solid rgba(20,8,0,0.78);
+  box-shadow: 0 1px 0 rgba(20,8,0,0.36);
+}
+
+.title-token-mark-strategos {
+  border-radius: 1px;
+}
+
+.title-token-mark-bishop {
+  width: 0;
+  height: 0;
+  border-left: 5.5px solid transparent;
+  border-right: 5.5px solid transparent;
+  border-bottom: 10px solid rgba(255,252,240,0.96);
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.42));
+}
+
+/* Compact title-token shares the same compact rules as province-token. */
+.title-token.compact {
+  font-size: 11px;
+  padding: 4px 9px 5px;
+  letter-spacing: 0.3px;
+}
+
+/* Compact variant — used inline inside flowing label text
+   ("Strategos of <badge>"). Slightly tighter but keeps the same
+   role-color outline so the region remains legible. */
+.province-token.compact {
+  font-size: 11px;
+  padding: 4px 9px 5px;
+  letter-spacing: 0.3px;
+}
+
+.province-token-values {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0;
+  opacity: 0.96;
+  padding-left: 7px;
+  margin-left: 3px;
+  border-left: 1px solid rgba(240,200,90,0.42);
+  color: inherit;
+}
+.province-token-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.province-token-value .icon { font-size: 1.05em; }
+.province-token-num { font-variant-numeric: tabular-nums; }
+
+/* ─────────────────────────────────────────────────────────────────
+   ICON ATOMS — compact resource and office glyphs.
+   All icons take currentColor, so they inherit from the surrounding
+   text. The default tints below apply only when an icon sits outside
+   any colored container (e.g. on parchment).
+   ───────────────────────────────────────────────────────────────── */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.16em;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+  stroke: currentColor;
+  pointer-events: none;
+}
+.icon-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.icon-set .icon {
+  width: 1em;
+  height: 1em;
+}
+.icon-troop  { color: var(--umber-1); }
+.icon-gold   { color: var(--gold-1); }
+.icon-estate { color: var(--purple-0); }
+.icon-church { color: var(--church-1); }
+
+/* Inside any colored cartouche, icons take parchment-white
+   so they read against the dynasty fill. The text already inherits
+   #ffffff in these contexts via existing rules. */
+.player-tab .icon,
+.candidate-row .icon,
+.player-choice-btn .icon,
+.player-dashboard .icon,
+.player-role-name .icon,
+.province-token .icon,
+.title-token .icon { color: #ffffff; }
+
+/* ─────────────────────────────────────────────────────────────────
+   VALUE ATOM — "[label] [icon] [number]" pill used everywhere a
+   resource or office count appears in the DOM. The label is
+   optional; the icon + number always travel together.
+   ───────────────────────────────────────────────────────────────── */
+.value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.value .icon {
+  align-self: center;
+  font-size: 1em;
+}
+.value .icon-set {
+  align-self: center;
+}
+.value .value-num { font-variant-numeric: tabular-nums; }
+.value .value-noun {
+  font-family: var(--font-display);
+  font-size: 0.74em;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: inherit;
+  opacity: 0.75;
+  margin-right: 2px;
+}
+
+.value.troop  { color: var(--umber-1); }
+.value.gold   { color: var(--gold-1); }
+.value.estate { color: var(--purple-0); }
+.value.church { color: var(--church-1); }
+.value.office { color: var(--umber-1); }
+.value.troop  .icon { color: inherit; }
+.value.gold   .icon { color: inherit; }
+.value.estate .icon { color: inherit; }
+.value.church .icon { color: inherit; }
+
+.value.income { color: var(--win); }
+.value.upkeep { color: var(--crimson-1); }
+.value.muted  { color: var(--umber-3); }
+
+/* Balance-of-power pie title takes the category icon */
+.balance-pie-icon,
+.balance-pie-iconset { font-size: 13px; margin-right: 5px; }
+.balance-pie-title { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Dashboard "Gold" row gets a leading coin icon and reads as a label */
+.dashboard-stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: inherit;
+}
+.dashboard-stat-label .icon { font-size: 13px; }
+
+/* Army-card header count: icon + number + uppercase label */
+.army-card-count {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.army-card-count .value { font-size: 14px; }
+
+/* Estate card "Value: [coin] N" tag */
+.estate-card-value { display: inline-flex; align-items: center; gap: 6px; }
+.estate-card-value .value { font-size: 13px; }
+
+/* ─────────────────────────────────────────────────────────────────
+   PLAYER CHIP — inline cartouche with a circular initial crest.
+   Used in running body text (history entries, notification toasts,
+   deal threads). Same outline/fill ratio as the player-tab cartouche,
+   shrunk to flow inline with prose.
+   ───────────────────────────────────────────────────────────────── */
+.player-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  gap: 6px;
+  padding: 3px 9px 3px 4px;
+  border: 2px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-radius: var(--r-sm);
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,250,225,0.07) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  line-height: 1.25;
+  text-transform: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.5),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22);
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.player-chip.cartouche-light {
+  gap: 4px;
+  padding: 1px 7px 1px 3px;
+  border-width: 1.5px;
+  font-size: 10.5px;
+  letter-spacing: 0.15px;
+  line-height: 1.2;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.34),
+    0 1px 1px rgba(46,30,15,0.12);
+}
+.player-chip .chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-chip .chip-initial {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(20,8,0,0.32);
+  border: 1px solid rgba(240,200,90,0.55);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.player-chip.cartouche-light .chip-initial {
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
+}
+.player-chip .icon { color: #fff; }
+
+/* ─────────────────────────────────────────────────────────────────
+   FINANCE GRID — used by the dashboard, by deployment readouts, and
+   anywhere a small grid of resource cards is appropriate. Each card
+   is a parchment-on-dark tile with a small uppercase label and a
+   large icon+number readout.
+   ───────────────────────────────────────────────────────────────── */
+.finance-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  margin-top: 10px;
+}
+.finance-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid rgba(240,200,90,0.32);
+  background: rgba(20,8,0,0.22);
+  border-radius: var(--r-sm);
+  color: inherit;
+  min-width: 0;
+}
+.finance-card .finance-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: inherit;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.finance-card .finance-label .icon { font-size: 11px; }
+.finance-card .finance-value {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: inherit;
+}
+.finance-card .finance-value .value { font-size: inherit; color: inherit; }
+.finance-card .finance-value .icon { font-size: 15px; }
+.finance-card.income .finance-value { color: #cfe9b0; }
+.finance-card.income .finance-value .icon { color: #cfe9b0; }
+.finance-card.upkeep .finance-value { color: #ffb8a8; }
+.finance-card.upkeep .finance-value .icon { color: #ffb8a8; }
+
+/* When a finance-grid sits inside a parchment panel (not the dashboard),
+   it inverts to dark-on-parchment for legibility. */
+.balance-panel .finance-card,
+.sidebar-panel:not(.player-dashboard) .finance-card {
+  background: rgba(255,252,240,0.85);
+  border-color: rgba(168,116,32,0.28);
+  color: var(--umber-1);
+}
+.balance-panel .finance-card .finance-label,
+.sidebar-panel:not(.player-dashboard) .finance-card .finance-label {
+  color: var(--umber-2);
+}
+.balance-panel .finance-card .finance-value,
+.sidebar-panel:not(.player-dashboard) .finance-card .finance-value {
+  color: var(--umber-0);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   DASHBOARD CARTOUCHE HEAD — turns the dashboard panel head into a
+   single horizontal cartouche row: [crest] [name + role] [big gold
+   reserve + small income / upkeep stack]. This replaces the bare
+   "Dynasty / Player name" kicker + title pair from earlier.
+   ───────────────────────────────────────────────────────────────── */
+.dashboard-cartouche {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.dashboard-cartouche .dc-crest {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(20,8,0,0.32);
+  border: 2px solid rgba(240,200,90,0.65);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.dashboard-cartouche .dc-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dashboard-cartouche .dc-name {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  line-height: 1.15;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dashboard-cartouche .dc-role {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.2;
+  opacity: 0.92;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dashboard-cartouche .dc-role.muted { opacity: 0.6; font-style: italic; }
+.dashboard-cartouche .dc-finance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.dashboard-cartouche .dc-reserve {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: #fff;
+}
+.dashboard-cartouche .dc-reserve .value { font-size: inherit; color: inherit; }
+.dashboard-cartouche .dc-reserve .icon { font-size: 18px; color: inherit; }
+.dashboard-cartouche .dc-delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+}
+.dashboard-cartouche .dc-delta .value { font-size: inherit; }
+.dashboard-cartouche .dc-delta .value.income { color: #cfe9b0; }
+.dashboard-cartouche .dc-delta .value.income .icon { color: #cfe9b0; }
+.dashboard-cartouche .dc-delta .value.upkeep { color: #ffb8a8; }
+.dashboard-cartouche .dc-delta .value.upkeep .icon { color: #ffb8a8; }
+
+.player-dashboard .dashboard-cartouche,
+.player-dashboard .dashboard-cartouche .dc-name,
+.player-dashboard .dashboard-cartouche .dc-role,
+.player-dashboard .dashboard-cartouche .dc-reserve {
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+}
+
+/* When the dashboard head holds the cartouche layout, drop the kicker
+   and title styling — the cartouche owns the whole row. */
+.player-dashboard .sidebar-panel-head.dashboard-cartouche-head {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  align-items: center;
+}
+.player-dashboard .sidebar-panel-head.dashboard-cartouche-head .sidebar-panel-head-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+/* State variants */
+.province-token.occupied { opacity: 1; filter: saturate(0.74); }
+.province-token.church {
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.45);
+}
+
+.player-role-name *,
+.title-token * {
+  color: #ffffff;
+}
+.province-token * { color: inherit; }
+
+/* ── Choice grids (player picker / province picker) ─────────────────── */
+/* Revocation choice grid — same cartouche pattern as player/province
+   choice grids. Each button wraps one or two cartouches that describe
+   what the revocation will affect. */
+/* ── Nested-cartouche flattening ─────────────────────────────────────
+   When a player cartouche appears INSIDE a container that already
+   carries the same player+role visual language (the dashboard panel
+   head, the player tab, the candidate row, the score row), the inner
+   chip dissolves into plain inline text. This avoids the chip-in-chip
+   double-bordered look while preserving identical typography. */
+.player-tab .player-role-name,
+.candidate-row .player-role-name,
+.score-row .player-role-name,
+.player-dashboard .sidebar-panel-head .player-role-name,
+.player-dashboard .sidebar-panel-badge .player-role-name,
+.balance-panel .sidebar-panel-badge .player-role-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+  color: inherit;
+  text-shadow: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: 0.35px;
+}

@@ -1,0 +1,469 @@
+/* assets/css/balance.css - Balance of Power panel. */
+
+/* ── Balance of Power Panel ────────────────────────────────────────────
+   Live standings + four scoring-category pies. Header badge mirrors the
+   sidebar-panel grammar; the body is a compact ranking list followed by
+   a 2x2 pie grid. Slice colors map to dynasty colors; the amethyst slice
+   is the same "free citizens" hue used on the map. */
+.balance-panel .sidebar-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.balance-ranking {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Balance ranking row — single grammar shared with the spec.
+   Dynasty colour rides the left rail; rank number, dot, name, then a
+   right-aligned breakdown of the three resource icons, and finally a
+   pill for the points score. Leaders get a brighter pill. */
+.balance-rank-row {
+  display: grid;
+  grid-template-columns: 16px 14px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid rgba(168,116,32,0.22);
+  border-left: 6px solid var(--player-color, var(--parch-3));
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.92);
+  box-shadow: var(--shadow-card);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  color: var(--umber-1);
+}
+
+.balance-rank-row.leader {
+  border-color: rgba(168,116,32,0.45);
+  border-left-color: var(--player-color, var(--parch-3));
+  box-shadow:
+    inset 0 0 0 1px rgba(168,116,32,0.18),
+    var(--shadow-card);
+}
+
+.balance-rank-no {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--umber-3);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.balance-rank-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--player-color, var(--parch-3));
+  border: 2px solid rgba(20,8,0,0.32);
+  box-shadow: inset 0 1px 0 rgba(255,250,228,0.18);
+}
+
+.balance-rank-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--umber-0);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+.balance-rank-name .player-role-name {
+  max-width: 100%;
+}
+
+.balance-rank-breakdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.balance-rank-breakdown .value {
+  font-size: 11.5px;
+}
+
+.balance-header-points {
+  font-family: var(--font-display);
+  color: inherit;
+  white-space: nowrap;
+}
+
+.balance-rank-points {
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--umber-0);
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: rgba(200,146,30,0.16);
+  border: 1px solid rgba(200,146,30,0.4);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.balance-rank-row.leader .balance-rank-points {
+  background: rgba(200,146,30,0.32);
+  border-color: rgba(200,146,30,0.6);
+  color: var(--gold-2);
+}
+
+.balance-pie-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.balance-pie {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.85);
+  border: 1px solid rgba(168,116,32,0.18);
+  min-width: 0;
+}
+
+.balance-pie-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.balance-pie-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--gold-2);
+  text-align: center;
+}
+
+.balance-pie-svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  max-width: 110px;
+  margin: 0 auto;
+  display: block;
+}
+
+.balance-pie-empty {
+  font-family: var(--font-display);
+  font-size: 14px;
+  fill: var(--umber-3);
+}
+
+.balance-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--umber-1);
+}
+
+.balance-pie-legend-empty {
+  font-size: 11px;
+  color: var(--umber-3);
+  font-style: italic;
+  text-align: center;
+}
+
+.balance-legend-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.balance-legend-row.free .balance-legend-name {
+  font-style: italic;
+  color: var(--umber-2);
+}
+
+.balance-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(20,8,0,0.35);
+}
+
+.balance-legend-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.balance-legend-name .player-chip {
+  max-width: 100%;
+  padding: 2px 7px 2px 3px;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+  vertical-align: middle;
+}
+.balance-legend-name .player-chip .chip-initial {
+  width: 15px;
+  height: 15px;
+  font-size: 8.5px;
+}
+
+.balance-legend-share {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  color: var(--umber-2);
+  white-space: nowrap;
+}
+
+.balance-legend-points {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  color: var(--gold-1);
+  min-width: 14px;
+  text-align: right;
+}
+
+.income-flow-diagram {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 2px;
+  padding: 10px;
+  border: 1px solid rgba(168,116,32,0.24);
+  border-radius: var(--r-md);
+  background:
+    linear-gradient(180deg, rgba(255,252,240,0.92) 0%, rgba(245,233,200,0.70) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,250,225,0.35),
+    var(--shadow-card);
+}
+
+.income-flow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(168,116,32,0.18);
+}
+
+.income-flow-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--gold-2);
+}
+
+.income-flow-totals {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.income-flow-totals .value {
+  font-size: 11.5px;
+}
+
+.income-flow-sankey {
+  display: block;
+  width: 100%;
+  min-width: 1150px;
+  height: auto;
+  min-height: 250px;
+  border-radius: var(--r-sm);
+  background:
+    linear-gradient(180deg, rgba(255,252,242,0.68) 0%, rgba(245,233,200,0.30) 100%);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.income-flow-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.income-flow-canvas {
+  position: relative;
+  width: 100%;
+  min-width: 1150px;
+}
+
+.income-flow-controls {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 3;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(100,70,20,0.20);
+  border-radius: var(--r-md);
+  background: rgba(255,252,240,0.86);
+  box-shadow: var(--shadow-card);
+}
+
+.income-sankey-link {
+  fill: none;
+  stroke-opacity: 0.42;
+  stroke-linecap: butt;
+  mix-blend-mode: multiply;
+  transition: stroke-opacity 0.15s;
+}
+
+.income-sankey-link:hover {
+  stroke-opacity: 0.72;
+}
+
+.income-sankey-node-foreign {
+  overflow: visible;
+  pointer-events: none;
+}
+
+.income-sankey-node-html {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.income-sankey-node-html .title-token,
+.income-sankey-player-cartouche {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  justify-content: center;
+  text-align: center;
+  filter: drop-shadow(0 2px 2px rgba(46,30,15,0.14));
+}
+
+.income-sankey-node-html .title-token {
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 13px;
+  line-height: 1.1;
+  white-space: normal;
+}
+
+.income-sankey-generic-token {
+  min-width: 0;
+}
+
+.income-sankey-player-cartouche {
+  flex: none;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  padding: 8px 10px;
+  cursor: default;
+  transform: none;
+}
+
+.income-sankey-player-cartouche:hover {
+  filter: drop-shadow(0 2px 2px rgba(46,30,15,0.14));
+}
+
+.income-sankey-player-cartouche .tab-body {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.income-sankey-player-cartouche .tab-name {
+  width: 100%;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.income-sankey-player-values {
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+}
+
+.income-sankey-player-values .value {
+  font-size: 13.5px;
+}
+
+.income-sankey-source-value .value {
+  font-size: 15px;
+}
+
+.income-sankey-source-value .icon {
+  font-size: 16px;
+}
+
+.income-sankey-node-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.income-sankey-node-total {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.income-sankey-node-total .value {
+  font-size: 12.5px;
+  line-height: 1;
+  color: #ffffff;
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.70),
+    0 0 5px rgba(20,8,0,0.45);
+}
+
+.income-sankey-node-total .icon {
+  font-size: 13px;
+  color: #ffffff;
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.55));
+}
+
+.income-sankey-node-html-route .title-token,
+.income-sankey-node-html-office .title-token,
+.income-sankey-node-html-player .title-token {
+  gap: 8px;
+}
+
+.income-sankey-unclaimed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+@media (max-width: 720px) {
+  .balance-pie-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .balance-pie-svg { max-width: 140px; }
+  .income-flow-head { align-items: flex-start; flex-direction: column; }
+  .income-flow-totals { flex-wrap: wrap; white-space: normal; }
+  .income-flow-sankey { min-height: 285px; }
+}
