@@ -22,10 +22,24 @@ npm run simulate:ai -- --games 200 --players 5 --deck 9
 - `--samples N` sample games listed in the report (default `5`)
 - `--no-history` skip history recording for speed
 - `--json` machine-readable output
+- `--set NAME=value` replace a value of `data/balance.js` for this run
+  (repeatable; values are read as JSON, e.g. `--set COUP_CHOICE_WEIGHTS=[1,0.5]`)
+- `--sweep NAME=a,b,c` run once per value and print one line per value
+- `--probe cautious|gambler` seat one probe per game (rotating seats) among
+  the tuned roster. A probe plays like the trained Strategist except for the
+  weights its preset in `ai/policies.js` changes: `cautious` over-defends and
+  never bids for the throne, `gambler` bids for the throne whenever it can.
 
-The report covers completion, empire-fall rate against the 40-50% ideal band,
-war and coup outcomes, deployment habits, estates, scoring, win rate per seat,
-and when and to which invader the empire falls.
+The report covers completion, empire-fall rate, war and coup outcomes,
+deployment habits, estates, scoring, win rate per seat and per AI (against
+the fair share, 1 / players), the probe's win rate, average gold per dynasty
+by round, and when and to which invader the empire falls.
+
+Sweep example:
+
+```sh
+npm run simulate:ai -- --games 120 --no-history --samples 0 --probe gambler --sweep THEODOSIAN_WALLS_SUPPORT=2,3,5
+```
 
 ## Training
 
@@ -101,6 +115,7 @@ For each personality the log prints its value, win rate, and how it plays:
 - `--seed N` fixed seed (default: random, printed in the log)
 - `--workers N` worker threads (default up to `4`)
 - `--output PATH` roster file (default `ai/tunedOpponents.json`)
+- `--set NAME=value` train under other balance values (recorded in the roster)
 - `--no-save`, `--quiet`, `--json`
 
 A default run plays about 3,300 games per generation; on four cores a
@@ -118,22 +133,37 @@ records the benchmark.
 
 ### Current roster
 
-Trained with `--generations 8 --seed 20260924` (about 27,000 games). Final
-measurements on 160 fresh tables per personality:
+Trained for the current rules (two coup choices, estates at 1, 2, 3...,
+offices raising their own troops, invasion strength 1.7 per imperial
+province) with `--generations 8 --seed 20260925`: about 26,000 games, 113
+minutes on three workers. Final measurements on 160 fresh tables per
+personality:
 
 | Personality | Win | Holds back | Throne bids | Seizures/game | Empire falls |
 | --- | --- | --- | --- | --- | --- |
-| Usurper | 25% | 47% | 65% | 1.24 | 16% |
-| Opportunist | 22% | 37% | 14% | 0.62 | 16% |
-| Landlord | 27% | 34% | 15% | 0.72 | 12% |
-| Kingmaker | 28% | 0% | 0% | 0.60 | 6% |
-| Tyrant | 14% | 71% | 74% | 1.33 | 19% |
-| Patron | 28% | 6% | 15% | 0.79 | 6% |
-| Strategist | 21% | 22% | 40% | 1.07 | 7% |
+| Usurper | 22% | 8% | 23% | 0.72 | 11% |
+| Opportunist | 27% | 8% | 9% | 0.44 | 14% |
+| Landlord | 30% | 5% | 9% | 0.46 | 9% |
+| Kingmaker | 28% | 4% | 6% | 0.33 | 9% |
+| Tyrant | 19% | 48% | 73% | 1.12 | 19% |
+| Patron | 27% | 3% | 7% | 0.32 | 6% |
+| Strategist | 32% | 4% | 6% | 0.39 | 6% |
 
-Benchmarks against the roster it replaced (4- and 5-player tables, 9 turns):
-a new AI seated with four old ones wins about 28% of its games against the old
-AIs' 12%; an old AI seated with four new ones wins 11% against about 20% for
-the new ones. Alone against four default planners, the new AIs win 24-87%
-(the Usurper 87%), where the old trained AIs managed about 11%. Tables of new
-AIs only lose the empire in about 17% of games.
+Alone against four default planners the new AIs win 52-70% of their games.
+Seated among the previous roster (trained for the old rules) they win 18-28%,
+and those tables lose the empire in 33-53% of games: the old AIs no longer
+defend enough.
+
+### Balance check (roster only, 200 games, 5 players, 9 rounds)
+
+- Empire falls in 13% of games; wars are won 70% of the time.
+- Win rate per AI ranges from 9% (Tyrant) to 25% (Landlord) against a fair
+  share of 20%.
+- `--probe cautious` wins 0-1% of its games: over-defending is punished.
+- `--probe gambler` wins 7-9%, although it holds the throne in 78% of rounds:
+  it ends with a quarter less gold than the others, because the troops it
+  keeps in Constantinople are not dismissed for gold. With the current
+  rules the throne does not pay back what it costs to take and hold;
+  lowering the Theodosian Walls from 5 to 2 does not change that (8%).
+- Gold per dynasty grows slowly through the game (1-5 gold held until
+  round 8) and jumps in the last round, when estates stop paying back.

@@ -12,6 +12,7 @@ import { getDeploymentArmyTroopTotal, getPlayerDeploymentArmyKeys } from '../eng
 import { getPreferredCoupCandidate, normalizeCoupChoices } from '../engine/coup.js';
 import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
 import { createAIMeta } from './brain.js';
+import { POLICY_WEIGHT_PRESETS } from './policies.js';
 import { loadTunedOpponentRosterSync } from './nodeOpponentRoster.js';
 
 const DEFAULT_OPTIONS = {
@@ -443,15 +444,32 @@ function getExplicitSeatPolicy(options, seatId) {
   return policies;
 }
 
+// A probe plays like the trained Strategist except for the weights its
+// preset changes, so it measures one habit (caution, gambling) rather than
+// skill. Without a trained roster it falls back to the bare preset.
+function buildProbeAiPlayer(probe, tunedRoster) {
+  const base = tunedRoster.find((opponent) => opponent.personality === 'strategist');
+  const preset = POLICY_WEIGHT_PRESETS[probe];
+  if (!base || !preset) return { policy: probe, seatLabel: `probe:${probe}` };
+  const strategyWeights = { ...(base.strategyWeights || base.policy?.strategyWeights || {}), ...preset };
+  return {
+    ...aiPlayerFromTunedOpponent({
+      id: `probe-${probe}`,
+      firstName: probe,
+      policy: { policyId: 'tuned', strategyWeights },
+      strategyWeights,
+    }),
+    seatLabel: `probe:${probe}`,
+  };
+}
+
 export function getProbeSeat(options, seed) {
   if (!options.probe) return null;
   return Math.max(0, Number(seed) || 0) % Math.max(1, options.playerCount);
 }
 
 function resolveSeatAiPlayer(options, seatId, seed, tunedRoster) {
-  if (options.probe && seatId === getProbeSeat(options, seed)) {
-    return { policy: options.probe, seatLabel: `probe:${options.probe}` };
-  }
+  if (options.probe && seatId === getProbeSeat(options, seed)) return buildProbeAiPlayer(options.probe, tunedRoster);
   const explicitPolicy = getExplicitSeatPolicy(options, seatId);
   if (explicitPolicy) {
     if (typeof explicitPolicy === 'string') {
