@@ -5,6 +5,9 @@ import { createGameState } from '../engine/state.js';
 import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
 import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
+import { addEstates } from '../engine/estates.js';
+import { phaseEstates } from '../engine/turnflow.js';
+import { addEstateToDraft } from './panels/estates.js';
 import { hydratePublicState, serializePublicGameState } from '../engine/publicState.js';
 import {
   renderCartouchedText,
@@ -160,7 +163,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 2, { recent: false });
   state.themes.KAP.strategos = 1;
 
   const basileusPanel = makePanelContainer();
@@ -168,7 +171,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(basileusPanel.innerHTML, /Basileus/);
   assert.match(basileusPanel.innerHTML, /Choose actions/);
   assert.match(basileusPanel.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
-  assert.match(basileusPanel.innerHTML, /data-revoke-pick="theme:OPS"/);
+  assert.match(basileusPanel.innerHTML, /data-revoke-pick="estates:OPS:2"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /data-action="pass-court-power"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /btn-skip/);
   assert.match(basileusPanel.innerHTML, /btn-secondary btn-reset" data-action="reset-court-plan"/);
@@ -422,7 +425,7 @@ test('court panel keeps mixed actions open but blocks same-turn title reversals'
   assert.doesNotMatch(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"[^>]*disabled[^>]*>/);
 });
 
-test('court estate revocations show owner color without the old separator', () => {
+test('court estate revocations show one row per dynasty with its estate count', () => {
   const state = makeState();
   state.phase = 'court';
   state.courtActions = {
@@ -431,23 +434,22 @@ test('court estate revocations show owner color without the old separator', () =
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 3, { recent: false });
+  addEstates(state.themes.OPS, 3, 1, { recent: false });
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
+  assert.match(container.innerHTML, /data-revoke-pick="estates:OPS:2"/);
+  assert.match(container.innerHTML, /data-revoke-pick="estates:OPS:3"/);
   assert.match(container.innerHTML, /court-link-connection bound/);
   assert.match(container.innerHTML, /province-office-token-estate/);
-  assert.match(container.innerHTML, /data-link-revoke="theme:OPS"/);
   assert.equal(container.innerHTML.includes(`--office-holder-color: ${state.players[2].color};`), true);
-  assert.match(container.innerHTML, /<span class="province-office-kind">Estate<\/span>/);
+  assert.match(container.innerHTML, /<span class="province-office-kind">Estates ×3<\/span>/);
   assert.match(container.innerHTML, /<span class="province-token-name">Opsikion<\/span>/);
-  assert.equal(container.innerHTML.includes('Estate —'), false);
-  assert.equal(container.innerHTML.includes('Estate â€”'), false);
 });
 
-test('court panel disables recently bought estate revocations', () => {
+test('court panel does not offer estates that were all built last round', () => {
   const state = makeState();
   state.round = 2;
   state.phase = 'court';
@@ -458,14 +460,14 @@ test('court panel disables recently bought estate revocations', () => {
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.themes.OPS.owner = 2;
-  state.themes.OPS.privateEstatePurchasedRound = 1;
+  addEstates(state.themes.OPS, 2, 1, { recent: true });
+  state.themes.KAP.strategos = 1;
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"[^>]*aria-disabled="true"[^>]*>/);
-  assert.match(container.innerHTML, /bought last turn and cannot be revoked until next turn/);
+  assert.doesNotMatch(container.innerHTML, /data-revoke-pick="estates:OPS:2"/);
+  assert.match(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
 });
 
 test('court panel shows passed offices while other offices remain available', () => {
@@ -494,38 +496,47 @@ test('court panel shows passed offices while other offices remain available', ()
   assert.doesNotMatch(container.innerHTML, /data-court-pass-power=/);
 });
 
-test('estates panel lists free land bids before deployment', () => {
+test('estates panel plans estates with + and - and locks the whole plan once', () => {
   const state = makeState();
-  state.phase = 'estates';
+  phaseEstates(state);
   state.players[2].gold = 4;
+  addEstates(state.themes.OPS, 3, 2, { recent: false });
+  const uiState = createDefaultUiState();
   const container = makePanelContainer();
+  const submitted = [];
 
-  renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
+  renderEstatesPanel(container, state, 2, { submitEstatePlan: (payload) => submitted.push(payload) }, { uiState });
 
   assert.match(container.innerHTML, /<h3>Estates<\/h3>/);
-  assert.match(container.innerHTML, /data-estate-bid="OPS"/);
-  assert.match(container.innerHTML, /max="4"[^>]*step="1"[^>]*data-estate-bid="OPS"/);
-  assert.match(container.innerHTML, /0\/4 ready/);
-  assert.match(container.innerHTML, /Lock Bids/);
+  assert.match(container.innerHTML, /data-estate-add="OPS"/);
+  assert.match(container.innerHTML, /data-estate-remove="OPS"[^>]*disabled/);
+  assert.doesNotMatch(container.innerHTML, /data-estate-add="ANT"/, 'lost provinces take no estates');
+  assert.match(container.innerHTML, /class="estate-chip" style="--chip-color: [^"]+;" title="[^"]*: 2 estates"/);
+  assert.match(container.innerHTML, /0\/4 locked/);
+  assert.match(container.innerHTML, /Lock No Estates/);
+
+  assert.equal(addEstateToDraft(uiState, state, 2, 'OPS'), true);
+  assert.equal(addEstateToDraft(uiState, state, 2, 'OPS'), true);
+  assert.equal(addEstateToDraft(uiState, state, 2, 'SAM'), false, 'a third estate would cost 6 in total');
+  renderEstatesPanel(container, state, 2, { submitEstatePlan: (payload) => submitted.push(payload) }, { uiState });
+  assert.match(container.innerHTML, /estate-row planned/);
+  assert.match(container.innerHTML, /estate-chip planned[^>]*>\+2</);
+  assert.match(container.innerHTML, />Lock Estates</);
 });
 
-test('estates panel marks the active sealed bid', () => {
+test('a locked estate plan is shown read-only until the dynasty changes it', () => {
   const state = makeState();
-  state.phase = 'estates';
+  phaseEstates(state);
   state.players[2].gold = 5;
-  state.landAuctions.OPS = {
-    themeId: 'OPS',
-    round: state.round,
-    sealed: true,
-    bids: { 2: { bidderId: 2, amount: 3, round: state.round } },
-  };
+  state.estatePlans = { 2: { OPS: 1 } };
+  state.estatesReady = { 2: true };
   const container = makePanelContainer();
 
   renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /estate-card selected/);
-  assert.match(container.innerHTML, /Your bid/);
-  assert.match(container.innerHTML, />Update Bid</);
+  assert.match(container.innerHTML, /Your estates are locked/);
+  assert.match(container.innerHTML, />Change Plan</);
+  assert.match(container.innerHTML, /data-estate-add="OPS"[^>]*disabled/);
 });
 
 test('province card sync ignores nested estate bid controls', () => {

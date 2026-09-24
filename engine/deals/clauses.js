@@ -1,5 +1,6 @@
 // engine/deals/clauses.js - clause normalisation, validation against the game state, and summaries.
 
+import { getEstateCount } from '../estates.js';
 import { getPlayerLabel } from '../state.js';
 import { getReservedThemeIds, hasActiveAppointmentPromise, hasActiveNonRevocationPromise } from './obligations.js';
 import {
@@ -104,11 +105,8 @@ function normalizeDealClause(state, actorId, counterpartyId, rawClause = {}) {
       return fail('Choose a valid estate.');
     }
     const theme = state.themes[themeId];
-    if (theme.owner !== direction.giverId) {
-      return fail(`${getPlayerLabel(state, direction.giverId)} does not currently own ${themeName(state, themeId)}.`);
-    }
-    if (theme.owner == null) {
-      return fail('Only private estates can be traded.');
+    if (getEstateCount(theme, direction.giverId) <= 0) {
+      return fail(`${getPlayerLabel(state, direction.giverId)} has no estates in ${themeName(state, themeId)}.`);
     }
     return {
       ok: true,
@@ -270,8 +268,8 @@ export function validateDealClausesAgainstState(state, clauses, pairKey, options
       }
       reservedThemes.add(themeId);
       const theme = state.themes?.[themeId];
-      if (!theme || theme.owner !== clause.giverId) {
-        return fail(`${getPlayerLabel(state, clause.giverId)} no longer owns ${themeName(state, themeId)}.`);
+      if (!theme || getEstateCount(theme, clause.giverId) <= 0) {
+        return fail(`${getPlayerLabel(state, clause.giverId)} no longer has estates in ${themeName(state, themeId)}.`);
       }
     }
 

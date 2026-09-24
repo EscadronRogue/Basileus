@@ -29,6 +29,7 @@ import {
   scrollPhasePanelIntoView,
 } from './sharedView.js';
 import { buildLocalSave, clearLocalSave, restoreLocalSaveState, writeLocalSave } from './localSave.js';
+import { addEstateToDraft } from './panels/estates.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 
@@ -132,6 +133,9 @@ export class GameController {
         this.render();
       },
       onProvinceSelect: (provinceId) => {
+        // During Estates a map click also plans an estate there.
+        const canControl = !(this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer));
+        if (canControl) addEstateToDraft(this.uiState, this.state, this.activePlayer, provinceId);
         this.selectProvince(provinceId);
       },
       onProvinceHover: (provinceId) => {
@@ -408,28 +412,10 @@ export class GameController {
   }
 
   createEstateHandlers(playerId) {
-    const submitOne = (themeId, amount) => handleHumanEstateAction(this.state, this.aiMeta, this, playerId, {
-      action: 'buy',
-      themeId,
-      amount,
-    });
     return {
-      buy: (themeId, data = {}) => {
-        const result = submitOne(themeId, data.amount);
-        if (!result.ok) {
-          this.setActionError(result.reason);
-          this.render();
-          return;
-        }
-        this.clearActionError();
-        this.render();
-      },
-      submitEstatePlan: ({ bids = [] } = {}) => {
-        let result = { ok: true };
-        for (const bid of bids) {
-          result = submitOne(bid.themeId, bid.amount);
-          if (!result.ok) break;
-        }
+      // The whole plan is sent once, then the dynasty locks.
+      submitEstatePlan: ({ plan = {} } = {}) => {
+        let result = handleHumanEstateAction(this.state, this.aiMeta, this, playerId, { action: 'plan', plan });
         if (result.ok) result = handleEstatesConfirmation(this.state, this.aiMeta, this, playerId);
         if (!result.ok) {
           this.setActionError(result.reason);

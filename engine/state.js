@@ -219,8 +219,8 @@ function createThemeState(province) {
     region: province.region,
     cx: province.cx,
     cy: province.cy,
-    owner: null,
-    privateEstatePurchasedRound: null,
+    // { [dynastyId]: { count, recent } } - see engine/estates.js
+    estates: {},
     lost: Boolean(province.startLost),
     strategos: null,
     bishop: null,
@@ -306,8 +306,7 @@ export function createGameState({
     dealParticipantIds: [],
     dealThreadSeq: 0,
     dealObligationSeq: 0,
-    landAuctions: {},
-    landAuctionTieBreakers: {},
+    estatePlans: {},
     estatesReady: {},
 
     lastCoupResult: null,
@@ -396,16 +395,8 @@ export function getThemesInRegion(state, region) {
   return Object.values(state.themes).filter((t) => t.region === region && t.id !== 'CPL');
 }
 
-export function getPlayerThemes(state, playerId) {
-  return Object.values(state.themes).filter((t) => t.owner === playerId);
-}
-
 export function getLostThemes(state) {
   return Object.values(state.themes).filter((t) => t.lost);
-}
-
-export function getFreeThemes(state) {
-  return Object.values(state.themes).filter((t) => !t.lost && t.owner === null && t.id !== 'CPL');
 }
 
 export function findTitleHolder(state, titleKey) {

@@ -53,6 +53,10 @@
     drop-shadow(0 0 1.2px rgba(250,230,160,0.82))
     drop-shadow(0 0 2.4px rgba(250,230,160,0.46));
 }
+.province-shape.map-filter-disabled {
+  filter: none;
+  stroke-dasharray: 3 2;
+}
 .province-shape.map-filter-neutral {
   fill: var(--map-filter-neutral-fill, #ffffff);
   filter: none;
@@ -218,24 +222,44 @@
 .map-cartouche.lost .map-cart-glyph { opacity: 1; }
 
 .map-cart-markers { pointer-events: none; }
-.map-cart-marker {
+.map-cart-marker { pointer-events: all; }
+.map-cart-marker-shape {
   stroke: rgba(20,8,0,0.92);
   stroke-width: 0.16;
   filter: drop-shadow(0 0.08px 0 rgba(255,250,220,0.6));
 }
-.map-cart-marker.promoted {
+/* Estate count inside its circle: light digit with a dark halo, readable on any dynasty colour. */
+.map-cart-marker-count {
+  font-family: var(--font-display);
+  font-size: 1.05px;
+  font-weight: 700;
+  fill: #ffffff;
+  stroke: rgba(20,8,0,0.85);
+  stroke-width: 0.22;
+  paint-order: stroke;
+  pointer-events: none;
+}
+/* An empty Strategos seat or Bishop seat: a hollow outline. */
+.map-cart-marker.vacant .map-cart-marker-shape {
+  fill: none;
+  stroke: rgba(46,30,15,0.55);
+  stroke-dasharray: 0.3 0.18;
+  filter: none;
+}
+/* Holdings of a lost province: kept on record, drawn as switched off. */
+.map-cart-marker.disabled .map-cart-marker-shape {
+  fill-opacity: 0.32;
+  stroke-dasharray: 0.22 0.14;
+  filter: grayscale(0.7);
+}
+.map-cart-marker.disabled .map-cart-marker-count { opacity: 0.7; }
+.map-cart-marker.overflow .map-cart-marker-count { font-size: 0.8px; }
+.map-cart-marker.promoted .map-cart-marker-shape {
   stroke: rgba(250,226,150,0.98);
   stroke-width: 0.26;
   filter:
     drop-shadow(0 0 0.42px rgba(20,8,0,0.86))
     drop-shadow(0 0 0.55px rgba(250,226,150,0.78));
-}
-/* Holdings of a lost province: kept on record, drawn as switched off. */
-.map-cart-marker.disabled,
-.game-map .map-cart-marker.disabled {
-  fill-opacity: 0.32;
-  stroke-dasharray: 0.22 0.14;
-  filter: grayscale(0.7);
 }
 .game-map.map-filter-estates .map-cart-marker:not(.map-cart-marker-estate),
 .game-map.map-filter-strategoi .map-cart-marker:not(.map-cart-marker-strategos),

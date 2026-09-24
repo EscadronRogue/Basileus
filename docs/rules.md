@@ -39,7 +39,7 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **Major titles** never change in Court. They are redistributed only in the Title Redistribution phase.
 - **No repeats.** A player cannot appoint the same dynasty twice in a row; appointing someone else unlocks the previous appointee again. The same revoker cannot revoke the same target twice in a row.
 - **Revocations** are free and count against each office's action limit. The same title cannot be appointed and revoked in the same turn.
-- **Private estates** bought in the previous turn cannot be revoked yet. When an older private estate is revoked, its owner receives 1 gold.
+- **Estates** built last round cannot be revoked yet. One revocation takes all of one dynasty's other estates in a province, with no refund.
 
 ## Armies
 
@@ -65,7 +65,7 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **Strategos** (office): Military governor of one province, appointed by the Domestic or Admiral of its region. Receives the troops that province raises (its T value). All of a dynasty's Strategos troops march as one Strategoi army.
 - **Bishop** (office): Church office over one province, appointed by the Patriarch. Collects that province's church gold (its C value), even while the province is occupied.
 - **Appointment** (court): Giving a Strategos or Bishop seat to a dynasty during Court. No office may appoint the same dynasty twice in a row; appointing someone else unlocks them again.
-- **Revocation** (court): Taking a Strategos or Bishop seat, or a private estate, away during Court. Free, but it uses one of the office's actions. Estates bought last turn cannot be revoked yet; an older estate pays its owner 1 gold when revoked.
+- **Revocation** (court): Taking a Strategos or Bishop away, or all of one dynasty's estates in one province. Each revocation uses one of the office's actions. Estates built last round cannot be revoked yet.
 - **Title Redistribution** (phase): Happens only after a coup installs a new Basileus: before Court, they give each major title to a dynasty.
 - **Court** (phase): The political phase. Offices appoint and revoke titles. Nothing happens until each dynasty confirms its court plan.
 - **Income** (phase): Runs by itself after Court: estates pay their profit, Bishops collect church gold, and offices raise troops.

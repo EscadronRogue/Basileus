@@ -6,6 +6,7 @@ import {
   buildProvinceTroopAttributions,
 } from '../../engine/cascade.js';
 import { getThreatenedThemeIds } from '../../engine/rules.js';
+import { getProvinceEstateTotal } from '../../engine/estates.js';
 import { applyLabelScale, updateMapCartoucheMarkers, updateMapCartoucheValues } from './cartouches.js';
 import { applyProvinceInteractionState } from './interaction.js';
 import { FILTER_VISUAL_PROPS, MAP_FILTERS, mapRuntime } from './state.js';
@@ -89,7 +90,7 @@ function resolveProvinceFilterStyle(state, theme, attribution) {
   if (mapRuntime.activeMapFilter === MAP_FILTERS.REGIONS) return null;
   if (!theme || theme.id === 'CPL' || !attribution || attribution.playerId == null) {
     return {
-      classes: ['map-filtered', 'map-filter-neutral'],
+      classes: ['map-filtered', 'map-filter-neutral', attribution?.tied ? 'map-filter-tied' : ''].filter(Boolean),
       fill: '#ffffff',
       outline: 'rgba(46,30,15,0.22)',
       cartFill: '#ffffff',
@@ -111,9 +112,20 @@ function resolveProvinceFilterStyle(state, theme, attribution) {
   }
 
   const color = player.color || '#5a3810';
-  const direct = Boolean(attribution.direct);
+  // A lost province keeps its holder on record: shown in a faded colour.
+  if (attribution.disabled) {
+    const faded = `color-mix(in srgb, ${color} 38%, #d8cfbf 62%)`;
+    return {
+      classes: ['map-filtered', 'map-filter-disabled'],
+      fill: faded,
+      outline: color,
+      cartFill: faded,
+      cartOutline: color,
+      cartInk: 'var(--umber-1)',
+    };
+  }
   return {
-    classes: ['map-filtered', direct ? 'map-filter-direct' : 'map-filter-indirect'],
+    classes: ['map-filtered', 'map-filter-direct'],
     fill: color,
     outline: color,
     cartFill: color,
@@ -137,22 +149,12 @@ function applyProvinceFilterStyle(element, filterStyle) {
 // both the province shape and the map cartouche (and shared with the HTML
 // .province-token via data/style conventions).
 export function resolveProvinceOwnership(provinceId, theme) {
-  const withChurchMarker = (classes) => (
-    (Number(theme.C) || 0) > 0 ? [...classes, 'has-church'] : classes
-  );
-  if (theme.lost) {
-    return { classes: withChurchMarker(['lost']) };
-  }
-  if (theme.owner === 'church') {
-    return { classes: withChurchMarker(['imperial', 'church']) };
-  }
-  if (theme.owner !== null) {
-    return { classes: withChurchMarker(['imperial', 'owned']) };
-  }
-  if (provinceId === 'CPL') {
-    return { classes: withChurchMarker(['imperial', 'capital']) };
-  }
-  return { classes: withChurchMarker(['imperial', 'free']) };
+  const classes = [];
+  if (theme.lost) classes.push('lost');
+  else classes.push('imperial', provinceId === 'CPL' ? 'capital' : 'province');
+  if ((Number(theme.C) || 0) > 0) classes.push('has-church');
+  if (getProvinceEstateTotal(theme) > 0) classes.push('has-estates');
+  return { classes };
 }
 
 function updateThreatOverlay(state) {

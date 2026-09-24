@@ -256,7 +256,7 @@ function handleRevocation(memory, event, weight) {
   for (const rawId of revokedIds) {
     const targetId = Number(rawId);
     if (!Number.isInteger(targetId)) continue;
-    noteHarm(memory, actorId, targetId, weight * (event.type === 'revoke_theme' ? 1.35 : 1));
+    noteHarm(memory, actorId, targetId, weight * (event.type === 'revoke_estates' ? 1 + 0.35 * Math.max(1, Number(event.details?.count) || 1) : 1));
   }
 }
 
@@ -463,7 +463,7 @@ export function buildAiMemory(state) {
   for (const event of history) {
     const weight = decayedWeight(state, event);
     if (['appoint_strategos', 'appoint_bishop'].includes(event.type)) handleAppointment(memory, event, weight);
-    else if (['revoke_minor_title', 'revoke_theme'].includes(event.type)) handleRevocation(memory, event, weight);
+    else if (['revoke_minor_title', 'revoke_estates'].includes(event.type)) handleRevocation(memory, event, weight);
     else if (event.type === 'title_redistribution') handleTitleRedistribution(memory, event, weight, state);
     else if (event.type === 'deal_gold_transfer' || event.type === 'deal_estate_transfer') handleDealTransfer(memory, event, weight);
     else if (event.type === 'deal_obligation_failed') handleDealFailure(memory, event, weight);

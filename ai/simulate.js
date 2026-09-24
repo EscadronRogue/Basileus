@@ -74,12 +74,13 @@ function emptyStats(options) {
       appointStrategos: 0,
       appointBishop: 0,
       revokeMinor: 0,
-      revokeTheme: 0,
+      revokeEstates: 0,
     },
     estates: {
-      bids: 0,
-      bidGold: 0,
-      bought: 0,
+      plans: 0,
+      built: 0,
+      provinces: 0,
+      revoked: 0,
       goldSpent: 0,
     },
     scoring: {
@@ -255,12 +256,13 @@ function collectEventStats(stats, state) {
     if (event.type === 'appoint_strategos') stats.court.appointStrategos += 1;
     else if (event.type === 'appoint_bishop') stats.court.appointBishop += 1;
     else if (event.type === 'revoke_minor') stats.court.revokeMinor += 1;
-    else if (event.type === 'revoke_theme') stats.court.revokeTheme += 1;
-    else if (event.type === 'land_bid') {
-      stats.estates.bids += 1;
-      stats.estates.bidGold += Number(event.bid) || 0;
-    } else if (event.type === 'buy') {
-      stats.estates.bought += 1;
+    else if (event.type === 'revoke_estates') {
+      stats.court.revokeEstates += 1;
+      stats.estates.revoked += Number(event.count) || 0;
+    } else if (event.type === 'build_estates') {
+      stats.estates.plans += 1;
+      stats.estates.built += (event.builds || []).reduce((total, entry) => total + (Number(entry.count) || 0), 0);
+      stats.estates.provinces += (event.builds || []).length;
       stats.estates.goldSpent += Number(event.cost) || 0;
     }
   }
@@ -285,10 +287,10 @@ function collectBehaviorByPlayer(state) {
     appointmentsToSelf: 0,
   }]));
   for (const event of state.log || []) {
-    if (event.type === 'buy' && byPlayer[event.player]) {
-      byPlayer[event.player].estatesBought += 1;
+    if (event.type === 'build_estates' && byPlayer[event.player]) {
+      byPlayer[event.player].estatesBought += (event.builds || []).reduce((total, entry) => total + (Number(entry.count) || 0), 0);
       byPlayer[event.player].estateGold += Number(event.cost) || 0;
-    } else if ((event.type === 'revoke_minor' || event.type === 'revoke_theme') && byPlayer[event.revokerId]) {
+    } else if ((event.type === 'revoke_minor' || event.type === 'revoke_estates') && byPlayer[event.revokerId]) {
       byPlayer[event.revokerId].revocations += 1;
     } else if ((event.type === 'appoint_strategos' || event.type === 'appoint_bishop') && byPlayer[event.appointer]) {
       if (event.appointee === event.appointer) byPlayer[event.appointer].appointmentsToSelf += 1;
@@ -792,9 +794,10 @@ function normalizeStats(stats) {
     },
     court: Object.fromEntries(Object.entries(stats.court).map(([key, value]) => [key, round(value / games)])),
     estates: {
-      bidsPerGame: round(stats.estates.bids / games),
-      bidGoldPerGame: round(stats.estates.bidGold / games),
-      purchasesPerGame: round(stats.estates.bought / games),
+      builtPerGame: round(stats.estates.built / games),
+      revokedPerGame: round(stats.estates.revoked / games),
+      estatesPerPlan: round(stats.estates.built / Math.max(1, stats.estates.plans)),
+      provincesPerPlan: round(stats.estates.provinces / Math.max(1, stats.estates.plans)),
       goldSpentPerGame: round(stats.estates.goldSpent / games),
     },
     scoring: {
@@ -890,7 +893,7 @@ function formatReport(result) {
     `War: victory ${Math.round(result.wars.victoryRate * 100)}%, stalemate ${Math.round(result.wars.stalemateRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, avg margin ${result.wars.averageMargin}`,
     `Coup: throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, self top-preference ${Math.round(result.coups.selfPreferenceRate * 100)}%, incumbent backing ${Math.round(result.coups.incumbentBackRate * 100)}%`,
     `Deployment/order: frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}, idle ${result.deployment.idleTroopsPerOrder}, mercs ${result.deployment.mercenariesPerOrder}`,
-    `Estates/game: bid submissions ${result.estates.bidsPerGame}, winning purchases ${result.estates.purchasesPerGame}, submitted bid total ${result.estates.bidGoldPerGame}, winning spend ${result.estates.goldSpentPerGame}`,
+    `Estates/game: built ${result.estates.builtPerGame}, revoked ${result.estates.revokedPerGame}, gold spent ${result.estates.goldSpentPerGame}; per plan ${result.estates.estatesPerPlan} estates over ${result.estates.provincesPerPlan} provinces`,
     `Scoring: winner ${result.scoring.winnerScore}, average ${result.scoring.averageScore}, gap ${result.scoring.pointGap}`,
     `Seat win rates: ${Object.entries(result.seatWinRates).map(([seat, rate]) => `seat ${Number(seat) + 1} ${Math.round(rate * 100)}%`).join(', ')}`,
     `Falls by invader: ${Object.entries(result.fallInvasionRates).map(([invasionId, rate]) => `${invasionId} ${Math.round(rate * 100)}%`).join(', ') || 'none'}`,

@@ -6,7 +6,6 @@
 // Strings may use **bold**; everything else is plain text.
 import { BALANCE } from '../data/balance.js';
 import { MAJOR_TITLES } from '../data/titles.js';
-import { PRIVATE_ESTATE_REVOCATION_COMPENSATION } from '../engine/actions.js';
 import { SCORE_CATEGORIES, SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PLAYER_COUNT_MAX, PLAYER_COUNT_MIN } from '../engine/setup.js';
 import { GLOSSARY_TERMS } from './glossary.js';
@@ -73,7 +72,7 @@ export const RULE_SECTIONS = [
           ['Major titles', 'never change in Court. They are redistributed only in the Title Redistribution phase.'],
           ['No repeats.', 'A player cannot appoint the same dynasty twice in a row; appointing someone else unlocks the previous appointee again. The same revoker cannot revoke the same target twice in a row.'],
           ['Revocations', `are free and count against each office's action limit. The same title cannot be appointed and revoked in the same turn.`],
-          ['Private estates', `bought in the previous turn cannot be revoked yet. When an older private estate is revoked, its owner receives ${PRIVATE_ESTATE_REVOCATION_COMPENSATION} gold.`],
+          ['Estates', 'built last round cannot be revoked yet. One revocation takes all of one dynasty\'s other estates in a province, with no refund.'],
         ],
       },
     ],

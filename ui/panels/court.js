@@ -16,6 +16,7 @@ import {
   isCourtPowerUsed,
 } from '../../engine/actions.js';
 import { getPlayer } from '../../engine/state.js';
+import { getRevocableEstateCount } from '../../engine/estates.js';
 import { escapeHtml } from '../html.js';
 import { getPlayerStyleAttr, renderPlayerChip, renderProvinceOfficeBadge, renderTitleBadge } from '../labels.js';
 import {
@@ -104,7 +105,7 @@ function renderCourtPowerBadge(state, playerId, powerKey) {
 function courtSeatLabel(kind) {
   if (kind === 'strategos') return 'Strategos seat';
   if (kind === 'bishop') return 'Bishop seat';
-  if (kind === 'estate') return 'Private estate';
+  if (kind === 'estate') return 'Estates';
   return 'Seat';
 }
 
@@ -114,22 +115,25 @@ function courtSeatHolder(state, holderId) {
   return Number.isInteger(playerId) ? getPlayer(state, playerId) : null;
 }
 
-function renderCourtSeatTitleCartouche(state, kind, theme, holderId) {
+function renderCourtSeatTitleCartouche(state, kind, theme, holderId, count = null) {
   const holder = courtSeatHolder(state, holderId);
   return renderProvinceOfficeBadge(state, kind, theme, {
     holderId: holder?.id ?? null,
     compact: true,
+    label: kind === 'estate' && count ? `Estates ×${count}` : undefined,
   });
 }
 
-function renderCourtLinkSeat(state, kind, theme, holderId = null) {
+// `count` is how many estates a revocation would take (estate seats only).
+function renderCourtLinkSeat(state, kind, theme, holderId = null, count = null) {
   if (!theme) return '';
   const holder = courtSeatHolder(state, holderId);
+  const countText = kind === 'estate' && count ? ` ×${count}` : '';
   return `
     <span class="court-link-seat-token ${escapeHtml(kind)}${holder ? ' tied' : ' open'}"
       ${holder ? `style="${getPlayerStyleAttr(state, holder.id)}"` : ''}
-      title="${escapeHtml(`${courtSeatLabel(kind)} in ${theme.name}${holder ? `: ${playerDisplayLabel(holder)}` : ''}`)}">
-      ${renderCourtSeatTitleCartouche(state, kind, theme, holder?.id ?? null)}
+      title="${escapeHtml(`${courtSeatLabel(kind)}${countText} in ${theme.name}${holder ? `: ${playerDisplayLabel(holder)}` : ''}`)}">
+      ${renderCourtSeatTitleCartouche(state, kind, theme, holder?.id ?? null, count)}
     </span>
   `;
 }
@@ -149,18 +153,22 @@ function describeRevocationLinkTarget(state, target) {
       label: target?.label || `${courtSeatLabel(linkKind)} in ${theme.name}`,
     };
   }
-  if (kind === 'theme') {
+  if (kind === 'estates') {
+    const holderId = Number(titleType);
+    const count = getRevocableEstateCount(theme, holderId);
     return {
       kind: 'estate',
+      keyId: `${theme.id}:${holderId}`,
       theme,
-      holderId: theme.owner,
-      seatHtml: renderCourtLinkSeat(state, 'estate', theme, theme.owner),
-      label: target?.label || `Estate in ${theme.name}`,
+      holderId,
+      seatHtml: renderCourtLinkSeat(state, 'estate', theme, holderId, count),
+      label: target?.label || `Estates in ${theme.name}`,
     };
   }
   return null;
 }
 
+// Estate rows are per dynasty, so their key carries the holder too.
 function courtConnectionKey(kind, themeId) {
   return `${kind}:${themeId}`;
 }
@@ -270,7 +278,7 @@ function buildCourtConnectionEntries(state, playerId, powerKey, draft) {
       const link = describeRevocationLinkTarget(state, target);
       if (!link) return;
       addEntry({
-        key: courtConnectionKey(link.kind, link.theme.id),
+        key: courtConnectionKey(link.kind, link.keyId || link.theme.id),
         mode: 'bound',
         kind: link.kind,
         theme: link.theme,

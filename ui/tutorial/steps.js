@@ -195,19 +195,20 @@ export const TUTORIAL_STEPS = [
   {
     id: 'estates-bid',
     when: inRound(1, 'estates'),
-    target: () => document.querySelector('.estate-card:not(.disabled) [data-action="bid-estate"]'),
-    title: 'Buy land',
-    body: 'Free provinces are sold by sealed bid. An estate pays its profit (P) to you every round, and profit income is one of the three scores.',
-    task: 'Plan a bid on this estate at the minimum price.',
-    done: () => Boolean(document.querySelector('.estate-card.selected')),
+    target: () => document.querySelector('.estate-row:not(.on-route) [data-estate-add]:not([disabled])')
+      || document.querySelector('[data-estate-add]:not([disabled])'),
+    title: 'Build estates',
+    body: 'Each estate pays you 1 gold every round, and estate income is one of the three scores. Your first estate this round costs 1 gold, the next 2, then 3: spread them or stack them as you like.',
+    task: 'Press + to plan an estate in this province.',
+    done: () => Boolean(document.querySelector('.estate-row.planned')),
   },
   {
     id: 'estates-lock',
     when: inRound(1, 'estates'),
     target: '[data-action="confirm-estates"]',
-    title: 'Lock your bids',
-    body: 'Rivals bid in secret too. The highest bid wins when Deployment opens; a tie goes to one of the tied bidders at random.',
-    task: 'Click Lock Bids.',
+    title: 'Lock your estates',
+    body: 'Rivals plan in secret too. Every plan is paid and built when Deployment opens. If invaders take a province, its estates stop paying until it is reconquered.',
+    task: 'Click Lock Estates.',
     done: ({ state }) => state.phase !== 'estates' || Boolean(state.estatesReady?.[ME]),
   },
   {

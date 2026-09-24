@@ -19,19 +19,19 @@ import {
   appointBishop,
   appointStrategos,
   autoConfirmFinishedCourtPlayer,
-  buyTheme,
   canPlayerRevokeBishop,
   canPlayerRevokeStrategos,
   checkRevocationCurrentTurnAppointment,
   hasCourtActionUsed,
   markCourtActionUsed,
   passCourtPower,
+  revokeEstates,
   revokeMinorTitle,
-  revokeTheme,
   validateMajorTitleAssignments,
   applyTitleRedistribution,
 } from './actions.js';
 import { normalizeHumanOrders } from './orders.js';
+import { setEstatePlan } from './estates.js';
 
 function fail(reason) {
   return { ok: false, reason };
@@ -109,14 +109,13 @@ export function applyCourtAction(state, playerId, payload = {}) {
       }
       const result = revokeMinorTitle(state, parts[1], parts[2], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
-    } else if (kind === 'theme') {
-      const theme = state.themes[parts[1]];
-      targetPlayerId = theme?.owner ?? null;
-      if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
+    } else if (kind === 'estates') {
+      targetPlayerId = Number(parts[2]);
+      if (Number.isInteger(targetPlayerId) && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
-      const result = revokeTheme(state, parts[1], playerId);
-      if (!result?.ok) return fail(result?.reason || 'Could not revoke that estate.');
+      const result = revokeEstates(state, parts[1], targetPlayerId, playerId);
+      if (!result?.ok) return fail(result?.reason || 'Could not revoke those estates.');
     } else {
       return fail('Choose a valid revocation target.');
     }
@@ -127,14 +126,16 @@ export function applyCourtAction(state, playerId, payload = {}) {
   return fail('Unknown court action.');
 }
 
+// Estates phase: the whole plan is sent at once ({ themeId: count }); it
+// replaces the previous one and unlocks the dynasty if it had locked.
 export function applyEstateAction(state, playerId, payload = {}) {
-  if (state.phase !== 'estates') return fail('Estate bidding is not available right now.');
+  if (state.phase !== 'estates') return fail('Estates can only be built during the Estates phase.');
   const action = String(payload.action || '').trim();
-  if (action === 'buy') {
-    const result = buyTheme(state, playerId, payload.themeId, payload.amount);
-    if (!result?.ok) return fail(result?.reason || 'Could not bid on that estate.');
+  if (action === 'plan') {
+    const result = setEstatePlan(state, playerId, payload.plan || {});
+    if (!result?.ok) return fail(result?.reason || 'Could not plan those estates.');
     if (state.estatesReady?.[playerId]) delete state.estatesReady[playerId];
-    return { ok: true };
+    return { ok: true, count: result.count, cost: result.cost };
   }
   return fail('Unknown estate action.');
 }

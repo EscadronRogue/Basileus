@@ -6,7 +6,6 @@
 // next one. Numbers come from the engine so definitions match the rules.
 import { MAJOR_TITLES } from '../data/titles.js';
 import { BALANCE } from '../data/balance.js';
-import { PRIVATE_ESTATE_REVOCATION_COMPENSATION } from '../engine/actions.js';
 import { SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PERSONALITIES } from '../ai/personalities.js';
 
@@ -76,7 +75,7 @@ export const GLOSSARY_TERMS = [
     term: 'Revocation',
     category: 'Court',
     aliases: ['revocations', 'revocation', 'revokes', 'revoke'],
-    definition: `Taking a Strategos or Bishop seat, or a private estate, away during Court. Free, but it uses one of the office's actions. Estates bought last turn cannot be revoked yet; an older estate pays its owner ${PRIVATE_ESTATE_REVOCATION_COMPENSATION} gold when revoked.`,
+    definition: `Taking a Strategos or Bishop away, or all of one dynasty's estates in one province. Each revocation uses one of the office's actions. Estates built last round cannot be revoked yet.`,
   },
   {
     id: 'title-redistribution',

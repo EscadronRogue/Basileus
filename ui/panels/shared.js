@@ -2,6 +2,7 @@
 
 import { applyCourtAction } from '../../engine/commands.js';
 import { getOfficeDisplayName, getOfficeHolder, getPlayer } from '../../engine/state.js';
+import { getProvinceEstateHolders, getRevocableEstateCount } from '../../engine/estates.js';
 import { getDeploymentArmyDisplayName, isStrategosDeploymentArmyKey } from '../../engine/deployment.js';
 import { escapeHtml } from '../html.js';
 import { renderThemeOfficeBadge, renderTitleBadge } from '../labels.js';
@@ -112,8 +113,17 @@ export function getRevocationTargets(state, playerId, powerKey = null) {
     if (theme.bishop != null && roles.has('PATRIARCH')) {
       pushTarget({ value: `minor:${theme.id}:bishop`, label: `Bishop of ${theme.name}` });
     }
-    if (isBasileusPower && Number.isInteger(theme.owner) && !theme.lost) {
-      pushTarget({ value: `theme:${theme.id}`, label: `Estate in ${theme.name}` });
+    // One target per dynasty with estates the Basileus may take there.
+    if (isBasileusPower && !theme.lost) {
+      for (const holder of getProvinceEstateHolders(theme)) {
+        const count = getRevocableEstateCount(theme, holder.playerId);
+        if (count <= 0) continue;
+        const holderName = playerDisplayLabel(getPlayer(state, holder.playerId));
+        pushTarget({
+          value: `estates:${theme.id}:${holder.playerId}`,
+          label: `${count} estate${count === 1 ? '' : 's'} of ${holderName} in ${theme.name}`,
+        });
+      }
     }
   }
   return targets;

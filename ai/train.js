@@ -20,7 +20,7 @@ import { randomBytes } from 'node:crypto';
 
 import { makeRng } from '../engine/state.js';
 import { createSimulationPool, defaultSimulationWorkers, simulateGame } from './simulate.js';
-import { DEFAULT_STRATEGY_WEIGHTS, estateBidPressure } from './strategy.js';
+import { DEFAULT_STRATEGY_WEIGHTS } from './strategy.js';
 import { POLICY_WEIGHT_PRESETS } from './policies.js';
 import { pickUniqueGreekFirstName, slugifyGreekFirstName } from './greekNames.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
@@ -283,7 +283,6 @@ export function personalitySeedWeights(personalityId) {
     ...(POLICY_WEIGHT_PRESETS[personality.basePolicy] || {}),
   };
   // Start from the bidding pressure the preset's valuation implies.
-  weights.estateBidPressure ??= estateBidPressure(weights);
   return clampToPersonality(personality, weights);
 }
 

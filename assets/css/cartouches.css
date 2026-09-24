@@ -812,3 +812,32 @@
   color: var(--crimson-1, #7a1f1f);
   border: 1px dashed currentColor;
 }
+
+/* Estates: one numbered circle per dynasty, in its colour (ui/labels.js renderEstateStack). */
+.estate-stack { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.estate-chip {
+  display: inline-block;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid rgba(20,8,0,0.8);
+  background: var(--chip-color, #5a3810);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  text-shadow: 0 0 2px rgba(0,0,0,0.85);
+}
+.estate-stack.compact .estate-chip { min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; line-height: 16px; }
+.estate-chip.disabled { opacity: 0.45; border-style: dashed; filter: grayscale(0.6); }
+.estate-chip.planned {
+  background: transparent;
+  color: var(--umber-1);
+  border: 2px dashed var(--chip-color, #5a3810);
+  text-shadow: none;
+}
+.ownership-badge.disabled { opacity: 0.5; }

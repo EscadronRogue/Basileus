@@ -6,15 +6,16 @@ import {
   submitHumanOrders,
 } from '../engine/commands.js';
 import {
-  canRevokeTheme,
+  canRevokeEstates,
   getAvailableCourtPowers,
-  getLandBidAmountOptions,
+  getEstateRevocationValue,
   suggestMajorTitleAssignments,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
+import { canBuildEstatesIn, getProvinceEstateHolders } from '../engine/estates.js';
 import { getSpendableGold } from '../engine/deals.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
-import { getFreeThemes, getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
+import { getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { MAJOR_TITLES } from '../data/titles.js';
@@ -38,7 +39,7 @@ function cloneForValidation(state) {
     activeDealObligations: cloneValueForValidation(state.activeDealObligations || []),
     reservedGold: cloneValueForValidation(state.reservedGold || {}),
     dealThreads: cloneValueForValidation(state.dealThreads || []),
-    landAuctions: cloneValueForValidation(state.landAuctions || {}),
+    estatePlans: cloneValueForValidation(state.estatePlans || {}),
     estatesReady: cloneValueForValidation(state.estatesReady || {}),
     currentTroops: cloneValueForValidation(state.currentTroops || {}),
     allOrders: cloneValueForValidation(state.allOrders || {}),
@@ -170,14 +171,11 @@ function appendRevocationActions(actions, state, playerId) {
     if (theme.bishop != null && player.majorTitles.includes('PATRIARCH')) {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `minor:${theme.id}:bishop` }, 'revoke bishop');
     }
-    if (
-      playerId === state.basileusId
-      && Number.isInteger(theme.owner)
-      && !theme.lost
-      && theme.id !== 'CPL'
-      && canRevokeTheme(state, theme.id, playerId).ok
-    ) {
-      pushCourt(actions, state, playerId, { action: 'revoke', value: `theme:${theme.id}` }, 'revoke estate');
+    if (playerId === state.basileusId && !theme.lost && theme.id !== 'CPL') {
+      for (const holder of getProvinceEstateHolders(theme)) {
+        if (!canRevokeEstates(state, theme.id, holder.playerId, playerId).ok) continue;
+        pushCourt(actions, state, playerId, { action: 'revoke', value: getEstateRevocationValue(theme.id, holder.playerId) }, 'revoke estates');
+      }
     }
   }
 }
@@ -200,20 +198,22 @@ export function listLegalCourtActions(state, playerId) {
   return uniqueActions(actions);
 }
 
-function buildEstateBidAmounts(state, playerId, theme) {
-  return getLandBidAmountOptions(state, playerId, theme.id);
+// Provinces where the dynasty may build estates this round.
+export function listEstateSites(state) {
+  return Object.values(state?.themes || {}).filter(canBuildEstatesIn);
 }
 
+export function buildEstatePlanAction(playerId, plan = {}) {
+  const payload = { action: 'plan', plan };
+  return { id: actionId('estate', payload), kind: 'estate', phase: 'estates', playerId, label: 'plan estates', payload };
+}
+
+// One action per site: a plan of a single estate there. The strategic AI
+// builds its real plan greedily in ai/strategy.js; this list serves the
+// random policy and tests.
 export function listLegalEstateActions(state, playerId) {
   if (!state || state.phase !== 'estates') return [];
-  const actions = [];
-  for (const theme of getFreeThemes(state)) {
-    for (const amount of buildEstateBidAmounts(state, playerId, theme)) {
-      const payload = { action: 'buy', themeId: theme.id, amount };
-      actions.push({ id: actionId('estate', payload), kind: 'estate', phase: 'estates', playerId, label: 'bid on estate', payload });
-    }
-  }
-  return actions;
+  return listEstateSites(state).map((theme) => buildEstatePlanAction(playerId, { [theme.id]: 1 }));
 }
 
 function fullFundingArmies(state, playerId, destination = 'frontier') {
@@ -493,7 +493,7 @@ export function getActionTargetPlayerId(state, action) {
       const theme = state.themes?.[id];
       return titleType === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
     }
-    if (kind === 'theme') return state.themes?.[id]?.owner ?? null;
+    if (kind === 'estates') return Number.isInteger(Number(titleType)) ? Number(titleType) : null;
     if (kind === 'court') return null;
   }
   return null;
@@ -504,7 +504,7 @@ export function getActionThemeId(action) {
   if (payload.themeId) return payload.themeId;
   if (payload.value) {
     const [kind, id] = String(payload.value).split(':');
-    if (kind === 'minor' || kind === 'theme') return id;
+    if (kind === 'minor' || kind === 'estates') return id;
   }
   return null;
 }

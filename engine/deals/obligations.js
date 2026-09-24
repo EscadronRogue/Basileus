@@ -1,5 +1,6 @@
 // engine/deals/obligations.js - accepted obligations: gold reservations, estate transfers, promises, round hooks.
 
+import { getEstateCount, transferEstates } from '../estates.js';
 import { recordHistoryEvent } from '../history.js';
 import { getPlayer, getPlayerLabel } from '../state.js';
 import {
@@ -124,10 +125,10 @@ function transferDealGold(state, giverId, receiverId, amount) {
 
 function transferDealEstate(state, giverId, receiverId, themeId) {
   const theme = state.themes?.[themeId];
-  if (!theme || theme.owner !== giverId) {
-    return fail(`${getPlayerLabel(state, giverId)} no longer controls ${themeName(state, themeId)}.`);
+  if (!theme || getEstateCount(theme, giverId) <= 0) {
+    return fail(`${getPlayerLabel(state, giverId)} no longer has estates in ${themeName(state, themeId)}.`);
   }
-  theme.owner = receiverId;
+  transferEstates(theme, giverId, receiverId);
   recordPublicEstateTransfer(state, giverId, receiverId, themeId);
   return { ok: true };
 }

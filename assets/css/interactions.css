@@ -2038,3 +2038,75 @@
 .title-redist-link-preview {
   margin-top: 10px;
 }
+
+/* Estates phase: one row per province, + / - to plan, one lock for the plan. */
+.estate-plan-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: rgba(255,250,236,0.8);
+  border: 1px solid rgba(168,116,32,0.22);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--umber-1);
+}
+.estate-region { display: flex; flex-direction: column; gap: 6px; }
+.estate-region-title {
+  margin: 6px 0 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--umber-2);
+}
+.estate-list { display: flex; flex-direction: column; gap: 4px; }
+.estate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--r-sm, 6px);
+  border: 1px solid rgba(168,116,32,0.16);
+  background: rgba(255,252,242,0.72);
+}
+.estate-row.planned { border-color: rgba(200,146,30,0.55); background: rgba(250,236,196,0.7); }
+.estate-row.on-route { box-shadow: inset 3px 0 0 var(--crimson-1, #7a1f1f); }
+.estate-row-holders { min-width: 0; }
+.estate-route-tag {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--crimson-1, #7a1f1f);
+  white-space: nowrap;
+}
+.estate-row:not(.on-route) .estate-route-tag { display: none; }
+.estate-stepper { display: inline-flex; align-items: center; gap: 4px; grid-column: 4; }
+.estate-step {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(168,116,32,0.45);
+  background: rgba(255,250,236,0.95);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.estate-step:disabled { opacity: 0.35; cursor: default; }
+.estate-step-count {
+  min-width: 18px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+@media (max-width: 600px) {
+  .estate-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .estate-row-holders { grid-column: 1 / -1; grid-row: 2; }
+  .estate-route-tag { grid-column: 1; }
+  .estate-stepper { grid-column: 2; grid-row: 1; }
+}

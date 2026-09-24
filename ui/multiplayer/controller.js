@@ -30,6 +30,7 @@ import {
   saveMultiplayerSession,
 } from './connection.js';
 import { dynastyNameForSeat, renderMultiplayerLobby } from './lobby.js';
+import { addEstateToDraft } from '../panels/estates.js';
 
 export async function launchMultiplayerClient(options = {}) {
   const playerName = String(options.playerName || '').trim() || 'Guest';
@@ -614,13 +615,9 @@ export class MultiplayerController {
 
   createEstateHandlers() {
     return {
-      buy: (themeId, data = {}) => this.send('estate_action', { action: 'buy', themeId, amount: data.amount }),
-      submitEstatePlan: ({ bids = [] } = {}) => {
-        bids.forEach((bid) => this.send('estate_action', {
-          action: 'buy',
-          themeId: bid.themeId,
-          amount: bid.amount,
-        }));
+      // The whole plan is sent once, then the dynasty locks.
+      submitEstatePlan: ({ plan = {} } = {}) => {
+        this.send('estate_action', { action: 'plan', plan });
         this.send('confirm_estates');
       },
     };
@@ -662,6 +659,9 @@ export class MultiplayerController {
         this.renderGame();
       },
       onProvinceSelect: (provinceId) => {
+        // During Estates a map click also plans an estate there.
+        const seatId = this.getControlledSeatId();
+        if (seatId != null) addEstateToDraft(this.uiState, this.state, seatId, provinceId);
         this.selectProvince(provinceId);
       },
       onProvinceHover: (provinceId) => {

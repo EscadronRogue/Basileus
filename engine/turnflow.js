@@ -1,7 +1,8 @@
 // engine/turnflow.js - turn controller for the updated ruleset.
 import { readTroopCount, runIncome } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
-import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup, settleLandAuctions } from './actions.js';
+import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup } from './actions.js';
+import { clearRecentEstateMarks, settleEstatePlans } from './estates.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
 import { BALANCE } from '../data/balance.js';
@@ -304,12 +305,14 @@ export function completeCourtPhase(state) {
 
 export function phaseEstates(state) {
   state.phase = 'estates';
-  state.landAuctions = {};
+  // Estates built last round were protected during this round's Offices phase.
+  clearRecentEstateMarks(state);
+  state.estatePlans = {};
   state.estatesReady = {};
 }
 
 export function phaseDeployment(state) {
-  settleLandAuctions(state);
+  settleEstatePlans(state);
   state.phase = 'deployment';
   state.allOrders = {};
   state.mercenaryOrders = {};

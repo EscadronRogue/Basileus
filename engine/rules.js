@@ -27,16 +27,9 @@ export function getThemeChurchValue(theme) {
   return readThemeChurch(theme);
 }
 
-export function getThemeLandPrice(themeOrProfit) {
-  return readThemeProfit(themeOrProfit) * 2;
-}
-
-export function getNormalOwnerIncome(themeOrProfit) {
-  return readThemeProfit(themeOrProfit);
-}
-
+// Gold one estate pays its owner every Income.
 export function getThemeOwnerIncome(theme) {
-  return getNormalOwnerIncome(theme);
+  return readThemeProfit(theme);
 }
 
 // Rising price shared by mercenaries and estates: within one round the first

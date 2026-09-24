@@ -261,7 +261,7 @@ test('the tutorial guides a full round, then leaves no save behind', async (t) =
       await clickSocket('[data-court-power="DOM_EAST"] [data-wire-player-finish="0"]');
     },
     'court-lock': () => page.click('[data-action="confirm-court-plan"]'),
-    'estates-bid': () => page.click('.estate-card:not(.disabled) [data-action="bid-estate"]'),
+    'estates-bid': () => page.locator('[data-estate-add]:not([disabled])').first().click(),
     'estates-lock': () => page.click('[data-action="confirm-estates"]'),
     'deploy-frontier': async () => {
       while (await page.locator('.army-card.unresolved').count()) {

@@ -34,6 +34,7 @@ import {
   runIncome,
 } from './cascade.js';
 import { applyInvasionResult, resolveInvasion } from './combat.js';
+import { addEstates, getEstateCount } from './estates.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { serializePublicGameState } from './publicState.js';
 import {
@@ -57,6 +58,7 @@ import {
   phaseInvasion,
   phaseCleanup,
   phaseCourt,
+  phaseEstates,
   phaseResolution,
 } from './turnflow.js';
 import { addTemporaryCapitalSupport, getCapitalSupportByPlayer } from './capitalSupport.js';
@@ -68,7 +70,6 @@ import {
   isCourtPowerPassed,
   resolveCoup,
   revokeMinorTitle,
-  revokeTheme,
   suggestMajorTitleAssignments,
 } from './actions.js';
 
@@ -270,7 +271,7 @@ test('province table uses profit, troop, and church values with capital excluded
 
 test('income: each office raises its own troops and church gold, nothing is shared out', () => {
   const state = makeState();
-  state.themes.KAP.owner = 2;
+  addEstates(state.themes.KAP, 2, 1, { recent: false });
   state.themes.KAP.strategos = 3;
   state.themes.KAP.bishop = 1;
   state.themes.ANT.bishop = 1;
@@ -318,13 +319,13 @@ test('the Basileus raises 1 troop per 3 imperial provinces, rounded down', () =>
 
 test('a lost province keeps its Strategos and estate on record but they stop working', () => {
   const state = makeState();
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
   state.themes.OPS.strategos = 3;
   state.themes.OPS.bishop = 2;
   applyInvasionResult(state, { themesLost: ['OPS'], themesRecovered: [], reachedCPL: false });
 
   assert.equal(state.themes.OPS.lost, true);
-  assert.equal(state.themes.OPS.owner, 2);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 1);
   assert.equal(state.themes.OPS.strategos, 3);
   const whileLost = runIncome(state);
   assert.equal(whileLost.income[2] ?? 0, 1, 'only the Bishop is paid while the province is lost');
@@ -338,7 +339,7 @@ test('a lost province keeps its Strategos and estate on record but they stop wor
 
 test('map filters show only appointed Strategoi and Bishops', () => {
   const state = makeState();
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
   state.themes.KAP.strategos = 3;
   state.themes.HEL.bishop = 2;
 
@@ -411,7 +412,7 @@ test('coup replacement schedules title redistribution before the next court', ()
 
 test('court actions are role-filtered and appointment-capped per major title', () => {
   const state = makeState();
-  state.themes.SAM.owner = 2;
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
   enterCourt(state);
 
   const badStrategos = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
@@ -531,8 +532,8 @@ test('basileus court power is revocation-only and allows four revocations', () =
   state.themes.OPS.strategos = 1;
   state.themes.KAP.strategos = 2;
   state.themes.CIL.bishop = 2;
-  state.themes.SAM.owner = 3;
-  state.themes.ITA.owner = 1;
+  addEstates(state.themes.SAM, 3, 2, { recent: false });
+  addEstates(state.themes.ITA, 1, 1, { recent: false });
   enterCourt(state);
 
   const appointment = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 1 });
@@ -552,13 +553,13 @@ test('basileus court power is revocation-only and allows four revocations', () =
   assert.equal(secondRevocation.ok, true);
   assert.equal(state.themes.KAP.strategos, null);
 
-  const thirdRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:SAM' });
+  const thirdRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:SAM:3' });
   assert.equal(thirdRevocation.ok, true);
-  assert.equal(state.themes.SAM.owner, null);
+  assert.equal(getEstateCount(state.themes.SAM, 3), 0, 'one action takes both estates');
 
-  const fourthRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:ITA' });
+  const fourthRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:ITA:1' });
   assert.equal(fourthRevocation.ok, true);
-  assert.equal(state.themes.ITA.owner, null);
+  assert.equal(getEstateCount(state.themes.ITA, 1), 0);
   assert.equal(getCourtPowerActionCount(state, 0, 'BASILEUS'), 4);
   assert.equal(getCourtPowerRevocationCount(state, 0, 'BASILEUS'), 4);
   assert.equal(isCourtPowerExhausted(state, 0, 'BASILEUS'), true);
@@ -605,65 +606,71 @@ test('patriarch may appoint bishops in lost bishoprics', () => {
   assert.equal(state.themes.KAP.bishop, 2);
 });
 
-test('private estate revocation preserves seated offices and notifies the estate owner', () => {
+test('one revocation takes all of one dynasty\'s estates in a province, and nothing else', () => {
   const state = makeState();
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 3, { recent: false });
+  addEstates(state.themes.OPS, 3, 1, { recent: false });
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
   state.themes.OPS.strategos = 3;
   state.themes.OPS.bishop = 1;
   getPlayer(state, 2).gold = 4;
   enterCourt(state);
 
-  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
 
   assert.equal(result.ok, true);
-  assert.equal(state.themes.OPS.owner, null);
-  assert.equal(state.themes.OPS.privateEstatePurchasedRound, null);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 0);
+  assert.equal(getEstateCount(state.themes.OPS, 3), 1, 'other dynasties keep their estates');
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1, 'estates elsewhere are untouched');
   assert.equal(state.themes.OPS.strategos, 3);
   assert.equal(state.themes.OPS.bishop, 1);
-  assert.equal(getPlayer(state, 2).gold, 5);
-  assert.equal(state.courtActions.revokedThisTurn['theme:OPS'], true);
-  assert.equal(state.courtActions.revokedThisTurn['minor:OPS:strategos'], undefined);
-  assert.equal(state.courtActions.revokedThisTurn['minor:OPS:bishop'], undefined);
-  assert.equal(state.history.find((event) => event.type === 'revoke_theme')?.details?.compensation, 1);
+  assert.equal(getPlayer(state, 2).gold, 4, 'no refund');
+  assert.equal(state.courtActions.revokedThisTurn['estates:OPS:2'], true);
+  assert.equal(state.history.find((event) => event.type === 'revoke_estates')?.details?.count, 3);
 
-  assert.equal(buildPrivateNotifications(state, 2).notifications.some((notice) => notice.kind === 'revocation'), false);
   state.phase = 'income';
   const ownerNotices = buildPrivateNotifications(state, 2).notifications;
-  assert.equal(ownerNotices.some((notice) => notice.kind === 'revocation' && /private ownership/.test(notice.body)), true);
   assert.equal(ownerNotices.find((notice) => notice.kind === 'revocation')?.tone, 'negative');
   assert.equal(buildPrivateNotifications(state, 3).notifications.some((notice) => notice.kind === 'revocation'), false);
-  assert.equal(buildPrivateNotifications(state, 1).notifications.some((notice) => notice.kind === 'revocation'), false);
 });
 
-test('private estates bought last turn cannot be revoked until the next turn', () => {
+test('estates built last round cannot be revoked until the round after', () => {
   const state = makeState();
   state.round = 1;
-  state.phase = 'estates';
+  phaseEstates(state);
   getPlayer(state, 2).gold = 5;
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
 
-  const bid = applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 2 });
-  assert.equal(bid.ok, true);
+  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 2 } }).ok, true);
   for (const player of state.players) confirmEstates(state, player.id);
   assert.equal(state.phase, 'deployment');
-  assert.equal(state.themes.OPS.owner, 2);
-  assert.equal(state.themes.OPS.privateEstatePurchasedRound, 1);
-  assert.equal(getPlayer(state, 2).gold, 3);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 3);
+  assert.equal(getPlayer(state, 2).gold, 2, 'two estates cost 1 + 2');
 
   state.round = 2;
-  state.themes.KAP.strategos = 1;
   enterCourt(state);
-  const blocked = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
-  assert.equal(blocked.ok, false);
-  assert.match(blocked.reason, /bought last turn/);
-  assert.equal(state.themes.OPS.owner, 2);
-  assert.equal(getPlayer(state, 2).gold, 3);
+  const first = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
+  assert.equal(first.ok, true);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 2, 'only the older estate is taken');
 
+  phaseEstates(state);
   state.round = 3;
+  state.players[0].revocationCooldown = {};
   enterCourt(state);
-  const allowed = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
-  assert.equal(allowed.ok, true);
-  assert.equal(state.themes.OPS.owner, null);
-  assert.equal(getPlayer(state, 2).gold, 4);
+  const second = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
+  assert.equal(second.ok, true);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 0);
+});
+
+test('estates that are all protected cannot be revoked', () => {
+  const state = makeState();
+  addEstates(state.themes.OPS, 2, 2, { recent: true });
+  state.themes.KAP.strategos = 3;
+  enterCourt(state);
+  const blocked = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason, /built last round/);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 2);
 });
 
 test('private notifications cover personal toned chronicle news without turn prompts', () => {
@@ -681,147 +688,87 @@ test('private notifications cover personal toned chronicle news without turn pro
   assert.equal(appointmentNotice?.toast, true);
   assert.match(appointmentNotice?.title || '', /appointed strategos/);
 
-  state.history.push({
-    id: 'history-auction-test',
-    round: state.round,
-    phase: 'deployment',
-    type: 'buy_theme',
-    actorId: 1,
-    summary: `${state.players[1].dynasty} wins Opsikion for 4 gold.`,
-    details: {
-      themeId: 'OPS',
-      themeName: 'Opsikion',
-      cost: 4,
-      bids: [
-        { bidderId: 0, amount: 3 },
-        { bidderId: 1, amount: 4 },
-      ],
-    },
-  });
-  const lostBidNotice = buildPrivateNotifications(state, 0).notifications.find((notice) => notice.kind === 'estate_lost');
-  assert.equal(lostBidNotice?.tone, 'negative');
-  assert.equal(lostBidNotice?.toast, true);
-  const wonBidNotice = buildPrivateNotifications(state, 1).notifications.find((notice) => notice.kind === 'estate_won');
-  assert.equal(wonBidNotice?.tone, 'positive');
-  assert.equal(wonBidNotice?.toast, true);
-
   state.phase = 'deployment';
   state.allOrders = {};
   assert.equal(buildPrivateNotifications(state, 0).notifications.some((notice) => notice.kind === 'deployment_orders'), false);
 });
 
-test('same-turn office appointments do not block private estate revocation', () => {
+test('same-turn office appointments do not block estate revocation', () => {
   const state = makeState();
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
   enterCourt(state);
 
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 3 });
   assert.equal(appointment.ok, true);
 
-  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
 
   assert.equal(result.ok, true);
-  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 0);
   assert.equal(state.themes.OPS.strategos, 3);
 });
 
-test('court no longer allows gifting private land', () => {
+test('court no longer allows gifting estates', () => {
   const state = makeState();
   enterCourt(state);
-  state.themes.SAM.owner = 2;
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
 
   const result = applyCourtAction(state, 2, { action: 'gift', themeId: 'SAM' });
 
   assert.equal(result.ok, false);
   assert.match(result.reason, /Unknown court action/);
-  assert.equal(state.themes.SAM.owner, 2);
-  assert.equal(state.themes.SAM.bishop, null);
-  assert.deepEqual(
-    { P: state.themes.SAM.P, T: state.themes.SAM.T, C: state.themes.SAM.C },
-    { P: 1, T: 1, C: 1 },
-  );
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
 });
 
-test('estates phase stores bids and settles them when deployment opens', () => {
+test('estate plans are secret, cost 1, 2, 3... per dynasty and are built when Deployment opens', () => {
   const state = makeState();
-  state.phase = 'estates';
-  getPlayer(state, 2).gold = 5;
+  phaseEstates(state);
+  getPlayer(state, 2).gold = 7;
+  getPlayer(state, 3).gold = 2;
 
-  const bid = applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 2 });
-  assert.equal(bid.ok, true);
-  assert.equal(getPlayer(state, 2).gold, 5);
-  assert.equal(state.landAuctions.OPS.bids[2].amount, 2);
+  const tooMany = applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 4 } });
+  assert.equal(tooMany.ok, false, 'four estates cost 10');
+  const plan = applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 2, SAM: 1 } });
+  assert.equal(plan.ok, true);
+  assert.equal(plan.cost, 6);
+  assert.equal(getPlayer(state, 2).gold, 7, 'nothing is paid before Deployment');
+  assert.equal(applyEstateAction(state, 3, { action: 'plan', plan: { OPS: 1 } }).ok, true);
 
   const ready = confirmEstates(state, 2);
   assert.equal(ready.ok, true);
-  assert.equal(state.phase, 'estates');
   const unready = confirmEstates(state, 2);
   assert.equal(unready.ok, true);
   assert.equal(state.estatesReady[2], undefined);
-  for (const player of state.players) {
-    const result = confirmEstates(state, player.id);
-    assert.equal(result.ok, true);
-  }
-  assert.equal(state.phase, 'deployment');
-  assert.equal(state.themes.OPS.owner, 2);
-  assert.equal(getPlayer(state, 2).gold, 3);
-});
-
-test('sealed estate bids resolve by amount, refund losing commitments, and rotate ties', () => {
-  const state = makeState();
-  state.phase = 'estates';
-  getPlayer(state, 1).gold = 8;
-  getPlayer(state, 2).gold = 8;
-  getPlayer(state, 3).gold = 8;
-
-  assert.equal(applyEstateAction(state, 1, { action: 'buy', themeId: 'OPS', amount: 3 }).ok, true);
-  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  assert.equal(applyEstateAction(state, 3, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  assert.equal(getPlayer(state, 1).gold, 8);
-  assert.equal(getPlayer(state, 2).gold, 8);
-  assert.equal(getPlayer(state, 3).gold, 8);
-
-  for (const player of state.players) confirmEstates(state, player.id);
-
-  const firstWinner = state.themes.OPS.owner;
-  const firstLoser = firstWinner === 2 ? 3 : 2;
-  assert.equal([2, 3].includes(firstWinner), true);
-  assert.equal(getPlayer(state, firstWinner).gold, 4);
-  assert.equal(getPlayer(state, firstLoser).gold, 8);
-  assert.equal(getPlayer(state, 1).gold, 8);
-
-  state.phase = 'estates';
-  state.landAuctions = {};
-  state.estatesReady = {};
-  state.themes.OPS.owner = null;
-  getPlayer(state, 2).gold = 8;
-  getPlayer(state, 3).gold = 8;
-
-  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  assert.equal(applyEstateAction(state, 3, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  for (const player of state.players) confirmEstates(state, player.id);
-
-  assert.equal(state.themes.OPS.owner, firstLoser);
-  assert.equal(getPlayer(state, firstLoser).gold, 4);
-  assert.equal(getPlayer(state, firstWinner).gold, 8);
-});
-
-test('public estate snapshots expose only the viewer sealed bid', () => {
-  const state = makeState();
-  state.phase = 'estates';
-  getPlayer(state, 1).gold = 5;
-  getPlayer(state, 2).gold = 5;
-
-  assert.equal(applyEstateAction(state, 1, { action: 'buy', themeId: 'OPS', amount: 2 }).ok, true);
-  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
 
   const playerOneView = serializePublicGameState(state, 1);
-  const playerThreeView = serializePublicGameState(state, 3);
+  const playerTwoView = serializePublicGameState(state, 2);
+  assert.deepEqual(playerOneView.estatePlans, {}, 'other dynasties cannot see the plan');
+  assert.deepEqual(playerTwoView.estatePlans, { 2: { OPS: 2, SAM: 1 } });
 
-  assert.deepEqual(Object.keys(playerOneView.landAuctions.OPS.bids), ['1']);
-  assert.equal(playerOneView.landAuctions.OPS.bids[1].amount, 2);
-  assert.deepEqual(playerThreeView.landAuctions.OPS.bids, {});
-  assert.equal(playerOneView.players[2].gold, 5);
+  for (const player of state.players) assert.equal(confirmEstates(state, player.id).ok, true);
+  assert.equal(state.phase, 'deployment');
+  assert.equal(getEstateCount(state.themes.OPS, 2), 2);
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
+  assert.equal(getEstateCount(state.themes.OPS, 3), 1, 'several dynasties build in one province');
+  assert.equal(getPlayer(state, 2).gold, 1);
+  assert.equal(getPlayer(state, 3).gold, 1);
+  assert.equal(runIncome(state).incomeBreakdown.estate[2], 3, 'each estate pays 1 gold');
+  assert.match(state.history.find((event) => event.type === 'build_estates')?.summary || '', /Opsikion ×2/);
+});
+
+test('the estate price starts again at 1 each round, and lost provinces take no estates', () => {
+  const state = makeState();
+  phaseEstates(state);
+  getPlayer(state, 2).gold = 20;
+  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 1 } }).ok, true);
+  for (const player of state.players) confirmEstates(state, player.id);
+  assert.equal(getPlayer(state, 2).gold, 19);
+
+  phaseEstates(state);
+  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 1 } }).cost, 1);
+  const lost = applyEstateAction(state, 2, { action: 'plan', plan: { ANT: 1 } });
+  assert.equal(lost.ok, false);
+  assert.match(lost.reason, /lost/);
 });
 
 test('deployment schema funds armies, pays unfunded troops, and stores mercenary orders', () => {
@@ -1018,26 +965,26 @@ test('patriarch influence follows rankings while fortifications and triumph stay
 
 test('invasion loss keeps holders on record and reconquest gives the province back to them', () => {
   const state = makeState();
-  state.themes.SAM.owner = 2;
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
   state.themes.SAM.strategos = 3;
   state.themes.SAM.bishop = 1;
 
   applyInvasionResult(state, { themesLost: ['SAM'], themesRecovered: [], reachedCPL: false });
   assert.equal(state.themes.SAM.lost, true);
-  assert.equal(state.themes.SAM.owner, 2);
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
   assert.equal(state.themes.SAM.strategos, 3);
   assert.equal(state.themes.SAM.bishop, 1);
 
   applyInvasionResult(state, { themesLost: [], themesRecovered: ['SAM'], reachedCPL: false });
   assert.equal(state.themes.SAM.lost, false);
-  assert.equal(state.themes.SAM.owner, 2);
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
   assert.equal(state.themes.SAM.strategos, 3);
   assert.equal(state.themes.SAM.bishop, 1);
 });
 
 test('limited invasions take their target route without toppling the empire', () => {
   const state = makeState();
-  state.themes.ITA.owner = 2;
+  addEstates(state.themes.ITA, 2, 1, { recent: false });
 
   const result = resolveInvasion(state, 0, 6, {
     id: 'limited_test',
@@ -1051,7 +998,7 @@ test('limited invasions take their target route without toppling the empire', ()
   assert.equal(result.reachedCPL, false);
   assert.deepEqual(result.themesLost, ['ITA']);
   assert.equal(state.themes.ITA.lost, true);
-  assert.equal(state.themes.ITA.owner, 2);
+  assert.equal(getEstateCount(state.themes.ITA, 2), 1);
   assert.equal(state.gameOver, null);
 });
 
@@ -1295,16 +1242,16 @@ test('final scoring uses last income phase shares without free citizens', () => 
     theme.P = 0;
     theme.T = 0;
     theme.C = 0;
-    theme.owner = null;
+    theme.estates = {};
     theme.bishop = null;
     theme.strategos = null;
     theme.lost = false;
   }
 
-  state.themes.OPS.P = 3;
-  state.themes.OPS.owner = 0;
+  state.themes.OPS.P = 1;
+  addEstates(state.themes.OPS, 0, 3, { recent: false });
   state.themes.SAM.P = 1;
-  state.themes.SAM.owner = 1;
+  addEstates(state.themes.SAM, 1, 1, { recent: false });
   state.themes.KAP.C = 2;
   state.themes.KAP.bishop = 1;
   state.themes.ANT.C = 6;
@@ -1315,8 +1262,7 @@ test('final scoring uses last income phase shares without free citizens', () => 
   state.themes.ITA.T = 3;
 
   state.lastIncome = runIncome(state);
-  state.themes.OPS.P = 30;
-  state.themes.OPS.owner = 3;
+  addEstates(state.themes.OPS, 3, 30, { recent: false });
 
   const final = buildFinalScores(state);
   const category = (playerId, key) => (
@@ -1340,7 +1286,7 @@ test('final scoring uses last income phase shares without free citizens', () => 
 
   const balance = buildBalanceOfPower(state);
   assert.equal(balance.categories.some((entry) => entry.slices.some((slice) => slice.kind === 'free')), false);
-  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 31);
+  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 34);
   assert.equal(balance.categories.find((entry) => entry.key === 'estate').slices.find((slice) => slice.playerId === 3).value, 30);
   assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 46);
 });
@@ -1423,15 +1369,15 @@ test('coup replacement triggers major title redistribution before final court an
 test('nothing in a lost province can be revoked, and the Basileus is not offered it', () => {
   const state = makeState();
   state.themes.OPS.strategos = 2;
-  state.themes.OPS.owner = 3;
+  addEstates(state.themes.OPS, 3, 1, { recent: false });
   state.themes.OPS.lost = true;
   enterCourt(state);
 
   const revokeStrategos = revokeMinorTitle(state, 'OPS', 'strategos', 1);
   assert.equal(revokeStrategos.ok, false);
   assert.match(revokeStrategos.reason, /lost/);
-  const revokeEstate = revokeTheme(state, 'OPS', 0);
+  const revokeEstate = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:3' });
   assert.equal(revokeEstate.ok, false);
   assert.equal(state.themes.OPS.strategos, 2);
-  assert.equal(state.themes.OPS.owner, 3);
+  assert.equal(getEstateCount(state.themes.OPS, 3), 1);
 });

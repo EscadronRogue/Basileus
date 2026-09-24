@@ -135,7 +135,7 @@ function buildObligationNotifications(state, viewerId, dealView, notifications) 
 
 const REVOCATION_EVENT_TYPES = new Set([
   'revoke_minor_title',
-  'revoke_theme',
+  'revoke_estates',
 ]);
 
 function normalizePlayerId(value) {
@@ -201,11 +201,6 @@ function pushHistoryNotification(notifications, event, viewerId, notification) {
   });
 }
 
-function getViewerBid(details, viewerId) {
-  const bids = Array.isArray(details.bids) ? details.bids : [];
-  return bids.find((bid) => normalizePlayerId(bid?.bidderId) === viewerId) || null;
-}
-
 function getAssignedTitles(details, viewerId) {
   const assignments = details.assignments && typeof details.assignments === 'object'
     ? Object.values(details.assignments)
@@ -227,25 +222,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
   for (const event of state.history || []) {
     if (!event?.id) continue;
     const details = eventDetails(event);
-
-    if (event.type === 'buy_theme') {
-      const winnerId = normalizePlayerId(event.actorId);
-      const viewerBid = getViewerBid(details, normalizedViewerId);
-      if (winnerId === normalizedViewerId) {
-        pushHistoryNotification(notifications, event, viewerId, {
-          kind: 'estate_won',
-          title: 'You won an estate',
-          tone: 'positive',
-        });
-      } else if (viewerBid) {
-        pushHistoryNotification(notifications, event, viewerId, {
-          kind: 'estate_lost',
-          title: `You lost the bid for ${details.themeName || 'an estate'}`,
-          tone: 'negative',
-        });
-      }
-      continue;
-    }
 
     if (event.type === 'appoint_strategos' || event.type === 'appoint_bishop') {
       if (isCourtEventStillOpen(state, event)) continue;

@@ -1,9 +1,18 @@
 import { runIncome } from '../engine/cascade.js';
 import { resolveInvasion } from '../engine/combat.js';
-import { getAvailableLandBidGold, getLandAuctionBidEntries, getMinimumLandBid } from '../engine/actions.js';
-import { getMercenaryHireCost, getThemeOwnerIncome } from '../engine/rules.js';
+import {
+  addEstates,
+  countPlannedEstates,
+  getEstateCount,
+  getNextEstatePrice,
+  getProvinceEstateHolders,
+  getRevocableEstateCount,
+} from '../engine/estates.js';
+import { getSpendableGold } from '../engine/deals.js';
+import { INVASIONS } from '../data/invasions.js';
+import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
-import { getFreeThemes, getPlayer } from '../engine/state.js';
+import { getPlayer } from '../engine/state.js';
 import { getCapitalSupportEntries } from '../engine/capitalSupport.js';
 import { clonePlainData } from '../engine/clone.js';
 import {
@@ -19,7 +28,8 @@ import {
   getActionThemeId,
   getActionTargetPlayerId,
   listLegalCourtActions,
-  listLegalEstateActions,
+  buildEstatePlanAction,
+  listEstateSites,
   listLegalOrderActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
@@ -32,7 +42,7 @@ import {
 
 const COURT_GAIN_FLOOR = 0.35;
 const ESTATE_GAIN_FLOOR = 0.2;
-const MAX_ESTATE_BIDS_PER_AI = 3;
+const MAX_ESTATES_PER_ROUND = 16;
 const SCORE_TIE_EPSILON = 0.001;
 
 export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
@@ -43,8 +53,9 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   courtGainFloor: COURT_GAIN_FLOOR,
   estateGainFloor: ESTATE_GAIN_FLOOR,
   estateProfit: 4,
-  estateBidCost: 1.15,
+  estatePriceWeight: 1.15,
   estateThreatPenalty: 1.5,
+  estateSpread: 0.6,
   invasionShortfallPenalty: 5.5,
   invasionSafetyValue: 1.2,
   invasionSurplusPenalty: 0.55,
@@ -89,6 +100,10 @@ function getStrategyWeights(meta, playerId) {
     ...DEFAULT_STRATEGY_WEIGHTS,
     ...overrides,
   };
+  // Weights saved before estates were built instead of bid for.
+  if (overrides.estateBidCost != null && overrides.estatePriceWeight == null) {
+    raw.estatePriceWeight = Number(overrides.estateBidCost);
+  }
   if (overrides.invasionMargin != null && overrides.invasionShortfallPenalty == null) {
     raw.invasionShortfallPenalty = clamp(Number(overrides.invasionMargin), 0.35, 2.4) * 3.1;
   }
@@ -140,22 +155,19 @@ function cloneStateForAI(state) {
   return clonePlainData(state);
 }
 
-function materializeAuctions(state) {
-  for (const auction of Object.values(state.landAuctions || {})) {
-    const theme = state.themes?.[auction.themeId];
-    const winner = getLandAuctionBidEntries(auction)
-      .filter((bid) => state.players.some((player) => player.id === bid.bidderId))
-      .sort((left, right) => (right.amount - left.amount) || (left.bidderId - right.bidderId))[0];
-    const bidderId = Number(winner?.bidderId);
-    if (!theme || theme.id === 'CPL' || theme.lost || theme.owner != null) continue;
-    if (!state.players.some((player) => player.id === bidderId)) continue;
-    theme.owner = bidderId;
+// A plan not yet built counts as built when the AI projects the score.
+function materializeEstatePlans(state) {
+  for (const [playerId, plan] of Object.entries(state.estatePlans || {})) {
+    for (const [themeId, count] of Object.entries(plan || {})) {
+      addEstates(state.themes?.[themeId], Number(playerId), count);
+    }
   }
+  state.estatePlans = {};
 }
 
 function projectedScoring(state, options = {}) {
   const projected = cloneStateForAI(state);
-  materializeAuctions(projected);
+  materializeEstatePlans(projected);
   const income = runIncome(projected);
   if (options.addIncomeGold !== false) {
     for (const [playerId, amount] of Object.entries(income.income || {})) {
@@ -441,8 +453,9 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
       deniedValue += scoreResourceGain(final, targetId, 'office', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1));
     } else if (action.payload?.value?.startsWith('minor:') && action.payload?.value?.endsWith(':bishop')) {
       deniedValue += scoreResourceGain(final, targetId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1));
-    } else if (action.payload?.value?.startsWith('theme:')) {
-      deniedValue += scoreResourceGain(final, targetId, 'estate', Math.max(1, Number(theme?.P ?? theme?.origin?.P) || 1));
+    } else if (action.payload?.value?.startsWith('estates:')) {
+      const perEstate = Math.max(1, Number(theme?.P ?? theme?.origin?.P) || 1);
+      deniedValue += scoreResourceGain(final, targetId, 'estate', getRevocableEstateCount(theme, targetId) * perEstate);
     }
     const relationship = scoreRevocationRelationship(state, final, playerId, targetId, leaderId, weights, context);
     if (targetId === leaderId) return deniedValue * weights.leaderDenial + 3 + relationship;
@@ -738,10 +751,11 @@ function themeStake(state, playerId, themeId) {
   const theme = state.themes?.[themeId];
   if (!theme) return 0;
   let value = 0;
-  if (theme.owner === playerId) value += 5;
+  for (const holder of getProvinceEstateHolders(theme)) {
+    value += holder.playerId === playerId ? Math.min(12, holder.count * 2.5) : -Math.min(3, holder.count * 0.3);
+  }
   if (theme.strategos === playerId) value += 3;
   if (theme.bishop === playerId) value += 2.5;
-  if (theme.owner != null && theme.owner !== playerId) value -= 0.6;
   if (theme.strategos != null && theme.strategos !== playerId) value -= 0.4;
   if (theme.bishop != null && theme.bishop !== playerId) value -= 0.35;
   return value;
@@ -1050,31 +1064,29 @@ function scoreReserveFrontierUrgency(state, summary, estimates, weights) {
   );
 }
 
+// How many estates a purse buys in one Estates phase at the rising price.
+function estatesAffordable(gold) {
+  let count = 0;
+  let spent = 0;
+  while (count < MAX_ESTATES_PER_ROUND) {
+    const price = getNextEstatePrice(count);
+    if (spent + price > gold) break;
+    spent += price;
+    count += 1;
+  }
+  return count;
+}
+
+// Gold kept now buys estates next round: value the extra estates it affords.
 function scoreEstateReserveOpportunity(state, final, playerId, goldGain, weights) {
   const gain = Math.max(0, Number(goldGain) || 0);
-  if (gain <= 0) return 0;
-  const player = getPlayer(state, playerId);
-  const currentGold = Math.max(0, Number(player?.gold) || 0);
-  const futureGold = currentGold + gain;
-  let best = 0;
-
-  for (const theme of getFreeThemes(state)) {
-    const bid = Math.max(0, Number(getMinimumLandBid(state, theme.id)) || 0);
-    const profit = Math.max(0, Number(getThemeOwnerIncome(theme)) || 0);
-    if (bid <= 0 || profit <= 0) continue;
-    const beforeAccess = clamp(currentGold / bid, 0, 1);
-    const afterAccess = clamp(futureGold / bid, 0, 1);
-    const accessGain = afterAccess - beforeAccess;
-    if (accessGain <= 0) continue;
-    const estateScore = scoreResourceGain(final, playerId, 'estate', profit);
-    const strategicValue = estateScore * 0.18
-      + profit * weights.estateProfit * 0.22
-      - bid * weights.estateBidCost * 0.04
-      + (currentGold < bid && futureGold >= bid ? 2.4 : 0);
-    best = Math.max(best, Math.max(0, strategicValue) * accessGain);
-  }
-
-  return best;
+  if (gain <= 0 || roundsOfIncomeLeft(state) <= 1) return 0;
+  const currentGold = Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
+  const extraEstates = estatesAffordable(currentGold + gain) - estatesAffordable(currentGold);
+  if (extraEstates <= 0) return 0;
+  const perEstate = scoreResourceGain(final, playerId, 'estate', 1) * 0.18 + weights.estateProfit * 0.22;
+  // The first extra estate counts fully; later ones less, as prices rise.
+  return Math.max(0, perEstate) * (1 + Math.max(0, extraEstates - 1) * 0.35);
 }
 
 function reserveOpportunityScale(state, playerId, summary, estimates, weights, context = {}) {
@@ -1212,69 +1224,70 @@ export function describeOrderChoice(state, playerId, action, meta = null, option
   };
 }
 
-export function chooseStrategicEstateActions(state, meta, playerId) {
-  void meta;
-  const chosen = [];
-  const chosenThemes = new Set();
-  let planningState = cloneStateForAI(state);
-  for (let step = 0; step < MAX_ESTATE_BIDS_PER_AI; step += 1) {
-    const actions = listLegalEstateActions(planningState, playerId)
-      .filter((action) => !chosenThemes.has(action.payload?.themeId));
-    if (!actions.length) break;
-    const final = projectedScoring(planningState);
-    const weights = getStrategyWeights(meta, playerId);
-    const best = actions
-      .map((action) => ({ action, score: scoreEstateAction(planningState, final, playerId, action, weights) }))
-      .sort((left, right) => compareScoredActions(planningState, playerId, left, right, `estate-${step}`))[0] || null;
-    if (!best || best.score <= weights.estateGainFloor) break;
-    chosen.push(best.action);
-    chosenThemes.add(best.action.payload?.themeId);
-    const result = applyLegalAction(planningState, best.action);
-    if (!result.ok) break;
+// Income phases an estate built now still pays for: every remaining round,
+// plus the final income before scoring.
+function roundsOfIncomeLeft(state) {
+  const round = Number(state?.round) || 0;
+  const maxRounds = Number(state?.maxRounds) || round;
+  return Math.max(1, maxRounds - round + 1);
+}
+
+// Share of the invasions the province stands in the way of: the current one
+// weighs most, the rest of the deck by how often each is drawn.
+const INVASION_DRAW_TOTAL = INVASIONS.reduce((total, invasion) => total + (Number(invasion.drawWeight) || 0), 0) || 1;
+
+function estateRouteExposure(state, themeId) {
+  let exposure = 0;
+  const route = state.currentInvasion?.route || [];
+  const imperialOnRoute = route.filter((id) => id !== 'CPL' && state.themes?.[id] && !state.themes[id].lost);
+  const position = imperialOnRoute.indexOf(themeId);
+  if (position >= 0) exposure += 1 / (1 + position);
+  for (const invasion of INVASIONS) {
+    if (invasion.route.includes(themeId)) exposure += 0.35 * ((Number(invasion.drawWeight) || 0) / INVASION_DRAW_TOTAL);
   }
-  return chosen;
+  return exposure;
 }
 
-function scoreEstateAction(state, final, playerId, action, weights) {
-  const theme = state.themes?.[action.payload?.themeId];
-  if (!theme) return -Infinity;
-  const bid = Math.max(0, Number(action.payload?.amount) || 0);
+function scoreEstateSite(state, final, playerId, theme, alreadyPlannedHere, weights) {
   const profit = Math.max(1, Number(theme.P ?? theme.origin?.P) || 1);
-  const threatened = Array.isArray(state.currentInvasion?.route)
-    && state.currentInvasion.route.includes(theme.id);
-  return scoreResourceGain(final, playerId, 'estate', profit)
-    + profit * weights.estateProfit
-    + scoreEstateBidPremium(state, playerId, theme, bid, weights)
-    - bid * weights.estateBidCost
-    - (threatened ? weights.estateThreatPenalty : 0);
+  const rounds = roundsOfIncomeLeft(state);
+  const concentration = getEstateCount(theme, playerId) + alreadyPlannedHere;
+  // A Basileus does not revoke its own estates, but may lose the throne.
+  const revocationRisk = playerId === state.basileusId ? 0.4 : 1;
+  return scoreResourceGain(final, playerId, 'estate', profit) * 0.35
+    + profit * weights.estateProfit * Math.min(1.6, rounds / 4)
+    - estateRouteExposure(state, theme.id) * weights.estateThreatPenalty
+    - concentration * weights.estateSpread * revocationRisk;
 }
 
-// Bidding above the minimum is worth something only while it raises the
-// chance of winning the auction. Once the bid beats every rival's whole
-// purse the estate is certain, and anything more is wasted gold.
-export function estateBidPressure(weights) {
-  const configured = weights.estateBidPressure == null ? NaN : Number(weights.estateBidPressure);
-  if (Number.isFinite(configured)) return Math.max(0, configured);
-  return Math.max(0, (Number(weights.estateProfit) || 0) * 0.28 - (Number(weights.estateBidCost) || 0) * 0.2);
+// Builds a plan one estate at a time, on the best province, while the next
+// estate is worth its rising price.
+export function chooseStrategicEstatePlan(state, meta, playerId) {
+  const weights = getStrategyWeights(meta, playerId);
+  const final = projectedScoring(state);
+  const gold = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
+  const sites = listEstateSites(state);
+  const plan = {};
+  let spent = 0;
+  for (let step = 0; step < MAX_ESTATES_PER_ROUND && sites.length; step += 1) {
+    const price = getNextEstatePrice(countPlannedEstates(plan));
+    if (spent + price > gold) break;
+    const best = sites
+      .map((theme) => ({ theme, score: scoreEstateSite(state, final, playerId, theme, plan[theme.id] || 0, weights) }))
+      .sort((left, right) => (right.score - left.score)
+        || (neutralTieBreakValue(state, playerId, left.theme.id, `estate-${step}`)
+          - neutralTieBreakValue(state, playerId, right.theme.id, `estate-${step}`)))[0];
+    const net = best.score - price * weights.estatePriceWeight;
+    if (net <= weights.estateGainFloor) break;
+    plan[best.theme.id] = (plan[best.theme.id] || 0) + 1;
+    spent += price;
+  }
+  return plan;
 }
 
-function scoreEstateBidPremium(state, playerId, theme, bid, weights) {
-  const minimum = Math.max(0, Number(getMinimumLandBid(state, theme.id)) || 0);
-  const premium = Math.max(0, bid - minimum);
-  if (premium <= 0) return 0;
-  const maximum = Math.max(minimum, Number(getAvailableLandBidGold(state, playerId, theme.id)) || minimum);
-  if (maximum <= minimum) return 0;
-
-  const rivalPurses = (state.players || [])
-    .filter((player) => player.id !== playerId)
-    .map((player) => Number(getAvailableLandBidGold(state, player.id, theme.id)) || 0)
-    .filter((gold) => gold >= minimum);
-  if (!rivalPurses.length) return 0;
-  const competition = Math.min(1, rivalPurses.length / Math.max(1, (state.players || []).length - 1));
-  const needed = Math.max(1, Math.max(...rivalPurses) - minimum + 1);
-  const useful = Math.min(premium, needed);
-  const rangeShare = Math.min(1, useful / needed);
-  return useful * estateBidPressure(weights) * (0.65 + competition * 0.35) * (1 - rangeShare * 0.08);
+export function chooseStrategicEstateActions(state, meta, playerId) {
+  const plan = chooseStrategicEstatePlan(state, meta, playerId);
+  return [buildEstatePlanAction(playerId, plan)];
 }
 
 export function applyStrategicEstateActions(state, meta, playerId) {

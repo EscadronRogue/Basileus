@@ -12,6 +12,7 @@
 import { BALANCE } from '../data/balance.js';
 import { REGIONS } from '../data/provinces.js';
 import { getThemeChurchValue, getThemeOwnerIncome, getThemeTroopCount } from './rules.js';
+import { getLeadingEstateHolder, getProvinceEstateHolders, getProvinceEstateTotal } from './estates.js';
 import { findTitleHolder } from './state.js';
 
 const ECONOMIC_REGIONS = [REGIONS.EAST, REGIONS.WEST, REGIONS.SEA];
@@ -223,15 +224,23 @@ function pushProvinceAttribution(target, attribution) {
   target[attribution.themeId] = attribution;
 }
 
+// The dynasty with the most estates colours the province; a tie leaves it
+// uncoloured, and `holders` lists everyone for the tooltip and markers.
 export function buildProvinceEstateAttributions(state) {
   const attributions = {};
   for (const theme of Object.values(state?.themes || {})) {
-    if (!theme || theme.id === 'CPL' || !Number.isInteger(theme.owner)) continue;
-    pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.owner, getThemeOwnerIncome(theme), {
-      route: 'estates',
-      mode: 'estate',
-      disabled: Boolean(theme.lost),
-    }));
+    if (!theme || theme.id === 'CPL') continue;
+    const holders = getProvinceEstateHolders(theme);
+    if (!holders.length) continue;
+    pushProvinceAttribution(attributions, {
+      ...createProvinceAttribution(theme, getLeadingEstateHolder(theme), getProvinceEstateTotal(theme), {
+        route: 'estates',
+        mode: 'estate',
+        disabled: Boolean(theme.lost),
+      }),
+      holders,
+      tied: holders.length > 1 && holders[0].count === holders[1].count,
+    });
   }
   return attributions;
 }
@@ -288,12 +297,15 @@ export function runIncome(state) {
     if (!theme || theme.id === 'CPL') continue;
     const imperial = isImperialProvince(theme);
 
-    if (imperial && Number.isInteger(theme.owner)) {
-      const profit = getThemeOwnerIncome(theme);
+    if (imperial) {
+      const profitPerEstate = getThemeOwnerIncome(theme);
       const route = flow.routes.profit.estates;
-      addFlowSource(flow, route, profit, { themeId: theme.id });
-      addFlowRecipient(flow, route, theme.owner, profit);
-      addCategorizedIncome('estate', theme.owner, profit);
+      for (const holder of getProvinceEstateHolders(theme)) {
+        const profit = holder.count * profitPerEstate;
+        addFlowSource(flow, route, profit, { themeId: theme.id });
+        addFlowRecipient(flow, route, holder.playerId, profit);
+        addCategorizedIncome('estate', holder.playerId, profit);
+      }
     }
 
     const troopCount = imperial ? getThemeTroopCount(theme) : 0;
