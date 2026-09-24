@@ -28,12 +28,12 @@
     </header>
 
     <!-- Map Area -->
-    <main id="mapArea">
+    <main id="mapArea" aria-label="Map of the empire">
       <div id="mapContainer"></div>
     </main>
 
     <!-- Sidebar: Dashboard + Action Panel -->
-    <aside id="sidebar">
+    <aside id="sidebar" aria-label="Dynasties and phase actions">
       <div id="playerTabBar" aria-label="Player selection"></div>
       <div id="playerDashboard"></div>
       <div id="balancePanel"></div>
@@ -43,6 +43,9 @@
     </aside>
   </div>
 
+  <!-- Screen-reader announcements of phase changes and turn results (ui/announcer.js). -->
+  <div id="liveAnnouncer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
   <!-- Game Over Overlay -->
   <div id="gameOverOverlay"></div>
 
@@ -51,6 +54,17 @@
     <div class="setup-card">
       <h1>BASILEUS</h1>
       <p class="setup-subtitle">A game of dynastic profiteering inside the Byzantine Empire</p>
+
+      <section id="resumeGameCard" class="resume-card" hidden aria-labelledby="resumeGameTitle">
+        <h2 id="resumeGameTitle" class="resume-card-title">Continue your game</h2>
+        <p id="resumeGameSummary" class="resume-card-summary"></p>
+        <p id="resumeGameError" class="setup-hint setup-error" role="alert"></p>
+        <div class="resume-card-actions">
+          <button class="btn-primary" id="btnResumeGame" type="button">Continue</button>
+          <button class="btn-secondary" id="btnDiscardSave" type="button">Discard</button>
+        </div>
+        <p class="setup-hint">Starting a new game replaces this save.</p>
+      </section>
 
       <div class="setup-actions setup-primary-actions" id="defaultSetupActions">
         <p id="setupStartError" class="setup-hint setup-error" role="alert"></p>
@@ -142,63 +156,8 @@
 
       <details class="rules-card">
         <summary><span class="rules-card-title">How to Play</span><span class="rules-card-toggle">Rules</span></summary>
-        <div class="rules-card-body">
-          <h3>Goal</h3>
-          <p>Have the strongest balance of power when the game reaches its final turn. Gold reserves plus final profit and combined office income decide the winner. If invaders sack Constantinople, the empire falls, everyone loses, and the final standings only record who held the strongest position in the collapse.</p>
-
-          <h3>A Round, Step By Step</h3>
-          <ol>
-            <li><strong>Invasion drawn.</strong> A new threat appears with a route through the provinces.</li>
-            <li><strong>Title redistribution.</strong> The Basileus confirms or redistributes the four major titles before Court.</li>
-            <li><strong>Court.</strong> Each dynasty may make deals or skip; major offices may make up to two appointments or revocations in any mix, while the Basileus may make up to four revocations.</li>
-            <li><strong>Income.</strong> Estates pay gold, bishops collect church value, and offices raise troops automatically after Court.</li>
-            <li><strong>Estates.</strong> Dynasties submit sealed bids for free-citizen land. Winning bids reveal and settle when deployment opens.</li>
-            <li><strong>Deployment.</strong> Each player funds office troops, hires mercenaries, chooses destinations, and ranks the claimants.</li>
-            <li><strong>Resolution.</strong> Coup is decided first, then the war. Lost provinces become occupied; all provinces the empire can recover are automatically reconquered.</li>
-            <li><strong>Cleanup.</strong> The new Basileus takes effect, round state clears, and the next turn begins. After the last turn, there is one final title redistribution, Court, and income phase before scoring.</li>
-          </ol>
-
-          <h3>Provinces &amp; Money</h3>
-          <p>Each province outside Constantinople has three original values: <strong>P</strong> (profit to a private owner), <strong>T</strong> (troops raised by its office), and <strong>C</strong> (church gold). Constantinople has no provincial economy.</p>
-          <ul>
-            <li><strong>Buying land</strong> happens in Estates through sealed bids. The owner collects that profit during Income.</li>
-            <li><strong>Troops</strong> come from the province's troop value. A province with a Strategos sends its troops to that Strategos; otherwise they flow to the regional Domestic or Admiral, then the Basileus through the regional cascade.</li>
-            <li><strong>Church value</strong> goes directly to the province Bishop. Unassigned church value flows to the Patriarch.</li>
-            <li><strong>Occupation.</strong> Lost provinces suspend their owner and strategos, keep their bishop, and pay only original church value to that bishop until reconquered.</li>
-          </ul>
-
-          <h3>Titles &amp; Appointments</h3>
-          <ul>
-            <li><strong>Basileus</strong> may revoke strategoi and private estates, but may not appoint minor titles or revoke bishops.</li>
-            <li><strong>Domestic of the East / West</strong> and the <strong>Admiral</strong> may appoint or revoke Strategoi in their region.</li>
-            <li><strong>Patriarch</strong> may appoint or revoke Bishops in any province with original C &ge; 1, even if occupied.</li>
-            <li><strong>Major titles</strong> are not changed in Court. They are redistributed only in the Title Redistribution phase.</li>
-            <li>A player cannot appoint the same dynasty twice in a row. Appointing someone else unlocks the previous appointee again.</li>
-          </ul>
-
-          <h3>Armies</h3>
-          <ul>
-            <li><strong>Office troops</strong> appear during Income and are assigned during Deployment. A player's Strategos troops deploy together as one combined Strategoi army.</li>
-            <li><strong>Funding</strong> is chosen per office. Unfunded troops stay home and pay 1 gold each to their controller.</li>
-            <li><strong>Mercenaries</strong> are hired during Deployment. Their cost rises triangularly: 1, then +2, then +3, etc. All hired mercenaries share one destination.</li>
-            <li><strong>Capital-locked troops</strong> always defend the throne and cannot go to the frontier.</li>
-            <li><strong>Passive capital support</strong> comes from offices and acclaim, always stays in Constantinople, cannot be defunded, and is never counted for scoring or office troop shares.</li>
-          </ul>
-
-          <h3>Coup &amp; War</h3>
-          <ul>
-            <li><strong>Coup.</strong> Every funded Capital troop follows its owner's ranking: first place gets full support, last place gets none, and the ranks between scale evenly. A claimant can be toggled off for 0 support without changing the weights of the claimants ranked above them. The Basileus starts with 2 passive capital support, the Patriarch with 1, and temporary acclaim or unrest can adjust those totals for one round. Most support wins; ties go first to the tied claimant with the most Patriarchal support, then to the sitting Basileus if Patriarchal support is still tied, then to dynasty order. A new Basileus redistributes all four major titles at the start of the next round or final reckoning.</li>
-            <li><strong>War.</strong> Frontier troops minus invader strength. Win &rarr; reconquer occupied provinces along the route (cost 1, then +1, +1...). Lose &rarr; invader advances along the route capturing provinces (same triangular cost). If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.</li>
-          </ul>
-
-          <h3>Imperial Revocation</h3>
-          <p>Court revocations are free and count against each office's action limit. Major offices get two actions; the Basileus gets four revocations. The same title cannot be appointed and revoked in the same turn. The same player cannot appoint the same dynasty twice in a row, and the same revoker cannot revoke the same target twice in a row.</p>
-
-          <h3>Debt &amp; Defenders</h3>
-          <ul>
-            <li><strong>Best defender.</strong> When the empire wins the war, the top frontier contributor gains 1 gold and 1 temporary Triumph support for each province the surplus could reconquer along the route, even if no occupied provinces remain to restore. If top contributors are tied, each tied defender receives an equal share: gold rounds up and Triumph support rounds down. That Triumph follows their coup ranking and applies only during the next coup.</li>
-          </ul>
-        </div>
+        <!-- Filled from ui/rules.js, the single source of the rules (also docs/rules.md). -->
+        <div class="rules-card-body" id="rulesCardBody"></div>
       </details>
 
     </div>

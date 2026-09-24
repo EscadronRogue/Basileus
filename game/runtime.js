@@ -1,4 +1,6 @@
-// engine/runtime.js — single source of truth for live game progression.
+// game/runtime.js — single source of truth for live game progression.
+// Sits above the pure rules engine (engine/) and the AI (ai/), which is why it
+// lives outside engine/: the engine must never import the AI.
 // Mode adapters may authorize users, project visibility, render, broadcast, or
 // reconnect. They must not reimplement court, orders, AI timing, resolution, or
 // phase advancement semantics.
@@ -16,7 +18,7 @@ import {
   phaseDeployment,
   phaseResolution,
   setEstatesReady,
-} from './turnflow.js';
+} from '../engine/turnflow.js';
 import {
   applyCourtAction,
   applyEstateAction,
@@ -24,8 +26,10 @@ import {
   confirmEstates,
   confirmCourt,
   submitHumanOrders,
-} from './commands.js';
-import { autoConfirmFinishedCourtPlayer } from './actions.js';
+} from '../engine/commands.js';
+import { autoConfirmFinishedCourtPlayer } from '../engine/actions.js';
+import { acceptDealOffer, refuseDealOffer } from '../engine/deals.js';
+import { evaluateDealOfferForAi } from '../ai/deals.js';
 import {
   applyPlannedAiTitleAssignment,
   buildSimultaneousAIOrders,
@@ -338,6 +342,25 @@ export function runAiRuntime(state, aiMeta, context = {}, options = {}) {
   }));
 }
 
+// AI dynasties answer offers addressed to them as soon as they arrive, instead
+// of letting them lapse when the AI confirms Court.
+export function resolveAiDealResponses(state, aiMeta) {
+  if (!state || !aiMeta || state.phase !== 'court') return [];
+  const responses = [];
+  for (const thread of state.dealThreads || []) {
+    const aiPlayerId = thread.awaitingPlayerId;
+    if (thread.status !== 'open' || !isAIPlayer(aiMeta, aiPlayerId)) continue;
+    const evaluation = evaluateDealOfferForAi(state, aiMeta, aiPlayerId, thread);
+    const payload = { threadId: thread.id, expectedRevision: thread.revision };
+    let accepted = false;
+    if (evaluation.accept) accepted = acceptDealOffer(state, aiPlayerId, payload).ok;
+    // Negotiations are private; the sender sees the answer on the thread itself.
+    if (!accepted) refuseDealOffer(state, aiPlayerId, { ...payload, reason: evaluation.accept ? 'cannot_honor' : 'terms_too_costly' });
+    responses.push({ threadId: thread.id, aiPlayerId, accepted, ...evaluation });
+  }
+  return responses;
+}
+
 export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, payload = {}, options = {}) {
   ensureRuntimeContext(context);
   if (!state || state.phase !== 'court') return fail('Court actions are not available right now.');
@@ -346,6 +369,7 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
   autoResolveUnavailableHumanAppointments(state, playerId, aiMeta, context);
   const result = applyCourtAction(state, playerId, payload);
   if (!result.ok) return result;
+  if (payload.action === 'deal-send' || payload.action === 'deal-counter') resolveAiDealResponses(state, aiMeta);
   const playerFinished = Boolean(state.courtActions?.playerConfirmed?.has(playerId));
 
   writePending(context, processPostHumanAction(state, aiMeta, {
@@ -419,8 +443,11 @@ export function handleManualTitleReassignment(state, aiMeta, context = {}, playe
   ensureRuntimeContext(context);
   if (!state || state.phase !== 'title_redistribution') return fail('Major title redistribution is only allowed during Title Redistribution.');
   if (playerId !== state.basileusId) return fail('Only the Basileus may assign major titles.');
-  const result = applyManualTitleReassignment(state, aiMeta, playerId, assignments);
+  const result = applyManualTitleReassignment(state, playerId, assignments);
   if (!result.ok) return result;
+  if (aiMeta) {
+    for (const observation of result.observations || []) observeCourtAction(state, aiMeta, observation);
+  }
   context.pendingAiTitleAssignment = null;
   if (state.phase === 'court') {
     writePending(context, processPostHumanAction(state, aiMeta, {

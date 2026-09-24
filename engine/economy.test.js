@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   DYNASTY_COLORS,
   DYNASTY_PROFILES,
+  EARLY_INVASION_GRACE_ROUNDS,
   INVASIONS,
   INVASION_DIFFICULTIES,
   INVASION_ESTIMATE_INTERVAL,
@@ -181,7 +182,8 @@ test('invasion templates carry relative difficulty bands', () => {
 
   const drawState = makeState();
   drawState.invasionDeck = [turksTemplate];
-  drawState.maxRounds = 1;
+  drawState.round = EARLY_INVASION_GRACE_ROUNDS;
+  drawState.maxRounds = EARLY_INVASION_GRACE_ROUNDS + 1;
   drawState.themes.OPS.occupied = true;
   phaseInvasion(drawState);
   assert.equal(drawState.currentInvasion.empireStrength, empireStrength - 1);
@@ -190,6 +192,36 @@ test('invasion templates carry relative difficulty bands', () => {
   assert.equal(emirateTemplate.objective, 'provinces');
   assert.equal(emirateTemplate.requiresImperialTarget, true);
   assert.deepEqual(emirateTemplate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP']);
+});
+
+test('invasions in the early grace rounds strike at most at easy strength', () => {
+  const turksTemplate = INVASIONS.find((entry) => entry.id === 'turks');
+  const kievTemplate = INVASIONS.find((entry) => entry.id === 'kievan_rus');
+  assert.ok(EARLY_INVASION_GRACE_ROUNDS >= 1);
+
+  const early = makeState();
+  early.invasionDeck = [turksTemplate];
+  phaseInvasion(early);
+  assert.equal(early.round, 1);
+  assert.equal(early.currentInvasion.difficulty, INVASION_DIFFICULTIES.EASY);
+  assert.equal(early.currentInvasion.earlyGrace, true);
+  assert.deepEqual(
+    early.currentInvasion.strengthBounds,
+    getInvasionStrengthBounds({ ...turksTemplate, difficulty: INVASION_DIFFICULTIES.EASY }, early),
+  );
+
+  const alreadyEasy = makeState();
+  alreadyEasy.invasionDeck = [kievTemplate];
+  phaseInvasion(alreadyEasy);
+  assert.equal(alreadyEasy.currentInvasion.earlyGrace, undefined);
+
+  const later = makeState();
+  later.round = EARLY_INVASION_GRACE_ROUNDS;
+  later.maxRounds = EARLY_INVASION_GRACE_ROUNDS + 1;
+  later.invasionDeck = [turksTemplate];
+  phaseInvasion(later);
+  assert.equal(later.currentInvasion.difficulty, INVASION_DIFFICULTIES.HARD);
+  assert.equal(later.currentInvasion.earlyGrace, undefined);
 });
 
 test('score shares award one point per 10 percent threshold', () => {
@@ -500,9 +532,9 @@ test('basileus court power is revocation-only and allows four revocations', () =
   state.themes.ITA.owner = 1;
   enterCourt(state);
 
-  const appointment = applyCourtAction(state, 0, { action: 'basileus-appoint', titleType: 'STRATEGOS', appointeeId: 1 });
+  const appointment = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 1 });
   assert.equal(appointment.ok, false);
-  assert.match(appointment.reason, /can no longer appoint minor titles/);
+  assert.equal(state.themes.OPS.strategos, 1);
 
   const bishopRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:CIL:bishop' });
   assert.equal(bishopRevocation.ok, false);

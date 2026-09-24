@@ -77,10 +77,20 @@ function applyCorsHeaders(req, res) {
   return Boolean(allowedOrigin);
 }
 
+const ROOM_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+
+function readMinutesEnv(name) {
+  const minutes = Number(process.env[name]);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes * 60 * 1000 : undefined;
+}
+
 export async function startMultiplayerServer(options = {}) {
   const manager = new MultiplayerRoomManager({
     loadAiOpponentById: options.loadAiOpponentById || loadOpponentByIdSync,
     loadAiOpponentRoster: options.loadAiOpponentRoster || loadOpponentRosterSync,
+    idleRoomTtlMs: options.idleRoomTtlMs ?? readMinutesEnv('ROOM_IDLE_TTL_MINUTES'),
+    finishedRoomTtlMs: options.finishedRoomTtlMs ?? readMinutesEnv('FINISHED_ROOM_TTL_MINUTES'),
+    maxRooms: options.maxRooms ?? (Number(process.env.MAX_ROOMS) || undefined),
   });
   const host = options.host || '127.0.0.1';
   const port = Number(options.port ?? process.env.PORT ?? 8133);
@@ -130,6 +140,9 @@ export async function startMultiplayerServer(options = {}) {
 
   await listenServer(server, port, host);
 
+  const roomSweepTimer = setInterval(() => manager.pruneIdleRooms(), ROOM_SWEEP_INTERVAL_MS);
+  roomSweepTimer.unref?.();
+
   const address = server.address();
   const resolvedPort = typeof address === 'object' && address ? address.port : port;
 
@@ -140,6 +153,7 @@ export async function startMultiplayerServer(options = {}) {
     manager,
     url: `http://${host}:${resolvedPort}/`,
     close: async () => {
+      clearInterval(roomSweepTimer);
       closeMultiplayerConnections(manager);
       await closeServer(server);
     },

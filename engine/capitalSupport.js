@@ -1,5 +1,5 @@
 import { MAJOR_TITLES } from '../data/titles.js';
-import { findTitleHolder, getPlayer } from './state.js';
+import { findTitleHolder, getPlayerName } from './state.js';
 
 export const BASILEUS_CAPITAL_SUPPORT = 2;
 export const PATRIARCH_CAPITAL_SUPPORT = 1;
@@ -7,11 +7,6 @@ export const PATRIARCH_CAPITAL_SUPPORT = 1;
 function ensureTemporaryCapitalSupport(state) {
   if (!Array.isArray(state.temporaryCapitalSupport)) state.temporaryCapitalSupport = [];
   return state.temporaryCapitalSupport;
-}
-
-function playerName(state, playerId) {
-  const player = getPlayer(state, playerId);
-  return player?.firstName ? `${player.firstName} ${player.dynasty}`.trim() : player?.dynasty || `Player ${Number(playerId) + 1}`;
 }
 
 function toIntegerOrNull(value) {
@@ -131,7 +126,7 @@ export function describeCapitalSupportEntry(state, entry) {
     ? 'the Basileus'
     : entry?.titleKey === 'PATRIARCH'
       ? 'the Patriarch'
-      : playerName(state, entry?.playerId);
+      : getPlayerName(state, entry?.playerId);
   const label = entry?.label || 'Capital support';
   return `${label}: ${amount > 0 ? '+' : ''}${amount} for ${subject}`;
 }

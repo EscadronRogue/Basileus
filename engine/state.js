@@ -1,6 +1,7 @@
 // engine/state.js - game state initialization and shared lookups.
 import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 import {
+  EARLY_INVASION_GRACE_ROUNDS,
   INVASIONS,
   getDynastyProfileForSeat,
   INVASION_OBJECTIVES,
@@ -18,6 +19,15 @@ export function makeRng(seed = Date.now(), initialState = null) {
     s = nextState >>> 0;
   };
   return rng;
+}
+
+// Every gameplay roll must come from the seeded game RNG so matches replay
+// identically. Fail loudly rather than silently falling back to Math.random.
+export function requireRng(state) {
+  if (typeof state?.rng !== 'function') {
+    throw new Error('Game state is missing its seeded rng; gameplay randomness must use state.rng.');
+  }
+  return state.rng;
 }
 
 export function shuffle(arr, rng) {
@@ -141,8 +151,19 @@ export function createInvasionInstance(template, rng, state = null) {
   };
 }
 
+export function isEarlyInvasionGraceRound(state) {
+  const round = Number(state?.round) || 0;
+  return round >= 1 && round <= EARLY_INVASION_GRACE_ROUNDS;
+}
+
 export function prepareInvasionForDraw(state, invasion, rng) {
-  return createInvasionInstance(invasion, rng, state);
+  const graced = isEarlyInvasionGraceRound(state)
+    && invasion?.difficulty != null
+    && getInvasionDifficulty(invasion) !== INVASION_DIFFICULTIES.EASY;
+  const template = graced
+    ? { ...invasion, difficulty: INVASION_DIFFICULTIES.EASY, earlyGrace: true }
+    : invasion;
+  return createInvasionInstance(template, rng, state);
 }
 
 function invasionRequiresImperialTarget(invasion) {
@@ -327,6 +348,12 @@ export function formatPlayerLabel(player) {
   const dynasty = player.dynasty || '';
   const label = player.firstName ? `${player.firstName} ${dynasty}`.trim() : dynasty;
   return player.isAIControlled ? `${label} (AI)`.trim() : label;
+}
+
+// Name without the "(AI)" marker, for narrative history text.
+export function getPlayerName(state, playerId) {
+  const player = getPlayer(state, playerId);
+  return player?.firstName ? `${player.firstName} ${player.dynasty}`.trim() : player?.dynasty || `Player ${Number(playerId) + 1}`;
 }
 
 export function getPlayerLabel(state, playerId, fallback = null) {

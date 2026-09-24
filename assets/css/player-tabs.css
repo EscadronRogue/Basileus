@@ -1,0 +1,186 @@
+/* assets/css/player-tabs.css - Player tabs. */
+
+/* ── Player Tabs ─────────────────────────────────────────────────── */
+#playerTabBar {
+  order: 1;
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 9px;
+  padding: var(--main-panel-pad);
+  overflow: visible;
+  background:
+    linear-gradient(180deg, rgba(255,250,235,0.72) 0%, rgba(240,228,198,0.52) 100%);
+  border: 1px solid rgba(168,116,32,0.16);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Player tabs reuse the cartouche grammar at a larger scale: thick role
+   outline, dynasty-color fill, parchment ink, gold-leaf inner hairline. */
+.player-tab {
+  flex: 1 1 clamp(150px, 31%, 220px);
+  min-width: min(100%, 150px);
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  justify-items: stretch;
+  gap: 6px;
+  padding: 10px 11px 9px;
+  border: 4px solid var(--role-outline-color, var(--role-color, var(--empire-border)));
+  border-radius: var(--r-md);
+  background-color: var(--player-color, var(--parch-3));
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,250,225,0.07) 0 1px,
+      transparent 1px 5px
+    ),
+    linear-gradient(180deg, rgba(255,248,220,0.18) 0%, rgba(20,8,0,0.18) 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.35px;
+  text-align: center;
+  transition: filter 0.15s, box-shadow 0.15s;
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.45),
+    inset 0 1px 0 rgba(255,250,228,0.18),
+    inset 0 -1px 0 rgba(20,8,0,0.22),
+    0 2px 8px rgba(30,16,0,0.12);
+}
+
+.player-tab:hover { filter: brightness(1.06); }
+
+.player-tab.active {
+  filter: brightness(1.06) saturate(1.05);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.70),
+    inset 0 1px 0 rgba(255,250,228,0.22),
+    inset 0 -1px 0 rgba(20,8,0,0.22),
+    0 3px 12px rgba(30,16,0,0.18);
+}
+
+.player-tab,
+.player-tab .tab-name,
+.player-tab .tab-finance,
+.player-tab .tab-you,
+.player-tab .title-token,
+.player-tab .value { color: #ffffff; text-shadow: inherit; }
+
+.tab-body {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "identity flags"
+    "finance  finance";
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.tab-identity {
+  grid-area: identity;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.tab-name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  line-height: 1.12;
+}
+
+.tab-role {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 10.5px;
+  letter-spacing: 0.2px;
+  line-height: 1.15;
+  opacity: 0.85;
+  color: inherit;
+}
+.tab-role.muted { opacity: 0.55; }
+
+.tab-finance {
+  grid-area: finance;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px clamp(7px, 1vw, 10px);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding-top: 2px;
+  white-space: normal;
+  overflow: visible;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  line-height: 1.05;
+  font-weight: 700;
+}
+
+.tab-finance .value,
+.tab-finance .icon { color: #ffffff; }
+.tab-finance .value {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  min-width: auto;
+  white-space: nowrap;
+}
+
+.tab-you {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.35);
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.player-tab .title-token {
+  border-width: 2px;
+  padding: 2px 6px 3px;
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.tab-flags {
+  grid-area: flags;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  align-self: start;
+}
+
+.tab-flags:empty { display: none; }

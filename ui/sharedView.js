@@ -6,7 +6,6 @@ import {
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
 import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey } from '../engine/state.js';
-import { formatGoldHtml, formatTroopsHtml } from '../engine/presentation.js';
 import {
   renderCourtPanel,
   renderEstatesPanel,
@@ -18,7 +17,10 @@ import {
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
 import { getPlayerStyleAttr, renderCartouchedText, renderPlayerRoleName } from './labels.js';
-import { renderIconSet } from './icons.js';
+import { formatGoldHtml, formatTroopsHtml, renderIconSet } from './icons.js';
+import { escapeHtml } from './html.js';
+import { announceGameProgress } from './announcer.js';
+import { renderPhaseGuide } from './phaseGuide.js';
 
 export function createDefaultUiState() {
   return {
@@ -47,7 +49,9 @@ export function getPhaseRenderKey(state) {
   return `${state.round}:${state.phase}:${gameOverType}`;
 }
 
-export function scrollPhasePanelIntoView() {
+// `initial` marks the first phase shown after starting or resuming a game: on
+// phones the page then stays at the top so the map is seen before the panel.
+export function scrollPhasePanelIntoView({ initial = false } = {}) {
   if (typeof document === 'undefined') return;
   const schedule = typeof requestAnimationFrame === 'function'
     ? requestAnimationFrame
@@ -56,7 +60,8 @@ export function scrollPhasePanelIntoView() {
     const sidebar = document.getElementById('sidebar');
     const actionPanel = document.getElementById('actionPanel');
     if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 980px)').matches) {
-      actionPanel?.scrollIntoView({ block: 'start' });
+      if (initial) window.scrollTo?.(0, 0);
+      else actionPanel?.scrollIntoView({ block: 'start' });
       return;
     }
     if (sidebar) sidebar.scrollTop = 0;
@@ -697,21 +702,12 @@ export function renderScoringHtml(state, options = {}) {
   `;
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 export function renderHiddenGameOverOverlay() {
   const overlay = document.getElementById('gameOverOverlay');
   if (!overlay) return;
   overlay.innerHTML = '';
   overlay.style.display = 'none';
 }
-
 
 export function collectTitleAssignments(container) {
   const assignments = {};
@@ -746,6 +742,8 @@ export function renderGameActionPanel({
   if (error) {
     body.innerHTML = `<div class="action-error" role="alert">${renderCartouchedText(state, error)}</div>`;
   }
+
+  if (!shouldRenderFinalReckoning(state)) renderPhaseGuide(body, state.phase);
 
   const shell = document.createElement('div');
   body.appendChild(shell);
@@ -831,7 +829,6 @@ export function renderGameActionPanel({
   return body;
 }
 
-
 export function renderGameFrame({
   state,
   activePlayerId,
@@ -851,6 +848,7 @@ export function renderGameFrame({
 }) {
   if (!state) return;
   renderTopBar(state);
+  announceGameProgress(state);
   renderConnectionBadge?.();
   updateMapState(state, uiState?.mapFilter || 'regions');
   drawInvasionRoute(state.currentInvasion);

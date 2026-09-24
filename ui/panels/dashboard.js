@@ -1,0 +1,153 @@
+// ui/panels/dashboard.js - the active dynasty's dashboard card.
+
+import { readTroopEntry, runIncome } from '../../engine/cascade.js';
+import {
+  getOfficeDisplayName,
+  getOfficeHolder,
+  getPlayer,
+  getPlayerPrimaryRoleKey,
+  getBishopThemes,
+} from '../../engine/state.js';
+import { formatChurchHtml, formatGoldHtml, formatTroopsHtml, renderIcon } from '../icons.js';
+import { escapeHtml } from '../html.js';
+import { getPlayerStyleAttr, renderOwnershipBadge, renderProvinceBadge, renderTitleBadge } from '../labels.js';
+import { playerInitial } from './shared.js';
+
+function getDashboardEconomy(state, playerId) {
+  const player = getPlayer(state, playerId);
+  if (!player) return { reserve: 0, income: 0, churchYield: 0, troops: 0 };
+  let income = 0;
+  let churchYield = 0;
+  let troops = 0;
+  try {
+    const admin = runIncome(state);
+    income = Number(admin?.income?.[playerId]) || 0;
+  } catch (err) {
+    income = 0;
+  }
+  try {
+    const bishopThemes = getBishopThemes(state, playerId);
+    churchYield = bishopThemes.reduce((sum, theme) => sum + Math.max(0, Number(theme?.C) || 0), 0);
+  } catch (err) { churchYield = 0; }
+  for (const officeKey of Object.keys(state.currentTroops || {})) {
+    if (getOfficeHolder(state, officeKey) !== playerId) continue;
+    const entry = readTroopEntry(state.currentTroops[officeKey]);
+    troops += entry.normal + entry.capitalLocked;
+  }
+  return {
+    reserve: Math.max(0, Number(player.gold) || 0),
+    income,
+    churchYield,
+    troops,
+  };
+}
+
+function getPlayerPrimaryRoleLabel(state, playerId) {
+  const roleKey = getPlayerPrimaryRoleKey(state, playerId);
+  if (!roleKey) return '';
+  return getOfficeDisplayName(state, roleKey);
+}
+
+function getDashboardHoldings(state, playerId) {
+  const themes = Object.values(state?.themes || {}).filter((theme) => theme?.id !== 'CPL');
+  return {
+    estate: themes.filter((theme) => !theme.occupied && theme.owner === playerId),
+    strategos: themes.filter((theme) => !theme.occupied && theme.strategos === playerId),
+    bishop: themes.filter((theme) => theme.bishop === playerId),
+  };
+}
+
+function renderDashboardHoldingRow(state, playerId, kind, themes) {
+  if (!themes.length) return '';
+  const player = getPlayer(state, playerId);
+  const label = renderOwnershipBadge(state, {
+    kind,
+    holderId: playerId,
+    color: player?.color || '#5a3810',
+    accent: 'rgba(20,8,0,0.76)',
+  }, { compact: true, hideHolder: true });
+  return `
+    <div class="dashboard-holding-row dashboard-holding-${kind}">
+      <span class="dashboard-holding-kind">${label}</span>
+      <span class="dashboard-holding-list">
+        ${themes.map((theme) => renderProvinceBadge(state, theme, { compact: true })).join(' ')}
+      </span>
+    </div>
+  `;
+}
+
+function renderDashboardHoldings(state, playerId) {
+  const holdings = getDashboardHoldings(state, playerId);
+  const rows = [
+    renderDashboardHoldingRow(state, playerId, 'estate', holdings.estate),
+    renderDashboardHoldingRow(state, playerId, 'strategos', holdings.strategos),
+    renderDashboardHoldingRow(state, playerId, 'bishop', holdings.bishop),
+  ].filter(Boolean);
+  if (!rows.length) return '';
+  return `<div class="dashboard-holdings">${rows.join('')}</div>`;
+}
+
+export function renderPlayerDashboard(container, state, playerId, selectedProvinceId = null, options = {}) {
+  if (!container || !state) return;
+  void selectedProvinceId;
+  const player = getPlayer(state, playerId);
+  const isOpen = options.uiState?.panels?.dashboard ?? true;
+  const titles = [
+    playerId === state.basileusId ? renderTitleBadge(state, 'BASILEUS', { holderId: playerId, compact: true }) : '',
+    ...(player?.majorTitles || []).map((titleKey) => renderTitleBadge(state, titleKey, { holderId: playerId, compact: true })),
+  ].filter(Boolean).join(' ');
+  const economy = player ? getDashboardEconomy(state, playerId) : null;
+  const roleLabel = player ? getPlayerPrimaryRoleLabel(state, playerId) : '';
+  const crestLetter = player ? playerInitial(player) : '?';
+  const dynastyName = player ? escapeHtml(player.dynasty || 'Dynasty') : 'No dynasty';
+
+  container.classList?.toggle?.('panel-collapsed', !isOpen);
+  container.innerHTML = `
+    <div class="player-dashboard sidebar-panel${isOpen ? '' : ' is-collapsed'}" style="${player ? getPlayerStyleAttr(state, player.id) : ''}">
+      <button class="sidebar-panel-head dashboard-cartouche-head" type="button" data-ui-panel-toggle="dashboard" aria-expanded="${isOpen}">
+        <span class="dashboard-cartouche" role="presentation">
+          <span class="dc-crest" aria-hidden="true">${crestLetter}</span>
+          <span class="dc-identity">
+            <span class="dc-name">${dynastyName}</span>
+            <span class="dc-role${roleLabel ? '' : ' muted'}">${roleLabel || 'No major office'}</span>
+          </span>
+          ${economy ? `
+            <span class="dc-finance">
+              <span class="dc-reserve">${formatGoldHtml(economy.reserve)}</span>
+              <span class="dc-delta">
+                ${formatGoldHtml(economy.income, { signed: true, tone: economy.income < 0 ? 'upkeep' : 'income' })}
+                ${formatTroopsHtml(economy.troops)}
+              </span>
+            </span>
+          ` : ''}
+        </span>
+      </button>
+      ${isOpen ? `
+      <div class="sidebar-panel-body">
+        ${economy ? `
+          <div class="finance-grid" aria-label="Next-round projection">
+            <div class="finance-card">
+              <span class="finance-label">${renderIcon('gold')}Reserve</span>
+              <span class="finance-value">${formatGoldHtml(economy.reserve)}</span>
+            </div>
+            <div class="finance-card ${economy.income < 0 ? 'upkeep' : 'income'}">
+              <span class="finance-label">${renderIcon('gold')}Next Income</span>
+              <span class="finance-value">${formatGoldHtml(economy.income, { signed: true })}</span>
+            </div>
+            <div class="finance-card">
+              <span class="finance-label">${renderIcon('troop')}Troops</span>
+              <span class="finance-value">${formatTroopsHtml(economy.troops)}</span>
+            </div>
+            <div class="finance-card">
+              <span class="finance-label">${renderIcon('church')}Church Yield</span>
+              <span class="finance-value">${formatChurchHtml(economy.churchYield)}</span>
+            </div>
+          </div>
+        ` : ''}
+        <div class="dashboard-token-row">${titles || '<span class="muted">No major office</span>'}</div>
+        ${renderDashboardHoldings(state, playerId)}
+      </div>
+      ` : ''}
+    </div>
+  `;
+}

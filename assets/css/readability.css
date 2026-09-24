@@ -1,0 +1,544 @@
+/* assets/css/readability.css - Value readability overrides; must load last. */
+
+/* ─────────────────────────────────────────────────────────────────
+   VALUE READABILITY — Resource values (gold / troops / church) must
+   stay crisp on every background: parchment, dynasty fills (lighter
+   ones like yellow dynasty fills and capital gold are the worst offenders),
+   and the translucent dark veils used by finance / stat cards on
+   top of those colors.
+
+   Pulled from the Icon & Cartouche System spec:
+     • On parchment      → kind-tint ink (umber / gold / church-blue),
+                           no shadow.
+     • On a colored cart → solid white ink + 2-layer dark text-shadow
+                           (sharp drop + soft halo). Numerals bump to
+                           700 weight, labels keep a higher opacity
+                           so the noun stays legible.
+     • SVG cartouches    → swap text-shadow (renders unreliably on
+                           SVG <text>) for paint-order stroke+fill,
+                           which yields a crisp dark outline on every
+                           owner fill.
+   ───────────────────────────────────────────────────────────────── */
+
+/* 1. Globally bolder numerals + tabular spacing so every readout
+      lines up vertically and pops off the parchment / dynasty fill. */
+.value .value-num,
+.dashboard-cartouche .dc-reserve,
+.finance-card .finance-value,
+.dashboard-stat-row strong,
+.balance-row .pts,
+.province-token-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.value .value-noun { opacity: 0.88; }
+
+/* 2. The label / number duo turns white inside any colored cartouche.
+      The chained-class selectors (e.g. .value.gold) outrank the base
+      .value.gold { color: var(--gold-1); } rule that ships earlier
+      in this stylesheet, so the muted gold tint no longer fights the
+      dynasty fill behind it. */
+.player-tab .value,
+.player-tab .value.gold,
+.player-tab .value.troop,
+.player-tab .value.church,
+.player-tab .value.income,
+.player-tab .value.upkeep,
+.player-dashboard .value,
+.player-dashboard .value.gold,
+.player-dashboard .value.troop,
+.player-dashboard .value.church,
+.dashboard-cartouche .value,
+.dashboard-cartouche .value.gold,
+.dashboard-cartouche .value.troop,
+.dashboard-cartouche .value.church,
+.candidate-row .value,
+.candidate-row .value.gold,
+.candidate-row .value.troop,
+.candidate-row .value.church,
+.player-choice-btn .value,
+.player-choice-btn .value.gold,
+.player-choice-btn .value.troop,
+.player-choice-btn .value.church,
+.player-chip .value,
+.player-chip .value.gold,
+.player-chip .value.troop,
+.player-chip .value.church,
+.player-role-name .value,
+.player-role-name .value.gold,
+.player-role-name .value.troop,
+.player-role-name .value.church,
+.province-token .value,
+.province-token .value.gold,
+.province-token .value.troop,
+.province-token .value.church,
+.title-token .value,
+.title-token .value.gold,
+.title-token .value.troop,
+.title-token .value.church,
+.cartouche .value,
+.cartouche .value.gold,
+.cartouche .value.troop,
+.cartouche .value.church {
+  color: #ffffff;
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.78),
+    0 0 5px rgba(20,8,0,0.45);
+}
+
+/* Heavier numeral weight inside colored cartouches. */
+.player-tab .value .value-num,
+.player-tab .tab-finance .value-num,
+.player-dashboard .value .value-num,
+.dashboard-cartouche .value .value-num,
+.candidate-row .value .value-num,
+.player-choice-btn .value .value-num,
+.player-chip .value .value-num,
+.cartouche .value .value-num,
+.province-token .value .value-num,
+.province-token-num,
+.title-token .value .value-num {
+  font-weight: 700;
+}
+
+/* Labels stay readable too. */
+.player-tab .value .value-noun,
+.player-tab .tab-finance .value-noun,
+.player-dashboard .value .value-noun,
+.dashboard-cartouche .value .value-noun,
+.candidate-row .value .value-noun,
+.cartouche .value .value-noun {
+  opacity: 0.95;
+}
+
+/* Icons inside colored cartouches: drop a small dark halo onto the
+   stroke-driven SVGs so the unit marker / coin / Orthodox cross outlines
+   read against the dynasty fill instead of merging into it. */
+.player-tab .icon svg,
+.player-dashboard .icon svg,
+.dashboard-cartouche .icon svg,
+.candidate-row .icon svg,
+.player-choice-btn .icon svg,
+.player-chip .icon svg,
+.player-role-name .icon svg,
+.province-token .icon svg,
+.title-token .icon svg,
+.cartouche .icon svg {
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
+}
+.province-token .icon svg { filter: drop-shadow(0 1px 0 rgba(20,8,0,0.45)); }
+.province-token .value,
+.province-token .value.gold,
+.province-token .value.troop,
+.province-token .value.church {
+  color: inherit;
+  text-shadow: inherit;
+}
+
+/* 3. Dashboard cartouche head — the big gold reserve and the
+      income / upkeep delta were unshadowed white on dynasty fill.
+      Anchor them with the same shadow stack and tighten the
+      delta colors so they survive the lighter dynasty fills. */
+.dashboard-cartouche .dc-reserve,
+.dashboard-cartouche .dc-delta .value {
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.78),
+    0 0 5px rgba(20,8,0,0.45);
+}
+.dashboard-cartouche .dc-reserve { font-weight: 700; }
+.dashboard-cartouche .dc-reserve .icon {
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
+}
+.dashboard-cartouche .dc-delta .value.income,
+.dashboard-cartouche .dc-delta .value.income .icon { color: #dcf2bc; }
+.dashboard-cartouche .dc-delta .value.upkeep,
+.dashboard-cartouche .dc-delta .value.upkeep .icon { color: #ffc6b6; }
+
+/* 4. Finance cards inside the dashboard sit on a dynasty fill, so
+      the 22 %-opacity dark veil from the base rule is too faint on
+      the lighter dynasty colors (yellow dynasty fills and the capital gold
+      come out essentially the same as the card). Deepen the veil
+      and the inner gold hairline, bolden the numerals. */
+.player-dashboard .finance-card {
+  background: rgba(20,8,0,0.46);
+  border-color: rgba(240,200,90,0.45);
+  box-shadow: inset 0 0 0 1px rgba(255,250,225,0.07);
+}
+.player-dashboard .finance-card .finance-label {
+  color: #fceec3;
+  opacity: 0.95;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.55);
+}
+.player-dashboard .finance-card .finance-value {
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow:
+    0 1px 0 rgba(20,8,0,0.78),
+    0 0 5px rgba(20,8,0,0.4);
+}
+.player-dashboard .finance-card .finance-value .icon {
+  filter: drop-shadow(0 1px 0 rgba(20,8,0,0.6));
+}
+.player-dashboard .finance-card.income .finance-value,
+.player-dashboard .finance-card.income .finance-value .icon { color: #dcf2bc; }
+.player-dashboard .finance-card.upkeep .finance-value,
+.player-dashboard .finance-card.upkeep .finance-value .icon { color: #ffc6b6; }
+
+/* 5. Dashboard stat row gets the same heavier veil + shadow stack. */
+.player-dashboard .dashboard-stat-row {
+  background: rgba(20,8,0,0.42);
+  border-color: rgba(240,200,90,0.4);
+}
+.player-dashboard .dashboard-stat-row,
+.player-dashboard .dashboard-stat-row strong,
+.player-dashboard .dashboard-stat-label {
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(20,8,0,0.6);
+}
+.player-dashboard .dashboard-stat-row strong { font-weight: 700; }
+
+/* 6. Player-tab finance run — numerals were faint on yellow dynasty fills.
+      Apply the bolder + halo treatment from the cartouche spec. */
+.player-tab .tab-finance .value-num { font-weight: 700; }
+.player-tab .tab-finance .value-noun { opacity: 0.95; }
+
+/* 7. Province-token values column — bolden numerals; the column
+      separator already provides the visual break from the name. */
+.province-token-values { opacity: 1; }
+.province-token-num { font-weight: 700; }
+
+/* 8. SVG map cartouche text: swap text-shadow (renders unreliably
+      across browsers on SVG <text>) for true paint-order stroke +
+      fill, keeping text crisp on the light region fills. */
+.map-cart-id,
+.map-cart-name,
+.map-cart-glyph-num {
+  text-shadow: none;
+  stroke: none;
+  stroke-width: 0;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+  fill: var(--cart-ink, #ffffff);
+}
+.map-cart-glyph-num { font-weight: 800; }
+/* Keep the warm-gold / cool-blue tint on gold and church numerals
+   so the three-icon triplet stays scannable as a triplet — the
+   shared light stroke unifies them and the hue distinguishes them. */
+.map-cartouche .map-cart-glyph-num-gold,
+.map-cartouche .map-cart-glyph-num-troop,
+.map-cartouche .map-cart-glyph-num-church { fill: var(--cart-ink, #ffffff); }
+
+/* SVG icon strokes on the map: a tiny light drop-shadow keeps the
+   unit marker / coin / Orthodox cross outlines visible on region fills. */
+.map-cart-glyph { filter: none; }
+
+/* 9. Balance ranking row — values stay umber/gold/church on the
+      parchment background (already correct), but the numerals were
+      under-weighted. Bolden them so the column reads vertically. */
+.balance-row .breakdown .value .value-num { font-weight: 700; }
+.balance-row .pts { font-weight: 700; }
+
+/* Interaction feedback pass: keep every click target in the cartouche system. */
+:where(
+  .player-tab,
+  .sidebar-panel-head,
+  .choice-btn,
+  .candidate-row,
+  .estate-card,
+  .btn-primary,
+  .btn-danger,
+  .btn-secondary,
+  .map-control-btn,
+  .setup-choice-btn,
+  .setup-ai-opponent-btn,
+  .segmented-control button,
+  .action-fold > summary
+) {
+  -webkit-tap-highlight-color: rgba(240,200,90,0.22);
+}
+
+:where(
+  .btn-primary,
+  .btn-danger,
+  .btn-secondary,
+  .map-control-btn,
+  .setup-choice-btn,
+  .setup-ai-opponent-btn,
+  .segmented-control button,
+  .choice-btn,
+  .candidate-row,
+  .player-tab,
+  .sidebar-panel-head
+):active:not(:disabled) {
+  transform: translateY(1px) scale(0.992);
+}
+
+.sidebar-panel-head:focus-visible,
+.action-fold > summary:focus-visible,
+.player-tab:focus-visible,
+.candidate-row:focus-visible,
+.estate-card:focus-within,
+.segmented-control button:focus-visible,
+.map-control-btn:focus-visible,
+.setup-choice-btn:focus-visible,
+.setup-ai-opponent-btn:focus-visible {
+  outline: 2px solid var(--gold-1);
+  outline-offset: 3px;
+}
+
+.action-fold > summary:hover {
+  color: var(--gold-2);
+  background: linear-gradient(180deg, rgba(240,228,195,0.72), rgba(255,252,240,0.18));
+}
+
+.choice-btn:hover .province-token,
+.choice-btn:hover .title-token {
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.72),
+    0 0 0 1px rgba(240,200,90,0.18),
+    0 2px 6px rgba(46,30,15,0.18);
+}
+
+.province-choice-btn.selected .province-token,
+.title-choice-btn.selected .title-token {
+  filter: brightness(1.05) saturate(1.04);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.88),
+    0 0 0 2px rgba(240,200,90,0.55),
+    0 0 0 4px var(--cart-border, var(--gold-1)),
+    0 2px 8px rgba(30,16,0,0.22);
+}
+
+.choice-btn:disabled.selected,
+.choice-btn.disabled.selected,
+.choice-btn:disabled[aria-pressed="true"],
+.choice-btn.disabled[aria-pressed="true"] {
+  filter: grayscale(0.24) saturate(0.72);
+}
+
+.choice-btn:disabled .province-token,
+.choice-btn:disabled .title-token,
+.choice-btn.disabled .province-token,
+.choice-btn.disabled .title-token {
+  filter: grayscale(0.26) saturate(0.72);
+  box-shadow: inset 0 0 0 1px rgba(80,62,42,0.25);
+}
+
+.choice-btn[aria-pressed="true"] {
+  filter: brightness(1.04);
+}
+
+.appointment-preview:not(:has(.muted)) {
+  border-style: solid;
+  border-color: rgba(200,146,30,0.42);
+  background: rgba(200,146,30,0.08);
+}
+
+.estate-card:not(.disabled) {
+  cursor: default;
+}
+
+.estate-card:not(.disabled):hover,
+.estate-card:not(.disabled):focus-within {
+  border-color: rgba(200,146,30,0.46);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.20),
+    0 5px 16px rgba(168,116,32,0.18);
+}
+
+.estate-card.selected {
+  border-color: var(--gold-1);
+  background:
+    linear-gradient(180deg, rgba(255,252,242,0.98) 0%, rgba(245,233,200,0.78) 100%),
+    rgba(200,146,30,0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.42),
+    0 0 0 2px rgba(240,200,90,0.42),
+    0 0 0 4px rgba(168,116,32,0.24),
+    0 4px 14px rgba(168,116,32,0.18);
+}
+
+.estate-card.contested {
+  border-color: rgba(122,77,153,0.34);
+}
+
+.estate-card.is-pressing {
+  transform: translateY(1px);
+  filter: brightness(1.03);
+}
+
+.estate-card[data-map-province]:not(.disabled),
+[data-map-province] .province-token,
+.province-token[data-province-token] {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled .province-token[data-province-token],
+.disabled .province-token[data-province-token] {
+  cursor: default;
+}
+
+.province-token.map-hovered,
+.choice-btn.map-hovered .province-token,
+.estate-card.map-hovered .province-token,
+.court-wire-seat.map-hovered .province-token {
+  filter: brightness(1.07) saturate(1.04);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.72),
+    0 0 0 1px rgba(240,200,90,0.22),
+    0 2px 6px rgba(46,30,15,0.18);
+}
+
+.province-token.map-selected,
+.choice-btn.map-selected .province-token,
+.estate-card.map-selected .province-token,
+.court-wire-seat.map-selected .province-token {
+  filter: brightness(1.06) saturate(1.06);
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.90),
+    0 0 0 2px rgba(240,200,90,0.58),
+    0 0 0 4px var(--cart-border, var(--gold-1)),
+    0 2px 8px rgba(30,16,0,0.22);
+}
+
+.choice-btn.map-hovered,
+.choice-btn.map-selected {
+  filter: brightness(1.04);
+}
+
+.notification-title .player-chip,
+.notification-title .province-token.compact,
+.notification-body .player-chip,
+.notification-body .province-token.compact,
+.history-entry-summary .player-chip,
+.history-entry-summary .province-token.compact,
+.action-error .player-chip,
+.action-error .province-token.compact {
+  margin: 0 2px;
+  vertical-align: middle;
+}
+
+.estate-card.map-hovered:not(.disabled),
+.estate-card.map-selected:not(.disabled) {
+  border-color: rgba(200,146,30,0.52);
+}
+
+.estate-card.map-selected:not(.disabled) {
+  box-shadow:
+    inset 0 0 0 1px rgba(240,200,90,0.34),
+    0 0 0 2px rgba(240,200,90,0.36),
+    0 4px 14px rgba(168,116,32,0.16);
+}
+
+.estate-current-bid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid rgba(168,116,32,0.18);
+  border-radius: var(--r-sm);
+  background: rgba(255,252,240,0.72);
+}
+
+.estate-current-bid.owned {
+  border-color: rgba(200,146,30,0.42);
+  background: rgba(200,146,30,0.10);
+}
+
+.estate-current-bid.contested {
+  border-color: rgba(122,77,153,0.28);
+  background: rgba(122,77,153,0.07);
+}
+
+.estate-current-label {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--umber-3);
+}
+
+.estate-current-bidder {
+  min-width: 0;
+  display: flex;
+}
+
+.estate-current-bidder .player-role-name {
+  font-size: 10px;
+  padding: 3px 7px 4px;
+  border-width: 3px;
+}
+
+.estate-current-amount {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--gold-1);
+  white-space: nowrap;
+}
+
+.estate-bid-btn:active:not(:disabled) {
+  box-shadow:
+    inset 0 1px 4px rgba(46,30,15,0.16),
+    0 1px 4px rgba(46,30,15,0.12);
+}
+
+.map-cartouche.hovered {
+  filter: brightness(1.06) drop-shadow(0 0 0.55px rgba(240,200,90,0.65));
+}
+
+.map-cartouche.hovered .map-cart-inner {
+  stroke: rgba(240,200,90,0.82);
+  stroke-width: 0.18;
+}
+
+.map-cartouche.selected {
+  filter:
+    drop-shadow(0 0 0.55px rgba(255,250,220,0.90))
+    drop-shadow(0 0 1.25px rgba(240,200,90,0.86));
+}
+
+.province-shape.hovered {
+  filter: brightness(1.08) saturate(1.03);
+}
+
+.province-shape.selected,
+.province-shape.selected:hover,
+.province-shape.selected.hovered {
+  filter:
+    brightness(1.06)
+    drop-shadow(0 0 0.7px rgba(255,250,220,0.92))
+    drop-shadow(0 0 1.7px rgba(240,200,90,0.82));
+}
+
+.region-stroke.hovered {
+  filter: drop-shadow(0 0 0.35px rgba(240,200,90,0.42));
+}
+
+.region-stroke.selected,
+.region-stroke.selected.hovered {
+  filter:
+    drop-shadow(0 0 0.55px rgba(255,250,220,0.72))
+    drop-shadow(0 0 1.35px rgba(240,200,90,0.72));
+}
+
+.province-shape.selection-pulse {
+  animation: mapProvincePulse 650ms ease-out;
+}
+
+.region-stroke.selection-pulse,
+.map-cartouche.selection-pulse {
+  animation: mapCartouchePulse 650ms ease-out;
+}
+
+@keyframes mapProvincePulse {
+  0% { filter: brightness(1.18) drop-shadow(0 0 2.2px rgba(240,200,90,0.96)); }
+  100% { filter: brightness(1.06) drop-shadow(0 0 1.7px rgba(240,200,90,0.82)); }
+}
+
+@keyframes mapCartouchePulse {
+  0% { filter: brightness(1.12) drop-shadow(0 0 2.2px rgba(240,200,90,0.95)); }
+  100% { filter: brightness(1) drop-shadow(0 0 1.25px rgba(240,200,90,0.86)); }
+}

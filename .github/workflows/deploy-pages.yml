@@ -15,8 +15,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    # Never publish a commit whose test suite fails.
+    name: Test before deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test suite
+        run: npm test
+
   build:
     name: Build static site
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

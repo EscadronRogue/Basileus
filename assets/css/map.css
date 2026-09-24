@@ -1,0 +1,350 @@
+/* assets/css/map.css - Map SVG styles and map cartouches. */
+
+/* ── Map SVG Styles ──────────────────────────────────────────────── */
+.adjacency-line {
+  stroke: rgba(100,70,20,0.15);
+  stroke-width: 0.2;
+}
+
+.province-shape {
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
+  fill-opacity: 1;
+  stroke: none;
+  cursor: pointer;
+  pointer-events: all;
+  transition: fill 0.18s, filter 0.18s;
+}
+
+.province-shape.imperial { stroke: none; }
+.province-shape:hover, .province-shape.hovered { filter: brightness(1.04) saturate(0.95); }
+.province-shape.occupied {
+  fill: var(--province-lost-fill-color, rgba(230,218,190,0.30));
+  fill-opacity: 1;
+}
+.province-shape.church {
+  /* Church ownership is shown by markers; land keeps its region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
+  fill-opacity: 1;
+}
+.province-shape.owned {
+  /* Player ownership is shown by markers; land keeps its region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
+  fill-opacity: 1;
+}
+.province-shape.capital {
+  /* Constantinople uses the capital region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
+  fill-opacity: 1;
+}
+.province-shape.free {
+  /* Free themes use their region palette. */
+  fill: var(--province-fill-color, rgba(230,218,190,0.42));
+  fill-opacity: 1;
+}
+.province-shape.map-filtered {
+  fill: var(--province-filter-fill-color, var(--map-filter-neutral-fill, #ffffff));
+  fill-opacity: 1;
+}
+.province-shape.map-filter-indirect {
+  filter: none;
+}
+.province-shape.map-filter-direct {
+  filter:
+    drop-shadow(0 0 1.2px rgba(250,230,160,0.82))
+    drop-shadow(0 0 2.4px rgba(250,230,160,0.46));
+}
+.province-shape.map-filter-neutral {
+  fill: var(--map-filter-neutral-fill, #ffffff);
+  filter: none;
+}
+.province-shape.selected,
+.province-shape.selected:hover,
+.province-shape.selected.hovered {
+  fill-opacity: 1;
+  filter: drop-shadow(0 0 1.2px rgba(200,146,30,0.75));
+}
+
+/* Province strokes live on the region-stroke layer only */
+.province-shape,
+.province-shape.imperial,
+.province-shape.imperial:hover,
+.province-shape:hover,
+.province-shape.hovered,
+.province-shape.occupied,
+.province-shape.church,
+.province-shape.owned,
+.province-shape.capital,
+.province-shape.free,
+.province-shape.selected { stroke: none; }
+
+.region-stroke {
+  fill: none;
+  stroke: var(--province-outline-color, var(--region-border, var(--empire-border)));
+  stroke-width: 2.6;
+  stroke-opacity: 0.88;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  transition: stroke-width 0.18s, stroke-opacity 0.18s, stroke 0.18s;
+}
+.region-stroke.occupied {
+  stroke: var(--province-lost-map-outline-color, var(--province-lost-outline-color, var(--province-outline-color, var(--region-border, var(--empire-border)))));
+  stroke-opacity: 0.78;
+}
+.region-stroke.map-filtered {
+  stroke: var(--province-filter-outline-color, rgba(92,70,38,0.62));
+}
+.region-stroke.map-filter-direct {
+  stroke-width: 4.1;
+  stroke-opacity: 1;
+  filter:
+    drop-shadow(0 0 0.7px rgba(250,230,160,0.88))
+    drop-shadow(0 0 1.25px rgba(250,230,160,0.56));
+}
+.region-stroke.map-filter-indirect {
+  stroke-width: 2.45;
+  stroke-opacity: 0.92;
+}
+.region-stroke.map-filter-neutral {
+  stroke-width: 1.55;
+  stroke-opacity: 0.38;
+}
+.region-stroke.hovered  { stroke-width: 3.1; stroke-opacity: 1; }
+.region-stroke.selected,
+.region-stroke.selected.hovered {
+  stroke-width: 3.5;
+  stroke-opacity: 1;
+  filter: drop-shadow(0 0 0.5px rgba(255,255,255,0.25));
+}
+.region-stroke.map-filter-direct.selected,
+.region-stroke.map-filter-direct.selected.hovered {
+  stroke-width: 4.6;
+}
+
+.province-hitbox {
+  fill: #ffffff;
+  fill-opacity: 0.001;
+  stroke: none;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+/* ── Map cartouches ──────────────────────────────────────────────────
+   SVG counterpart of the HTML .province-token. Same visual grammar:
+   outline = darker region color (--cart-border), fill = mid region wash (--cart-bg),
+   gold-leaf inner hairline. Two stacked text lines: name / values,
+   with an optional office/estate marker row below the values.
+   Built and laid out by mapRenderer.js. */
+.map-cartouche {
+  --cart-bg: var(--province-cartouche-fill-color, #4f3a6d);
+  --cart-border: var(--province-outline-color, var(--empire-border));
+  --cart-ink: #ffffff;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.map-cartouche.occupied {
+  --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, #eee6d2));
+  --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
+}
+
+@supports (color: color-mix(in srgb, white 50%, black 50%)) {
+  .map-cartouche {
+    --cart-bg: var(--province-cartouche-fill-color, color-mix(in srgb, var(--free-fill) 72%, var(--umber-0) 28%));
+  }
+
+  .map-cartouche.occupied {
+    --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, color-mix(in srgb, var(--free-fill) 14%, var(--parch-0) 86%)));
+  }
+}
+
+.map-cart-bg {
+  pointer-events: visiblePainted;
+  fill: var(--cart-bg, var(--free-fill));
+  stroke: var(--cart-border, var(--empire-border));
+  stroke-width: 0.55;
+  paint-order: stroke fill;
+}
+.map-cartouche.occupied .map-cart-bg { opacity: 1; }
+
+.map-cartouche.map-filtered {
+  --cart-bg: var(--province-filter-cartouche-fill-color, #ffffff);
+  --cart-border: var(--province-filter-cartouche-border-color, rgba(46,30,15,0.30));
+  --cart-ink: var(--province-filter-cartouche-ink-color, var(--umber-1));
+}
+
+.map-cartouche.map-filter-direct {
+  filter:
+    drop-shadow(0 0 0.6px rgba(250,230,160,0.78))
+    drop-shadow(0 0 1.1px rgba(250,230,160,0.50));
+}
+
+.map-cartouche.map-filter-neutral .map-cart-inner {
+  stroke: rgba(168,116,32,0.34);
+}
+
+.map-cart-inner {
+  fill: none;
+  stroke: rgba(240,200,90,0.55);
+  stroke-width: 0.12;
+}
+.map-cart-id,
+.map-cart-name,
+.map-cart-glyph-num {
+  fill: var(--cart-ink, #ffffff);
+  text-shadow: none;
+  dominant-baseline: auto;
+  alignment-baseline: baseline;
+  text-anchor: start;
+  pointer-events: none;
+  paint-order: stroke fill;
+}
+.map-cart-name { text-anchor: middle; }
+.map-cart-id   { text-anchor: middle; }
+.map-cart-id    { font-family: var(--font-display); font-weight: 700; font-size: 1.6px; letter-spacing: 0.18px; }
+.map-cart-name  { font-family: var(--font-display); font-weight: 600; font-size: 1.45px; letter-spacing: 0.06px; }
+.map-cart-glyph-num{
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25px;
+  letter-spacing: 0.04px;
+}
+/* Map cartouche value group — icons + numbers, centered around x=0 */
+.map-cart-values { pointer-events: none; }
+.map-cart-glyph { color: var(--cart-ink, #ffffff); opacity: 1; }
+.map-cart-glyph-gold,
+.map-cart-glyph-troop,
+.map-cart-glyph-church { color: var(--cart-ink, #ffffff); }
+.map-cartouche.occupied .map-cart-glyph { opacity: 1; }
+
+.map-cart-markers { pointer-events: none; }
+.map-cart-marker {
+  stroke: rgba(20,8,0,0.92);
+  stroke-width: 0.16;
+  filter: drop-shadow(0 0.08px 0 rgba(255,250,220,0.6));
+}
+.map-cart-marker.promoted {
+  stroke: rgba(250,226,150,0.98);
+  stroke-width: 0.26;
+  filter:
+    drop-shadow(0 0 0.42px rgba(20,8,0,0.86))
+    drop-shadow(0 0 0.55px rgba(250,226,150,0.78));
+}
+.game-map.map-filter-estates .map-cart-marker:not(.map-cart-marker-estate),
+.game-map.map-filter-strategoi .map-cart-marker:not(.map-cart-marker-strategos),
+.game-map.map-filter-bishops .map-cart-marker:not(.map-cart-marker-bishop) {
+  opacity: 0.18;
+}
+.game-map.map-filter-estates .map-cart-marker-estate,
+.game-map.map-filter-strategoi .map-cart-marker-strategos,
+.game-map.map-filter-bishops .map-cart-marker-bishop {
+  opacity: 1;
+}
+
+/* Capital cartouche: text leans into the imperial gold a touch more */
+.map-cartouche.is-capital:not(.map-filtered) .map-cart-id,
+.map-cartouche.is-capital:not(.map-filtered) .map-cart-name { fill: #ffffff; }
+.map-cartouche.map-filtered.is-capital .map-cart-id,
+.map-cartouche.map-filtered.is-capital .map-cart-name { fill: var(--cart-ink, var(--umber-1)); }
+
+/* Selected: stronger gold inner ring + slight scale-in via transform */
+.map-cartouche.selected .map-cart-inner {
+  stroke: var(--gold-3);
+  stroke-width: 0.22;
+}
+.map-cartouche.selected .map-cart-bg { stroke-width: 0.75; }
+
+.officer-badge { stroke: rgba(46,30,15,0.9); stroke-width: 0.3; }
+
+/* Invasion route */
+.invasion-route {
+  fill: none;
+  stroke: var(--invasion-lost-border);
+  stroke-width: 0.95;
+  stroke-dasharray: 1.8 1.2;
+  opacity: 1;
+  animation: marchingAnts 1s linear infinite;
+}
+@keyframes marchingAnts { to { stroke-dashoffset: -3; } }
+
+.invasion-marker {
+  fill: var(--invasion-lost-border);
+  opacity: 1;
+}
+
+.invasion-cartouche {
+  pointer-events: none;
+}
+
+.invasion-cartouche-bg {
+  fill: var(--invasion-lost-fill);
+  fill-opacity: 1;
+  stroke: var(--invasion-lost-border);
+  stroke-opacity: 1;
+  stroke-width: 0.7;
+  paint-order: stroke fill;
+}
+
+.invasion-cartouche-inner {
+  fill: none;
+  stroke: rgba(255,250,228,0.78);
+  stroke-width: 0.14;
+}
+
+.invasion-cartouche-name,
+.invasion-cartouche-strength {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  color: #ffffff;
+  fill: #ffffff;
+  paint-order: fill;
+  stroke: none;
+  stroke-width: 0;
+  pointer-events: none;
+}
+
+.invasion-cartouche-name {
+  font-family: var(--font-display);
+  font-size: 2.15px;
+  font-weight: 700;
+  letter-spacing: 0.12px;
+}
+
+.invasion-cartouche-strength {
+  font-family: var(--font-body);
+  font-size: 1.72px;
+  font-weight: 600;
+}
+
+.invasion-cartouche-strength-icon {
+  color: #ffffff;
+}
+
+.invasion-cartouche-strength-value {
+  fill: #ffffff;
+  stroke: none;
+  stroke-width: 0;
+}
+
+.province-threat-overlay {
+  display: none;
+  visibility: hidden;
+  fill: url(#threat-hatch);
+  fill-opacity: 1;
+  stroke: var(--region-border, #2e1e0f);
+  stroke-width: 0.45;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.province-threat-overlay.active {
+  display: inline !important;
+  visibility: visible !important;
+}
+
+/* Map dim & bg */
+#layer-bg-map { opacity: 0.28; filter: saturate(0.6); }
+.map-dim-overlay { opacity: 0.06; pointer-events: none; }
+#layer-bg-map .fil0, #layer-bg-map .fil2 { fill: #a2d9f7 !important; }
+#layer-bg-map .fil1, #layer-bg-map .fil7 { fill: #ffffff !important; }
+#layer-bg-map .fil6, #layer-bg-map .fil11 { fill: #d9dada !important; }
+#layer-bg-map .str0, #layer-bg-map .str1, #layer-bg-map .str2 { stroke: #003399 !important; }

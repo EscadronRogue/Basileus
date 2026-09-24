@@ -15,11 +15,13 @@ export const MIME_TYPES = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.ico', 'image/x-icon'],
+  ['.woff2', 'font/woff2'],
+  ['.txt', 'text/plain; charset=utf-8'],
 ]);
 
 // Security headers attached to every response from this server. They are
 // conservative but compatible with the game (single-origin, no third-party
-// scripts, no embedded fonts).
+// scripts, self-hosted fonts under assets/fonts).
 const BASE_SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
@@ -68,13 +70,26 @@ export function jsonResponse(res, statusCode, payload) {
 // forbidden/missing paths so callers can map to a JSON error.
 export async function serveStatic(req, res, url, projectRoot, options = {}) {
   const indexFile = options.indexFile || 'index.html';
-  let pathname = decodeURIComponent(url.pathname);
+  let pathname;
+  try {
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    const error = new Error('Malformed path.');
+    error.statusCode = 400;
+    throw error;
+  }
   if (pathname === '/') pathname = `/${indexFile}`;
   const filePath = resolve(projectRoot, `.${pathname}`);
   const relativePath = relative(projectRoot, filePath);
   if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
     const error = new Error('Forbidden path.');
     error.statusCode = 403;
+    throw error;
+  }
+  // Never expose dotfiles or dot-directories (.git, .env, .github, ...).
+  if (relativePath.split(/[\\/]/).some((segment) => segment.startsWith('.'))) {
+    const error = new Error('Not found.');
+    error.statusCode = 404;
     throw error;
   }
   let fileInfo;

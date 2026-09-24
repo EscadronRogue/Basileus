@@ -12,7 +12,7 @@ import {
   handleContinueAfterResolution,
   handleManualTitleReassignment,
   startInteractiveRuntime,
-} from '../engine/runtime.js';
+} from '../game/runtime.js';
 import {
   buildAIOrders,
   buildSimultaneousAIOrders,

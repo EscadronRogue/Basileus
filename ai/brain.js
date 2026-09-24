@@ -171,7 +171,7 @@ export function runAICourtAutomation(state, meta, options = {}) {
       safety += 1;
       const action = choosePolicyCourtAction(state, meta, player.id);
       if (!action) break;
-      const result = applyLegalAction(state, action, meta);
+      const result = applyLegalAction(state, action);
       if (!result.ok) break;
       applied += 1;
       meta?.decisionLog?.push?.(`court:${player.id}:${meta.players?.[player.id]?.policyId || 'strategic'}:${action.label || action.kind}`);
@@ -271,7 +271,7 @@ export function runAIEstateAutomation(state, meta, playerId) {
   const actions = choosePolicyEstateActions(planningState, meta, playerId);
   const applied = [];
   for (const action of actions) {
-    const result = applyLegalAction(state, action, meta);
+    const result = applyLegalAction(state, action);
     if (!result.ok) continue;
     applied.push(action);
     meta?.decisionLog?.push?.(`estates:${playerId}:${meta.players?.[playerId]?.policyId || 'strategic'}:${action.payload?.themeId || 'bid'}`);
@@ -293,8 +293,9 @@ export function applyPlannedAiTitleAssignment(state, meta, pendingAssignment = n
       }
       : null;
   if (!action) return null;
-  const result = applyLegalAction(state, action, meta);
+  const result = applyLegalAction(state, action);
   if (!result.ok) throw new Error(result.reason || 'AI title assignment failed validation.');
+  for (const observation of result.observations || []) observeCourtAction(state, meta, observation);
   return null;
 }
 

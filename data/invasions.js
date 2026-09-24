@@ -2,6 +2,10 @@
 
 export const INVASION_ESTIMATE_INTERVAL = 5;
 
+// Invasions drawn in the first rounds strike at most at easy strength, so a
+// game cannot be lost before dynasties have raised any troops. 0 disables it.
+export const EARLY_INVASION_GRACE_ROUNDS = 2;
+
 export const INVASION_DIFFICULTIES = Object.freeze({
   EASY: 'easy',
   MEDIUM: 'medium',
@@ -24,7 +28,6 @@ export const INVASIONS = [
     id: 'emirate',
     name: 'Emirate',
     drawWeight: 5,
-    origin: 'SIC',           // first theme on the route
     originLabel: 'North Africa',
     originMarker: 'AGH',
     objective: INVASION_OBJECTIVES.PROVINCES,
@@ -37,7 +40,6 @@ export const INVASIONS = [
     id: 'kievan_rus',
     name: 'Kievan Rus',
     drawWeight: 5,
-    origin: 'CHE',
     originLabel: 'Steppes',
     originMarker: 'RUS',
     objective: INVASION_OBJECTIVES.CAPITAL,
@@ -49,7 +51,6 @@ export const INVASIONS = [
     id: 'normans',
     name: 'Normans',
     drawWeight: 5,
-    origin: 'ITA',
     originLabel: 'Southern Italy',
     originMarker: 'NOR',
     objective: INVASION_OBJECTIVES.CAPITAL,
@@ -61,7 +62,6 @@ export const INVASIONS = [
     id: 'venetians',
     name: 'Venetians',
     drawWeight: 5,
-    origin: 'KEP',
     originLabel: 'Venice',
     originMarker: 'VEN',
     objective: INVASION_OBJECTIVES.CAPITAL,
@@ -73,7 +73,6 @@ export const INVASIONS = [
     id: 'bulgars',
     name: 'Bulgars',
     drawWeight: 20,
-    origin: 'BUL',
     originLabel: 'Bulgaria',
     originMarker: 'BBUULL',
     objective: INVASION_OBJECTIVES.CAPITAL,
@@ -85,7 +84,6 @@ export const INVASIONS = [
     id: 'serbs',
     name: 'Serbs',
     drawWeight: 5,
-    origin: 'SRB',
     originLabel: 'Serbia',
     originMarker: 'SSRRBB',
     objective: INVASION_OBJECTIVES.CAPITAL,
@@ -97,7 +95,6 @@ export const INVASIONS = [
     id: 'hungarians',
     name: 'Hungarians',
     drawWeight: 5,
-    origin: 'SIM',
     originLabel: 'Pannonia',
     originMarker: 'HON',
     objective: INVASION_OBJECTIVES.PROVINCES,
@@ -109,7 +106,6 @@ export const INVASIONS = [
     id: 'turks',
     name: 'Turks',
     drawWeight: 25,
-    origin: 'VAS',
     originLabel: 'Persia',
     originMarker: 'TUR',
     objective: INVASION_OBJECTIVES.CAPITAL,
@@ -121,7 +117,6 @@ export const INVASIONS = [
     id: 'caliphate',
     name: 'Caliphate',
     drawWeight: 25,
-    origin: 'ANT',
     originLabel: 'Levant',
     originMarker: 'CAL',
     objective: INVASION_OBJECTIVES.CAPITAL,

@@ -4,6 +4,9 @@ import { launchMultiplayerClient } from './ui/multiplayerController.js';
 import { loadBrowserAiOpponentRoster } from './ai/brain.js';
 import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from './ai/opponentRoster.js';
 import { getDynastyProfileForSeat } from './data/invasions.js';
+import { dynastySeatStyle, escapeHtml } from './ui/html.js';
+import { clearLocalSave, describeLocalSave, readLocalSave } from './ui/localSave.js';
+import { renderRulesHtml } from './ui/rules.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 const SETUP_CHOICE_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
@@ -68,19 +71,6 @@ let aiOpponentRosterLoaded = false;
 let aiOpponentRosterError = '';
 const selectedAiOpponentBySeat = new Map();
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function seatCartoucheStyle(seat) {
-  const color = getDynastyProfileForSeat((Math.max(1, Number(seat) || 1) - 1)).color || '#5a3810';
-  return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
-}
-
 function getTrainedAiOpponents() {
   return getTunedAiOpponents(aiOpponentRoster);
 }
@@ -117,7 +107,7 @@ function renderSetupChoiceControl(select) {
   }
   row.innerHTML = [...select.options].map((option) => {
     const seatStyle = select.id === 'setupSeat' && option.value !== SETUP_RANDOM_VALUE
-      ? ` style="${seatCartoucheStyle(option.value)}"`
+      ? ` style="${dynastySeatStyle(Number(option.value) - 1)}"`
       : '';
     return `
     <button type="button"
@@ -308,7 +298,7 @@ function renderAiRoster() {
       </button>
     ` : '';
     return `
-      <div class="setup-ai-seat" style="${seatCartoucheStyle(seat)}" data-seat="${seat}">
+      <div class="setup-ai-seat" style="${dynastySeatStyle(seat - 1)}" data-seat="${seat}">
         <span class="choice-crest">${escapeHtml(dynasty.slice(0, 1))}</span>
         <span class="setup-ai-copy">
           <strong>${escapeHtml(dynasty)}</strong>
@@ -563,9 +553,75 @@ setupRoomCode.addEventListener('keydown', (event) => {
   btnJoinRoom.click();
 });
 
+const resumeGameCard = document.getElementById('resumeGameCard');
+const resumeGameSummary = document.getElementById('resumeGameSummary');
+const resumeGameError = document.getElementById('resumeGameError');
+const btnResumeGame = document.getElementById('btnResumeGame');
+const btnDiscardSave = document.getElementById('btnDiscardSave');
+
+function formatSavedAgo(savedAt) {
+  const elapsedMs = Date.now() - Date.parse(savedAt || '');
+  if (!Number.isFinite(elapsedMs)) return '';
+  const minutes = Math.round(elapsedMs / 60_000);
+  const format = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  if (Math.abs(minutes) < 60) return format.format(-minutes, 'minute');
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 48) return format.format(-hours, 'hour');
+  return format.format(-Math.round(hours / 24), 'day');
+}
+
+function renderResumeCard() {
+  const save = readLocalSave();
+  resumeGameCard.hidden = !save;
+  if (!save) return;
+  const info = describeLocalSave(save);
+  const parts = [
+    info.dynasty ? `${info.mode} as ${info.dynasty}` : info.mode,
+    info.turnCount ? `round ${info.round} of ${info.turnCount}` : `round ${info.round}`,
+    `${info.playerCount} dynasties`,
+    formatSavedAgo(info.savedAt) ? `saved ${formatSavedAgo(info.savedAt)}` : '',
+  ].filter(Boolean);
+  resumeGameSummary.textContent = parts.join(' · ');
+  resumeGameError.textContent = '';
+}
+
+btnResumeGame.addEventListener('click', async () => {
+  if (gameLaunchInFlight) return;
+  const save = readLocalSave();
+  if (!save) {
+    renderResumeCard();
+    return;
+  }
+  gameLaunchInFlight = true;
+  updateStartAvailability();
+  setupDialog.style.display = 'none';
+  try {
+    const game = new GameController(save.config);
+    window.__basileus = game;
+    await game.resume(save);
+  } catch (error) {
+    window.__basileus = null;
+    setupDialog.style.display = 'flex';
+    resumeGameError.textContent = `Could not continue that game: ${error?.message || 'unknown error'}`;
+  } finally {
+    gameLaunchInFlight = false;
+    updateStartAvailability();
+  }
+});
+
+btnDiscardSave.addEventListener('click', () => {
+  clearLocalSave();
+  renderResumeCard();
+});
+
+// Leaving the page flushes the pending autosave so the latest move is kept.
+window.addEventListener('pagehide', () => window.__basileus?.saveNow?.());
+
+document.getElementById('rulesCardBody').innerHTML = renderRulesHtml();
 refreshSeatOptions();
 renderSetupChoiceControls();
 refreshModeVisibility();
+renderResumeCard();
 
 loadBrowserAiOpponentRoster(undefined, { required: false })
   .then((opponents) => {

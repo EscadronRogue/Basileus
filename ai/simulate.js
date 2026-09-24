@@ -1,9 +1,11 @@
+import { availableParallelism } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 
 import { setDealParticipantIds } from '../engine/deals.js';
 import { createGameState } from '../engine/state.js';
-import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../engine/runtime.js';
+import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../game/runtime.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopEntry, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
@@ -55,6 +57,7 @@ function emptyStats(options) {
       throneChanges: 0,
       incumbentHolds: 0,
       selfClaims: 0,
+      selfFirst: 0,
       incumbentBacks: 0,
       otherBacks: 0,
     },
@@ -86,6 +89,8 @@ function emptyStats(options) {
       categories: {},
     },
     winners: {},
+    fallRounds: {},
+    fallInvasions: {},
     players: {},
     samples: [],
   };
@@ -110,6 +115,7 @@ function createPlayerStats() {
     mercenaries: 0,
     mercenaryCost: 0,
     selfClaims: 0,
+    selfFirst: 0,
     selfClaimWins: 0,
     selfClaimTroops: 0,
     credibleSelfClaims: 0,
@@ -156,15 +162,17 @@ function summarizeOrders(state, playerId) {
   if (mercenaries.destination === 'capital') capitalTroops += mercenaryCount;
   else frontierTroops += mercenaryCount;
 
+  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
+  const candidateSupport = normalizeCoupSupport(state, orders.candidateSupport);
+
   return {
     playerId,
+    // Best-ranked supported claimant other than the player themselves.
     candidate: Number.isInteger(Number(orders.candidate))
       ? Number(orders.candidate)
-      : getPreferredCoupCandidate(state, playerId, {
-        ...orders,
-        ranking: normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate),
-        candidateSupport: normalizeCoupSupport(state, orders.candidateSupport),
-      }),
+      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
+    // Whoever the ranking actually puts first, which can be the player.
+    topPreference: ranking.find((candidateId) => candidateSupport[candidateId] !== false) ?? playerId,
     frontierTroops,
     capitalTroops,
     idleTroops,
@@ -212,6 +220,16 @@ function collectResolution(stats, state) {
     playerStats.mercenaries += order.mercenaryCount;
     playerStats.mercenaryCost += order.mercenaryCost;
 
+    // Report metric: who the ranking actually puts first (often the player).
+    if (order.topPreference === player.id) {
+      stats.coups.selfFirst += 1;
+      playerStats.selfFirst += 1;
+    }
+
+    // Training inputs (ai/train.js) keep their original single-candidate
+    // definition. `candidate` is the best non-self pick under ranking coups,
+    // so these self-claim counters stay at zero; see docs/roadmap.md before
+    // redefining them, as that changes what training rewards.
     if (order.candidate === player.id) {
       stats.coups.selfClaims += 1;
       playerStats.selfClaims += 1;
@@ -466,6 +484,7 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
     phase: state.phase,
     rounds: state.round,
     fall: state.gameOver?.type === 'fall',
+    fallInvasion: state.gameOver?.type === 'fall' ? state.currentInvasion?.id || 'unknown' : null,
     policyIds: Object.fromEntries(Object.entries(meta.players || {}).map(([playerId, entry]) => [playerId, entry.policyId || 'strategic'])),
     opponentIds: Object.fromEntries(Object.entries(meta.players || {}).map(([playerId, entry]) => [playerId, entry.opponentId || null])),
     finalScores: final.scores.map((entry) => ({
@@ -506,11 +525,15 @@ function mergeStats(target, source) {
     target.scoring.categories[key].count += bucket.count;
   }
   for (const [playerId, wins] of Object.entries(source.stats.winners)) addCount(target.winners, playerId, wins);
+  if (source.fall) {
+    addCount(target.fallRounds, String(source.rounds));
+    addCount(target.fallInvasions, source.fallInvasion || 'unknown');
+  }
   rememberSample(target, source);
 }
 
-export function simulateGames(rawOptions = {}) {
-  const options = {
+function normalizeSimulationOptions(rawOptions = {}) {
+  return {
     ...DEFAULT_OPTIONS,
     ...rawOptions,
     games: Math.max(1, toInt(rawOptions.games, DEFAULT_OPTIONS.games)),
@@ -523,13 +546,65 @@ export function simulateGames(rawOptions = {}) {
     policies: rawOptions.policies || null,
     allowUntunedPolicies: Boolean(rawOptions.allowUntunedPolicies),
   };
+}
+
+function aggregateGames(options, games) {
   const stats = emptyStats(options);
-  for (let gameIndex = 0; gameIndex < options.games; gameIndex += 1) {
-    const game = simulateGame(options, gameIndex);
+  for (const game of games) {
     stats.games += 1;
     mergeStats(stats, game);
   }
   return normalizeStats(stats);
+}
+
+export function simulateGames(rawOptions = {}) {
+  const options = normalizeSimulationOptions(rawOptions);
+  const games = [];
+  for (let gameIndex = 0; gameIndex < options.games; gameIndex += 1) games.push(simulateGame(options, gameIndex));
+  return aggregateGames(options, games);
+}
+
+export function defaultSimulationWorkers() {
+  try {
+    return Math.max(1, Math.min(4, availableParallelism() - 1));
+  } catch {
+    return 1;
+  }
+}
+
+function simulateRangeInWorker(options, start, end) {
+  return new Promise((resolveRange, rejectRange) => {
+    const workerOptions = { workerData: { kind: 'simulate-games', options, start, end } };
+    // Workers inherit the parent's flags by default. Only override them to drop
+    // --input-type, which is invalid for file workers; passing execArgv
+    // explicitly makes Node validate every flag, and some runners (Node 24's
+    // test runner) add flags a worker refuses.
+    if (process.execArgv.some((arg) => arg.startsWith('--input-type'))) {
+      workerOptions.execArgv = process.execArgv.filter((arg) => !arg.startsWith('--input-type'));
+    }
+    const worker = new Worker(new URL(import.meta.url), workerOptions);
+    worker.once('message', (message) => {
+      if (message?.ok) resolveRange(message.games);
+      else rejectRange(new Error(message?.error || 'Simulation worker failed.'));
+    });
+    worker.once('error', rejectRange);
+    worker.once('exit', (code) => {
+      if (code !== 0) rejectRange(new Error(`Simulation worker exited with code ${code}.`));
+    });
+  });
+}
+
+// Same results as simulateGames (games are seeded by index and merged in
+// order), spread over worker threads.
+export async function simulateGamesParallel(rawOptions = {}) {
+  const options = normalizeSimulationOptions(rawOptions);
+  const workers = Math.max(1, Math.min(options.games, toInt(rawOptions.workers, defaultSimulationWorkers())));
+  if (workers <= 1) return simulateGames(options);
+  const chunk = Math.ceil(options.games / workers);
+  const ranges = [];
+  for (let start = 0; start < options.games; start += chunk) ranges.push([start, Math.min(options.games, start + chunk)]);
+  const results = await Promise.all(ranges.map(([start, end]) => simulateRangeInWorker(options, start, end)));
+  return aggregateGames(options, results.flat());
 }
 
 function describeFallPressure(fallRate) {
@@ -597,7 +672,7 @@ function normalizeStats(stats) {
     },
     coups: {
       throneChangeRate: round(stats.coups.throneChanges / resolutions, 3),
-      selfPreferenceRate: round(stats.coups.selfClaims / orders, 3),
+      selfPreferenceRate: round(stats.coups.selfFirst / orders, 3),
       selfClaimRate: round(stats.coups.selfClaims / orders, 3),
       incumbentBackRate: round(stats.coups.incumbentBacks / orders, 3),
       otherBackRate: round(stats.coups.otherBacks / orders, 3),
@@ -624,6 +699,23 @@ function normalizeStats(stats) {
       categories,
     },
     winners: stats.winners,
+    seatWinRates: Object.fromEntries(
+      Array.from({ length: stats.options.playerCount }, (_, seat) => [seat, round((stats.winners[seat] || 0) / games, 3)]),
+    ),
+    fallRoundRates: Object.fromEntries(
+      Object.entries(stats.fallRounds)
+        .sort(([left], [right]) => Number(left) - Number(right))
+        .map(([roundNumber, count]) => [roundNumber, round(count / games, 3)]),
+    ),
+    fallInvasionRates: Object.fromEntries(
+      Object.entries(stats.fallInvasions)
+        .sort(([, left], [, right]) => right - left)
+        .map(([invasionId, count]) => [invasionId, round(count / games, 3)]),
+    ),
+    earlyFallRate: round(
+      Object.entries(stats.fallRounds).reduce((total, [roundNumber, count]) => total + (Number(roundNumber) <= 3 ? count : 0), 0) / games,
+      3,
+    ),
     diagnostics: buildDiagnostics(stats, games, resolutions, orders),
     samples: stats.samples,
   };
@@ -680,6 +772,7 @@ function parseArgs(argv) {
     else if (key === 'samples') options.samples = toInt(value, DEFAULT_OPTIONS.samples);
     else if (key === 'max-steps') options.maxSteps = toInt(value, DEFAULT_OPTIONS.maxSteps);
     else if (key === 'policies') options.policies = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    else if (key === 'workers') options.workers = toInt(value, defaultSimulationWorkers());
   }
   return options;
 }
@@ -694,6 +787,9 @@ function formatReport(result) {
     `Deployment/order: frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}, idle ${result.deployment.idleTroopsPerOrder}, mercs ${result.deployment.mercenariesPerOrder}`,
     `Estates/game: bid submissions ${result.estates.bidsPerGame}, winning purchases ${result.estates.purchasesPerGame}, submitted bid total ${result.estates.bidGoldPerGame}, winning spend ${result.estates.goldSpentPerGame}`,
     `Scoring: winner ${result.scoring.winnerScore}, average ${result.scoring.averageScore}, gap ${result.scoring.pointGap}`,
+    `Seat win rates: ${Object.entries(result.seatWinRates).map(([seat, rate]) => `seat ${Number(seat) + 1} ${Math.round(rate * 100)}%`).join(', ')}`,
+    `Falls by invader: ${Object.entries(result.fallInvasionRates).map(([invasionId, rate]) => `${invasionId} ${Math.round(rate * 100)}%`).join(', ') || 'none'}`,
+    `Falls by round: ${Object.entries(result.fallRoundRates).map(([roundNumber, rate]) => `r${roundNumber} ${Math.round(rate * 100)}%`).join(', ') || 'none'} (by round 3: ${Math.round(result.earlyFallRate * 100)}%)`,
     'Diagnostics:',
     ...result.diagnostics.map((entry) => `- ${entry}`),
   ].filter(Boolean);
@@ -713,9 +809,19 @@ function formatReport(result) {
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-if (isCli) {
+if (!isMainThread && workerData?.kind === 'simulate-games') {
+  try {
+    const games = [];
+    for (let gameIndex = workerData.start; gameIndex < workerData.end; gameIndex += 1) {
+      games.push(simulateGame(workerData.options, gameIndex));
+    }
+    parentPort.postMessage({ ok: true, games });
+  } catch (error) {
+    parentPort.postMessage({ ok: false, error: error?.message || String(error) });
+  }
+} else if (isCli) {
   const options = parseArgs(process.argv.slice(2));
-  const result = simulateGames(options);
+  const result = await simulateGamesParallel(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else console.log(formatReport(result));
 }

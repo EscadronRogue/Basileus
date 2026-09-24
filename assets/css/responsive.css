@@ -1,0 +1,426 @@
+/* assets/css/responsive.css - Responsive layout passes, readability scale, scrollbar, small utilities. */
+
+/* ── Breathing layout pass ──────────────────────────────────────────
+   Keeps the SVG canvas locked to the map aspect ratio, widens the usable
+   interface column, and gives repeated controls/cards consistent space. */
+@media (min-width: 981px) {
+  #mapContainer {
+    justify-content: center;
+  }
+
+  .sidebar-panel + .sidebar-panel,
+  #historyPanel + #actionPanel {
+    margin-top: 0;
+  }
+}
+
+.sidebar-panel-head {
+  min-height: var(--touch-target);
+}
+
+.sidebar-panel-badge,
+.score-breakdown {
+  max-width: 48%;
+}
+
+.court-section,
+.orders-section,
+.resolution-section,
+.phase-header,
+.court-actions,
+.orders-actions,
+.resolution-actions {
+  min-width: 0;
+}
+
+.btn-recruit,
+.btn-dismiss,
+#btnLeaveRoom,
+.inline-button {
+  min-height: 36px;
+}
+
+.history-entry-card,
+.theme-chip,
+.score-row {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) and (min-width: 981px) {
+  #app {
+    grid-template-columns: minmax(320px, 1fr) minmax(460px, var(--sidebar-width));
+  }
+
+  .deploy-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deploy-toggle {
+    width: 100%;
+  }
+}
+
+/* ── Responsive Ergonomics & Firefox/Mobile Compatibility ─────────────
+   The desktop game stays two-column. Narrow screens become a scrollable
+   map-first document so the sidebar no longer crushes the map. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #playerTabBar { background: rgba(240,228,198,0.98); }
+  #setupDialog { background: rgba(26,14,4,0.92); }
+  #gameOverOverlay { background: rgba(30,16,5,0.88); }
+}
+
+button,
+select,
+input,
+summary { touch-action: manipulation; }
+
+button,
+select,
+input,
+textarea {
+  font-size: 1rem;
+}
+
+.sidebar-panel-body,
+.action-shell,
+.history-panel,
+.player-dashboard,
+.candidate-row,
+.multiplayer-seat {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+
+/* ── Interface readability scale ──────────────────────────────────── */
+#sidebar {
+  font-size: 17px;
+}
+
+#sidebar > :not(#playerTabBar),
+#sidebar .sidebar-panel-body,
+#sidebar .history-panel-list,
+#sidebar .action-shell {
+  font-size: 1.05rem;
+  line-height: 1.58;
+}
+
+.sidebar-panel-kicker { font-size: 10.5px; }
+.sidebar-panel-title { font-size: 13px; }
+.sidebar-panel-subtitle { font-size: 13px; }
+.sidebar-panel-badge { font-size: 12px; }
+
+.section-hint,
+.history-entry-summary,
+.war-estimate,
+.section-empty {
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.candidate-name {
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.score-label,
+.vote-breakdown,
+.badge-detail {
+  font-size: 0.82rem;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1180px) {
+  :root { --sidebar-width: clamp(460px, 46vw, 620px); --main-panel-pad: 17px; }
+  .game-title { letter-spacing: 3px; }
+  .phase-badge { padding-inline: 10px; }
+}
+
+@media (max-width: 980px) {
+  body {
+    overflow: auto;
+    min-height: var(--game-vh);
+    height: auto;
+  }
+
+  #app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto clamp(330px, 50vh, 540px) auto;
+    grid-template-rows: auto clamp(330px, 50svh, 540px) auto;
+    grid-template-areas:
+      "topbar"
+      "map"
+      "sidebar";
+    min-height: var(--game-vh);
+    height: auto;
+  }
+
+  #topBar {
+    min-height: var(--topbar-height);
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  #invasionDisplay {
+    margin-left: 0;
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .empire-fallen-banner {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  #mapArea {
+    min-height: 320px;
+    border-bottom: 1px solid var(--parch-3);
+  }
+
+  #sidebar {
+    overflow: visible;
+    border-left: 0;
+    border-top: 1px solid var(--parch-3);
+    box-shadow: 0 -8px 24px rgba(80,50,10,0.08);
+    padding: var(--main-panel-pad);
+  }
+
+  #playerDashboard,
+  #balancePanel,
+  #notificationPanel,
+  #historyPanel,
+  #actionPanel { min-width: 0; }
+
+  .sidebar-panel-body,
+  .player-dashboard .sidebar-panel-body,
+  .action-shell .sidebar-panel-body { padding: var(--main-panel-pad); }
+
+  .history-panel-list { padding: var(--main-panel-pad); }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --main-panel-pad: 14px;
+    --touch-target: 46px;
+  }
+
+  #app {
+    grid-template-rows: auto clamp(300px, 46vh, 500px) auto;
+    grid-template-rows: auto clamp(300px, 46svh, 500px) auto;
+  }
+
+  #topBar {
+    gap: 7px 10px;
+    align-items: center;
+  }
+
+  .game-title {
+    font-size: 15px;
+    letter-spacing: 2.5px;
+    flex: 1 1 130px;
+  }
+
+  #roundDisplay,
+  .phase-badge,
+  .connection-badge {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  #invasionDisplay {
+    order: 10;
+    flex-basis: 100%;
+    font-size: 12px;
+    white-space: normal;
+  }
+
+  #mapArea::before { inset: 10px 10px calc(68px + env(safe-area-inset-bottom)); border-radius: 14px; }
+  #mapContainer { padding: 10px; }
+  .map-shell { border-radius: 12px; }
+
+  #playerTabBar { gap: 8px; padding: 12px; }
+  .player-tab {
+    flex-basis: clamp(144px, 46%, 190px);
+    min-width: min(100%, 144px);
+    padding: 8px 9px;
+    font-size: 12px;
+    border-width: 3px;
+  }
+  .tab-body { gap: 4px 6px; }
+  .tab-name { font-size: 13px; }
+  .tab-role { font-size: 10px; }
+  .tab-finance {
+    gap: 3px 7px;
+    font-size: 12px;
+  }
+  .tab-you {
+    padding: 2px 5px;
+    font-size: 8.5px;
+    letter-spacing: 0.8px;
+  }
+
+  .sidebar-panel-head,
+  .history-panel-head {
+    padding: 12px var(--main-panel-pad);
+  }
+
+  .sidebar-panel-badge { white-space: normal; text-align: right; }
+  .army-row,
+  .score-row,
+  .multiplayer-seat {
+    align-items: stretch;
+  }
+
+  .army-row,
+  .merc-row,
+  .score-row {
+    flex-wrap: wrap;
+  }
+
+  .score-breakdown,
+  .score-total {
+    text-align: right;
+  }
+
+  .theme-market,
+  .appt-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-item,
+  .deploy-row,
+  .merc-row {
+    padding: 10px 12px;
+  }
+
+  .deploy-row,
+  .merc-row { align-items: stretch; }
+  .deploy-toggle,
+  .merc-controls { margin-left: 0; width: 100%; }
+  .toggle-btn { flex: 1; min-height: 38px; }
+
+  .auction-main,
+  .auction-controls,
+  .auction-bid-control,
+  .market-bid-btn {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .army-controls,
+  .army-dismiss {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .army-controls > *,
+  .army-dismiss > * { flex: 1; }
+  .army-dismiss-count { width: auto; min-width: 64px; }
+
+  .player-choice-grid,
+  .province-choice-grid,
+  .revocation-choice-grid {
+    gap: 7px;
+  }
+
+  .player-role-name,
+  .province-token,
+  .title-token {
+    border-width: 3px;
+    padding: 5px 9px 6px;
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .province-token-values {
+    display: inline-block;
+    padding-left: 4px;
+  }
+
+  #setupDialog { align-items: flex-start; }
+  .setup-card {
+    width: min(100%, 520px);
+    max-width: 100%;
+    padding: 24px 18px;
+  }
+  .setup-card h1 { font-size: 25px; letter-spacing: 4px; }
+  .setup-field input,
+  .setup-choice-btn,
+  .setup-ai-opponent-btn {
+    min-height: var(--touch-target);
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  #app {
+    grid-template-rows: auto clamp(280px, 44vh, 440px) auto;
+    grid-template-rows: auto clamp(280px, 44svh, 440px) auto;
+  }
+  .game-title { flex-basis: 100%; }
+  #roundDisplay { margin-right: auto; }
+  .phase-badge { padding: 4px 8px; }
+  .connection-badge { padding: 4px 8px; }
+  .score-breakdown,
+  .score-total { text-align: left; }
+  .score-row { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .score-breakdown, .score-total { grid-column: 2; }
+  .court-actions,
+  .orders-actions,
+  .resolution-actions,
+  .scoring-panel { padding: var(--main-panel-pad); }
+}
+
+
+@media (max-width: 720px) {
+  #sidebar {
+    gap: var(--sp-3);
+  }
+
+  .sidebar-panel {
+    border-radius: var(--r-md);
+  }
+
+  .sidebar-panel-badge,
+  .score-breakdown {
+    max-width: 100%;
+  }
+
+}
+
+/* ── Scrollbar (global) ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 7px; }
+::-webkit-scrollbar-track { background: var(--parch-1); }
+::-webkit-scrollbar-thumb { background: var(--parch-3); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gold-1); }
+
+/* ── Misc small utilities ──────────────────────────────────────────── */
+.panel-collapsed .sidebar-panel-body { display: none; }
+
+#multiplayerActions.setup-actions { flex-direction: row; flex-wrap: wrap; }
+#multiplayerActions.setup-primary-actions { flex-direction: column; }
+#multiplayerActions .btn-primary,
+#multiplayerActions .btn-secondary { flex: 1; min-width: 120px; }
+
+#setupMultiplayerError { color: var(--crimson-1); font-style: normal; }
+.setup-error { color: var(--crimson-1); font-style: normal; width: 100%; }
+
+/* Sidebar section divider — thin gold rule */
+.sidebar-section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--parch-3) 30%, var(--parch-3) 70%, transparent 100%);
+  margin: 0;
+  opacity: 0.6;
+}
+
+
+/* Action panel gets a slight warm tint header */
+#actionPanel > .court-panel > .phase-header,
+#actionPanel > .orders-panel > .phase-header,
+#actionPanel > .resolution-panel > .phase-header {
+  background: linear-gradient(180deg, rgba(240,228,195,0.7) 0%, transparent 100%);
+}

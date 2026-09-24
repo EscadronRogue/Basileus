@@ -1,0 +1,179 @@
+/* assets/css/tokens.css - Design tokens and base element styles. */
+
+/* ── Design Tokens ───────────────────────────────────────────────── */
+:root {
+  /* Parchment ground */
+  --parch-0:   #fdf6e3;   /* lightest — card surfaces */
+  --parch-1:   #f5e9c8;   /* base parchment */
+  --parch-2:   #e8d5a3;   /* mid — subtle separators */
+  --parch-3:   #d4b878;   /* warm tan — strong borders */
+
+  /* Umber darks */
+  --umber-0:   #2e1e0f;   /* deepest text */
+  --umber-1:   #4a3018;   /* primary text */
+  --umber-2:   #6b4a28;   /* secondary text */
+  --umber-3:   #8c6840;   /* muted / placeholder */
+  --umber-4:   #b08050;   /* very muted */
+
+  /* Imperial Gold */
+  --gold-0:    #c8921e;   /* primary action gold */
+  --gold-1:    #a87420;   /* standard gold */
+  --gold-2:    #7c5416;   /* muted gold */
+  --gold-3:    #f0c85a;   /* bright highlight */
+  --gold-4:    #fae8a0;   /* very pale gold wash */
+
+  /* Imperial Purple */
+  --purple-0:  #5a3472;   /* deep purple */
+  --purple-1:  #7a4d99;   /* standard purple */
+  --purple-2:  #9d6fb8;   /* light purple */
+
+  /* Crimson / danger */
+  --crimson-0: #7a2020;
+  --crimson-1: #a03030;
+  --crimson-2: #c04848;
+
+  /* Church blue */
+  --church-0:  #1e3a5f;
+  --church-1:  #2e5490;
+  --church-2:  #6888b0;
+
+  /* Status: victory / defeat / stalemate */
+  --win:       #3a6b28;
+  --lose:      var(--crimson-1);
+  --draw:      var(--umber-3);
+
+  /* Map province fills */
+  --free-fill:    #6a4a8a;  /* deep amethyst — unowned, no dynasty uses this hue */
+  --free-border:  var(--purple-0);
+  --church-fill:  #1a1a1a;  /* black — church estate */
+  --church-border: #000000;
+  --occupied-fill: #d8c9ad;
+  --empire-border: #2e1e0f;
+  --empire-border-hover: #4a3018;
+  --capital-fill:  #9a7010;
+  --map-filter-neutral-fill: #ffffff;
+
+  /* Typography */
+  --font-display: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  --font-body:    'EB Garamond', 'Garamond', 'Times New Roman', serif;
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Radii */
+  --r-sm: 3px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  /* Shadows */
+  --shadow-card: 0 2px 8px rgba(46,30,15,0.10), 0 1px 2px rgba(46,30,15,0.06);
+  --shadow-panel: 0 4px 20px rgba(46,30,15,0.12);
+  --shadow-inset: inset 0 1px 0 rgba(255,250,230,0.55);
+
+  /* Responsive shell */
+  --topbar-height: 52px;
+  --sidebar-width: clamp(500px, 40vw, 720px);
+  --map-aspect: 297 / 210;
+  --map-max-width: 2400px;
+  --map-reserve-bottom: var(--map-shell-pad);
+  --map-shell-pad: clamp(14px, 1.8vw, 24px);
+  --sidebar-gap: clamp(12px, 1.3vw, 18px);
+  --main-panel-pad: clamp(16px, 1.7vw, 24px);
+  --touch-target: 44px;
+  --game-vh: 100vh;
+
+  /* Legacy aliases for JS-generated markup */
+  --bg-deep:       var(--parch-1);
+  --bg-surface:    var(--parch-0);
+  --bg-elevated:   var(--parch-1);
+  --bg-card:       var(--parch-0);
+  --border-subtle: var(--parch-2);
+  --border-accent: var(--parch-3);
+  --gold-bright:   var(--gold-0);
+  --gold-standard: var(--gold-1);
+  --gold-muted:    var(--gold-2);
+  --gold-dim:      var(--gold-2);
+  --purple-bright: var(--purple-1);
+  --purple-deep:   var(--purple-0);
+  --crimson:       var(--crimson-1);
+  --church-blue:   var(--church-1);
+  --text-primary:  var(--umber-1);
+  --text-secondary:var(--umber-2);
+  --text-muted:    var(--umber-3);
+  --text-gold:     var(--gold-1);
+  --occupied:      var(--occupied-fill);
+  --occupied-border: #9a8060;
+  --invasion-lost-fill: #000000;
+  --invasion-lost-border: #000000;
+  --region-border: var(--empire-border);
+}
+
+/* ── Reset & Base ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  min-height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+@supports (height: 100dvh) {
+  :root { --game-vh: 100dvh; }
+}
+
+@supports (color: color-mix(in srgb, white 50%, black 50%)) {
+  :root {
+    --occupied-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
+  }
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--umber-1);
+  background: var(--parch-1);
+  overflow: hidden;
+  min-height: var(--game-vh);
+  height: var(--game-vh);
+  width: 100%;
+  /* Subtle parchment texture via repeating gradient */
+  background-image:
+    radial-gradient(ellipse 120% 80% at 8% 0%, rgba(200,146,30,0.13) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 60% at 95% 5%, rgba(90,52,114,0.09) 0%, transparent 50%),
+    linear-gradient(160deg, #fdf6e3 0%, #f5e9c8 40%, #e8d5a3 100%);
+}
+
+/* Fine diagonal linen texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.06;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(139,100,40,0.4) 0px, rgba(139,100,40,0.4) 1px,
+      transparent 1px, transparent 6px
+    );
+}
+
+/* Hidden visually but still read by screen readers. */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
