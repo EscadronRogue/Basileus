@@ -156,15 +156,17 @@ function summarizeOrders(state, playerId) {
   if (mercenaries.destination === 'capital') capitalTroops += mercenaryCount;
   else frontierTroops += mercenaryCount;
 
+  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
+  const candidateSupport = normalizeCoupSupport(state, orders.candidateSupport);
+
   return {
     playerId,
+    // Best-ranked supported claimant other than the player themselves.
     candidate: Number.isInteger(Number(orders.candidate))
       ? Number(orders.candidate)
-      : getPreferredCoupCandidate(state, playerId, {
-        ...orders,
-        ranking: normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate),
-        candidateSupport: normalizeCoupSupport(state, orders.candidateSupport),
-      }),
+      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
+    // Whoever the ranking actually puts first, which can be the player.
+    topPreference: ranking.find((candidateId) => candidateSupport[candidateId] !== false) ?? playerId,
     frontierTroops,
     capitalTroops,
     idleTroops,
@@ -212,17 +214,21 @@ function collectResolution(stats, state) {
     playerStats.mercenaries += order.mercenaryCount;
     playerStats.mercenaryCost += order.mercenaryCost;
 
-    if (order.candidate === player.id) {
+    // Self-claims come from the top of the coup ranking. `candidate` never
+    // names the player (it is their best non-self pick), so it only decides
+    // whom they back among the other claimants.
+    if (order.topPreference === player.id) {
       stats.coups.selfClaims += 1;
       playerStats.selfClaims += 1;
       playerStats.selfClaimTroops += order.capitalTroops;
       if (order.capitalTroops >= 3) playerStats.credibleSelfClaims += 1;
       else playerStats.tokenSelfClaims += 1;
       if (coup?.winner === player.id && order.capitalTroops > 0) playerStats.selfClaimWins += 1;
-    } else if (order.candidate === state.basileusId) {
+    }
+    if (order.candidate === state.basileusId) {
       stats.coups.incumbentBacks += 1;
       playerStats.incumbentBacks += 1;
-    } else {
+    } else if (order.candidate !== player.id) {
       stats.coups.otherBacks += 1;
       playerStats.otherBacks += 1;
     }
