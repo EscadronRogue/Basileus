@@ -11,6 +11,7 @@ import {
   handleHumanOrders,
   handleEstatesConfirmation,
   resolvePendingTitleReassignment,
+  settleAutomaticProgress,
   startInteractiveRuntime,
   handleManualTitleReassignment,
 } from '../game/runtime.js';
@@ -27,6 +28,9 @@ import {
   renderPlayerTabs,
   scrollPhasePanelIntoView,
 } from './sharedView.js';
+import { buildLocalSave, clearLocalSave, restoreLocalSaveState, writeLocalSave } from './localSave.js';
+
+const AUTOSAVE_DELAY_MS = 300;
 
 export class GameController {
   constructor(config = {}) {
@@ -53,6 +57,8 @@ export class GameController {
     this.activePlayer = this.config.humanPlayerIds[0] ?? 0;
     this.uiState = createDefaultUiState();
     this.lastPhaseKey = null;
+    this.autosaveEnabled = config.autosave !== false;
+    this.autosaveTimer = null;
   }
 
   async init() {
@@ -71,6 +77,52 @@ export class GameController {
     }
     this.assignPlayerFirstNames();
 
+    await this.mountMap();
+    this.renderPlayerTabs();
+    startInteractiveRuntime(this.state, this.aiMeta, this);
+    this.render();
+  }
+
+  // Continues a game from ui/localSave.js exactly where it was left.
+  async resume(save) {
+    const aiPlayers = this.config.mode === 'single' ? await this.loadAiPlayers() : {};
+    const restored = restoreLocalSaveState(save, aiPlayers);
+    this.state = restored.state;
+    this.aiMeta = restored.aiMeta
+      || (this.config.mode === 'single'
+        ? createAIMeta(this.state, { humanPlayerIds: this.config.humanPlayerIds, aiPlayers })
+        : null);
+    this.pendingAiTitleAssignment = save.pendingAiTitleAssignment ?? null;
+    if (save.mapFilter) this.uiState.mapFilter = save.mapFilter;
+    if (Number.isInteger(save.activePlayer)) this.activePlayer = save.activePlayer;
+    this.ensureHumanFocus();
+    this.assignPlayerFirstNames();
+
+    await this.mountMap();
+    this.renderPlayerTabs();
+    settleAutomaticProgress(this.state, this.aiMeta, this);
+    this.render();
+  }
+
+  scheduleAutosave() {
+    if (!this.autosaveEnabled || typeof window === 'undefined') return;
+    if (this.autosaveTimer) window.clearTimeout(this.autosaveTimer);
+    this.autosaveTimer = window.setTimeout(() => this.saveNow(), AUTOSAVE_DELAY_MS);
+  }
+
+  // Finished games are not offered for resuming.
+  saveNow() {
+    if (!this.autosaveEnabled || !this.state) return;
+    if (this.autosaveTimer && typeof window !== 'undefined') window.clearTimeout(this.autosaveTimer);
+    this.autosaveTimer = null;
+    if (this.state.gameOver || this.state.phase === 'scoring') {
+      clearLocalSave();
+      return;
+    }
+    writeLocalSave(buildLocalSave(this));
+  }
+
+  async mountMap() {
     await createMapSVG('mapContainer', {
       mapFilter: this.uiState.mapFilter,
       onMapFilterChange: (filterId) => {
@@ -84,10 +136,6 @@ export class GameController {
         this.previewProvince(provinceId, { fromMap: true });
       },
     });
-
-    this.renderPlayerTabs();
-    startInteractiveRuntime(this.state, this.aiMeta, this);
-    this.render();
   }
 
   async loadAiPlayers() {
@@ -181,6 +229,7 @@ export class GameController {
       this.lastPhaseKey = phaseKey;
       scrollPhasePanelIntoView();
     }
+    this.scheduleAutosave();
   }
 
   setActionError(reason) {

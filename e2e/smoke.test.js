@@ -148,6 +148,64 @@ test('single-player short game plays through to final scoring', { timeout: 600_0
   assert.deepEqual(problems, []);
 });
 
+function readSnapshot(page) {
+  return page.evaluate(() => {
+    const { state, activePlayer } = window.__basileus;
+    return {
+      round: state.round,
+      phase: state.phase,
+      activePlayer,
+      rng: state.rng.getState(),
+      gold: state.players.map((player) => player.gold),
+      owners: Object.values(state.themes).map((theme) => theme.owner),
+      aiSeats: Object.values(window.__basileus.aiMeta?.players || {}).filter((player) => player.isAI).length,
+    };
+  });
+}
+
+test('an interrupted single-player game resumes exactly where it stopped', { timeout: 600_000 }, async (t) => {
+  const { page, problems } = await openGame(t);
+  await startLocalGame(page, { mode: 'single', players: 4, turns: 6, seed: 'smoke-resume' });
+
+  // Play into round 2, then leave the page mid-game.
+  for (let step = 0; step < 200; step += 1) {
+    const game = await readGame(page);
+    if (game.round >= 2 && ['court', 'estates'].includes(game.phase)) break;
+    if (game.phase === 'deployment' && !game.locked) {
+      await page.evaluate(async () => {
+        const { getPlayerOrderOfficeKeys } = await import('/engine/orders.js');
+        const controller = window.__basileus;
+        const armies = {};
+        for (const key of getPlayerOrderOfficeKeys(controller.state, controller.activePlayer)) armies[key] = { funded: 999, destination: 'frontier' };
+        controller.lockOrders({ armies, mercenaries: { count: 0, destination: 'frontier' } });
+      });
+      continue;
+    }
+    const button = page.locator(PHASE_BUTTONS.join(', ')).first();
+    if (await button.isVisible() && await button.isEnabled()) await button.click();
+    else await page.waitForTimeout(100);
+  }
+  const before = await readSnapshot(page);
+  assert.ok(before.round >= 2, 'reached round 2');
+  await page.evaluate(() => window.__basileus.saveNow());
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#resumeGameCard').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#resumeGameSummary').textContent(), new RegExp(`round ${before.round} of 6`));
+  await page.click('#btnResumeGame');
+  await page.waitForFunction(() => window.__basileus?.state?.phase && window.__basileus.state.phase !== 'setup');
+
+  assert.deepEqual(await readSnapshot(page), before, 'state, RNG position, and AI seats are restored');
+  const end = await playToEnd(page);
+  assert.ok(end.gameOver || end.phase === 'scoring');
+
+  // A finished game is not offered again.
+  await page.evaluate(() => window.__basileus.saveNow());
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.equal(await page.locator('#resumeGameCard').isVisible(), false);
+  assert.deepEqual(problems, []);
+});
+
 test('map filters, zoom, and province selection respond to input', async (t) => {
   const { page, problems } = await openGame(t);
   await startLocalGame(page, { mode: 'single', players: 5, turns: 6, seed: 'smoke-map' });

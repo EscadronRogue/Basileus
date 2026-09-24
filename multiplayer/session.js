@@ -17,7 +17,7 @@ function assert(condition, message) {
 
 import { randomUUID } from 'node:crypto';
 
-import { createGameState, getPlayer, formatPlayerLabel, makeRng } from '../engine/state.js';
+import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.js';
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
 import { buildPrivateNotifications } from '../engine/notifications.js';
 import {
@@ -32,13 +32,9 @@ import {
   settleAutomaticProgress,
   startInteractiveRuntime,
 } from '../game/runtime.js';
-import {
-  clonePlain,
-  hydrateCourtActions,
-  serializeCourtActions,
-  serializePublicGameState,
-} from '../engine/publicState.js';
+import { clonePlain, serializePublicGameState } from '../engine/publicState.js';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig, resolveConfiguredSeed, toInt } from '../engine/setup.js';
+import { hydrateAiMeta, hydrateGameState, serializeAiMeta, serializeGameState } from '../game/save.js';
 import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
 import {
   loadOpponentByIdSync,
@@ -73,55 +69,15 @@ function createOpenSeat(seatId) {
 
 function serializeFullGameState(state) {
   assert(state, 'Save file requires a game state.');
-  const { rng, courtActions, ...rest } = state;
-  return {
-    ...clonePlain(rest),
-    rngState: typeof rng?.getState === 'function' ? rng.getState() : 0,
-    courtActions: serializeCourtActions(courtActions),
-  };
+  return serializeGameState(state);
 }
 
 function hydrateFullGameState(rawState) {
   assert(rawState && typeof rawState === 'object', 'Save file is missing game state.');
-  const { rngState, courtActions, ...rest } = clonePlain(rawState);
-  return {
-    ...rest,
-    rng: makeRng(0, Number.isFinite(Number(rngState)) ? Number(rngState) : 0),
-    courtActions: hydrateCourtActions(courtActions),
-  };
+  return hydrateGameState(rawState);
 }
 
-function serializeAiMeta(aiMeta) {
-  if (!aiMeta) return null;
-  const {
-    humanPlayerIds,
-    decisionLog,
-    fastCache,
-    roundContext,
-    opponent,
-    ...rest
-  } = aiMeta;
-  void fastCache;
-  void roundContext;
-  void opponent;
-  const plain = clonePlain(rest);
-  if (plain.players) {
-    for (const player of Object.values(plain.players)) {
-      if (player && typeof player === 'object') delete player.opponent;
-    }
-  }
-  return {
-    ...plain,
-    humanPlayerIds: [...(humanPlayerIds || new Set())],
-    decisionLog: {
-      lines: Array.isArray(decisionLog?.lines) ? decisionLog.lines.slice() : [],
-    },
-  };
-}
-
-function hydrateAiMeta(rawMeta, state, seats = [], loadAiOpponentById = loadOpponentByIdSync) {
-  if (!rawMeta) return null;
-  const { humanPlayerIds = [] } = clonePlain(rawMeta);
+function hydrateSeatAiMeta(rawMeta, state, seats = [], loadAiOpponentById = loadOpponentByIdSync) {
   const aiPlayers = {};
   for (const seat of seats || []) {
     if (seat?.kind !== 'ai') continue;
@@ -133,7 +89,7 @@ function hydrateAiMeta(rawMeta, state, seats = [], loadAiOpponentById = loadOppo
       opponentId: seat.aiOpponentId || null,
     };
   }
-  return createAIMeta(state, { humanPlayerIds, aiPlayers });
+  return hydrateAiMeta(rawMeta, state, aiPlayers);
 }
 
 function normalizeSavedSeat(rawSeat, seatId) {
@@ -934,7 +890,7 @@ export function createRoomFromSave({
   room.seats = Array.from({ length: room.config.playerCount }, (_, seatId) =>
     normalizeSavedSeat(savedRoom.seats?.[seatId], seatId)
   );
-  room.aiMeta = hydrateAiMeta(savedRoom.aiMeta, gameState, room.seats, loadAiOpponentById);
+  room.aiMeta = hydrateSeatAiMeta(savedRoom.aiMeta, gameState, room.seats, loadAiOpponentById);
   room.refreshStatusFromGame();
   if (room.status !== ROOM_STATUS.FINISHED) {
     room.status = ROOM_STATUS.IN_PROGRESS;

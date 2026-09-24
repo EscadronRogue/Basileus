@@ -52,6 +52,17 @@
       <h1>BASILEUS</h1>
       <p class="setup-subtitle">A game of dynastic profiteering inside the Byzantine Empire</p>
 
+      <section id="resumeGameCard" class="resume-card" hidden aria-labelledby="resumeGameTitle">
+        <h2 id="resumeGameTitle" class="resume-card-title">Continue your game</h2>
+        <p id="resumeGameSummary" class="resume-card-summary"></p>
+        <p id="resumeGameError" class="setup-hint setup-error" role="alert"></p>
+        <div class="resume-card-actions">
+          <button class="btn-primary" id="btnResumeGame" type="button">Continue</button>
+          <button class="btn-secondary" id="btnDiscardSave" type="button">Discard</button>
+        </div>
+        <p class="setup-hint">Starting a new game replaces this save.</p>
+      </section>
+
       <div class="setup-actions setup-primary-actions" id="defaultSetupActions">
         <p id="setupStartError" class="setup-hint setup-error" role="alert"></p>
         <button class="btn-primary" id="btnStart">Start Game</button>
