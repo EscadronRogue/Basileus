@@ -206,6 +206,34 @@ test('an interrupted single-player game resumes exactly where it stopped', { tim
   assert.deepEqual(problems, []);
 });
 
+test('screen readers hear new phases and turn results', async (t) => {
+  const { page, problems } = await openGame(t);
+  await startLocalGame(page, { mode: 'single', players: 3, turns: 6, seed: 'smoke-a11y' });
+  const announcer = page.locator('#liveAnnouncer');
+  assert.equal(await announcer.getAttribute('aria-live'), 'polite');
+  await page.waitForFunction(() => /Round 1 of 6/.test(document.getElementById('liveAnnouncer').textContent));
+
+  for (let step = 0; step < 100; step += 1) {
+    const game = await readGame(page);
+    if (game.phase === 'resolution') break;
+    if (game.phase === 'deployment' && !game.locked) {
+      await page.evaluate(async () => {
+        const { getPlayerOrderOfficeKeys } = await import('/engine/orders.js');
+        const controller = window.__basileus;
+        const armies = {};
+        for (const key of getPlayerOrderOfficeKeys(controller.state, controller.activePlayer)) armies[key] = { funded: 999, destination: 'frontier' };
+        controller.lockOrders({ armies, mercenaries: { count: 0, destination: 'frontier' } });
+      });
+      continue;
+    }
+    const button = page.locator(PHASE_BUTTONS.join(', ')).first();
+    if (await button.isVisible() && await button.isEnabled()) await button.click();
+    else await page.waitForTimeout(100);
+  }
+  await page.waitForFunction(() => /Round 1 resolved\..*(Basileus|throne)/.test(document.getElementById('liveAnnouncer').textContent));
+  assert.deepEqual(problems, []);
+});
+
 test('map filters, zoom, and province selection respond to input', async (t) => {
   const { page, problems } = await openGame(t);
   await startLocalGame(page, { mode: 'single', players: 5, turns: 6, seed: 'smoke-map' });

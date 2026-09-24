@@ -621,7 +621,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
             ? `${plannedCount} planned action${plannedCount === 1 ? '' : 's'}. Lock to commit, or reset to change everything.`
             : 'Plan appointments or revocations. Nothing is committed until you lock.'}
         </div>
-        ${draft.planError ? `<p class="form-error">${escapeHtml(draft.planError)}</p>` : ''}
+        ${draft.planError ? `<p class="form-error" role="alert">${escapeHtml(draft.planError)}</p>` : ''}
         <div class="panel-actions court-plan-actions action-priority">
           <button type="button" class="btn-secondary btn-reset" data-action="reset-court-plan" ${hasPlan ? '' : 'disabled'}>Reset Plan</button>
           <button type="button" class="btn-primary btn-commit" data-action="confirm-court-plan">${hasPlan ? 'Lock Planned Actions' : 'Lock No Actions'}</button>

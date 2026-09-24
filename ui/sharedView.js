@@ -19,6 +19,7 @@ import { renderBalancePanel } from './balancePanel.js';
 import { getPlayerStyleAttr, renderCartouchedText, renderPlayerRoleName } from './labels.js';
 import { formatGoldHtml, formatTroopsHtml, renderIconSet } from './icons.js';
 import { escapeHtml } from './html.js';
+import { announceGameProgress } from './announcer.js';
 
 export function createDefaultUiState() {
   return {
@@ -841,6 +842,7 @@ export function renderGameFrame({
 }) {
   if (!state) return;
   renderTopBar(state);
+  announceGameProgress(state);
   renderConnectionBadge?.();
   updateMapState(state, uiState?.mapFilter || 'regions');
   drawInvasionRoute(state.currentInvasion);

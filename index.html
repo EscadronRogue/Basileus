@@ -28,12 +28,12 @@
     </header>
 
     <!-- Map Area -->
-    <main id="mapArea">
+    <main id="mapArea" aria-label="Map of the empire">
       <div id="mapContainer"></div>
     </main>
 
     <!-- Sidebar: Dashboard + Action Panel -->
-    <aside id="sidebar">
+    <aside id="sidebar" aria-label="Dynasties and phase actions">
       <div id="playerTabBar" aria-label="Player selection"></div>
       <div id="playerDashboard"></div>
       <div id="balancePanel"></div>
@@ -42,6 +42,9 @@
       <div id="actionPanel"></div>
     </aside>
   </div>
+
+  <!-- Screen-reader announcements of phase changes and turn results (ui/announcer.js). -->
+  <div id="liveAnnouncer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Game Over Overlay -->
   <div id="gameOverOverlay"></div>

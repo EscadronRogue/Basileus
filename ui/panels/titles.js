@@ -187,7 +187,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
         </div>
       </section>
       ${isBasileus ? `<div class="appointment-preview title-redist-link-preview">${escapeHtml(selectedSummary)}</div>` : ''}
-      <p class="form-error" data-role="title-reassignment-error">${complete && !validation.ok ? escapeHtml(validation.reason || '') : ''}</p>
+      <p class="form-error" role="alert" data-role="title-reassignment-error">${complete && !validation.ok ? escapeHtml(validation.reason || '') : ''}</p>
       <div class="panel-actions action-priority">
         <button type="button" class="btn-primary btn-commit" data-action="confirm-title-redistribution" ${canConfirm ? '' : 'disabled'}>${validation.ok ? 'Lock Offices' : 'Finish Office Slots'}</button>
       </div>
