@@ -122,8 +122,20 @@ function createPlayerStats() {
     tokenSelfClaims: 0,
     incumbentBacks: 0,
     otherBacks: 0,
+    // Behaviour descriptors used to tell AI personalities apart.
+    lowFrontierOrders: 0,
+    burnedWhileHoldingBack: 0,
+    capitalBids: 0,
+    throneWins: 0,
+    throneRounds: 0,
   };
 }
+
+// An order "holds back" from the war when under a quarter of the troops the
+// dynasty could field go to the frontier.
+const LOW_FRONTIER_SHARE = 0.25;
+// Sending at least this many troops to the capital is a real bid for the throne.
+const CAPITAL_BID_TROOPS = 3;
 
 function ensurePlayerStats(stats, playerId) {
   const key = String(playerId);
@@ -203,6 +215,15 @@ function collectResolution(stats, state) {
   for (const player of state.players || []) {
     const order = summarizeOrders(state, player.id);
     const playerStats = ensurePlayerStats(stats, player.id);
+    const fieldable = order.frontierTroops + order.capitalTroops + order.idleTroops;
+    const heldBack = fieldable >= 2 && order.frontierTroops / fieldable < LOW_FRONTIER_SHARE;
+    if (heldBack) playerStats.lowFrontierOrders += 1;
+    if (heldBack && war && war.outcome === 'defeat') playerStats.burnedWhileHoldingBack += 1;
+    if (order.capitalTroops >= CAPITAL_BID_TROOPS) playerStats.capitalBids += 1;
+    if (coup?.winner === player.id) {
+      playerStats.throneRounds += 1;
+      if (coup.winner !== state.basileusId) playerStats.throneWins += 1;
+    }
 
     stats.deployment.orders += 1;
     stats.deployment.frontierTroops += order.frontierTroops;
@@ -270,6 +291,27 @@ function createAppointmentStats() {
     unlockAppointments: 0,
     finalSelfLocked: false,
   };
+}
+
+// Estates, revocations, and patronage per dynasty, read from the game log.
+function collectBehaviorByPlayer(state) {
+  const byPlayer = Object.fromEntries((state.players || []).map((player) => [player.id, {
+    estatesBought: 0,
+    estateGold: 0,
+    revocations: 0,
+    appointmentsToOthers: 0,
+  }]));
+  for (const event of state.log || []) {
+    if (event.type === 'buy' && byPlayer[event.player]) {
+      byPlayer[event.player].estatesBought += 1;
+      byPlayer[event.player].estateGold += Number(event.cost) || 0;
+    } else if ((event.type === 'revoke_minor' || event.type === 'revoke_theme') && byPlayer[event.revokerId]) {
+      byPlayer[event.revokerId].revocations += 1;
+    } else if ((event.type === 'appoint_strategos' || event.type === 'appoint_bishop') && byPlayer[event.appointer]) {
+      if (event.appointee !== event.appointer) byPlayer[event.appointer].appointmentsToOthers += 1;
+    }
+  }
+  return byPlayer;
 }
 
 function collectAppointmentStatsByPlayer(state) {
@@ -496,6 +538,7 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
     winnerIds: final.winners.map((entry) => entry.playerId),
     topScore: final.topScore,
     appointmentStatsByPlayer,
+    behaviorByPlayer: collectBehaviorByPlayer(state),
     playerStatsByPlayer: localStats.players,
     stats: localStats,
   };
@@ -573,8 +616,12 @@ export function defaultSimulationWorkers() {
 }
 
 function simulateRangeInWorker(options, start, end) {
-  return new Promise((resolveRange, rejectRange) => {
-    const workerOptions = { workerData: { kind: 'simulate-games', options, start, end } };
+  return runWorker({ kind: 'simulate-games', options, start, end });
+}
+
+function runWorker(workerData) {
+  return new Promise((resolveRun, rejectRun) => {
+    const workerOptions = { workerData };
     // Workers inherit the parent's flags by default. Only override them to drop
     // --input-type, which is invalid for file workers; passing execArgv
     // explicitly makes Node validate every flag, and some runners (Node 24's
@@ -584,14 +631,27 @@ function simulateRangeInWorker(options, start, end) {
     }
     const worker = new Worker(new URL(import.meta.url), workerOptions);
     worker.once('message', (message) => {
-      if (message?.ok) resolveRange(message.games);
-      else rejectRange(new Error(message?.error || 'Simulation worker failed.'));
+      if (message?.ok) resolveRun(message.games);
+      else rejectRun(new Error(message?.error || 'Simulation worker failed.'));
     });
-    worker.once('error', rejectRange);
+    worker.once('error', rejectRun);
     worker.once('exit', (code) => {
-      if (code !== 0) rejectRange(new Error(`Simulation worker exited with code ${code}.`));
+      if (code !== 0) rejectRun(new Error(`Simulation worker exited with code ${code}.`));
     });
   });
+}
+
+// Runs one game per spec (each spec is a full simulateGame options object with
+// its own seed, table size, and seat policies) and returns results in order.
+export async function simulateGameSpecsParallel(specs = [], { workers = defaultSimulationWorkers() } = {}) {
+  const list = Array.isArray(specs) ? specs : [];
+  const lanes = Math.max(1, Math.min(list.length, toInt(workers, defaultSimulationWorkers())));
+  if (lanes <= 1) return list.map((spec) => simulateGame(spec, 0));
+  const chunk = Math.ceil(list.length / lanes);
+  const batches = [];
+  for (let start = 0; start < list.length; start += chunk) batches.push(list.slice(start, start + chunk));
+  const results = await Promise.all(batches.map((batch) => runWorker({ kind: 'simulate-specs', specs: batch })));
+  return results.flat();
 }
 
 // Same results as simulateGames (games are seeded by index and merged in
@@ -809,11 +869,15 @@ function formatReport(result) {
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-if (!isMainThread && workerData?.kind === 'simulate-games') {
+if (!isMainThread && (workerData?.kind === 'simulate-games' || workerData?.kind === 'simulate-specs')) {
   try {
     const games = [];
-    for (let gameIndex = workerData.start; gameIndex < workerData.end; gameIndex += 1) {
-      games.push(simulateGame(workerData.options, gameIndex));
+    if (workerData.kind === 'simulate-specs') {
+      for (const spec of workerData.specs) games.push(simulateGame(spec, 0));
+    } else {
+      for (let gameIndex = workerData.start; gameIndex < workerData.end; gameIndex += 1) {
+        games.push(simulateGame(workerData.options, gameIndex));
+      }
     }
     parentPort.postMessage({ ok: true, games });
   } catch (error) {

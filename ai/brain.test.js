@@ -863,12 +863,13 @@ test('AI coup coalition planning rallies weak AI dynasties behind one friendly c
 
   const plans = buildSimultaneousAIOrders(state, meta);
 
-  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.ranking[0], plan.orders.ranking[1]]), [
-    [1, 1, 2],
-    [2, 2, 3],
-    [3, 3, 2],
+  // Dynasty 2 appointed both others, so they rank it first and it claims the
+  // throne itself: all three coup ballots put the same claimant on top.
+  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.ranking[0]]), [
+    [1, 2],
+    [2, 2],
+    [3, 2],
   ]);
-  assert.equal(plans.filter((plan) => plan.orders.ranking[1] === 2).length >= 2, true);
 });
 
 test('AI coup coalition planning can support a human claimant with good relations', () => {
@@ -892,7 +893,7 @@ test('AI coup coalition planning can support a human claimant with good relation
   assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.candidate]), [[1, 3], [2, 3]]);
 });
 
-test('tuned deployment turns safe frontier surplus into coup pressure', () => {
+function safeSurplusDeploymentState() {
   const state = makeState();
   state.phase = 'deployment';
   state.currentInvasion = {
@@ -907,39 +908,52 @@ test('tuned deployment turns safe frontier surplus into coup pressure', () => {
     DOM_WEST: { normal: 6, capitalLocked: 0 },
     ADMIRAL: { normal: 6, capitalLocked: 0 },
   };
+  return state;
+}
+
+function capitalCommitment(orders) {
+  const armies = Object.values(orders.armies)
+    .filter((entry) => entry.destination === 'capital')
+    .reduce((total, entry) => total + entry.funded, 0);
+  return armies + (orders.mercenaries.destination === 'capital' ? orders.mercenaries.count : 0);
+}
+
+test('an ambitious AI turns a safe frontier surplus into a throne bid', () => {
+  const state = safeSurplusDeploymentState();
   const meta = createAIMeta(state, {
     humanPlayerIds: [0, 2, 3],
-    aiPlayers: {
-      1: {
-        policy: {
-          policyId: 'tuned',
-          strategyWeights: {
-            invasionShortfallPenalty: 7.4,
-            invasionSafetyValue: 1.4,
-            invasionSurplusPenalty: 0.4,
-            capitalFallPenalty: 665.876428553347,
-            capitalRiskPenalty: 48.353426978309265,
-            throneBase: 13.837714739693313,
-            selfClaim: 0.19356171899110766,
-            supportOtherClaimant: 0.12764954809536314,
-            relationshipCoupWeight: 0.31294053312187564,
-            coupOpportunityWeight: 0.75,
-            allyDefenseReliance: 0.82,
-          },
-        },
-      },
-    },
+    aiPlayers: { 1: { policy: { policyId: 'tuned', strategyWeights: { throneBase: 44, selfClaim: 1.75, coupOpportunityWeight: 0.9 } } } },
   });
 
   const orders = buildAIOrders(state, meta, 1);
-  const fundedFrontier = Object.values(orders.armies)
-    .filter((entry) => entry.destination === 'frontier')
-    .reduce((total, entry) => total + entry.funded, 0);
-  const capitalMercs = orders.mercenaries.destination === 'capital' ? orders.mercenaries.count : 0;
 
   assert.equal(orders.ranking[0], 1);
-  assert.equal(fundedFrontier < state.currentTroops.DOM_EAST.normal, true);
-  assert.equal(capitalMercs > 0 || Object.values(orders.armies).some((entry) => entry.destination === 'capital' && entry.funded > 0), true);
+  assert.equal(capitalCommitment(orders) >= 3, true);
+});
+
+test('a defence-minded AI that barely values the throne keeps its troops at the frontier', () => {
+  const state = safeSurplusDeploymentState();
+  const strategyWeights = {
+    invasionShortfallPenalty: 7.4,
+    invasionSafetyValue: 1.4,
+    invasionSurplusPenalty: 0.4,
+    capitalFallPenalty: 665.9,
+    capitalRiskPenalty: 48.4,
+    throneBase: 13.8,
+    selfClaim: 0.19,
+    supportOtherClaimant: 0.13,
+    relationshipCoupWeight: 0.31,
+    coupOpportunityWeight: 0.75,
+    allyDefenseReliance: 0.82,
+  };
+  const meta = createAIMeta(state, {
+    humanPlayerIds: [0, 2, 3],
+    aiPlayers: { 1: { policy: { policyId: 'tuned', strategyWeights } } },
+  });
+
+  const orders = buildAIOrders(state, meta, 1);
+
+  assert.equal(capitalCommitment(orders), 0);
 });
 
 test('AI title planning returns a legal title redistribution action', () => {

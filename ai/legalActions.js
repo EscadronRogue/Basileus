@@ -18,12 +18,11 @@ import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/
 import { getFreeThemes, getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
-import { buildDefaultCoupRanking } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { getPlayerMemory, getRelationship, relationshipScore } from './memory.js';
 
 export const AI_DEALS_ENABLED = false;
-const MAX_ORDER_ACTIONS = 520;
+const MAX_ORDER_ACTIONS = 1200;
 
 function cloneValueForValidation(value) {
   if (value == null) return value;
@@ -385,6 +384,23 @@ export function buildAiCoupSupport(state, playerId, memory = null) {
   return support;
 }
 
+// Coup rankings an AI considers with a given ally: claim the throne itself
+// with the ally second, or back the ally with itself second. Everyone else is
+// ordered by how much the AI likes them, so its worst rival ranks last and
+// receives none of its capital support.
+export function buildAiCoupRankings(state, playerId, allyId, memory = null) {
+  const rest = (state?.players || [])
+    .map((player) => player.id)
+    .filter((id) => id !== playerId && id !== allyId)
+    .sort((left, right) => (
+      relationshipScore(memory, playerId, right) - relationshipScore(memory, playerId, left)
+    ) || (left - right));
+  return [
+    [playerId, allyId, ...rest],
+    [allyId, playerId, ...rest],
+  ];
+}
+
 export function listLegalOrderActions(state, playerId, options = {}) {
   if (!state || state.phase !== 'deployment') return [];
   if (state.allOrders?.[playerId]) return [];
@@ -398,20 +414,16 @@ export function listLegalOrderActions(state, playerId, options = {}) {
   for (const armies of armyPlans) {
     for (const mercenaries of buildMercenaryPlans(state, playerId, armies)) {
       for (const candidate of candidateIds) {
-        const orders = {
-          armies,
-          mercenaries,
-          candidate,
-          ranking: buildDefaultCoupRanking(state, playerId, candidate),
-          candidateSupport,
-        };
-        const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
-        if (!normalized.ok) continue;
-        const key = stablePayload(normalized.orders);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
-        if (actions.length >= MAX_ORDER_ACTIONS) return actions;
+        for (const ranking of buildAiCoupRankings(state, playerId, candidate, options.memory || null)) {
+          const orders = { armies, mercenaries, candidate, ranking, candidateSupport };
+          const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
+          if (!normalized.ok) continue;
+          const key = stablePayload(normalized.orders);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
+          if (actions.length >= MAX_ORDER_ACTIONS) return actions;
+        }
       }
     }
   }
