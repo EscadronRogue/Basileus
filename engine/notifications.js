@@ -116,7 +116,7 @@ function buildObligationNotifications(state, viewerId, dealView, notifications) 
   const locks = dealView?.orderLocks;
   if (locks?.ok && (locks.candidateId != null || locks.officeSelections?.length)) {
     const lockedBits = [];
-    if (locks.candidateName) lockedBits.push(`coup rank: ${locks.candidateName}`);
+    if (locks.candidateName) lockedBits.push(`coup choice: ${locks.candidateName}`);
     if (locks.officeSelections?.length) lockedBits.push(`${locks.officeSelections.length} deployment lock${locks.officeSelections.length === 1 ? '' : 's'}`);
     pushNotification(notifications, {
       id: `order-lock:${viewerId}:${state.round}:${locks.candidateId ?? 'none'}:${locks.officeSelections?.length || 0}`,

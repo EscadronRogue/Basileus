@@ -51,9 +51,9 @@ Each province outside Constantinople has three original values: **P** (profit to
 
 ## Coup & War
 
-- **Coup.** Every funded capital troop follows its owner's ranking: first place gets full support, last place gets none, and the ranks between scale evenly. A claimant can be toggled off for 0 support without changing the weights of those ranked above. The Basileus starts with 2 passive capital support and the Patriarch with 1; temporary acclaim or unrest can adjust those totals for one round. Most support wins. Ties go to the tied claimant with the most Patriarchal support, then to the sitting Basileus, then to dynasty order. A new Basileus redistributes all four major titles at the start of the next round or the final reckoning.
-- **War.** Frontier troops minus invader strength. Win → reconquer occupied provinces along the route (cost 1, then +1, +1…). Lose → the invader advances along the route capturing provinces at the same rising cost. If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.
-- **Best defender.** When the empire wins the war, the top frontier contributor gains 1 gold and 1 temporary Triumph support for each province the surplus could reconquer along the route, even if none remain to restore. Tied top contributors share it equally: gold rounds up, Triumph rounds down. Triumph follows their coup ranking and applies only during the next coup.
+- **Coup.** Each dynasty's troops in Constantinople give full support to its first choice and 50% to its second. The Theodosian Walls give the Basileus 2 support. The Patriarch's influence (1) follows the Patriarch's choices like troops do. Triumph adds support for last round's best defender, Unrest takes some from a Basileus who lost provinces. The most support wins the throne; if nobody has any, the Basileus stays. A tie goes to the claimant with more of the Patriarch's influence, then to the Basileus, then to seating order. A new Basileus hands out all four major offices at the start of the next round.
+- **War.** Frontier troops minus invader strength. Win → reconquer lost provinces along the route (cost 1, then +1, +1…). Lose → the invader advances along the route capturing provinces at the same rising cost. If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.
+- **Best defender.** When the empire wins the war, the top frontier contributor gains 1 gold and 1 temporary Triumph support for each province the surplus could reconquer along the route, even if none remain to restore. Tied top contributors share it equally: gold rounds up, Triumph rounds down. Triumph counts for that dynasty itself, in the next coup only.
 
 ## Glossary
 
@@ -61,7 +61,7 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **Major titles** (office): The 4 great offices: Domestic of the East, Domestic of the West, Admiral and Patriarch. They never change in Court; only a new Basileus reassigns them, in Title Redistribution.
 - **Domestic** (office): Commander of the eastern or western provinces. Appoints and revokes Strategoi in that region, up to 2 actions per Court, and raises the troops of its provinces that have no Strategos.
 - **Admiral** (office): Commander of the sea provinces. Appoints and revokes Strategoi there, up to 2 actions per Court, and raises the troops of sea provinces that have no Strategos.
-- **Patriarch** (office): Head of the Church. Appoints and revokes Bishops, collects the church gold no Bishop claims, and adds 1 passive capital support to the coup, split by the Patriarch's own ranking. Breaks coup ties.
+- **Patriarch** (office): Head of the Church. Appoints and revokes Bishops and brings the Patriarch's influence (1 support) to the coup, which follows the Patriarch's own coup choices. Breaks coup ties.
 - **Strategos** (office): Military governor of one province, appointed by the Domestic or Admiral of its region. Receives the troops that province raises (its T value). All of a dynasty's Strategos troops march as one Strategoi army.
 - **Bishop** (office): Church office over one province, appointed by the Patriarch. Collects that province's church gold (its C value), even while the province is occupied.
 - **Appointment** (court): Giving a Strategos or Bishop seat to a dynasty during Court. No office may appoint the same dynasty twice in a row; appointing someone else unlocks them again.
@@ -78,11 +78,12 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **Mercenaries** (army): Troops hired with gold in Deployment. Each costs one more than the last (1, then 2, then 3...), and all of them go to the same destination.
 - **Frontier** (army): Where the war is fought. Every dynasty's frontier troops add up against this round's invasion; sending none leaves the defence to the others.
 - **Constantinople** (army): The seat of the throne. Troops sent to the capital vote in the coup instead of fighting. If an invasion reaches Constantinople, the empire falls.
-- **Coup** (throne): The contest for the throne, decided every Resolution before the war. Capital troops support the claimants in their owner's ranking: full support to first place, none to last, scaled in between. Most support wins; ties go to the most Patriarchal support, then to the sitting Basileus.
-- **Ranking** (throne): In Deployment every dynasty ranks all claimants to the throne, itself included. Its capital troops follow that ranking in the coup. A claimant can also be switched off to give it no support at all.
-- **Passive capital support** (throne): Coup support that never leaves Constantinople: the Basileus's 2, the Patriarch's 1, plus any Triumph or unrest this round. It cannot be unfunded and never counts for scoring.
-- **Triumph** (throne): Temporary coup support earned by the best defender: 1 for each province the war surplus could reconquer. It follows that dynasty's ranking in the next coup only.
-- **Unrest** (throne): When the empire loses provinces, the Basileus has 1 less passive capital support per lost province in the next coup.
+- **Coup** (throne): The contest for the throne, decided in every Resolution before the war. Each dynasty's troops in Constantinople give full support to its first choice and half to its second. The claimant with the most support becomes Basileus; if nobody has any, the Basileus stays. A tie goes to the claimant with more of the Patriarch's influence, then to the Basileus.
+- **Coup choices** (throne): In Deployment each dynasty picks up to two claimants, itself allowed: its first choice gets full support from its troops in Constantinople, its second choice gets 50%. With no choice, those troops back nobody.
+- **Theodosian Walls** (throne): The walls of Constantinople give the Basileus 2 support in every coup.
+- **Patriarch's influence** (throne): The Patriarch brings 1 support to every coup. It follows the Patriarch's coup choices like troops do: all of it to the first choice, half to the second.
+- **Triumph** (throne): Support earned by the best defender: 1 for each province the war surplus could reconquer. It counts for that dynasty itself in the next coup only.
+- **Unrest** (throne): When the empire loses provinces, the Basileus who lost them has 1 less support per lost province in the next coup.
 - **Invasion** (war): This round's threat: an enemy with a strength range and a route of provinces. A capital invasion that breaks through can reach Constantinople; a limited invasion stops once it has taken its route.
 - **Resolution** (phase): Orders are revealed. The coup is decided first, then frontier troops fight the invasion.
 - **Occupied** (war): A province taken by invaders. Its owner and Strategos are suspended and its Bishop keeps only the original church value until the empire reconquers it.

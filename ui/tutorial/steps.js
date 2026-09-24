@@ -11,6 +11,7 @@
 // itself once the player has done it; a step without one waits for Next.
 import { getPlayerName } from '../../engine/state.js';
 import { buildFinalScores } from '../../engine/scoring.js';
+import { BALANCE } from '../../data/balance.js';
 
 export const TUTORIAL_SEED = 254;
 export const TUTORIAL_PLAYER_COUNT = 3;
@@ -240,12 +241,12 @@ export const TUTORIAL_STEPS = [
     task: 'Drag each slider to the right to fund every troop, then press Next.',
   },
   {
-    id: 'deploy-rank',
+    id: 'deploy-coup',
     when: inRound(1, 'deployment'),
-    target: () => document.querySelector('[data-candidate-rank]')?.parentElement || null,
-    title: 'Rank the claimants',
-    body: 'Every dynasty ranks all claimants to the throne, itself included. Capital troops support that ranking: full support to first place, none to last. As Patriarch you also bring 1 passive capital support, which follows your ranking even with no troops in the capital.',
-    task: 'Keep yourself first and press Next.',
+    target: () => document.querySelector('[data-coup-section]') || null,
+    title: 'Back a claimant',
+    body: `Choose who your troops in Constantinople back for the throne: your first choice gets all their support, your second gets half. As Patriarch, your influence (${BALANCE.PATRIARCH_INFLUENCE}) follows the same choices, even with no troops there.`,
+    task: 'Keep yourself as first choice and press Next.',
   },
   {
     id: 'deploy-lock',
@@ -254,7 +255,7 @@ export const TUTORIAL_STEPS = [
     title: 'Commit',
     body: 'Orders stay secret until everyone has locked.',
     task: () => (document.querySelector('.army-card.unresolved')
-      ? 'This army has no destination yet: choose Frontier or Capital, then click Lock Deployment.'
+      ? 'This army has no destination yet: choose Frontier or Constantinople, then click Lock Deployment.'
       : 'Click Lock Deployment.'),
     done: ({ state }) => state.phase !== 'deployment' || Boolean(state.allOrders?.[ME]),
   },

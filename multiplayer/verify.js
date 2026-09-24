@@ -28,7 +28,7 @@ function buildCapitalOrders(state, playerId) {
   return {
     armies,
     mercenaries: { count: 0, destination: 'frontier' },
-    candidate: state.basileusId,
+    coupChoices: [state.basileusId],
   };
 }
 

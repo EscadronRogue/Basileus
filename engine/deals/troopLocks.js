@@ -6,7 +6,7 @@ import {
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from '../deployment.js';
-import { normalizeCoupSupport, placeCoupCandidateAfterPlayer } from '../coup.js';
+import { placeRequiredCoupChoice } from '../coup.js';
 import { recordPublicObligationFailure } from './obligations.js';
 import {
   DEAL_CLAUSE_KINDS,
@@ -361,9 +361,7 @@ export function normalizeOrdersWithDealLocks(state, playerId, orders, options = 
     },
   };
   if (locks.candidateId != null) {
-    nextOrders.candidate = locks.candidateId;
-    nextOrders.ranking = placeCoupCandidateAfterPlayer(state, playerId, nextOrders.ranking, locks.candidateId);
-    nextOrders.candidateSupport = normalizeCoupSupport(state, nextOrders.candidateSupport, locks.candidateId);
+    nextOrders.coupChoices = placeRequiredCoupChoice(state, playerId, nextOrders.coupChoices, locks.candidateId);
   }
   for (const [officeKey, destination] of Object.entries(locks.committedOfficeKeys || {})) {
     const max = getDeploymentArmyTroopTotal(state, playerId, officeKey);

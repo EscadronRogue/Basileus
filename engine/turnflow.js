@@ -20,7 +20,7 @@ import {
 import { formatGold, formatTroops } from './presentation.js';
 import { getDismissalGold, getMercenaryHireCost } from './rules.js';
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
-import { getPreferredCoupCandidate, normalizeCoupRanking } from './coup.js';
+import { getPreferredCoupCandidate, normalizeCoupChoices } from './coup.js';
 import {
   getDefaultDeploymentFunding,
   getDeploymentArmyDisplayName,
@@ -157,16 +157,16 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
     else frontierTroops += mercenaries.count;
   }
 
-  const ranking = normalizeCoupRanking(state, player.id, orders.ranking, orders.candidate);
-  const preferredCandidateId = getPreferredCoupCandidate(state, player.id, { ...orders, ranking });
+  const coupChoices = normalizeCoupChoices(state, orders.coupChoices);
+  const preferredCandidateId = getPreferredCoupCandidate(state, player.id, { coupChoices });
   const passiveCapitalSupport = getPlayerCapitalSupport(state, player.id);
 
   return {
     playerId: player.id,
     playerName: getPlayerName(state, player.id),
     candidateId: preferredCandidateId,
-    candidateName: getPlayerName(state, preferredCandidateId),
-    ranking,
+    candidateName: preferredCandidateId == null ? null : getPlayerName(state, preferredCandidateId),
+    coupChoices,
     capitalTroops,
     passiveCapitalSupport,
     frontierTroops,
@@ -382,8 +382,8 @@ export function submitOrders(state, playerId, orders) {
   }
 
   state.allOrders[playerId] = normalizedOrders;
-  const ranking = normalizeCoupRanking(state, playerId, normalizedOrders.ranking, normalizedOrders.candidate);
-  const preferredCandidateId = getPreferredCoupCandidate(state, playerId, { ...normalizedOrders, ranking });
+  const coupChoices = normalizeCoupChoices(state, normalizedOrders.coupChoices);
+  const preferredCandidateId = getPreferredCoupCandidate(state, playerId, { coupChoices });
   recordHistoryEvent(state, {
     category: 'orders',
     type: 'orders_submitted',
@@ -391,8 +391,8 @@ export function submitOrders(state, playerId, orders) {
     summary: `${getPlayerName(state, playerId)} locks deployment orders.`,
     details: {
       candidateId: preferredCandidateId,
-      candidateName: getPlayerName(state, preferredCandidateId),
-      ranking,
+      candidateName: preferredCandidateId == null ? null : getPlayerName(state, preferredCandidateId),
+      coupChoices,
     },
   });
   return { ok: true, unfundedGold, mercCost };
@@ -428,11 +428,11 @@ export function phaseResolution(state) {
       type: 'orders_revealed',
       actorId: breakdown.playerId,
       actorAi: Boolean(breakdown.debug?.decision),
-      summary: `${breakdown.playerName} reveals orders: ${formatTroops(breakdown.capitalTroops)} enter the capital ranking, and ${formatTroops(breakdown.frontierTroops)} go to the frontier.`,
+      summary: `${breakdown.playerName} reveals orders: ${formatTroops(breakdown.capitalTroops)} to Constantinople, ${formatTroops(breakdown.frontierTroops)} to the frontier.`,
       details: {
         candidateId: breakdown.candidateId,
         candidateName: breakdown.candidateName,
-        ranking: breakdown.ranking,
+        coupChoices: breakdown.coupChoices,
         capitalTroops: breakdown.capitalTroops,
         passiveCapitalSupport: breakdown.passiveCapitalSupport,
         frontierTroops: breakdown.frontierTroops,

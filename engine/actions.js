@@ -25,7 +25,7 @@ import {
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 import { BALANCE } from '../data/balance.js';
 import { getCapitalSupportEntries } from './capitalSupport.js';
-import { getCoupRankWeight, normalizeCoupRanking, normalizeCoupSupport } from './coup.js';
+import { buildDefaultCoupChoices, getCoupChoiceShares, normalizeCoupChoices } from './coup.js';
 
 const STRATEGOS_TITLE_BY_REGION = {
   east: 'DOM_EAST',
@@ -638,8 +638,13 @@ export function autoConfirmFinishedCourtPlayers(state) {
   return confirmed;
 }
 
-function isRankedCapitalSupport(entry) {
-  return entry?.titleKey === 'PATRIARCH';
+// Where a coup contribution comes from, for the Resolution panel and history.
+function getSupportSource(entry) {
+  if (entry?.titleKey === 'BASILEUS') return 'walls';
+  if (entry?.titleKey === 'PATRIARCH') return 'patriarch';
+  if (entry?.kind === 'reconquest') return 'triumph';
+  if (entry?.kind === 'lost_provinces') return 'unrest';
+  return 'support';
 }
 
 const COUP_TIE_EPSILON = 1e-9;
@@ -707,75 +712,75 @@ function resolveCoupTie(state, tied, patriarchSupport) {
   };
 }
 
+// Every claimant's support: troops in Constantinople and the Patriarch's
+// influence follow their owner's first and second choice; the Theodosian
+// Walls, Triumph and Unrest apply to their holder directly. Most support
+// wins; with nobody supported, the Basileus keeps the throne.
 export function resolveCoup(state, allOrders, capitalTroops) {
   const ballots = [];
   const candidateVotes = {};
   const contributions = [];
-  const playerCount = state.players.length;
 
-  const addRankedContributions = (pid, orders, sourceTroops, passiveEntry = null) => {
-    const ranking = normalizeCoupRanking(state, pid, orders?.ranking, orders?.candidate);
-    const candidateSupport = normalizeCoupSupport(state, orders?.candidateSupport);
-    const weightedVotes = ranking.map((candidateId, rankIndex) => {
-      const weight = getCoupRankWeight(playerCount, rankIndex);
-      const enabled = candidateSupport[candidateId] !== false;
-      const votes = enabled ? sourceTroops * weight : 0;
-      candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
-      if (votes > 0) {
-        contributions.push({
-          playerId: pid,
-          candidateId,
-          troops: votes,
-          votes,
-          sourceTroops,
-          rank: rankIndex + 1,
-          weight,
-          passive: Boolean(passiveEntry),
-          enabled,
-          distributed: Boolean(passiveEntry),
-          supportId: passiveEntry?.id,
-          supportKind: passiveEntry?.kind,
-          supportLabel: passiveEntry?.label,
-          titleKey: passiveEntry?.titleKey || null,
-        });
-      }
-      return { candidateId, rank: rankIndex + 1, weight, votes, enabled };
-    });
-    return { ranking, candidateSupport, weightedVotes };
+  const addChoices = (pid, choices, sourceTroops, source, passiveEntry = null) => {
+    const shares = getCoupChoiceShares(choices);
+    for (const share of shares) {
+      const votes = sourceTroops * share.weight;
+      if (!(votes > 0)) continue;
+      candidateVotes[share.candidateId] = (candidateVotes[share.candidateId] || 0) + votes;
+      contributions.push({
+        playerId: pid,
+        candidateId: share.candidateId,
+        troops: votes,
+        votes,
+        sourceTroops,
+        choice: share.choiceIndex + 1,
+        weight: share.weight,
+        source,
+        passive: Boolean(passiveEntry),
+        supportId: passiveEntry?.id,
+        supportKind: passiveEntry?.kind,
+        supportLabel: passiveEntry?.label,
+        titleKey: passiveEntry?.titleKey || null,
+      });
+    }
+    return shares;
   };
 
   for (const [pidStr, orders] of Object.entries(allOrders || {})) {
     const pid = Number(pidStr);
     const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
-    const ranked = addRankedContributions(pid, orders, troops);
+    const choices = normalizeCoupChoices(state, orders?.coupChoices);
+    const shares = addChoices(pid, choices, troops, 'troops');
     ballots.push({
       playerId: pid,
-      candidateId: ranked.ranking[0],
-      ranking: ranked.ranking,
-      candidateSupport: ranked.candidateSupport,
+      candidateId: choices[0] ?? null,
+      coupChoices: choices,
       troops,
-      weightedVotes: ranked.weightedVotes,
+      shares: shares.map((share) => ({ ...share, votes: troops * share.weight })),
     });
   }
 
   const passiveSupport = getCapitalSupportEntries(state);
   for (const entry of passiveSupport) {
-    const candidateId = Number(entry.playerId);
-    const votes = Number(entry.amount) || 0;
-    if (!Number.isInteger(candidateId) || votes === 0) continue;
-    if (isRankedCapitalSupport(entry)) {
-      addRankedContributions(candidateId, allOrders?.[candidateId] || {}, Math.max(0, votes), entry);
+    const holderId = Number(entry.playerId);
+    const amount = Number(entry.amount) || 0;
+    if (!Number.isInteger(holderId) || amount === 0) continue;
+    const source = getSupportSource(entry);
+    if (source === 'patriarch') {
+      const choices = normalizeCoupChoices(state, allOrders?.[holderId]?.coupChoices ?? buildDefaultCoupChoices(state, holderId));
+      addChoices(holderId, choices, Math.max(0, amount), source, entry);
       continue;
     }
-    candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
+    candidateVotes[holderId] = (candidateVotes[holderId] || 0) + amount;
     contributions.push({
-      playerId: candidateId,
-      candidateId,
-      troops: votes,
-      votes,
-      sourceTroops: votes,
-      rank: 0,
+      playerId: holderId,
+      candidateId: holderId,
+      troops: amount,
+      votes: amount,
+      sourceTroops: amount,
+      choice: 0,
       weight: 1,
+      source,
       passive: true,
       supportId: entry.id,
       supportKind: entry.kind,

@@ -306,7 +306,7 @@ function destinationShare(orders, destination) {
 function scoreCopycatOrder(source, action) {
   const orders = action.orders || {};
   let score = 0;
-  if (orders.candidate === source.candidate) score += 12;
+  if ((orders.coupChoices || []).join(',') === (source.coupChoices || []).join(',')) score += 12;
   if (orders.mercenaries?.destination === source.mercenaries?.destination) score += 3;
   score -= Math.abs((Number(orders.mercenaries?.count) || 0) - (Number(source.mercenaries?.count) || 0)) * 0.8;
   score -= Math.abs(destinationShare(orders, 'frontier') - destinationShare(source, 'frontier')) * 6;

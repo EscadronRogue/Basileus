@@ -344,8 +344,15 @@
 .vote-supporters {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px 10px;
 }
+.vote-source {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+.vote-choice { font-style: italic; }
 .vote-zero-list {
   padding-top: 2px;
   font-style: italic;

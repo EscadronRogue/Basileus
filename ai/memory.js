@@ -328,10 +328,11 @@ function handleOrders(memory, event, weight, state) {
   addPlayer(memory, actorId, 'fundedTroops', fundedTroops * weight);
   addPlayer(memory, actorId, 'idleTroops', idleTroops * weight);
 
-  // Who the dynasty put first. `candidateId` is its best choice other than
-  // itself, so ranking itself first with troops in the capital is a claim.
-  const ranking = Array.isArray(details.ranking) ? details.ranking.map(Number) : [];
-  const topChoice = Number.isInteger(ranking[0]) ? ranking[0] : candidateId;
+  // Who the dynasty chose first. `candidateId` is the claimant it backs
+  // besides itself, so choosing itself first with troops in Constantinople is
+  // a claim.
+  const coupChoices = Array.isArray(details.coupChoices) ? details.coupChoices.map(Number) : [];
+  const topChoice = Number.isInteger(coupChoices[0]) ? coupChoices[0] : candidateId;
   if (topChoice === actorId) {
     if (capitalTroops > 0) addPlayer(memory, actorId, 'selfClaims', weight);
   } else if (topChoice === state.basileusId) {

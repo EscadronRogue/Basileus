@@ -72,7 +72,7 @@ export function getCapitalSupportEntries(state, round = state?.round) {
     entries.push({
       id: 'title:BASILEUS',
       kind: 'title',
-      label: 'Basileus fortifications',
+      label: 'Theodosian Walls',
       playerId: basileusId,
       titleKey: 'BASILEUS',
       amount: BALANCE.THEODOSIAN_WALLS_SUPPORT,
@@ -85,7 +85,7 @@ export function getCapitalSupportEntries(state, round = state?.round) {
     entries.push({
       id: 'title:PATRIARCH',
       kind: 'title',
-      label: 'Patriarchal influence',
+      label: "Patriarch's influence",
       playerId: patriarchId,
       titleKey: 'PATRIARCH',
       amount: BALANCE.PATRIARCH_INFLUENCE,

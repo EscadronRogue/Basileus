@@ -9,7 +9,7 @@ import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } 
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopTotal, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
-import { getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
+import { getPreferredCoupCandidate, normalizeCoupChoices } from '../engine/coup.js';
 import { BALANCE } from '../data/balance.js';
 import { createAIMeta } from './brain.js';
 import { loadTunedOpponentRosterSync } from './nodeOpponentRoster.js';
@@ -167,17 +167,14 @@ function summarizeOrders(state, playerId) {
   if (mercenaries.destination === 'capital') capitalTroops += mercenaryCount;
   else frontierTroops += mercenaryCount;
 
-  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
-  const candidateSupport = normalizeCoupSupport(state, orders.candidateSupport);
+  const coupChoices = normalizeCoupChoices(state, orders.coupChoices);
 
   return {
     playerId,
-    // Best-ranked supported claimant other than the player themselves.
-    candidate: Number.isInteger(Number(orders.candidate))
-      ? Number(orders.candidate)
-      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
-    // Whoever the ranking actually puts first, which can be the player.
-    topPreference: ranking.find((candidateId) => candidateSupport[candidateId] !== false) ?? playerId,
+    // The claimant backed besides the player themselves.
+    candidate: getPreferredCoupCandidate(state, playerId, { coupChoices }),
+    // The first choice, which can be the player.
+    topPreference: coupChoices[0] ?? null,
     frontierTroops,
     capitalTroops,
     idleTroops,
@@ -234,7 +231,7 @@ function collectResolution(stats, state) {
     playerStats.mercenaries += order.mercenaryCount;
     playerStats.mercenaryCost += order.mercenaryCost;
 
-    // Report metric: who the ranking actually puts first (often the player).
+    // Report metric: who the first choice is (often the player).
     if (order.topPreference === player.id) {
       stats.coups.selfFirst += 1;
       playerStats.selfFirst += 1;

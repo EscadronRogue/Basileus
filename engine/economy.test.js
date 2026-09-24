@@ -8,7 +8,7 @@ import {
   INVASION_DIFFICULTIES,
   getDynastyColor,
 } from '../data/invasions.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
 
 const {
   EARLY_INVASION_GRACE_ROUNDS,
@@ -62,6 +62,7 @@ import {
   phaseResolution,
 } from './turnflow.js';
 import { addTemporaryCapitalSupport, getCapitalSupportByPlayer } from './capitalSupport.js';
+import { normalizeCoupChoices } from './coup.js';
 import {
   getCourtPowerActionCount,
   getCourtPowerAppointmentCount,
@@ -780,7 +781,7 @@ test('deployment schema funds armies, pays unfunded troops, and stores mercenary
   const result = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 1, destination: 'frontier' } },
     mercenaries: { count: 2, destination: 'capital' },
-    candidate: 0,
+    coupChoices: [0],
   });
 
   assert.equal(result.ok, true);
@@ -798,7 +799,7 @@ test('deployment defaults army funding when only a destination is chosen', () =>
   const result = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { destination: 'capital' } },
     mercenaries: { count: 0 },
-    candidate: 0,
+    coupChoices: [0],
   });
 
   assert.equal(result.ok, true);
@@ -822,7 +823,7 @@ test("deployment bundles a player's strategos troops into one army", () => {
       [STRATEGOS_DEPLOYMENT_ARMY_KEY]: { funded: 2, destination: 'frontier' },
     },
     mercenaries: { count: 0 },
-    candidate: 1,
+    coupChoices: [1],
   });
 
   assert.equal(result.ok, true);
@@ -832,135 +833,148 @@ test("deployment bundles a player's strategos troops into one army", () => {
   });
 });
 
-test('coup resolution uses ranked ballots and passive title support', () => {
-  const state = makeState();
-  const result = resolveCoup(state, {
-    0: { candidate: 2 },
-    1: { candidate: 3 },
-  }, {
-    0: 4,
-    1: 0,
-  });
+// Pins the coup numbers so these tests do not move when the balance does.
+function withCoupBalance(fn) {
+  applyBalanceOverrides({ THEODOSIAN_WALLS_SUPPORT: 5, PATRIARCH_INFLUENCE: 4, COUP_CHOICE_WEIGHTS: [1, 0.5] });
+  try {
+    fn();
+  } finally {
+    resetBalance();
+  }
+}
 
-  assert.equal(result.winner, 0);
-  assert.equal(Math.round(result.votes[0] * 1000) / 1000, 6.333);
-  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 2.667);
-  assert.equal(Math.round(result.votes[1] * 1000) / 1000, 2.333);
-  assert.equal(Math.round(result.votes[3] * 1000) / 1000, 0.667);
-  assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
-    [0, 2, 1, 3],
-    [1, 3, 0, 2],
-  ]);
-  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'BASILEUS' && entry.votes === 2), true);
-  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'PATRIARCH' && entry.candidateId === 3 && Math.abs(entry.votes - 0.6666666666666667) < 1e-9), true);
+test('coup choices keep at most two different dynasties, first choice first', () => {
+  const state = makeState();
+  assert.deepEqual(normalizeCoupChoices(state, [2, 2, 1, 3]), [2, 1]);
+  assert.deepEqual(normalizeCoupChoices(state, [9, '', null, 3]), [3]);
+  assert.deepEqual(normalizeCoupChoices(state, { coupChoices: [1, 0] }), [1, 0]);
+  assert.deepEqual(normalizeCoupChoices(state, null), []);
+});
+
+test('orders that never mention the coup back the dynasty itself; an empty list backs nobody', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.currentTroops = {};
+  assert.equal(submitHumanOrders(state, 2, { mercenaries: { count: 0 } }).ok, true);
+  assert.deepEqual(state.allOrders[2].coupChoices, [2]);
+  assert.equal(submitHumanOrders(state, 3, { mercenaries: { count: 0 }, coupChoices: [] }).ok, true);
+  assert.deepEqual(state.allOrders[3].coupChoices, []);
+});
+
+test('coup: troops give full support to the first choice and half to the second', () => {
+  withCoupBalance(() => {
+    const state = makeState();
+    const result = resolveCoup(state, {
+      0: { coupChoices: [0, 2] },
+      1: { coupChoices: [3] },
+      2: { coupChoices: [2, 3] },
+    }, {
+      0: 4,
+      1: 2,
+      2: 3,
+    });
+
+    // Player 0: 4 troops + 5 Theodosian Walls. Player 2: 3 own + 2 from player 0's second choice.
+    // Player 3: 2 from player 1, 4 from the Patriarch (player 1), 1.5 from player 2's second choice.
+    assert.equal(result.votes[0], 9);
+    assert.equal(result.votes[2], 5);
+    assert.equal(result.votes[3], 7.5);
+    assert.equal(result.votes[1] || 0, 0);
+    assert.equal(result.winner, 0);
+    assert.deepEqual(result.ballots.map((ballot) => ballot.coupChoices), [[0, 2], [3], [2, 3]]);
+    assert.deepEqual(result.ballots[0].shares.map((share) => [share.candidateId, share.weight, share.votes]), [
+      [0, 1, 4],
+      [2, 0.5, 2],
+    ]);
+  });
+});
+
+test("the Patriarch's influence follows the Patriarch's choices; Walls, Triumph and Unrest apply directly", () => {
+  withCoupBalance(() => {
+    const state = makeState();
+    addTemporaryCapitalSupport(state, {
+      kind: 'reconquest',
+      label: 'Triumph',
+      playerId: 2,
+      amount: 2,
+      activeRound: state.round,
+    });
+    addTemporaryCapitalSupport(state, {
+      kind: 'lost_provinces',
+      label: 'Unrest',
+      playerId: state.basileusId,
+      amount: -1,
+      activeRound: state.round,
+    });
+
+    const result = resolveCoup(state, {
+      1: { coupChoices: [2, 1] },
+      2: { coupChoices: [3] },
+    }, {
+      1: 0,
+      2: 0,
+    });
+
+    assert.equal(result.votes[0], 4);
+    assert.equal(result.votes[2], 6);
+    assert.equal(result.votes[1], 2);
+    assert.equal(result.votes[3] || 0, 0);
+    assert.equal(result.winner, 2);
+    const find = (source, candidateId) => result.contributions.filter((entry) => entry.source === source && entry.candidateId === candidateId);
+    assert.equal(find('walls', 0)[0]?.supportLabel, 'Theodosian Walls');
+    assert.equal(find('walls', 0)[0]?.votes, 5);
+    assert.equal(find('unrest', 0)[0]?.votes, -1);
+    assert.equal(find('patriarch', 2)[0]?.supportLabel, "Patriarch's influence");
+    assert.equal(find('patriarch', 2)[0]?.votes, 4);
+    assert.equal(find('patriarch', 1)[0]?.votes, 2);
+    assert.equal(find('triumph', 2)[0]?.votes, 2);
+    assert.equal(find('triumph', 3).length, 0);
+  });
+});
+
+test('a Patriarch without orders backs themselves with their influence', () => {
+  withCoupBalance(() => {
+    const state = makeState();
+    const result = resolveCoup(state, {}, {});
+    assert.equal(result.votes[1], 4);
+    assert.equal(result.votes[0], 5);
+    assert.equal(result.winner, 0);
+  });
 });
 
 test('coup ties break toward the most Patriarchal support before incumbent support', () => {
-  const state = makeState();
-  addTemporaryCapitalSupport(state, {
-    kind: 'lost_provinces',
-    label: 'Lost-province unrest',
-    playerId: state.basileusId,
-    amount: -1,
-    activeRound: state.round,
+  withCoupBalance(() => {
+    const state = makeState();
+    addTemporaryCapitalSupport(state, {
+      kind: 'lost_provinces',
+      label: 'Unrest',
+      playerId: state.basileusId,
+      amount: -1,
+      activeRound: state.round,
+    });
+
+    const result = resolveCoup(state, {
+      1: { coupChoices: [2] },
+    }, {});
+
+    assert.equal(result.votes[0], 4);
+    assert.equal(result.votes[2], 4);
+    assert.equal(result.winner, 2);
+    assert.equal(result.tieBreak.method, 'patriarch');
+    assert.equal(result.tieBreak.patriarchSupport[2], 4);
   });
-
-  const result = resolveCoup(state, {
-    1: {
-      ranking: [2, 1, 0, 3],
-      candidateSupport: { 0: false, 1: false, 3: false },
-    },
-  }, {});
-
-  assert.equal(result.votes[0], 1);
-  assert.equal(result.votes[2], 1);
-  assert.equal(result.winner, 2);
-  assert.equal(result.tieBreak.method, 'patriarch');
-  assert.equal(result.tieBreak.patriarchSupport[2], 1);
 });
 
-test('ranked coup support can transfer secondary support without reciprocal merging', () => {
+test('nobody backed in the coup leaves the Basileus on the throne', () => {
   const state = makeState();
-  const result = resolveCoup(state, {
-    1: { candidate: 2 },
-    2: { candidate: 1 },
-    3: { candidate: 3 },
-  }, {
-    1: 3,
-    2: 5,
-    3: 2,
-  });
-
-  assert.equal(result.winner, 1);
-  assert.equal(result.votes[1], 8);
-  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 7.667);
-  assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
-    [1, 2, 0, 3],
-    [2, 1, 0, 3],
-    [3, 0, 1, 2],
-  ]);
-  assert.equal(result.contributions.some((entry) => entry.playerId === 2 && entry.candidateId === 1 && Math.abs(entry.votes - 3.333333333333334) < 1e-9), true);
-});
-
-test('ranked coup support allows movable self rank and disabled candidates keep rank weights', () => {
-  const state = createGameState({ playerCount: 5, deckSize: 2, seed: 11 });
-  state.basileusId = 0;
-  state.nextBasileusId = 0;
-  for (const player of state.players) player.majorTitles = [];
-
-  const result = resolveCoup(state, {
-    0: {
-      ranking: [2, 0, 1, 3, 4],
-      candidateSupport: { 3: false, 4: false },
-    },
-  }, {
-    0: 4,
-  });
-
-  assert.deepEqual(result.ballots[0].ranking, [2, 0, 1, 3, 4]);
-  assert.deepEqual(result.ballots[0].weightedVotes.map((entry) => [entry.candidateId, entry.votes, entry.enabled]), [
-    [2, 4, true],
-    [0, 3, true],
-    [1, 2, true],
-    [3, 0, false],
-    [4, 0, false],
-  ]);
-});
-
-test('patriarch influence follows rankings while fortifications and triumph stay direct', () => {
-  const state = makeState();
-  addTemporaryCapitalSupport(state, {
-    kind: 'reconquest',
-    label: 'Triumph',
-    playerId: 2,
-    amount: 2,
-    activeRound: state.round,
-  });
-  addTemporaryCapitalSupport(state, {
-    kind: 'lost_provinces',
-    label: 'Lost-province unrest',
-    playerId: state.basileusId,
-    amount: -1,
-    activeRound: state.round,
-  });
-
-  const result = resolveCoup(state, {
-    1: { ranking: [2, 1, 0, 3], candidateSupport: { 0: false } },
-    2: { ranking: [3, 2, 1, 0] },
-  }, {
-    1: 0,
-    2: 0,
-  });
-
-  assert.equal(result.votes[0], 1);
-  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 3);
-  assert.equal(Math.round(result.votes[1] * 1000) / 1000, 0.667);
-  assert.equal(result.votes[3] || 0, 0);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Basileus fortifications' && entry.candidateId === 0 && entry.votes === 2), true);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Lost-province unrest' && entry.candidateId === 0 && entry.votes === -1), true);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Patriarchal influence' && entry.candidateId === 0), false);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 2 && entry.votes === 2 && !entry.distributed), true);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 3), false);
+  state.players[1].majorTitles = ['DOM_EAST'];
+  applyBalanceOverrides({ THEODOSIAN_WALLS_SUPPORT: 0 });
+  try {
+    const result = resolveCoup(state, { 0: { coupChoices: [] }, 1: { coupChoices: [] } }, { 0: 3, 1: 3 });
+    assert.equal(result.winner, 0);
+  } finally {
+    resetBalance();
+  }
 });
 
 test('invasion loss keeps holders on record and reconquest gives the province back to them', () => {
@@ -1096,8 +1110,7 @@ test('reconquered provinces auto-restore and reward the top defender next round'
     2: {
       armies: { DOM_WEST: { funded: 3, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 0, 1, 3],
-      candidate: 0,
+      coupChoices: [2, 0],
     },
   };
   getPlayer(state, 2).gold = 0;
@@ -1109,7 +1122,7 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   assert.deepEqual(state.lastWarResult.themesRecovered, ['SAM']);
   assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
   assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
-  assert.equal(getCapitalSupportByPlayer(state)[0], 2);
+  assert.equal(getCapitalSupportByPlayer(state)[0], BALANCE.THEODOSIAN_WALLS_SUPPORT);
   assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
 });
 
@@ -1123,8 +1136,7 @@ test('repulsed invasions reward the top defender for province wins even without 
     2: {
       armies: { DOM_WEST: { funded: 5, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 0, 1, 3],
-      candidate: 0,
+      coupChoices: [2, 0],
     },
   };
   getPlayer(state, 2).gold = 0;
@@ -1155,14 +1167,12 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
     2: {
       armies: { DOM_WEST: { funded: 4, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 0, 1, 3],
-      candidate: 0,
+      coupChoices: [2, 0],
     },
     3: {
       armies: { ADMIRAL: { funded: 4, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [3, 0, 1, 2],
-      candidate: 0,
+      coupChoices: [3, 0],
     },
   };
   getPlayer(state, 2).gold = 0;
@@ -1187,13 +1197,13 @@ test('lost provinces reduce the next round Basileus passive support', () => {
   state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
   state.currentTroops = {};
   state.allOrders = {
-    0: { armies: {}, mercenaries: { count: 0, destination: 'frontier' }, ranking: [0, 1, 2, 3], candidate: 1 },
+    0: { armies: {}, mercenaries: { count: 0, destination: 'frontier' }, coupChoices: [0, 1] },
   };
 
   phaseResolution(state);
 
   assert.deepEqual(state.lastWarResult.themesLost, ['SAM']);
-  assert.equal(getCapitalSupportByPlayer({ ...state, round: 2 })[0], 1);
+  assert.equal(getCapitalSupportByPlayer({ ...state, round: 2 })[0], BALANCE.THEODOSIAN_WALLS_SUPPORT - BALANCE.UNREST_PER_LOST_PROVINCE);
 });
 
 test('lost province unrest follows the basileus who lost provinces through a coup', () => {
@@ -1203,14 +1213,13 @@ test('lost province unrest follows the basileus who lost provinces through a cou
   state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
   state.currentTroops = {};
   state.mercenaryOrders = {
-    2: { count: 3, destination: 'capital' },
+    2: { count: BALANCE.THEODOSIAN_WALLS_SUPPORT + BALANCE.PATRIARCH_INFLUENCE + 1, destination: 'capital' },
   };
   state.allOrders = {
     2: {
       armies: {},
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 1, 3, 0],
-      candidate: 2,
+      coupChoices: [2, 1],
     },
   };
 
@@ -1229,8 +1238,8 @@ test('lost province unrest follows the basileus who lost provinces through a cou
 
   assert.equal(state.basileusId, 2);
   const nextRoundSupport = getCapitalSupportByPlayer({ ...state, round: 2 });
-  assert.equal(nextRoundSupport[2], 2);
-  assert.equal(nextRoundSupport[0], -1);
+  assert.equal(nextRoundSupport[2], BALANCE.THEODOSIAN_WALLS_SUPPORT);
+  assert.equal(nextRoundSupport[0], -BALANCE.UNREST_PER_LOST_PROVINCE);
 });
 
 test('final scoring uses last income phase shares without free citizens', () => {

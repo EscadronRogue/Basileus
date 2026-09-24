@@ -415,6 +415,7 @@
 .icon-gold   { color: var(--gold-1); }
 .icon-estate { color: var(--purple-0); }
 .icon-church { color: var(--church-1); }
+.icon-support { color: var(--crimson-1); }
 
 /* Inside any colored cartouche, icons take parchment-white
    so they read against the dynasty fill. The text already inherits
@@ -462,11 +463,13 @@
 .value.gold   { color: var(--gold-1); }
 .value.estate { color: var(--purple-0); }
 .value.church { color: var(--church-1); }
+.value.support { color: var(--crimson-1); }
 .value.office { color: var(--umber-1); }
 .value.troop  .icon { color: inherit; }
 .value.gold   .icon { color: inherit; }
 .value.estate .icon { color: inherit; }
 .value.church .icon { color: inherit; }
+.value.support .icon { color: inherit; }
 
 .value.income { color: var(--win); }
 .value.upkeep { color: var(--crimson-1); }

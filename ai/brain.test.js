@@ -8,6 +8,7 @@ import { createGameState, makeRng } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
 import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
 import { validateMajorTitleAssignments } from '../engine/actions.js';
+import { getPreferredCoupCandidate } from '../engine/coup.js';
 import { addEstates, getEstateCount } from '../engine/estates.js';
 import { phaseEstates } from '../engine/turnflow.js';
 import {
@@ -24,7 +25,7 @@ import {
   planMajorTitleAssignment,
   runAICourtAutomation,
 } from './brain.js';
-import { applyLegalAction, listLegalCourtActions, listLegalEstateActions } from './legalActions.js';
+import { applyLegalAction, listLegalCourtActions, listLegalEstateActions, listLegalOrderActions } from './legalActions.js';
 import { getAiMemory, getRelationship } from './memory.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 import { simulateGame, simulateGames } from './simulate.js';
@@ -217,9 +218,8 @@ test('strategic orders use the deployment schema and include decision metadata',
   const validation = submitHumanOrders(state, 1, orders);
 
   assert.equal(validation.ok, true);
-  assert.equal(Number.isInteger(orders.candidate), true);
-  assert.deepEqual(orders.ranking.slice(0, 1), [1]);
-  assert.equal(orders.ranking.length, state.players.length);
+  assert.equal(orders.coupChoices.length >= 1 && orders.coupChoices.length <= 2, true);
+  assert.equal(orders.coupChoices.includes(1), true);
   assert.equal(orders.mercenaries.count >= 0, true);
   assert.equal(orders.armies.DOM_EAST.funded >= 0, true);
   assert.equal(orders.armies.PATRIARCH.funded >= 0, true);
@@ -227,7 +227,7 @@ test('strategic orders use the deployment schema and include decision metadata',
   assert.equal(orders.debug.decision.factors[0].label, 'frontier');
 });
 
-test('AI coup support blocks the two least-liked claimants in 5-player games', () => {
+test('AI never backs its two least-liked claimants in 5-player games', () => {
   const state = createGameState({ playerCount: 5, deckSize: 1, seed: 22, historyEnabled: true });
   state.basileusId = 0;
   state.nextBasileusId = 0;
@@ -245,15 +245,14 @@ test('AI coup support blocks the two least-liked claimants in 5-player games', (
   const meta = createAIMeta(state, { humanPlayerIds: [0, 2, 3, 4] });
 
   const orders = buildAIOrders(state, meta, 1);
+  const choiceSets = listLegalOrderActions(state, 1, { memory: getAiMemory(state, meta) })
+    .map((action) => action.orders.coupChoices.join(','));
 
-  assert.equal(orders.candidateSupport[1], true);
-  assert.equal(orders.candidateSupport[0], true);
-  assert.equal(orders.candidateSupport[2], true);
-  assert.equal(orders.candidateSupport[3], false);
-  assert.equal(orders.candidateSupport[4], false);
+  assert.equal(orders.coupChoices.some((candidateId) => candidateId === 3 || candidateId === 4), false);
+  assert.deepEqual([...new Set(choiceSets)].sort(), ['0,1', '1', '1,0', '1,2', '2,1']);
 });
 
-test('AI coup support blocks the single least-liked claimant in 3-player games', () => {
+test('AI never backs its least-liked claimant in 3-player games', () => {
   const state = createGameState({ playerCount: 3, deckSize: 1, seed: 23, historyEnabled: true });
   state.basileusId = 0;
   state.nextBasileusId = 0;
@@ -270,10 +269,11 @@ test('AI coup support blocks the single least-liked claimant in 3-player games',
   const meta = createAIMeta(state, { humanPlayerIds: [0, 2] });
 
   const orders = buildAIOrders(state, meta, 1);
+  const choiceSets = listLegalOrderActions(state, 1, { memory: getAiMemory(state, meta) })
+    .map((action) => action.orders.coupChoices.join(','));
 
-  assert.equal(orders.candidateSupport[1], true);
-  assert.equal(orders.candidateSupport[0], true);
-  assert.equal(orders.candidateSupport[2], false);
+  assert.equal(orders.coupChoices.includes(2), false);
+  assert.deepEqual([...new Set(choiceSets)].sort(), ['0,1', '1', '1,0']);
 });
 
 test('AI memory values major title quality instead of treating every title as equal', () => {
@@ -361,8 +361,7 @@ test('AI deployment creates urgent opposition to a hostile incumbent Basileus', 
   const orders = buildAIOrders(state, meta, 1);
   const regimeFactor = orders.debug.decision.factors.find((factor) => factor.label === 'regime');
 
-  assert.equal(orders.candidateSupport[0], false);
-  assert.notEqual(orders.candidate, 0);
+  assert.equal(orders.coupChoices.includes(0), false);
   assert.equal(capitalTroopsFromOrders(orders) > 0, true);
   assert.equal(regimeFactor.value > 0, true);
 });
@@ -450,7 +449,7 @@ test('deployment submission defaults army funding but still rejects missing dest
 
   const missingArmyDestination = submitHumanOrders(state, 0, {
     mercenaries: { count: 0, destination: 'frontier' },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(missingArmyDestination.ok, false);
   assert.match(missingArmyDestination.reason, /destination/);
@@ -458,24 +457,24 @@ test('deployment submission defaults army funding but still rejects missing dest
   const destinationOnly = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { destination: 'frontier' } },
     mercenaries: { count: 0, destination: 'frontier' },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(destinationOnly.ok, true);
   assert.equal(destinationOnly.orders.armies.BASILEUS.funded, 1);
   delete state.allOrders[0];
 
-  const defaultRanking = submitHumanOrders(state, 0, {
+  const defaultChoices = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
     mercenaries: { count: 0, destination: 'frontier' },
   });
-  assert.equal(defaultRanking.ok, true);
-  assert.deepEqual(defaultRanking.orders.ranking, [0, 1, 2, 3]);
+  assert.equal(defaultChoices.ok, true);
+  assert.deepEqual(defaultChoices.orders.coupChoices, [0]);
   delete state.allOrders[0];
 
   const missingMercenaryDestination = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
     mercenaries: { count: 1 },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(missingMercenaryDestination.ok, false);
   assert.match(missingMercenaryDestination.reason, /mercenaries/);
@@ -757,7 +756,7 @@ test('simultaneous AI planning ignores already submitted human deployment orders
   const humanSubmit = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 1, destination: 'capital' } },
     mercenaries: { count: 0, destination: 'frontier' },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(humanSubmit.ok, true);
 
@@ -809,9 +808,9 @@ test('AI coup coalition planning rallies weak AI dynasties behind one friendly c
 
   const plans = buildSimultaneousAIOrders(state, meta);
 
-  // Dynasty 2 appointed both others, so they rank it first and it claims the
-  // throne itself: all three coup ballots put the same claimant on top.
-  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.ranking[0]]), [
+  // Dynasty 2 appointed both others, so they choose it first and it claims
+  // the throne itself: all three put the same claimant first.
+  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.coupChoices[0]]), [
     [1, 2],
     [2, 2],
     [3, 2],
@@ -836,7 +835,7 @@ test('AI coup coalition planning can support a human claimant with good relation
 
   const plans = buildSimultaneousAIOrders(state, meta);
 
-  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.candidate]), [[1, 3], [2, 3]]);
+  assert.deepEqual(plans.map((plan) => [plan.playerId, getPreferredCoupCandidate(state, plan.playerId, plan.orders)]), [[1, 3], [2, 3]]);
 });
 
 function safeSurplusDeploymentState() {
@@ -873,7 +872,7 @@ test('an ambitious AI turns a safe frontier surplus into a throne bid', () => {
 
   const orders = buildAIOrders(state, meta, 1);
 
-  assert.equal(orders.ranking[0], 1);
+  assert.equal(orders.coupChoices[0], 1);
   assert.equal(capitalCommitment(orders) >= 3, true);
 });
 

@@ -18,6 +18,7 @@ import { getMercenaryHireCost } from '../engine/rules.js';
 import { getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
+import { getPreferredCoupCandidate } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { BALANCE } from '../data/balance.js';
 import { clonePlainData } from '../engine/clone.js';
@@ -322,6 +323,8 @@ function leastLikedSupportBlockCount(state) {
   return playerCount === 3 ? 1 : 2;
 }
 
+// Which other dynasties the AI is willing to back at all: it leaves out the
+// ones it likes least and a Basileus that has wronged it.
 export function buildAiCoupSupport(state, playerId, memory = null) {
   const support = Object.fromEntries((state?.players || []).map((player) => [player.id, true]));
   const blockCount = leastLikedSupportBlockCount(state);
@@ -379,20 +382,12 @@ export function buildAiCoupSupport(state, playerId, memory = null) {
   return support;
 }
 
-// Coup rankings an AI considers with a given ally: claim the throne itself
-// with the ally second, or back the ally with itself second. Everyone else is
-// ordered by how much the AI likes them, so its worst rival ranks last and
-// receives none of its capital support.
-export function buildAiCoupRankings(state, playerId, allyId, memory = null) {
-  const rest = (state?.players || [])
-    .map((player) => player.id)
-    .filter((id) => id !== playerId && id !== allyId)
-    .sort((left, right) => (
-      relationshipScore(memory, playerId, right) - relationshipScore(memory, playerId, left)
-    ) || (left - right));
+// Coup choices an AI considers with a given ally: claim the throne itself
+// with the ally second, or back the ally with itself second.
+export function buildAiCoupChoiceSets(state, playerId, allyId) {
   return [
-    [playerId, allyId, ...rest],
-    [allyId, playerId, ...rest],
+    [playerId, allyId],
+    [allyId, playerId],
   ];
 }
 
@@ -402,23 +397,22 @@ export function listLegalOrderActions(state, playerId, options = {}) {
   const actions = [];
   const seen = new Set();
   const armyPlans = buildArmyPlans(state, playerId);
-  const candidateSupport = buildAiCoupSupport(state, playerId, options.memory || null);
-  const candidateIds = state.players
+  const allySupport = buildAiCoupSupport(state, playerId, options.memory || null);
+  const allyIds = state.players
     .map((player) => player.id)
-    .filter((candidateId) => candidateId !== playerId && candidateSupport[candidateId] !== false);
+    .filter((candidateId) => candidateId !== playerId && allySupport[candidateId] !== false);
+  const choiceSets = [[playerId], ...allyIds.flatMap((allyId) => buildAiCoupChoiceSets(state, playerId, allyId))];
   for (const armies of armyPlans) {
     for (const mercenaries of buildMercenaryPlans(state, playerId, armies)) {
-      for (const candidate of candidateIds) {
-        for (const ranking of buildAiCoupRankings(state, playerId, candidate, options.memory || null)) {
-          const orders = { armies, mercenaries, candidate, ranking, candidateSupport };
-          const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
-          if (!normalized.ok) continue;
-          const key = stablePayload(normalized.orders);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
-          if (actions.length >= MAX_ORDER_ACTIONS) return actions;
-        }
+      for (const coupChoices of choiceSets) {
+        const orders = { armies, mercenaries, coupChoices };
+        const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
+        if (!normalized.ok) continue;
+        const key = stablePayload(normalized.orders);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
+        if (actions.length >= MAX_ORDER_ACTIONS) return actions;
       }
     }
   }
@@ -486,7 +480,9 @@ export function applyLegalAction(state, action) {
 export function getActionTargetPlayerId(state, action) {
   const payload = action?.payload || {};
   if (Number.isInteger(payload.appointeeId)) return payload.appointeeId;
-  if (Number.isInteger(action?.orders?.candidate)) return action.orders.candidate;
+  if (Array.isArray(action?.orders?.coupChoices)) {
+    return getPreferredCoupCandidate(state, action.playerId, action.orders);
+  }
   if (payload.value) {
     const [kind, id, titleType] = String(payload.value).split(':');
     if (kind === 'minor') {

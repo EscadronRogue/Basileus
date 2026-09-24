@@ -19,7 +19,12 @@ import {
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from '../engine/deployment.js';
-import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
+import {
+  buildDefaultCoupChoices,
+  getCoupChoiceShares,
+  getPreferredCoupCandidate,
+  normalizeCoupChoices,
+} from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { BALANCE } from '../data/balance.js';
 import { analyzeMajorTitleAssignments, estimateMajorTitleYield } from './patronage.js';
@@ -580,14 +585,13 @@ function summarizeOrders(state, playerId, orders = {}) {
   if (orders.mercenaries?.destination === 'capital') capitalTroops += mercCount;
   else frontierTroops += mercCount;
 
-  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
-  const candidateSupport = normalizeCoupSupport(state, orders.candidateSupport);
+  const coupChoices = Object.hasOwn(orders || {}, 'coupChoices')
+    ? normalizeCoupChoices(state, orders.coupChoices)
+    : buildDefaultCoupChoices(state, playerId);
   return {
-    candidate: Number.isInteger(Number(orders.candidate))
-      ? Number(orders.candidate)
-      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
-    ranking,
-    candidateSupport,
+    // The claimant it backs besides itself, and how much of its support that is.
+    candidate: getPreferredCoupCandidate(state, playerId, { coupChoices }),
+    coupChoices,
     capitalTroops,
     frontierTroops,
     fundedTroops,
@@ -804,11 +808,9 @@ function existingCapitalVotes(state) {
   const votes = {};
   for (const [playerId, orders] of Object.entries(state.allOrders || {})) {
     const summary = summarizeOrders(state, Number(playerId), orders);
-    summary.ranking.forEach((candidateId, rankIndex) => {
-      if (summary.candidateSupport[candidateId] === false) return;
-      const support = summary.capitalTroops * getCoupRankWeight(state.players.length, rankIndex);
-      votes[candidateId] = (votes[candidateId] || 0) + support;
-    });
+    for (const share of getCoupChoiceShares(summary.coupChoices)) {
+      votes[share.candidateId] = (votes[share.candidateId] || 0) + summary.capitalTroops * share.weight;
+    }
   }
   return votes;
 }
@@ -934,18 +936,18 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
 function scoreCoalitionFit(state, playerId, summary, leaderId, weights, context = {}) {
   const recommendation = context.coalitionContext?.recommendations?.[playerId];
   if (!recommendation || summary.capitalTroops <= 0) return 0;
-  const candidateId = summary.candidate;
-  const relation = Number.isInteger(candidateId)
-    ? relationshipScore(context.memory, playerId, candidateId)
-    : 0;
-  if (candidateId === recommendation.candidateId) {
+  const share = getCoupChoiceShares(summary.coupChoices)
+    .find((entry) => entry.candidateId === recommendation.candidateId);
+  if (share) {
+    const candidateId = share.candidateId;
+    const relation = relationshipScore(context.memory, playerId, candidateId);
     const targetIsLeader = candidateId === leaderId && candidateId !== playerId;
     const leaderPenalty = targetIsLeader ? weights.supportLeaderPenalty * 0.8 : 0;
-    return summary.capitalTroops
+    return (summary.capitalTroops
       * (1.1 + Math.max(0, relation) * 0.06 + Math.max(0, recommendation.supporterScore) * 0.16)
-      - leaderPenalty;
+      - leaderPenalty) * share.weight;
   }
-  const selfException = candidateId === playerId && recommendation.viability === 'weak';
+  const selfException = summary.coupChoices[0] === playerId && recommendation.viability === 'weak';
   if (selfException) return -summary.capitalTroops * 0.35;
   return -summary.capitalTroops * 1.1;
 }
@@ -964,48 +966,45 @@ function scoreSupportRelationship(state, playerId, candidateId, capitalTroops, l
 }
 
 // ── Coup model ─────────────────────────────────────────────────────────
-// A coup is a weighted vote: each dynasty's capital troops support every
-// claimant by rank (first 100%, last 0%, even steps between), the Basileus's
-// fortifications back the Basileus, and the Patriarch's influence follows
-// the Patriarch's ranking. The AI projects every claimant's total for a
+// A coup is a weighted vote: each dynasty's troops in Constantinople give
+// full support to its first choice and half to its second, the Theodosian
+// Walls back the Basileus, and the Patriarch's influence follows the
+// Patriarch's choices. The AI projects every claimant's total for a
 // candidate order, turns totals into win chances, and scores the order by
 // what each possible Basileus would mean for it.
 
-// How a rival is expected to rank claimants: itself first, then by how much
-// it likes each of the others.
-function predictCoupRanking(state, memory, voterId) {
-  const others = (state.players || [])
+// How a rival is expected to choose: itself first, then the dynasty it likes
+// most.
+function predictCoupChoices(state, memory, voterId) {
+  const favourite = (state.players || [])
     .map((player) => player.id)
     .filter((id) => id !== voterId)
     .sort((left, right) => (
       relationshipScore(memory, voterId, right) - relationshipScore(memory, voterId, left)
-    ) || (left - right));
-  return [voterId, ...others];
+    ) || (left - right))[0];
+  return favourite == null ? [voterId] : [voterId, favourite];
 }
 
 export function projectCoupVotes(state, playerId, summary, estimates, memory = null) {
-  const playerCount = (state.players || []).length;
   const votes = Object.fromEntries((state.players || []).map((player) => [player.id, 0]));
-  const addRanked = (ranking, troops, support = null) => {
+  const addChoices = (choices, troops) => {
     if (!(troops > 0)) return;
-    ranking.forEach((candidateId, rankIndex) => {
-      if (support && support[candidateId] === false) return;
-      if (!(candidateId in votes)) return;
-      votes[candidateId] += troops * getCoupRankWeight(playerCount, rankIndex);
-    });
+    for (const share of getCoupChoiceShares(choices)) {
+      if (share.candidateId in votes) votes[share.candidateId] += troops * share.weight;
+    }
   };
-  addRanked(summary.ranking, summary.capitalTroops, summary.candidateSupport);
+  addChoices(summary.coupChoices, summary.capitalTroops);
   for (const player of state.players || []) {
     if (player.id === playerId) continue;
-    addRanked(predictCoupRanking(state, memory, player.id), Number(estimates?.capitalByPlayer?.[player.id]) || 0);
+    addChoices(predictCoupChoices(state, memory, player.id), Number(estimates?.capitalByPlayer?.[player.id]) || 0);
   }
   for (const entry of getCapitalSupportEntries(state)) {
     const holderId = Number(entry.playerId);
     const amount = Number(entry.amount) || 0;
     if (!Number.isInteger(holderId) || !amount || !(holderId in votes)) continue;
     if (entry.titleKey === 'PATRIARCH') {
-      if (holderId === playerId) addRanked(summary.ranking, amount, summary.candidateSupport);
-      else addRanked(predictCoupRanking(state, memory, holderId), amount);
+      if (holderId === playerId) addChoices(summary.coupChoices, amount);
+      else addChoices(predictCoupChoices(state, memory, holderId), amount);
     } else {
       votes[holderId] += amount;
     }
@@ -1042,7 +1041,8 @@ function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLe
   for (const [candidateId, chance] of Object.entries(chances)) value += chance * (context.claimantValues[candidateId] || 0);
   // Ambition: some dynasties value holding the throne beyond its projected payoff.
   value += (chances[playerId] || 0) * weights.coupOpportunityWeight * weights.throneBase * 0.25;
-  value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops, leaderId, weights, context) * 0.5;
+  const allyShare = getCoupChoiceShares(summary.coupChoices).find((entry) => entry.candidateId === summary.candidate);
+  value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops * (allyShare?.weight || 0), leaderId, weights, context) * 0.5;
   value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
   return value;
 }
@@ -1149,9 +1149,7 @@ function scoreDeploymentTactics(state, playerId, action, context = {}) {
   }
 
   const coupKey = [
-    summary.ranking.join(','),
-    Object.entries(summary.candidateSupport || {}).filter(([, enabled]) => enabled === false).map(([id]) => id).join(','),
-    summary.candidate,
+    summary.coupChoices.join(','),
     summary.capitalTroops,
   ].join(':');
   let coupValue = context.coupScoreCache?.get(coupKey);
