@@ -207,8 +207,8 @@ test('strategic orders use the deployment schema and include decision metadata',
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
   state.phase = 'deployment';
   state.currentTroops = {
-    DOM_EAST: { normal: 2, capitalLocked: 0 },
-    PATRIARCH: { normal: 1, capitalLocked: 0 },
+    DOM_EAST: 2,
+    PATRIARCH: 1,
   };
 
   const orders = buildAIOrders(state, meta, 1);
@@ -234,7 +234,7 @@ test('AI coup support blocks the two least-liked claimants in 5-player games', (
   state.round = 2;
   state.phase = 'deployment';
   state.currentTroops = {
-    DOM_EAST: { normal: 3, capitalLocked: 0 },
+    DOM_EAST: 3,
   };
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 3, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
@@ -260,7 +260,7 @@ test('AI coup support blocks the single least-liked claimant in 3-player games',
   state.round = 2;
   state.phase = 'deployment';
   state.currentTroops = {
-    DOM_EAST: { normal: 3, capitalLocked: 0 },
+    DOM_EAST: 3,
   };
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 2, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
@@ -281,7 +281,7 @@ test('AI memory values major title quality instead of treating every title as eq
   state.round = 2;
   for (const theme of Object.values(state.themes)) {
     if (theme.id === 'CPL') continue;
-    theme.occupied = false;
+    theme.lost = false;
     theme.strategos = null;
     theme.bishop = null;
     theme.T = theme.region === 'east' ? 6 : 1;
@@ -325,11 +325,11 @@ test('AI deployment creates urgent opposition to a hostile incumbent Basileus', 
   };
   for (const player of state.players) player.gold = 8;
   state.currentTroops = {
-    BASILEUS: { normal: 3, capitalLocked: 0 },
-    DOM_EAST: { normal: 5, capitalLocked: 0 },
-    DOM_WEST: { normal: 2, capitalLocked: 0 },
-    ADMIRAL: { normal: 2, capitalLocked: 0 },
-    PATRIARCH: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 3,
+    DOM_EAST: 5,
+    DOM_WEST: 2,
+    ADMIRAL: 2,
+    PATRIARCH: 2,
   };
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_theme', actorId: 0, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
@@ -382,7 +382,7 @@ function makeReserveDeploymentState(strength, route = ['OPS', 'CPL']) {
     route,
   };
   state.currentTroops = {
-    DOM_EAST: { normal: 6, capitalLocked: 0 },
+    DOM_EAST: 6,
   };
   return state;
 }
@@ -424,8 +424,8 @@ test('AI deployment defunds surplus troops when frontier and coup urgency are lo
   const orders = buildAIOrders(state, meta, 1);
   const funded = Number(orders.armies.DOM_EAST.funded) || 0;
 
-  assert.equal(funded < state.currentTroops.DOM_EAST.normal, true);
-  assert.equal(state.currentTroops.DOM_EAST.normal - funded > 0, true);
+  assert.equal(funded < state.currentTroops.DOM_EAST, true);
+  assert.equal(state.currentTroops.DOM_EAST - funded > 0, true);
   assert.equal(frontierTroopsFromOrders(orders) > 0, true);
 });
 
@@ -435,15 +435,15 @@ test('AI deployment keeps funding troops when underfunding risks Constantinople'
 
   const orders = buildAIOrders(state, meta, 1);
 
-  assert.equal(orders.armies.DOM_EAST.funded, state.currentTroops.DOM_EAST.normal);
-  assert.equal(frontierTroopsFromOrders(orders) >= state.currentTroops.DOM_EAST.normal, true);
+  assert.equal(orders.armies.DOM_EAST.funded, state.currentTroops.DOM_EAST);
+  assert.equal(frontierTroopsFromOrders(orders) >= state.currentTroops.DOM_EAST, true);
 });
 
 test('deployment submission defaults army funding but still rejects missing destinations', () => {
   const state = makeState();
   state.phase = 'deployment';
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 2,
   };
 
   const missingArmyDestination = submitHumanOrders(state, 0, {
@@ -750,10 +750,10 @@ test('simultaneous AI planning ignores already submitted human deployment orders
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
   state.phase = 'deployment';
   state.currentTroops = {
-    BASILEUS: { normal: 1, capitalLocked: 0 },
-    DOM_EAST: { normal: 1, capitalLocked: 0 },
-    DOM_WEST: { normal: 1, capitalLocked: 0 },
-    ADMIRAL: { normal: 1, capitalLocked: 0 },
+    BASILEUS: 1,
+    DOM_EAST: 1,
+    DOM_WEST: 1,
+    ADMIRAL: 1,
   };
 
   const humanSubmit = submitHumanOrders(state, 0, {
@@ -785,10 +785,10 @@ function prepareCoalitionDeploymentState() {
   const state = makeState();
   state.phase = 'deployment';
   state.currentTroops = {
-    BASILEUS: { normal: 4, capitalLocked: 0 },
-    DOM_EAST: { normal: 1, capitalLocked: 0 },
-    DOM_WEST: { normal: 1, capitalLocked: 0 },
-    ADMIRAL: { normal: 1, capitalLocked: 0 },
+    BASILEUS: 4,
+    DOM_EAST: 1,
+    DOM_WEST: 1,
+    ADMIRAL: 1,
   };
   return state;
 }
@@ -822,7 +822,7 @@ test('AI coup coalition planning rallies weak AI dynasties behind one friendly c
 
 test('AI coup coalition planning can support a human claimant with good relations', () => {
   const state = prepareCoalitionDeploymentState();
-  state.currentTroops.ADMIRAL = { normal: 2, capitalLocked: 0 };
+  state.currentTroops.ADMIRAL = 2;
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 3, details: { appointeeId: 1 } },
     { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 3, details: { appointeeId: 2 } },
@@ -851,10 +851,10 @@ function safeSurplusDeploymentState() {
     route: ['OPS', 'OPT', 'CPL'],
   };
   state.currentTroops = {
-    BASILEUS: { normal: 6, capitalLocked: 0 },
-    DOM_EAST: { normal: 6, capitalLocked: 0 },
-    DOM_WEST: { normal: 6, capitalLocked: 0 },
-    ADMIRAL: { normal: 6, capitalLocked: 0 },
+    BASILEUS: 6,
+    DOM_EAST: 6,
+    DOM_WEST: 6,
+    ADMIRAL: 6,
   };
   return state;
 }
@@ -923,7 +923,7 @@ test('AI Basileus title planning rewards loyal backers with stronger offices', (
   state.round = 2;
   for (const theme of Object.values(state.themes)) {
     if (theme.id === 'CPL') continue;
-    theme.occupied = false;
+    theme.lost = false;
     theme.strategos = null;
     theme.bishop = null;
     theme.T = theme.region === 'east' ? 6 : 1;

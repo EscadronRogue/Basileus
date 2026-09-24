@@ -39,10 +39,6 @@ export function getThemeOwnerIncome(theme) {
   return getNormalOwnerIncome(theme);
 }
 
-export function getDefenderRewardGold(theme) {
-  return readThemeProfit(theme) * 2;
-}
-
 // Rising price shared by mercenaries and estates: within one round the first
 // costs `basePrice`, and each one after it costs 1 gold more than the last.
 export function getRisingPriceTotal(count, basePrice = 1) {
@@ -72,14 +68,14 @@ export function getMercenaryHireCost(alreadyHired, additionalCount) {
 
 export function getThreatenedThemeIds(state, options = {}) {
   const includeCapital = Boolean(options.includeCapital);
-  const includeOccupied = Boolean(options.includeOccupied);
+  const includeLost = Boolean(options.includeLost);
   const route = Array.isArray(state?.currentInvasion?.route) ? state.currentInvasion.route : [];
 
   return route.filter((themeId) => {
     if (!includeCapital && themeId === 'CPL') return false;
     const theme = state?.themes?.[themeId];
     if (!theme) return false;
-    if (!includeOccupied && theme.occupied) return false;
+    if (!includeLost && theme.lost) return false;
     return true;
   });
 }

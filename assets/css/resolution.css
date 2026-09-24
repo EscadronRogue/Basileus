@@ -1,7 +1,7 @@
-/* assets/css/resolution.css - Resolution, defender reward, and scoring panels. */
+/* assets/css/resolution.css - Resolution and scoring panels. */
 
 /* ── Resolution panel ───────────────────────────────────────────────────────
-   War result, coup outcome, defender-reward cards. Same cartouche
+   War result and coup outcome. Same cartouche
    vocabulary as the appointment panels, color-coded by outcome. */
 .resolution-panel { gap: 14px; }
 .result-card {
@@ -404,39 +404,6 @@
   font-size: 13px;
   color: var(--umber-1);
 }
-
-/* Reward section — best-defender choice cards */
-.reward-section { display: flex; flex-direction: column; gap: 8px; }
-.reward-list { display: flex; flex-direction: column; gap: 10px; }
-.reward-card {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  padding: 13px 14px;
-  border: 1px solid rgba(168,116,32,0.22);
-  border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(255,252,242,0.96) 0%, rgba(245,233,200,0.7) 100%);
-  box-shadow: var(--shadow-card);
-}
-.reward-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.reward-card-rank {
-  font-family: var(--font-display);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: rgba(200,146,30,0.12);
-  border: 1px solid rgba(200,146,30,0.32);
-  color: var(--gold-2);
-}
 .reward-card-body {
   display: flex;
   align-items: center;
@@ -454,51 +421,6 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-
-.reward-card-choice {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-@media (max-width: 600px) {
-  .reward-card-choice { grid-template-columns: 1fr; }
-}
-.reward-card-choice button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 11px 13px;
-  text-align: left;
-  white-space: normal;
-  min-height: auto;
-  letter-spacing: normal;
-  text-transform: none;
-}
-.reward-choice-kicker {
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.6px;
-  text-transform: uppercase;
-  opacity: 0.95;
-}
-.reward-choice-desc {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-body);
-  font-size: 12.5px;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
-  line-height: 1.35;
-}
-.reward-choice-desc .value { font-size: 13px; }
-.reward-choice-restore { color: var(--win); border-color: rgba(58,107,40,0.45); background: linear-gradient(180deg, rgba(58,107,40,0.15) 0%, rgba(58,107,40,0.06) 100%); }
-.reward-choice-restore:hover:not(:disabled) { background: linear-gradient(180deg, rgba(58,107,40,0.24) 0%, rgba(58,107,40,0.10) 100%); border-color: var(--win); }
-.reward-choice-restore .reward-choice-kicker { color: var(--win); }
-.reward-choice-gold .reward-choice-kicker { color: var(--gold-2); }
 
 /* Scoring panel — iconize category breakdown. */
 .score-row .score-breakdown {

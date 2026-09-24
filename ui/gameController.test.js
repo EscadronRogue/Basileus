@@ -595,7 +595,7 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 1 },
+    BASILEUS: 3,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
@@ -622,7 +622,6 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   assert.match(container.innerHTML, /Use arrow keys to move this claimant/);
   assert.match(container.innerHTML, /data-candidate-support=/);
   assert.doesNotMatch(container.innerHTML, /candidate-rank-row self locked/);
-  assert.match(container.innerHTML, /capital locked/);
   assert.match(container.innerHTML, /Mercenaries/);
   assert.match(container.innerHTML, /Lock Deployment/);
 });
@@ -632,7 +631,7 @@ test('fresh deployment panel defaults funding and requires only a destination', 
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 2,
   };
   const container = makePanelContainer();
 
@@ -652,7 +651,7 @@ test('deployment panel can lock after destination without touching funding slide
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 0;
   state.currentTroops = {
-    BASILEUS: { normal: 3, capitalLocked: 0 },
+    BASILEUS: 3,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
@@ -676,7 +675,7 @@ test('deployment ranking can withhold support from the first dynasty', () => {
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 2,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
@@ -702,8 +701,8 @@ test('deployment panel bundles strategos commands and does not require idle merc
   state.themes.OPS.strategos = 1;
   state.themes.KAP.strategos = 1;
   state.currentTroops = {
-    STRAT_OPS: { normal: 1, capitalLocked: 0 },
-    STRAT_KAP: { normal: 2, capitalLocked: 0 },
+    STRAT_OPS: 1,
+    STRAT_KAP: 2,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
@@ -731,7 +730,7 @@ test('deployment panel surfaces deal-forced coup support before lock-in', () => 
   state.round = 1;
   state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 2,
   };
   state.activeDealObligations = [{
     id: 'deal-obligation-test',

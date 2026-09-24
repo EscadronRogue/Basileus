@@ -78,7 +78,7 @@ export function getStrategosTargets(state, playerId, powerKey = null) {
   const roles = new Set(powerKey ? [powerKey] : roleKeysForCourt(state, playerId));
   return Object.values(state.themes || {}).filter((theme) => (
     theme.id !== 'CPL'
-    && !theme.occupied
+    && !theme.lost
     && theme.strategos == null
     && roles.has(regionTitleFor(theme))
   ));
@@ -106,13 +106,13 @@ export function getRevocationTargets(state, playerId, powerKey = null) {
   };
   for (const theme of Object.values(state.themes || {})) {
     if (theme.id === 'CPL') continue;
-    if (theme.strategos != null && (roles.has(regionTitleFor(theme)) || isBasileusPower)) {
+    if (theme.strategos != null && !theme.lost && (roles.has(regionTitleFor(theme)) || isBasileusPower)) {
       pushTarget({ value: `minor:${theme.id}:strategos`, label: `Strategos of ${theme.name}` });
     }
     if (theme.bishop != null && roles.has('PATRIARCH')) {
       pushTarget({ value: `minor:${theme.id}:bishop`, label: `Bishop of ${theme.name}` });
     }
-    if (isBasileusPower && Number.isInteger(theme.owner) && !theme.occupied) {
+    if (isBasileusPower && Number.isInteger(theme.owner) && !theme.lost) {
       pushTarget({ value: `theme:${theme.id}`, label: `Estate in ${theme.name}` });
     }
   }

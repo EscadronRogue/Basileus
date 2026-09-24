@@ -21,7 +21,6 @@ import { createGameState, getPlayer, formatPlayerLabel } from '../engine/state.j
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
 import { buildPrivateNotifications } from '../engine/notifications.js';
 import {
-  handleDefenderRewardChoice,
   handleContinueAfterResolution,
   handleHumanCourtAction,
   handleHumanCourtConfirmation,
@@ -694,14 +693,6 @@ export class MultiplayerRoom {
         const seat = this.requireHumanSeatForSession(sessionId);
         const assignments = message.assignments && typeof message.assignments === 'object' ? message.assignments : {};
         const result = handleManualTitleReassignment(this.gameState, this.aiMeta, this, seat.seatId, assignments);
-        assert(result.ok, result.reason);
-        this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
-        return;
-      }
-
-      if (message.type === 'defender_reward_choice') {
-        const seat = this.requireHumanSeatForSession(sessionId);
-        const result = handleDefenderRewardChoice(this.gameState, this.aiMeta, this, seat.seatId, message.rewardId, message.choice);
         assert(result.ok, result.reason);
         this.finalizeMutation(sessionId, requestId, previousPhase, { action: message.type });
         return;

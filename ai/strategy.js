@@ -7,7 +7,6 @@ import { getFreeThemes, getPlayer } from '../engine/state.js';
 import { getCapitalSupportEntries } from '../engine/capitalSupport.js';
 import { clonePlainData } from '../engine/clone.js';
 import {
-  getDeploymentArmyTroopEntry,
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from '../engine/deployment.js';
@@ -22,7 +21,6 @@ import {
   listLegalCourtActions,
   listLegalEstateActions,
   listLegalOrderActions,
-  listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
 import {
@@ -149,7 +147,7 @@ function materializeAuctions(state) {
       .filter((bid) => state.players.some((player) => player.id === bid.bidderId))
       .sort((left, right) => (right.amount - left.amount) || (left.bidderId - right.bidderId))[0];
     const bidderId = Number(winner?.bidderId);
-    if (!theme || theme.id === 'CPL' || theme.occupied || theme.owner != null) continue;
+    if (!theme || theme.id === 'CPL' || theme.lost || theme.owner != null) continue;
     if (!state.players.some((player) => player.id === bidderId)) continue;
     theme.owner = bidderId;
   }
@@ -555,15 +553,12 @@ function summarizeOrders(state, playerId, orders = {}) {
   let idleTroops = 0;
 
   for (const officeKey of orderOfficeKeys(state, playerId)) {
-    const pool = getDeploymentArmyTroopEntry(state, playerId, officeKey);
-    const total = pool.normal + pool.capitalLocked;
+    const total = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     const order = orders.armies?.[officeKey] || {};
     const funded = Math.max(0, Math.min(total, Number(order.funded) || 0));
-    const fundedLocked = Math.min(pool.capitalLocked, funded);
-    const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
     const destination = order.destination === 'capital' ? 'capital' : 'frontier';
-    capitalTroops += fundedLocked + (destination === 'capital' ? fundedNormal : 0);
-    frontierTroops += destination === 'frontier' ? fundedNormal : 0;
+    capitalTroops += destination === 'capital' ? funded : 0;
+    frontierTroops += destination === 'frontier' ? funded : 0;
     fundedTroops += funded;
     idleTroops += total - funded;
   }
@@ -679,16 +674,16 @@ function estimateHighInvasionStrength(invasion) {
 
 function estimateRecoveryCost(state, invasion) {
   if (!Array.isArray(invasion?.route)) return 0;
-  const occupied = new Set(
+  const lost = new Set(
     Object.values(state.themes || {})
-      .filter((theme) => theme?.occupied)
+      .filter((theme) => theme?.lost)
       .map((theme) => theme.id),
   );
   let cost = 0;
   let nextCost = 1;
   for (const themeId of invasion.route.slice().reverse()) {
     if (themeId === 'CPL') continue;
-    if (!occupied.has(themeId)) continue;
+    if (!lost.has(themeId)) continue;
     cost += nextCost;
     nextCost += 1;
   }
@@ -1280,31 +1275,6 @@ function scoreEstateBidPremium(state, playerId, theme, bid, weights) {
   const useful = Math.min(premium, needed);
   const rangeShare = Math.min(1, useful / needed);
   return useful * estateBidPressure(weights) * (0.65 + competition * 0.35) * (1 - rangeShare * 0.08);
-}
-
-export function chooseStrategicRewardChoice(state, meta, reward) {
-  if (!reward) return 'empire';
-  const memory = getAiMemory(state, meta);
-  const weights = getStrategyWeights(meta, reward.defenderId);
-  const actions = listLegalRewardActions(state, reward.defenderId)
-    .filter((action) => action.rewardId === reward.id);
-  const best = chooseScoredAction(state, reward.defenderId, actions, {
-    extraScore: (trial, action) => {
-      const theme = trial.themes?.[reward.themeId];
-      const stakeholders = [theme?.owner, theme?.strategos, theme?.bishop]
-        .map((value) => Number(value))
-        .filter(Number.isInteger);
-      const relationshipValue = [...new Set(stakeholders)]
-        .filter((playerId) => playerId !== reward.defenderId)
-        .reduce((total, playerId) => total + relationshipScore(memory, reward.defenderId, playerId), 0);
-      if (action.choice === 'empire') {
-        return (theme?.owner === reward.defenderId ? 2.5 : 0.8)
-          + clamp(relationshipValue * weights.reciprocityWeight * 0.25, -2.5, 2.5);
-      }
-      return clamp(-relationshipValue * weights.reciprocityWeight * 0.2, -2, 2);
-    },
-  });
-  return best?.action?.choice || 'empire';
 }
 
 export function applyStrategicEstateActions(state, meta, playerId) {

@@ -96,7 +96,7 @@
   white-space: normal;
 }
 
-.province-token.occupied {
+.province-token.lost {
   --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, var(--province-fill-color, var(--free-fill))));
   --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
 }
@@ -760,7 +760,7 @@
 }
 
 /* State variants */
-.province-token.occupied { opacity: 1; filter: saturate(0.74); }
+.province-token.lost { opacity: 1; filter: saturate(0.74); }
 .province-token.church {
   color: #ffffff;
   text-shadow: 0 1px 0 rgba(20,8,0,0.45);
@@ -798,4 +798,17 @@
   font-size: inherit;
   font-weight: 600;
   letter-spacing: 0.35px;
+}
+
+/* A lost province says so in words, not only in colour. */
+.province-token-lost {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: var(--font-display);
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--crimson-1, #7a1f1f);
+  border: 1px dashed currentColor;
 }

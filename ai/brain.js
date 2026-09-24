@@ -15,7 +15,6 @@ import {
   choosePolicyEstateActions,
   choosePolicyCourtAction,
   choosePolicyOrderAction,
-  choosePolicyRewardChoice,
   choosePolicyTitleAssignment,
   describePolicyOrderChoice,
   normalizePolicyConfig,
@@ -242,10 +241,6 @@ export function buildSimultaneousAIOrders(state, meta) {
     });
   }
   return plans;
-}
-
-export function chooseAIDefenderRewardChoice(state, meta, reward) {
-  return choosePolicyRewardChoice(state, meta, reward);
 }
 
 export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nextBasileusId) {

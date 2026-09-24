@@ -96,7 +96,6 @@ function renderDeploymentRevealSection(state) {
 
 export function renderResolutionPanelDetailed(container, state, options = {}) {
   if (!container || !state) return;
-  const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards.filter((reward) => !reward.resolved) : [];
   const war = state.lastWarResult;
   const coup = state.lastCoupResult;
   const empireFell = Boolean(war?.reachedCPL) || state.gameOver?.type === 'fall';
@@ -105,7 +104,6 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
   const deploymentRevealSection = renderDeploymentRevealSection(state);
   const warSection = war ? renderWarResultCard(state, war, invasionName, empireFell) : '';
   const coupSection = coup ? renderCoupResultCard(state, coup) : '';
-  const rewardsSection = rewards.length ? renderDefenderRewardSection(state, rewards) : '';
   const empireFallenBanner = empireFell
     ? `<div class="empire-fall-banner">
         <span class="empire-fall-kicker">Empire Fallen</span>
@@ -120,7 +118,6 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
       ${warSection}
       ${coupSection}
       ${deploymentRevealSection}
-      ${rewardsSection}
       <div class="panel-actions action-priority">
         <button type="button" class="btn-primary btn-commit" data-action="continue">Continue</button>
       </div>
@@ -329,43 +326,3 @@ function renderCoupResultCard(state, coup) {
   `;
 }
 
-function renderDefenderRewardSection(state, rewards) {
-  return `
-    <div class="reward-section">
-      ${renderPickerStep('⚑', `${rewards.length} defender reward${rewards.length === 1 ? '' : 's'} to settle`)}
-      <div class="reward-list">
-        ${rewards.map((reward) => renderDefenderRewardCard(state, reward)).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function renderDefenderRewardCard(state, reward) {
-  const theme = state.themes[reward.themeId] || { id: reward.themeId, name: reward.themeName || reward.themeId };
-  const defender = getPlayer(state, reward.defenderId);
-  const gold = Math.max(0, Number(reward.goldValue) || 0);
-  const rank = Number(reward.rank) || 1;
-  const rankSuffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
-  return `
-    <article class="reward-card" data-reward-id="${reward.id}">
-      <header class="reward-card-head">
-        ${renderProvinceBadge(state, theme, { showValues: true })}
-        <span class="reward-card-rank">${rank}${rankSuffix} defender</span>
-      </header>
-      <div class="reward-card-body">
-        ${defender ? renderPlayerRoleName(state, defender) : 'Defender'}
-        <span class="muted">contributed ${formatTroopsHtml(reward.troops || 0)} to the frontier.</span>
-      </div>
-      <div class="reward-card-choice">
-        <button type="button" class="btn-primary reward-choice-restore" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire">
-          <span class="reward-choice-kicker">Restore</span>
-          <span class="reward-choice-desc">Return ${renderProvinceBadge(state, theme, { compact: true })} to the empire</span>
-        </button>
-        <button type="button" class="btn-secondary reward-choice-gold" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold">
-          <span class="reward-choice-kicker">Take</span>
-          <span class="reward-choice-desc">${formatGoldHtml(gold)} into your reserve (province stays occupied)</span>
-        </button>
-      </div>
-    </article>
-  `;
-}

@@ -3,7 +3,6 @@ import {
   listLegalCourtActions,
   listLegalEstateActions,
   listLegalOrderActions,
-  listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
 import {
@@ -12,7 +11,6 @@ import {
   chooseStrategicCourtAction,
   chooseStrategicEstateActions,
   chooseStrategicOrderAction,
-  chooseStrategicRewardChoice,
   chooseStrategicTitleAssignment,
   describeOrderChoice,
 } from './strategy.js';
@@ -358,17 +356,6 @@ export function applyPolicyEstateActions(state, meta, playerId) {
     applied.push(action);
   }
   return applied;
-}
-
-export function choosePolicyRewardChoice(state, meta, reward) {
-  if (getPolicyId(meta, reward?.defenderId) === 'random') {
-    const action = pickAction(
-      state,
-      listLegalRewardActions(state, reward?.defenderId).filter((entry) => entry.rewardId === reward?.id),
-    );
-    return action?.choice || 'empire';
-  }
-  return chooseStrategicRewardChoice(state, meta, reward);
 }
 
 export function choosePolicyTitleAssignment(state, meta, basileusId) {

@@ -1,6 +1,6 @@
 // ui/panels/dashboard.js - the active dynasty's dashboard card.
 
-import { readTroopEntry, runIncome } from '../../engine/cascade.js';
+import { readTroopCount, runIncome } from '../../engine/cascade.js';
 import {
   getOfficeDisplayName,
   getOfficeHolder,
@@ -31,8 +31,7 @@ function getDashboardEconomy(state, playerId) {
   } catch (err) { churchYield = 0; }
   for (const officeKey of Object.keys(state.currentTroops || {})) {
     if (getOfficeHolder(state, officeKey) !== playerId) continue;
-    const entry = readTroopEntry(state.currentTroops[officeKey]);
-    troops += entry.normal + entry.capitalLocked;
+    troops += readTroopCount(state.currentTroops[officeKey]);
   }
   return {
     reserve: Math.max(0, Number(player.gold) || 0),
@@ -51,8 +50,9 @@ function getPlayerPrimaryRoleLabel(state, playerId) {
 function getDashboardHoldings(state, playerId) {
   const themes = Object.values(state?.themes || {}).filter((theme) => theme?.id !== 'CPL');
   return {
-    estate: themes.filter((theme) => !theme.occupied && theme.owner === playerId),
-    strategos: themes.filter((theme) => !theme.occupied && theme.strategos === playerId),
+    // Holdings in lost provinces are listed too, drawn as switched off.
+    estate: themes.filter((theme) => theme.owner === playerId),
+    strategos: themes.filter((theme) => theme.strategos === playerId),
     bishop: themes.filter((theme) => theme.bishop === playerId),
   };
 }

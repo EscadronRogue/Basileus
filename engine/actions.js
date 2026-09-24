@@ -427,7 +427,7 @@ export function canBuyTheme(state, playerId, themeId, amount = null) {
   if (state.phase !== 'estates') return fail('Estate bidding is only available during Estates.');
   const theme = state.themes[themeId];
   if (!theme) return fail('Theme not found.');
-  if (theme.occupied) return fail('Theme is occupied.');
+  if (theme.lost) return fail(`${theme.name} is lost to invaders.`);
   if (theme.owner !== null) return fail('Theme already owned.');
   if (theme.id === 'CPL') return fail('Cannot buy Constantinople.');
   const current = getPlayerLandBid(state, themeId, playerId);
@@ -500,7 +500,7 @@ export function settleLandAuctions(state) {
   const auctions = ensureLandAuctions(state);
   for (const [themeId, auction] of Object.entries(auctions)) {
     const theme = state.themes[themeId];
-    if (!theme || theme.occupied || theme.owner !== null || theme.id === 'CPL') {
+    if (!theme || theme.lost || theme.owner !== null || theme.id === 'CPL') {
       delete auctions[themeId];
       continue;
     }
@@ -546,7 +546,7 @@ export function settleLandAuctions(state) {
 // Appointments
 export function appointStrategos(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
-  if (!theme || theme.occupied || theme.id === 'CPL') return fail('Invalid theme.');
+  if (!theme || theme.lost || theme.id === 'CPL') return fail('Invalid theme.');
   if (!isValidPlayerId(state, appointeeId)) return fail('Choose an appointee.');
   if (theme.strategos !== null) return fail('This strategos title is already appointed.');
   const requiredTitle = STRATEGOS_TITLE_BY_REGION[theme.region];
@@ -621,6 +621,9 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   if (titleType !== 'strategos' && titleType !== 'bishop') return fail('Invalid minor title.');
   if (titleType === 'strategos' && theme.strategos == null) return fail('That strategos title is already vacant.');
   if (titleType === 'bishop' && theme.bishop == null) return fail('That bishop title is already vacant.');
+  if (titleType === 'strategos' && theme.lost) {
+    return fail(`${themeName(state, themeId)} is lost; its Strategos cannot be revoked until it is reconquered.`);
+  }
   const slotKey = getMinorTitleSlotKey(themeId, titleType);
   const sameTurn = currentTurnTitleBlock(state, slotKey, `The ${titleType} of ${themeName(state, themeId)}`);
   if (!sameTurn.ok) return sameTurn;
@@ -694,6 +697,7 @@ export function revokeTheme(state, themeId, revokerId = state.basileusId) {
 export function canRevokeTheme(state, themeId, revokerId = state.basileusId) {
   const theme = state.themes[themeId];
   if (!theme || !Number.isInteger(theme.owner)) return fail('No private estate to revoke.');
+  if (theme.lost) return fail(`${themeName(state, themeId)} is lost; its estates cannot be revoked until it is reconquered.`);
   if (revokerId !== state.basileusId) return fail('Only the Basileus can revoke private estates.');
   if (wasPrivateEstateBoughtLastTurn(state, theme)) {
     return fail(`${themeName(state, themeId)} was bought last turn and cannot be revoked until next turn.`);
@@ -718,11 +722,12 @@ function hasBasileusRevocationTarget(state) {
     && (
       (
         theme.strategos != null
+        && !theme.lost
         && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
       )
       || (
         Number.isInteger(theme.owner)
-        && !theme.occupied
+        && !theme.lost
         && canRevokeTheme(state, theme.id, state.basileusId).ok
       )
     )
@@ -734,7 +739,7 @@ function hasStrategosAppointmentTarget(state, powerKey) {
   if (!region) return false;
   return Object.values(state.themes || {}).some((theme) => (
     theme.id !== 'CPL'
-    && !theme.occupied
+    && !theme.lost
     && theme.strategos == null
     && theme.region === region
     && !isTitleRevokedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
@@ -748,6 +753,7 @@ function hasStrategosRevocationTarget(state, powerKey) {
     theme.id !== 'CPL'
     && theme.region === region
     && theme.strategos != null
+    && !theme.lost
     && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
   ));
 }

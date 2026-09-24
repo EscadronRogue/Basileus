@@ -36,7 +36,7 @@ test('provinces have unique ids, known regions, and sane values', () => {
   const capital = PROVINCES.find((province) => province.id === 'CPL');
   assert.ok(capital, 'Constantinople exists');
   assert.equal(capital.region, REGIONS.CPL);
-  assert.equal(capital.startOccupied, undefined, 'the capital cannot start occupied');
+  assert.equal(capital.startLost, undefined, 'the capital cannot start lost');
 });
 
 test('adjacency edges are known, unique, and connect every province to the capital', () => {

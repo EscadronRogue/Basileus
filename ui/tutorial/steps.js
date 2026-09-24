@@ -11,7 +11,6 @@
 // itself once the player has done it; a step without one waits for Next.
 import { getPlayerName } from '../../engine/state.js';
 import { buildFinalScores } from '../../engine/scoring.js';
-import { getPendingDefenderRewards } from '../../engine/turnflow.js';
 
 export const TUTORIAL_SEED = 254;
 export const TUTORIAL_PLAYER_COUNT = 3;
@@ -273,15 +272,6 @@ export const TUTORIAL_STEPS = [
     title: 'The war',
     body: ({ state }) => warText(state),
     task: 'Look at the map: occupied provinces pay nothing to their owners until they are reconquered.',
-  },
-  {
-    id: 'defender-reward',
-    when: ({ state }) => inRound(1, 'resolution')({ state }) && getPendingDefenderRewards(state, ME).length > 0,
-    target: '[data-defender-reward-choice][data-choice="empire"]',
-    title: 'The best defender chooses',
-    body: 'You led the defence. For each province the war recovers, you choose: restore it to the empire as free land, or take gold and leave it occupied.',
-    task: 'Pick one of the two rewards.',
-    done: ({ state }) => getPendingDefenderRewards(state, ME).length === 0,
   },
   {
     id: 'resolution-continue',

@@ -389,11 +389,14 @@ function getMapCartoucheMarkers(state, theme, valuePositions) {
   const markers = [];
   const promotedKind = MAP_FILTER_TO_MARKER_KIND[mapRuntime.activeMapFilter] || null;
 
-  if (!theme.occupied && theme.owner !== null && theme.owner !== 'church') {
-    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, 'Private estate', valuePositions, { promoted: promotedKind === 'estate' }));
+  // Holdings of a lost province stay on the map, drawn as switched off.
+  const disabled = Boolean(theme.lost);
+  const lostNote = disabled ? ' (lost province: not working until reconquered)' : '';
+  if (theme.owner != null && theme.owner !== 'church') {
+    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, `Estate${lostNote}`, valuePositions, { promoted: promotedKind === 'estate', disabled }));
   }
-  if (!theme.occupied && theme.strategos !== null) {
-    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, 'Strategos', valuePositions, { promoted: promotedKind === 'strategos' }));
+  if (theme.strategos !== null) {
+    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, `Strategos${lostNote}`, valuePositions, { promoted: promotedKind === 'strategos', disabled }));
   }
   if (theme.bishop !== null) {
     markers.push(createMapCartoucheMarkerData(state, 'bishop', theme.bishop, 'Bishop', valuePositions, { promoted: promotedKind === 'bishop' }));
@@ -415,6 +418,7 @@ function createMapCartoucheMarkerData(state, kind, ownerId, label, valuePosition
     color: player.color || '#5a3810',
     title: `${label}: ${ownerName}`,
     promoted: Boolean(options.promoted),
+    disabled: Boolean(options.disabled),
   };
 }
 
@@ -425,7 +429,7 @@ function createMapCartoucheMarker(marker) {
       ? createMapCartoucheSquareMarker(marker.x, marker.promoted)
       : createMapCartoucheTriangleMarker(marker.x, marker.promoted);
 
-  shape.setAttribute('class', `map-cart-marker map-cart-marker-${marker.kind}${marker.promoted ? ' promoted' : ''}`);
+  shape.setAttribute('class', `map-cart-marker map-cart-marker-${marker.kind}${marker.promoted ? ' promoted' : ''}${marker.disabled ? ' disabled' : ''}`);
   shape.style.fill = marker.color;
 
   const title = document.createElementNS(SVG_NS, 'title');

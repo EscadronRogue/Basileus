@@ -47,7 +47,7 @@
   --free-border:  var(--purple-0);
   --church-fill:  #1a1a1a;  /* black — church estate */
   --church-border: #000000;
-  --occupied-fill: #d8c9ad;
+  --lost-province-fill: #d8c9ad;
   --empire-border: #2e1e0f;
   --empire-border-hover: #4a3018;
   --capital-fill:  #9a7010;
@@ -106,8 +106,8 @@
   --text-secondary:var(--umber-2);
   --text-muted:    var(--umber-3);
   --text-gold:     var(--gold-1);
-  --occupied:      var(--occupied-fill);
-  --occupied-border: #9a8060;
+  --lost-province:      var(--lost-province-fill);
+  --lost-province-border: #9a8060;
   --invasion-lost-fill: #000000;
   --invasion-lost-border: #000000;
   --region-border: var(--empire-border);
@@ -127,7 +127,7 @@ html {
 
 @supports (color: color-mix(in srgb, white 50%, black 50%)) {
   :root {
-    --occupied-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
+    --lost-province-fill: color-mix(in srgb, #888 20%, var(--parch-1) 80%);
   }
 }
 

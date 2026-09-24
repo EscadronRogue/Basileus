@@ -4,7 +4,6 @@ import { buildPrivateNotifications } from '../engine/notifications.js';
 import {
   autoResolveUnavailableHumanAppointments,
   handleContinueAfterResolution,
-  handleDefenderRewardChoice,
   handleHumanCourtAction,
   handleHumanCourtConfirmation,
   handleHumanEstateAction,
@@ -302,9 +301,6 @@ export class GameController {
     const spectatorMessage = state.phase === 'deployment'
       ? 'Switch back to your dynasty to continue.'
       : 'This dynasty is AI-controlled.';
-    const pendingHumanDefenderReward = state.pendingDefenderRewards?.some((reward) => (
-      !reward.resolved && (!this.aiMeta || this.isHumanPlayer(reward.defenderId))
-    ));
 
     renderGameActionPanel({
       panel: document.getElementById('actionPanel'),
@@ -326,20 +322,6 @@ export class GameController {
       },
       resolution: {
         allowManualTitleReassignment: !this.pendingAiTitleAssignment,
-        disabledText: pendingHumanDefenderReward
-          && this.state.nextBasileusId === this.state.basileusId
-          ? 'Resolve Rewards'
-          : null,
-        defenderRewardChoice: (rewardId, choice) => {
-          const result = handleDefenderRewardChoice(this.state, this.aiMeta, this, this.activePlayer, rewardId, choice);
-          if (!result.ok) {
-            this.setActionError(result.reason);
-            this.render();
-            return;
-          }
-          this.clearActionError();
-          this.render();
-        },
         continue: (shell) => {
           const reassignment = this.tryResolveTitleReassignment(shell);
           if (!reassignment.ok) {

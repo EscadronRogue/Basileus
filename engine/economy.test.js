@@ -30,7 +30,7 @@ import {
   buildProvinceChurchAttributions,
   buildProvinceEstateAttributions,
   buildProvinceTroopAttributions,
-  readTroopEntry,
+  readTroopCount,
   runIncome,
 } from './cascade.js';
 import { applyInvasionResult, resolveInvasion } from './combat.js';
@@ -67,6 +67,8 @@ import {
   isCourtPowerExhausted,
   isCourtPowerPassed,
   resolveCoup,
+  revokeMinorTitle,
+  revokeTheme,
   suggestMajorTitleAssignments,
 } from './actions.js';
 
@@ -176,7 +178,7 @@ test('invasion templates carry relative difficulty bands', () => {
     assert.deepEqual(invasion.strength, [min, Math.min(max, min + INVASION_ESTIMATE_INTERVAL)]);
   }
 
-  state.themes.OPS.occupied = true;
+  state.themes.OPS.lost = true;
   assert.equal(getEmpireProvinceStrength(state), empireStrength - 1);
   const [hardMinRatio, hardMaxRatio] = INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD];
   assert.deepEqual(
@@ -188,7 +190,7 @@ test('invasion templates carry relative difficulty bands', () => {
   drawState.invasionDeck = [turksTemplate];
   drawState.round = EARLY_INVASION_GRACE_ROUNDS;
   drawState.maxRounds = EARLY_INVASION_GRACE_ROUNDS + 1;
-  drawState.themes.OPS.occupied = true;
+  drawState.themes.OPS.lost = true;
   phaseInvasion(drawState);
   assert.equal(drawState.currentInvasion.empireStrength, empireStrength - 1);
   assert.deepEqual(drawState.currentInvasion.strengthBounds, getInvasionStrengthBounds(turksTemplate, drawState));
@@ -266,94 +268,91 @@ test('province table uses profit, troop, and church values with capital excluded
   }
 });
 
-test('income routes estates, bishops, strategos troops, and occupied bishop value', () => {
+test('income: each office raises its own troops and church gold, nothing is shared out', () => {
   const state = makeState();
   state.themes.KAP.owner = 2;
   state.themes.KAP.strategos = 3;
   state.themes.KAP.bishop = 1;
   state.themes.ANT.bishop = 1;
-  state.themes.ANT.occupied = true;
+  state.themes.ANT.lost = true;
+  const imperial = (region) => Object.values(state.themes)
+    .filter((theme) => theme.region === region && theme.id !== 'CPL' && !theme.lost).length;
+  const imperialBishoprics = Object.values(state.themes)
+    .filter((theme) => theme.id !== 'CPL' && !theme.lost && theme.C > 0).length;
 
   const result = runIncome(state);
 
-  assert.equal(result.income[2], 1);
-  assert.equal(result.incomeBreakdown.church[1] >= 2, true);
-  assert.deepEqual(readTroopEntry(result.troops.STRAT_KAP), { normal: 1, capitalLocked: 0 });
+  assert.equal(result.income[2], 1, 'the estate pays its owner');
+  assert.equal(readTroopCount(result.troops.STRAT_KAP), 1, 'the Strategos raises its province');
+  assert.equal(result.troops.DOM_EAST, imperial('east'), 'the Domestic still raises Kappadokia');
+  assert.equal(result.troops.DOM_EAST, 10);
+  assert.equal(result.troops.DOM_WEST, imperial('west'));
+  assert.equal(result.troops.ADMIRAL, imperial('sea'));
+  assert.equal(result.troops.BASILEUS, 9, '27 imperial provinces give the Basileus 9 troops');
+  assert.equal(result.incomeBreakdown.church[1], 2 + imperialBishoprics, 'Bishop pay does not reduce the Patriarch');
 
   const profitRoute = result.flow.sections.find((section) => section.key === 'profit').routes[0];
-  assert.equal(profitRoute.total, 1);
   assert.deepEqual(profitRoute.recipients, [{ playerId: 2, value: 1 }]);
-
   const troopRoutes = result.flow.sections.find((section) => section.key === 'troop').routes;
-  const strategoiRoute = troopRoutes.find((route) => route.key === 'strategoi');
-  assert.equal(strategoiRoute.total, 1);
-  assert.deepEqual(strategoiRoute.recipients, [{ playerId: 3, value: 1 }]);
-  const eastPool = troopRoutes.find((route) => route.key === 'east_pool');
-  assert.equal(eastPool.total, 9);
-  assert.deepEqual(eastPool.offices.map((office) => [office.officeKey, office.playerId, office.value]), [
-    ['DOM_EAST', 1, 6],
-    ['BASILEUS', 0, 3],
+  assert.deepEqual(troopRoutes.find((route) => route.key === 'strategoi').recipients, [{ playerId: 3, value: 1 }]);
+  assert.deepEqual(troopRoutes.find((route) => route.key === 'east').offices.map((office) => [office.officeKey, office.playerId, office.value]), [
+    ['DOM_EAST', 1, 10],
   ]);
-
-  const bishopRoute = result.flow.sections.find((section) => section.key === 'church').routes.find((route) => route.key === 'bishops');
-  assert.equal(bishopRoute.total, 2);
-  assert.deepEqual(bishopRoute.recipients, [{ playerId: 1, value: 2 }]);
+  assert.deepEqual(troopRoutes.find((route) => route.key === 'basileus').recipients, [{ playerId: 0, value: 9 }]);
+  const churchRoutes = result.flow.sections.find((section) => section.key === 'church').routes;
+  assert.deepEqual(churchRoutes.find((route) => route.key === 'bishops').recipients, [{ playerId: 1, value: 2 }]);
+  assert.equal(churchRoutes.find((route) => route.key === 'patriarch').total, imperialBishoprics);
 });
 
-test('province attributions expose direct and office-routed map filter recipients', () => {
+test('the Basileus raises 1 troop per 3 imperial provinces, rounded down', () => {
+  const state = makeState();
+  const startLost = Object.values(state.themes).filter((theme) => theme.lost);
+  assert.equal(runIncome(state).troops.BASILEUS, 9);
+  const [firstFree] = Object.values(state.themes).filter((theme) => theme.id !== 'CPL' && !theme.lost);
+  firstFree.lost = true;
+  assert.equal(runIncome(state).troops.BASILEUS, 8, '26 provinces');
+  firstFree.lost = false;
+  for (const theme of startLost.slice(0, 3)) theme.lost = false;
+  assert.equal(runIncome(state).troops.BASILEUS, 10, '30 provinces');
+});
+
+test('a lost province keeps its Strategos and estate on record but they stop working', () => {
+  const state = makeState();
+  state.themes.OPS.owner = 2;
+  state.themes.OPS.strategos = 3;
+  state.themes.OPS.bishop = 2;
+  applyInvasionResult(state, { themesLost: ['OPS'], themesRecovered: [], reachedCPL: false });
+
+  assert.equal(state.themes.OPS.lost, true);
+  assert.equal(state.themes.OPS.owner, 2);
+  assert.equal(state.themes.OPS.strategos, 3);
+  const whileLost = runIncome(state);
+  assert.equal(whileLost.income[2] ?? 0, 1, 'only the Bishop is paid while the province is lost');
+  assert.equal(whileLost.troops.STRAT_OPS, undefined);
+
+  applyInvasionResult(state, { themesLost: [], themesRecovered: ['OPS'], reachedCPL: false });
+  const restored = runIncome(state);
+  assert.equal(restored.income[2], 2, 'estate and bishopric pay again');
+  assert.equal(restored.troops.STRAT_OPS, 1);
+});
+
+test('map filters show only appointed Strategoi and Bishops', () => {
   const state = makeState();
   state.themes.OPS.owner = 2;
   state.themes.KAP.strategos = 3;
   state.themes.HEL.bishop = 2;
 
   const estateAttributions = buildProvinceEstateAttributions(state);
-  assert.deepEqual(
-    {
-      playerId: estateAttributions.OPS.playerId,
-      mode: estateAttributions.OPS.mode,
-      direct: estateAttributions.OPS.direct,
-    },
-    { playerId: 2, mode: 'estate', direct: true },
-  );
+  assert.equal(estateAttributions.OPS.playerId, 2);
+  assert.equal(estateAttributions.OPS.mode, 'estate');
 
   const troopAttributions = buildProvinceTroopAttributions(state);
-  assert.deepEqual(
-    {
-      playerId: troopAttributions.KAP.playerId,
-      mode: troopAttributions.KAP.mode,
-      direct: troopAttributions.KAP.direct,
-      officeKey: troopAttributions.KAP.officeKey,
-    },
-    { playerId: 3, mode: 'strategos', direct: true, officeKey: 'STRAT_KAP' },
-  );
-  assert.deepEqual(
-    {
-      playerId: troopAttributions.OPS.playerId,
-      mode: troopAttributions.OPS.mode,
-      direct: troopAttributions.OPS.direct,
-      officeKey: troopAttributions.OPS.officeKey,
-    },
-    { playerId: 1, mode: 'major-office', direct: false, officeKey: 'DOM_EAST' },
-  );
+  assert.deepEqual(Object.keys(troopAttributions), ['KAP']);
+  assert.equal(troopAttributions.KAP.playerId, 3);
 
   const churchAttributions = buildProvinceChurchAttributions(state);
-  assert.deepEqual(
-    {
-      playerId: churchAttributions.HEL.playerId,
-      mode: churchAttributions.HEL.mode,
-      direct: churchAttributions.HEL.direct,
-    },
-    { playerId: 2, mode: 'bishop', direct: true },
-  );
-  assert.deepEqual(
-    {
-      playerId: churchAttributions.OPS.playerId,
-      mode: churchAttributions.OPS.mode,
-      direct: churchAttributions.OPS.direct,
-      officeKey: churchAttributions.OPS.officeKey,
-    },
-    { playerId: 1, mode: 'patriarch', direct: false, officeKey: 'PATRIARCH' },
-  );
+  assert.deepEqual(Object.keys(churchAttributions), ['HEL']);
+  assert.equal(churchAttributions.HEL.playerId, 2);
 });
 
 test('title redistribution opens court before starting income', () => {
@@ -595,10 +594,10 @@ test('court powers can pass remaining appointments and revocations without count
   assert.equal(state.courtActions.playerConfirmed.has(1), true);
 });
 
-test('patriarch may appoint bishops in occupied original church provinces', () => {
+test('patriarch may appoint bishops in lost bishoprics', () => {
   const state = makeState();
   enterCourt(state);
-  state.themes.KAP.occupied = true;
+  state.themes.KAP.lost = true;
 
   const result = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'KAP', appointeeId: 2 });
 
@@ -828,7 +827,7 @@ test('public estate snapshots expose only the viewer sealed bid', () => {
 test('deployment schema funds armies, pays unfunded troops, and stores mercenary orders', () => {
   const state = makeState();
   state.phase = 'deployment';
-  state.currentTroops = { BASILEUS: { normal: 2, capitalLocked: 0 } };
+  state.currentTroops = { BASILEUS: 2 };
   getPlayer(state, 0).gold = 2;
 
   const result = submitHumanOrders(state, 0, {
@@ -846,7 +845,7 @@ test('deployment schema funds armies, pays unfunded troops, and stores mercenary
 test('deployment defaults army funding when only a destination is chosen', () => {
   const state = makeState();
   state.phase = 'deployment';
-  state.currentTroops = { BASILEUS: { normal: 3, capitalLocked: 0 } };
+  state.currentTroops = { BASILEUS: 3 };
   getPlayer(state, 0).gold = 0;
 
   const result = submitHumanOrders(state, 0, {
@@ -866,8 +865,8 @@ test("deployment bundles a player's strategos troops into one army", () => {
   state.themes.OPS.strategos = 1;
   state.themes.KAP.strategos = 1;
   state.currentTroops = {
-    STRAT_OPS: { normal: 1, capitalLocked: 0 },
-    STRAT_KAP: { normal: 2, capitalLocked: 0 },
+    STRAT_OPS: 1,
+    STRAT_KAP: 2,
   };
   getPlayer(state, 1).gold = 0;
 
@@ -1017,23 +1016,22 @@ test('patriarch influence follows rankings while fortifications and triumph stay
   assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 3), false);
 });
 
-test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {
+test('invasion loss keeps holders on record and reconquest gives the province back to them', () => {
   const state = makeState();
   state.themes.SAM.owner = 2;
   state.themes.SAM.strategos = 3;
   state.themes.SAM.bishop = 1;
 
   applyInvasionResult(state, { themesLost: ['SAM'], themesRecovered: [], reachedCPL: false });
-  assert.equal(state.themes.SAM.occupied, true);
-  assert.equal(state.themes.SAM.owner, null);
-  assert.equal(state.themes.SAM.suspendedOwner, 2);
-  assert.equal(state.themes.SAM.strategos, null);
+  assert.equal(state.themes.SAM.lost, true);
+  assert.equal(state.themes.SAM.owner, 2);
+  assert.equal(state.themes.SAM.strategos, 3);
   assert.equal(state.themes.SAM.bishop, 1);
 
   applyInvasionResult(state, { themesLost: [], themesRecovered: ['SAM'], reachedCPL: false });
-  assert.equal(state.themes.SAM.occupied, false);
+  assert.equal(state.themes.SAM.lost, false);
   assert.equal(state.themes.SAM.owner, 2);
-  assert.equal(state.themes.SAM.suspendedOwner, null);
+  assert.equal(state.themes.SAM.strategos, 3);
   assert.equal(state.themes.SAM.bishop, 1);
 });
 
@@ -1052,8 +1050,8 @@ test('limited invasions take their target route without toppling the empire', ()
 
   assert.equal(result.reachedCPL, false);
   assert.deepEqual(result.themesLost, ['ITA']);
-  assert.equal(state.themes.ITA.occupied, true);
-  assert.equal(state.themes.ITA.suspendedOwner, 2);
+  assert.equal(state.themes.ITA.lost, true);
+  assert.equal(state.themes.ITA.owner, 2);
   assert.equal(state.gameOver, null);
 });
 
@@ -1079,7 +1077,7 @@ test('limited invasions are skipped when every target province is already lost',
       strength: [1, 1],
     },
   ];
-  state.themes.SAM.occupied = true;
+  state.themes.SAM.lost = true;
 
   phaseInvasion(state);
 
@@ -1108,7 +1106,7 @@ test('skipped invasions are replaced so every non-final turn draws an invasion',
       strength: [1, 1],
     },
   ];
-  state.themes.SAM.occupied = true;
+  state.themes.SAM.lost = true;
 
   phaseInvasion(state);
 
@@ -1145,8 +1143,8 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   state.round = 1;
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
-  state.themes.SAM.occupied = true;
-  state.currentTroops = { DOM_WEST: { normal: 3, capitalLocked: 0 } };
+  state.themes.SAM.lost = true;
+  state.currentTroops = { DOM_WEST: 3 };
   state.allOrders = {
     2: {
       armies: { DOM_WEST: { funded: 3, destination: 'frontier' } },
@@ -1159,7 +1157,7 @@ test('reconquered provinces auto-restore and reward the top defender next round'
 
   phaseResolution(state);
 
-  assert.equal(state.themes.SAM.occupied, false);
+  assert.equal(state.themes.SAM.lost, false);
   assert.equal(getPlayer(state, 2).gold, 1);
   assert.deepEqual(state.lastWarResult.themesRecovered, ['SAM']);
   assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
@@ -1168,12 +1166,12 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
 });
 
-test('repulsed invasions reward the top defender for province wins even without occupied provinces', () => {
+test('repulsed invasions reward the top defender for province wins even without lost provinces', () => {
   const state = makeState();
   state.round = 1;
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [2, 2] };
-  state.currentTroops = { DOM_WEST: { normal: 5, capitalLocked: 0 } };
+  state.currentTroops = { DOM_WEST: 5 };
   state.allOrders = {
     2: {
       armies: { DOM_WEST: { funded: 5, destination: 'frontier' } },
@@ -1199,12 +1197,12 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   state.round = 1;
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [2, 2] };
-  state.themes.OPS.occupied = true;
-  state.themes.SAM.occupied = true;
-  state.themes.ITA.occupied = true;
+  state.themes.OPS.lost = true;
+  state.themes.SAM.lost = true;
+  state.themes.ITA.lost = true;
   state.currentTroops = {
-    DOM_WEST: { normal: 4, capitalLocked: 0 },
-    ADMIRAL: { normal: 4, capitalLocked: 0 },
+    DOM_WEST: 4,
+    ADMIRAL: 4,
   };
   state.allOrders = {
     2: {
@@ -1300,7 +1298,7 @@ test('final scoring uses last income phase shares without free citizens', () => 
     theme.owner = null;
     theme.bishop = null;
     theme.strategos = null;
-    theme.occupied = false;
+    theme.lost = false;
   }
 
   state.themes.OPS.P = 3;
@@ -1328,11 +1326,15 @@ test('final scoring uses last income phase shares without free citizens', () => 
   assert.equal(category(0, 'estate').value, 3);
   assert.equal(category(1, 'estate').value, 1);
   assert.equal(category(0, 'estate').totalValue, 4);
-  assert.equal(category(0, 'office').value, 1);
-  assert.equal(category(1, 'office').value, 6);
+  // Basileus: 40 imperial provinces -> 13 troops. Domestic of the East and
+  // Patriarch: 2 (Bishop of Kappadokia) + 12 (every bishopric). Domestic of
+  // the West: 5 (Strategos of the Aegean) + 6 (Bishop of Antiochia). Admiral:
+  // 5 + 3 from the sea provinces, Strategos or not.
+  assert.equal(category(0, 'office').value, 13);
+  assert.equal(category(1, 'office').value, 14);
   assert.equal(category(2, 'office').value, 11);
-  assert.equal(category(3, 'office').value, 2);
-  assert.equal(category(2, 'office').totalValue, 20);
+  assert.equal(category(3, 'office').value, 8);
+  assert.equal(category(2, 'office').totalValue, 46);
   assert.equal(category(1, 'church'), undefined);
   assert.equal(category(2, 'strategos'), undefined);
 
@@ -1340,7 +1342,7 @@ test('final scoring uses last income phase shares without free citizens', () => 
   assert.equal(balance.categories.some((entry) => entry.slices.some((slice) => slice.kind === 'free')), false);
   assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 31);
   assert.equal(balance.categories.find((entry) => entry.key === 'estate').slices.find((slice) => slice.playerId === 3).value, 30);
-  assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 20);
+  assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 46);
 });
 
 test('empire fall keeps final rankings but awards no winner', () => {
@@ -1416,4 +1418,20 @@ test('coup replacement triggers major title redistribution before final court an
   assert.equal(state.finalScoringPending, false);
   assert.equal(state.lastIncome.round, state.round);
   assert.ok(state.lastIncome.flow.totals.troop > 0);
+});
+
+test('nothing in a lost province can be revoked, and the Basileus is not offered it', () => {
+  const state = makeState();
+  state.themes.OPS.strategos = 2;
+  state.themes.OPS.owner = 3;
+  state.themes.OPS.lost = true;
+  enterCourt(state);
+
+  const revokeStrategos = revokeMinorTitle(state, 'OPS', 'strategos', 1);
+  assert.equal(revokeStrategos.ok, false);
+  assert.match(revokeStrategos.reason, /lost/);
+  const revokeEstate = revokeTheme(state, 'OPS', 0);
+  assert.equal(revokeEstate.ok, false);
+  assert.equal(state.themes.OPS.strategos, 2);
+  assert.equal(state.themes.OPS.owner, 3);
 });

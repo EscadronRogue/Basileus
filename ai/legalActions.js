@@ -14,7 +14,6 @@ import {
 } from '../engine/actions.js';
 import { getSpendableGold } from '../engine/deals.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
-import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/turnflow.js';
 import { getFreeThemes, getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
@@ -39,7 +38,6 @@ function cloneForValidation(state) {
     activeDealObligations: cloneValueForValidation(state.activeDealObligations || []),
     reservedGold: cloneValueForValidation(state.reservedGold || {}),
     dealThreads: cloneValueForValidation(state.dealThreads || []),
-    pendingDefenderRewards: cloneValueForValidation(state.pendingDefenderRewards || []),
     landAuctions: cloneValueForValidation(state.landAuctions || {}),
     estatesReady: cloneValueForValidation(state.estatesReady || {}),
     currentTroops: cloneValueForValidation(state.currentTroops || {}),
@@ -108,7 +106,7 @@ function pushConfirmation(actions, state, playerId) {
 function openStrategosThemes(state, region) {
   return Object.values(state.themes || {}).filter((theme) => (
     theme.id !== 'CPL'
-    && !theme.occupied
+    && !theme.lost
     && theme.strategos == null
     && theme.region === region
   ));
@@ -163,7 +161,7 @@ function appendRevocationActions(actions, state, playerId) {
         : theme.region === MAJOR_TITLES.ADMIRAL.region
           ? 'ADMIRAL'
           : null;
-    if (theme.strategos != null && (
+    if (theme.strategos != null && !theme.lost && (
       playerId === state.basileusId
       || (requiredStrategosTitle && player.majorTitles.includes(requiredStrategosTitle))
     )) {
@@ -175,7 +173,7 @@ function appendRevocationActions(actions, state, playerId) {
     if (
       playerId === state.basileusId
       && Number.isInteger(theme.owner)
-      && !theme.occupied
+      && !theme.lost
       && theme.id !== 'CPL'
       && canRevokeTheme(state, theme.id, playerId).ok
     ) {
@@ -427,20 +425,6 @@ export function listLegalOrderActions(state, playerId, options = {}) {
   return actions;
 }
 
-export function listLegalRewardActions(state, playerId) {
-  if (!state || state.phase !== 'resolution') return [];
-  const actions = [];
-  for (const reward of getPendingDefenderRewards(state, playerId)) {
-    for (const choice of ['empire', 'gold']) {
-      const trial = cloneForValidation(state);
-      const result = applyDefenderRewardChoice(trial, reward.id, playerId, choice);
-      if (!result.ok) continue;
-      actions.push({ id: actionId('reward', { rewardId: reward.id, choice }), kind: 'reward', phase: 'resolution', playerId, label: `defender reward ${choice}`, rewardId: reward.id, choice });
-    }
-  }
-  return actions;
-}
-
 function buildTitleAssignmentCandidates(state, basileusId) {
   const titleKeys = Object.keys(MAJOR_TITLES);
   const eligibleIds = state.players.map((player) => player.id).filter((playerId) => playerId !== basileusId);
@@ -484,7 +468,6 @@ export function listLegalActions(state, playerId, options = {}) {
   if (state?.phase === 'court') return listLegalCourtActions(state, playerId);
   if (state?.phase === 'estates') return listLegalEstateActions(state, playerId);
   if (state?.phase === 'deployment') return listLegalOrderActions(state, playerId, options);
-  if (state?.phase === 'resolution') return listLegalRewardActions(state, playerId);
   return [];
 }
 
@@ -494,7 +477,6 @@ export function applyLegalAction(state, action) {
   if (action.kind === 'court-confirm') return confirmCourt(state, action.playerId);
   if (action.kind === 'estate') return applyEstateAction(state, action.playerId, action.payload);
   if (action.kind === 'orders') return submitHumanOrders(state, action.playerId, action.orders);
-  if (action.kind === 'reward') return applyDefenderRewardChoice(state, action.rewardId, action.playerId, action.choice);
   if (action.kind === 'title-assignment') {
     return applyManualTitleReassignment(state, action.newBasileusId, action.assignments);
   }
@@ -505,7 +487,6 @@ export function getActionTargetPlayerId(state, action) {
   const payload = action?.payload || {};
   if (Number.isInteger(payload.appointeeId)) return payload.appointeeId;
   if (Number.isInteger(action?.orders?.candidate)) return action.orders.candidate;
-  if (action?.kind === 'reward') return action.playerId;
   if (payload.value) {
     const [kind, id, titleType] = String(payload.value).split(':');
     if (kind === 'minor') {

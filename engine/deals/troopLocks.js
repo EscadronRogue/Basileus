@@ -3,7 +3,6 @@
 import { getPlayerLabel } from '../state.js';
 import {
   getDeploymentArmyDisplayName,
-  getDeploymentArmyTroopEntry,
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from '../deployment.js';
@@ -23,13 +22,12 @@ import {
 export function getPlayerOrderChunks(state, playerId) {
   return getPlayerDeploymentArmyKeys(state, playerId)
     .map((officeKey) => {
-      const entry = getDeploymentArmyTroopEntry(state, playerId, officeKey);
-      const troops = entry.normal + entry.capitalLocked;
+      const troops = getDeploymentArmyTroopTotal(state, playerId, officeKey);
       return {
         officeKey,
         officeName: getDeploymentArmyDisplayName(state, playerId, officeKey),
         troops,
-        capitalOnly: entry.normal <= 0 && entry.capitalLocked > 0,
+        capitalOnly: false,
       };
     })
     .filter((chunk) => chunk.troops > 0)

@@ -8,7 +8,7 @@ import { createGameState } from '../engine/state.js';
 import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../game/runtime.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
-import { getDeploymentArmyTroopEntry, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
+import { getDeploymentArmyTroopTotal, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
 import { BALANCE } from '../data/balance.js';
 import { createAIMeta } from './brain.js';
@@ -150,18 +150,15 @@ function summarizeOrders(state, playerId) {
   let fundedTroops = 0;
 
   for (const officeKey of getOrderOfficeKeys(state, playerId)) {
-    const pool = getDeploymentArmyTroopEntry(state, playerId, officeKey);
-    const total = pool.normal + pool.capitalLocked;
+    const total = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     const order = orders.armies?.[officeKey] || {};
     const funded = Math.max(0, Math.min(total, Number(order.funded) || 0));
-    const fundedLocked = Math.min(pool.capitalLocked, funded);
-    const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
     const destination = order.destination === 'capital' ? 'capital' : 'frontier';
 
     fundedTroops += funded;
     idleTroops += total - funded;
-    capitalTroops += fundedLocked + (destination === 'capital' ? fundedNormal : 0);
-    frontierTroops += destination === 'frontier' ? fundedNormal : 0;
+    capitalTroops += destination === 'capital' ? funded : 0;
+    frontierTroops += destination === 'frontier' ? funded : 0;
   }
 
   const mercenaries = state.mercenaryOrders?.[playerId] || orders.mercenaries || {};

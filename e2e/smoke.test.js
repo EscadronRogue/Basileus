@@ -10,7 +10,6 @@ import { chromium } from 'playwright';
 import { startMultiplayerServer } from '../multiplayer/server.js';
 
 const PHASE_BUTTONS = [
-  '[data-defender-reward-choice][data-choice="empire"]',
   '[data-action="confirm-court-plan"]',
   '[data-action="confirm-estates"]',
   '[data-action="continue"]',
@@ -270,7 +269,6 @@ test('the tutorial guides a full round, then leaves no save behind', async (t) =
       }
     },
     'deploy-lock': () => page.click('[data-action="lock-orders"]'),
-    'defender-reward': () => page.click('[data-defender-reward-choice][data-choice="empire"]'),
     'resolution-continue': () => page.click('[data-action="continue"]'),
   };
   const seen = [];

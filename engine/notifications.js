@@ -311,19 +311,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
       continue;
     }
 
-    if (event.type === 'defender_reward') {
-      const defenderId = normalizePlayerId(details.defenderId ?? event.actorId);
-      if (defenderId === normalizedViewerId) {
-        pushHistoryNotification(notifications, event, viewerId, {
-          kind: 'defender_reward_resolved',
-          title: 'Your defender reward resolved',
-          tone: 'positive',
-          action: 'open_resolution',
-        });
-      }
-      continue;
-    }
-
     if (event.type === 'new_basileus') {
       const newBasileusId = normalizePlayerId(details.newBasileusId);
       const oldBasileusId = normalizePlayerId(details.oldBasileusId);
@@ -383,24 +370,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
   }
 }
 
-function buildPendingRewardNotifications(state, viewerId, notifications) {
-  for (const reward of state.pendingDefenderRewards || []) {
-    if (reward.resolved || Number(reward.defenderId) !== Number(viewerId)) continue;
-    pushNotification(notifications, {
-      id: `defender-reward:${reward.id}`,
-      kind: 'defender_reward',
-      title: 'You earned a defender reward',
-      body: `${reward.themeName || reward.themeId} awaits your choice.`,
-      urgent: true,
-      toast: true,
-      tone: 'positive',
-      action: 'open_resolution',
-      round: state.round,
-      phase: state.phase,
-    });
-  }
-}
-
 export function buildPrivateNotifications(state, viewerId, dealView = null) {
   const notifications = [];
   if (!state || viewerId == null) {
@@ -416,7 +385,6 @@ export function buildPrivateNotifications(state, viewerId, dealView = null) {
   }
   buildRevocationNotifications(state, viewerId, notifications);
   buildHistoryEventNotifications(state, viewerId, notifications);
-  buildPendingRewardNotifications(state, viewerId, notifications);
 
   notifications.sort((left, right) => (
     (right.urgent ? 1 : 0) - (left.urgent ? 1 : 0)

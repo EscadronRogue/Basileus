@@ -66,7 +66,7 @@ export function updateMapState(state, mapFilter = mapRuntime.activeMapFilter) {
   }
 
   updateThreatOverlay(state);
-  updateBadges(state);
+  updateBadges();
   applyLabelScale();
   applyProvinceInteractionState();
 }
@@ -140,8 +140,8 @@ export function resolveProvinceOwnership(provinceId, theme) {
   const withChurchMarker = (classes) => (
     (Number(theme.C) || 0) > 0 ? [...classes, 'has-church'] : classes
   );
-  if (theme.occupied) {
-    return { classes: withChurchMarker(['occupied']) };
+  if (theme.lost) {
+    return { classes: withChurchMarker(['lost']) };
   }
   if (theme.owner === 'church') {
     return { classes: withChurchMarker(['imperial', 'church']) };
@@ -160,33 +160,11 @@ function updateThreatOverlay(state) {
   document.querySelectorAll('.province-threat-overlay').forEach((path) => {
     const provinceId = path.getAttribute('data-id');
     const theme = provinceId ? state.themes[provinceId] : null;
-    const active = provinceId && threatenedIds.has(provinceId) && theme && !theme.occupied;
+    const active = provinceId && threatenedIds.has(provinceId) && theme && !theme.lost;
     path.classList.toggle('active', Boolean(active));
   });
 }
 
-function updateBadges(state) {
-  const layer = document.getElementById('layer-badges');
-  if (!layer) return;
-
-  layer.replaceChildren();
-
-  for (const [provinceId, theme] of Object.entries(state.themes)) {
-    const centroid = mapRuntime.provinceCentroids[provinceId];
-    if (!centroid) continue;
-
-    if (theme.occupied && theme.suspendedOwner !== null) {
-      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      const x = centroid.cx;
-      const y = centroid.cy - 3.2;
-      badge.setAttribute('d', `M ${x.toFixed(2)} ${y.toFixed(2)} L ${(x + 1.0).toFixed(2)} ${(y + 1.5).toFixed(2)} L ${(x - 1.0).toFixed(2)} ${(y + 1.5).toFixed(2)} Z`);
-      badge.setAttribute('class', 'officer-badge suspended-owner-chevron');
-      const player = state.players.find((candidate) => candidate.id === theme.suspendedOwner);
-      if (player) badge.style.fill = player.color;
-      badge.style.stroke = '#000';
-      badge.style.strokeWidth = '0.15';
-      layer.appendChild(badge);
-    }
-
-  }
+function updateBadges() {
+  document.getElementById('layer-badges')?.replaceChildren();
 }

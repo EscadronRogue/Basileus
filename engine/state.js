@@ -105,8 +105,8 @@ const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAS
 export function getEmpireProvinceStrength(state) {
   const themes = Object.values(state?.themes || {});
   const count = themes.length
-    ? themes.filter((theme) => theme?.id !== 'CPL' && !theme?.occupied).length
-    : PROVINCES.filter((province) => province.id !== 'CPL' && !province.startOccupied).length;
+    ? themes.filter((theme) => theme?.id !== 'CPL' && !theme?.lost).length
+    : PROVINCES.filter((province) => province.id !== 'CPL' && !province.startLost).length;
   return Math.max(1, count);
 }
 
@@ -189,7 +189,7 @@ export function hasImperialTargetOnInvasionRoute(state, invasion) {
   return route.some((themeId) => {
     if (themeId === 'CPL') return false;
     const theme = state?.themes?.[themeId];
-    return Boolean(theme && !theme.occupied);
+    return Boolean(theme && !theme.lost);
   });
 }
 
@@ -220,9 +220,8 @@ function createThemeState(province) {
     cx: province.cx,
     cy: province.cy,
     owner: null,
-    suspendedOwner: null,
     privateEstatePurchasedRound: null,
-    occupied: Boolean(province.startOccupied),
+    lost: Boolean(province.startLost),
     strategos: null,
     bishop: null,
   };
@@ -313,7 +312,6 @@ export function createGameState({
 
     lastCoupResult: null,
     lastWarResult: null,
-    pendingDefenderRewards: [],
 
     gameOver: null,
     log: [],
@@ -402,12 +400,12 @@ export function getPlayerThemes(state, playerId) {
   return Object.values(state.themes).filter((t) => t.owner === playerId);
 }
 
-export function getOccupiedThemes(state) {
-  return Object.values(state.themes).filter((t) => t.occupied);
+export function getLostThemes(state) {
+  return Object.values(state.themes).filter((t) => t.lost);
 }
 
 export function getFreeThemes(state) {
-  return Object.values(state.themes).filter((t) => !t.occupied && t.owner === null && t.id !== 'CPL');
+  return Object.values(state.themes).filter((t) => !t.lost && t.owner === null && t.id !== 'CPL');
 }
 
 export function findTitleHolder(state, titleKey) {
@@ -415,13 +413,13 @@ export function findTitleHolder(state, titleKey) {
 }
 
 export function getStrategosThemes(state, playerId) {
-  return Object.values(state.themes).filter((t) => t.strategos === playerId && !t.occupied);
+  return Object.values(state.themes).filter((t) => t.strategos === playerId && !t.lost);
 }
 
 export function getBishopThemes(state, playerId, options = {}) {
-  const includeOccupied = Boolean(options.includeOccupied);
+  const includeLost = Boolean(options.includeLost);
   return Object.values(state.themes).filter((t) => (
-    t.bishop === playerId && (includeOccupied || !t.occupied)
+    t.bishop === playerId && (includeLost || !t.lost)
   ));
 }
 

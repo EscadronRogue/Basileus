@@ -212,10 +212,10 @@ export const GLOSSARY_TERMS = [
     definition: 'Orders are revealed. The coup is decided first, then frontier troops fight the invasion.',
   },
   {
-    id: 'occupied',
+    id: 'lost',
     term: 'Occupied',
     category: 'War',
-    aliases: ['occupied'],
+    aliases: ['lost'],
     definition: 'A province taken by invaders. Its owner and Strategos are suspended and its Bishop keeps only the original church value until the empire reconquers it.',
   },
   {

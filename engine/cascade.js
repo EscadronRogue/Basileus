@@ -1,6 +1,18 @@
+// engine/cascade.js - Income: who receives the gold and troops of the empire.
+//
+//   Estate owner        profit (P) of each estate in an imperial province
+//   Strategos           the troops (T) of its province, if imperial
+//   Domestic / Admiral  the troops (T) of every imperial province of its region
+//   Basileus            1 troop per BASILEUS_PROVINCES_PER_TROOP imperial provinces
+//   Patriarch           the church value (C) of every imperial bishopric
+//   Bishop              the church value (C) of its bishopric, imperial or lost
+//
+// Nothing is shared out: a Strategos's troops come on top of the Domestic's,
+// and a Bishop's gold on top of the Patriarch's.
+import { BALANCE } from '../data/balance.js';
 import { REGIONS } from '../data/provinces.js';
 import { getThemeChurchValue, getThemeOwnerIncome, getThemeTroopCount } from './rules.js';
-import { findTitleHolder, getOfficeHolder } from './state.js';
+import { findTitleHolder } from './state.js';
 
 const ECONOMIC_REGIONS = [REGIONS.EAST, REGIONS.WEST, REGIONS.SEA];
 
@@ -10,10 +22,10 @@ const FLOW_RESOURCE_LABELS = {
   church: 'Church',
 };
 
-const FLOW_REGION_ROUTES = {
-  [REGIONS.EAST]: 'east_pool',
-  [REGIONS.WEST]: 'west_pool',
-  [REGIONS.SEA]: 'sea_pool',
+const REGION_ROUTE_KEYS = {
+  [REGIONS.EAST]: 'east',
+  [REGIONS.WEST]: 'west',
+  [REGIONS.SEA]: 'sea',
 };
 
 export function getRegionalCommandKey(region) {
@@ -23,8 +35,30 @@ export function getRegionalCommandKey(region) {
   return null;
 }
 
-function emptyTroopEntry() {
-  return { normal: 0, capitalLocked: 0 };
+// A province of the empire (not Constantinople, not lost to invaders).
+export function isImperialProvince(theme) {
+  return Boolean(theme) && theme.id !== 'CPL' && !theme.lost;
+}
+
+export function countImperialProvinces(state) {
+  return Object.values(state?.themes || {}).filter(isImperialProvince).length;
+}
+
+export function getBasileusTroopCount(state) {
+  const perTroop = Math.max(1, Number(BALANCE.BASILEUS_PROVINCES_PER_TROOP) || 1);
+  return Math.floor(countImperialProvinces(state) / perTroop);
+}
+
+export function isBishopric(theme) {
+  return Boolean(theme) && theme.id !== 'CPL' && getThemeChurchValue(theme) > 0;
+}
+
+// Troop counts are plain numbers. Older states stored { normal, capitalLocked }.
+export function readTroopCount(entry) {
+  if (entry && typeof entry === 'object') {
+    return Math.max(0, (Number(entry.normal) || 0) + (Number(entry.capitalLocked) || 0));
+  }
+  return Math.max(0, Number(entry) || 0);
 }
 
 function addIncome(income, playerId, amount) {
@@ -32,21 +66,18 @@ function addIncome(income, playerId, amount) {
   income[playerId] = (income[playerId] || 0) + amount;
 }
 
-function addTroops(troops, officeKey, amount, options = {}) {
+function addTroops(troops, officeKey, amount) {
   const count = Math.max(0, Number(amount) || 0);
   if (!officeKey || count <= 0) return;
-  const entry = troops[officeKey] || emptyTroopEntry();
-  if (options.capitalLocked) entry.capitalLocked += count;
-  else entry.normal += count;
-  troops[officeKey] = entry;
+  troops[officeKey] = (troops[officeKey] || 0) + count;
 }
 
-function createFlowRoute(key, resource, label, options = {}) {
+function createFlowRoute(key, resource, label, rule = '') {
   return {
     key,
     resource,
     label,
-    rule: options.rule || '',
+    rule,
     total: 0,
     recipients: {},
     offices: {},
@@ -56,38 +87,21 @@ function createFlowRoute(key, resource, label, options = {}) {
 
 function createIncomeFlowDraft() {
   return {
-    totals: {
-      profit: 0,
-      troop: 0,
-      church: 0,
-    },
+    totals: { profit: 0, troop: 0, church: 0 },
     routes: {
       profit: {
-        estates: createFlowRoute('estates', 'profit', 'Private Estates', {
-          rule: 'Province profit to owners',
-        }),
+        estates: createFlowRoute('estates', 'profit', 'Estates', 'Each estate pays its owner'),
       },
       troop: {
-        strategoi: createFlowRoute('strategoi', 'troop', 'Strategoi', {
-          rule: 'Assigned themes go direct',
-        }),
-        east_pool: createFlowRoute('east_pool', 'troop', 'East Pool', {
-          rule: '2 Domestic / 1 Basileus',
-        }),
-        west_pool: createFlowRoute('west_pool', 'troop', 'West Pool', {
-          rule: '2 Domestic / 1 Basileus',
-        }),
-        sea_pool: createFlowRoute('sea_pool', 'troop', 'Sea Pool', {
-          rule: '2 Admiral / 1 Basileus',
-        }),
+        strategoi: createFlowRoute('strategoi', 'troop', 'Strategoi', 'Each Strategos raises its province'),
+        east: createFlowRoute('east', 'troop', 'East', 'Every imperial province of the East'),
+        west: createFlowRoute('west', 'troop', 'West', 'Every imperial province of the West'),
+        sea: createFlowRoute('sea', 'troop', 'Sea', 'Every imperial province of the Sea'),
+        basileus: createFlowRoute('basileus', 'troop', 'Empire', `1 per ${BALANCE.BASILEUS_PROVINCES_PER_TROOP} imperial provinces`),
       },
       church: {
-        bishops: createFlowRoute('bishops', 'church', 'Bishops', {
-          rule: 'Assigned sees go direct',
-        }),
-        patriarch: createFlowRoute('patriarch', 'church', 'Patriarch Pool', {
-          rule: 'Unassigned sees to Patriarch',
-        }),
+        bishops: createFlowRoute('bishops', 'church', 'Bishops', 'Each Bishop is paid by its bishopric'),
+        patriarch: createFlowRoute('patriarch', 'church', 'Patriarch', 'Every imperial bishopric'),
       },
     },
     playerTotals: {},
@@ -98,12 +112,7 @@ function ensurePlayerFlowTotal(flow, playerId) {
   if (playerId == null) return null;
   const key = String(playerId);
   if (!flow.playerTotals[key]) {
-    flow.playerTotals[key] = {
-      playerId: Number(playerId),
-      profit: 0,
-      troop: 0,
-      church: 0,
-    };
+    flow.playerTotals[key] = { playerId: Number(playerId), profit: 0, troop: 0, church: 0 };
   }
   return flow.playerTotals[key];
 }
@@ -113,12 +122,7 @@ function addFlowSource(flow, route, amount, source = {}) {
   if (!route || count <= 0) return;
   route.total += count;
   flow.totals[route.resource] = (flow.totals[route.resource] || 0) + count;
-  if (source.themeId) {
-    route.sources.push({
-      themeId: source.themeId,
-      value: count,
-    });
-  }
+  if (source.themeId) route.sources.push({ themeId: source.themeId, value: count });
 }
 
 function addFlowRecipient(flow, route, playerId, amount) {
@@ -130,29 +134,18 @@ function addFlowRecipient(flow, route, playerId, amount) {
   if (playerTotal) playerTotal[route.resource] += count;
 }
 
-function addFlowOffice(route, officeKey, playerId, amount, options = {}) {
+function addFlowOffice(route, officeKey, playerId, amount) {
   const count = Math.max(0, Number(amount) || 0);
   if (!route || !officeKey || count <= 0) return;
-  const entry = route.offices[officeKey] || {
-    officeKey,
-    playerId,
-    value: 0,
-    normal: 0,
-    capitalLocked: 0,
-  };
+  const entry = route.offices[officeKey] || { officeKey, playerId, value: 0 };
   entry.playerId = playerId;
   entry.value += count;
-  entry.normal += Math.max(0, Number(options.normal) || 0);
-  entry.capitalLocked += Math.max(0, Number(options.capitalLocked) || 0);
   route.offices[officeKey] = entry;
 }
 
 function normalizeRecipients(recipients) {
   return Object.entries(recipients || {})
-    .map(([playerId, value]) => ({
-      playerId: Number(playerId),
-      value: Math.max(0, Number(value) || 0),
-    }))
+    .map(([playerId, value]) => ({ playerId: Number(playerId), value: Math.max(0, Number(value) || 0) }))
     .filter((entry) => entry.value > 0)
     .sort((left, right) => (right.value - left.value) || (left.playerId - right.playerId));
 }
@@ -163,8 +156,6 @@ function normalizeOffices(offices) {
       officeKey: entry.officeKey,
       playerId: entry.playerId == null ? null : Number(entry.playerId),
       value: Math.max(0, Number(entry.value) || 0),
-      normal: Math.max(0, Number(entry.normal) || 0),
-      capitalLocked: Math.max(0, Number(entry.capitalLocked) || 0),
     }))
     .filter((entry) => entry.value > 0)
     .sort((left, right) => (right.value - left.value) || String(left.officeKey).localeCompare(String(right.officeKey)));
@@ -172,10 +163,7 @@ function normalizeOffices(offices) {
 
 function normalizeSources(sources) {
   return (sources || [])
-    .map((entry) => ({
-      themeId: entry.themeId,
-      value: Math.max(0, Number(entry.value) || 0),
-    }))
+    .map((entry) => ({ themeId: entry.themeId, value: Math.max(0, Number(entry.value) || 0) }))
     .filter((entry) => entry.themeId && entry.value > 0);
 }
 
@@ -199,25 +187,11 @@ function normalizeFlowRoute(route) {
 }
 
 function normalizeIncomeFlow(flow, state) {
-  const sectionRoutes = {
-    profit: [flow.routes.profit.estates],
-    troop: [
-      flow.routes.troop.strategoi,
-      flow.routes.troop.east_pool,
-      flow.routes.troop.west_pool,
-      flow.routes.troop.sea_pool,
-    ],
-    church: [
-      flow.routes.church.bishops,
-      flow.routes.church.patriarch,
-    ],
-  };
-
-  const sections = Object.entries(sectionRoutes).map(([resource, routes]) => ({
+  const sections = Object.entries(flow.routes).map(([resource, routes]) => ({
     key: resource,
     label: FLOW_RESOURCE_LABELS[resource] || resource,
     total: Math.max(0, Number(flow.totals[resource]) || 0),
-    routes: routes.map(normalizeFlowRoute),
+    routes: Object.values(routes).map(normalizeFlowRoute),
   }));
 
   const playerTotals = (state.players || []).map((player) => ({
@@ -227,54 +201,10 @@ function normalizeIncomeFlow(flow, state) {
     church: Math.max(0, Number(flow.playerTotals[String(player.id)]?.church) || 0),
   }));
 
-  return {
-    totals: { ...flow.totals },
-    sections,
-    playerTotals,
-  };
+  return { totals: { ...flow.totals }, sections, playerTotals };
 }
 
-export function readTroopEntry(entry) {
-  if (typeof entry === 'number') {
-    return { normal: Math.max(0, Number(entry) || 0), capitalLocked: 0 };
-  }
-  return {
-    normal: Math.max(0, Number(entry?.normal) || 0),
-    capitalLocked: Math.max(0, Number(entry?.capitalLocked) || 0),
-  };
-}
-
-export function getTroopEntryTotal(entry) {
-  const value = readTroopEntry(entry);
-  return value.normal + value.capitalLocked;
-}
-
-export function computeRegionalTroopCascade(state, region, initialPool = 0) {
-  let pool = Math.max(0, Number(initialPool) || 0);
-  const domesticKey = getRegionalCommandKey(region);
-  const domesticId = domesticKey ? findTitleHolder(state, domesticKey) : null;
-  const troops = {};
-
-  while (pool > 0) {
-    for (let slot = 0; slot < 2 && pool > 0; slot += 1) {
-      addTroops(troops, domesticId != null ? domesticKey : 'BASILEUS', 1);
-      pool -= 1;
-    }
-    if (pool <= 0) break;
-    addTroops(troops, 'BASILEUS', 1);
-    pool -= 1;
-  }
-
-  return troops;
-}
-
-export function computeChurchCascade(state, churchPool = 0) {
-  const income = {};
-  const patriarchId = findTitleHolder(state, 'PATRIARCH');
-  if (patriarchId != null) addIncome(income, patriarchId, Math.max(0, Number(churchPool) || 0));
-  return income;
-}
-
+// Map filters: who holds each province's minor offices and estates.
 function createProvinceAttribution(theme, playerId, value, options = {}) {
   return {
     themeId: theme.id,
@@ -284,140 +214,61 @@ function createProvinceAttribution(theme, playerId, value, options = {}) {
     officeKey: options.officeKey || null,
     mode: options.mode || 'direct',
     direct: options.direct !== false,
+    disabled: Boolean(options.disabled),
   };
 }
 
 function pushProvinceAttribution(target, attribution) {
-  if (!attribution?.themeId || attribution.value <= 0) return;
+  if (!attribution?.themeId) return;
   target[attribution.themeId] = attribution;
-}
-
-function allocateRegionalTroopSources(state, region, sources) {
-  const domesticKey = getRegionalCommandKey(region);
-  const domesticId = domesticKey ? findTitleHolder(state, domesticKey) : null;
-  const route = FLOW_REGION_ROUTES[region] || null;
-  const result = {};
-  let cascadeSlot = 0;
-
-  for (const source of sources) {
-    const value = Math.max(0, Number(source.value) || 0);
-    if (value <= 0) continue;
-
-    const allocations = new Map();
-    for (let index = 0; index < value; index += 1) {
-      const officeKey = cascadeSlot % 3 === 2
-        ? 'BASILEUS'
-        : (domesticId != null ? domesticKey : 'BASILEUS');
-      cascadeSlot += 1;
-      const holderId = getOfficeHolder(state, officeKey);
-      const key = `${officeKey}:${holderId ?? 'none'}`;
-      const current = allocations.get(key) || { officeKey, playerId: holderId, value: 0 };
-      current.value += 1;
-      allocations.set(key, current);
-    }
-
-    const primary = [...allocations.values()]
-      .sort((left, right) => (right.value - left.value) || String(left.officeKey).localeCompare(String(right.officeKey)))[0];
-    if (!primary) continue;
-    result[source.theme.id] = createProvinceAttribution(source.theme, primary.playerId, value, {
-      route,
-      officeKey: primary.officeKey,
-      mode: primary.officeKey === 'BASILEUS' ? 'basileus' : 'major-office',
-      direct: false,
-    });
-  }
-
-  return result;
 }
 
 export function buildProvinceEstateAttributions(state) {
   const attributions = {};
   for (const theme of Object.values(state?.themes || {})) {
-    if (!theme || theme.id === 'CPL' || theme.occupied || !Number.isInteger(theme.owner)) continue;
-    const value = getThemeOwnerIncome(theme);
-    pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.owner, value, {
+    if (!theme || theme.id === 'CPL' || !Number.isInteger(theme.owner)) continue;
+    pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.owner, getThemeOwnerIncome(theme), {
       route: 'estates',
       mode: 'estate',
-      direct: true,
+      disabled: Boolean(theme.lost),
     }));
   }
   return attributions;
 }
 
+// Only appointed Strategoi: a province without one is shown as vacant.
 export function buildProvinceTroopAttributions(state) {
   const attributions = {};
-  const regionalSources = Object.fromEntries(ECONOMIC_REGIONS.map((region) => [region, []]));
-
   for (const theme of Object.values(state?.themes || {})) {
-    if (!theme || theme.id === 'CPL' || theme.occupied) continue;
-    const value = getThemeTroopCount(theme);
-    if (value <= 0) continue;
-
-    if (theme.strategos != null) {
-      pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.strategos, value, {
-        route: 'strategoi',
-        officeKey: `STRAT_${theme.id}`,
-        mode: 'strategos',
-        direct: true,
-      }));
-      continue;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(regionalSources, theme.region)) {
-      regionalSources[theme.region].push({ theme, value });
-    }
+    if (!theme || theme.id === 'CPL' || theme.strategos == null) continue;
+    pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.strategos, getThemeTroopCount(theme), {
+      route: 'strategoi',
+      officeKey: `STRAT_${theme.id}`,
+      mode: 'strategos',
+      disabled: Boolean(theme.lost),
+    }));
   }
-
-  for (const region of ECONOMIC_REGIONS) {
-    Object.assign(attributions, allocateRegionalTroopSources(state, region, regionalSources[region]));
-  }
-
   return attributions;
 }
 
+// Only appointed Bishops: a bishopric without one is shown as vacant.
 export function buildProvinceChurchAttributions(state) {
   const attributions = {};
-  const patriarchId = findTitleHolder(state, 'PATRIARCH');
-
   for (const theme of Object.values(state?.themes || {})) {
-    if (!theme || theme.id === 'CPL') continue;
-    const value = theme.occupied
-      ? Math.max(0, Number(theme.origin?.C) || 0)
-      : getThemeChurchValue(theme);
-    if (value <= 0) continue;
-
-    if (theme.bishop != null) {
-      pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.bishop, value, {
-        route: 'bishops',
-        officeKey: `BISHOP_${theme.id}`,
-        mode: 'bishop',
-        direct: true,
-      }));
-      continue;
-    }
-
-    if (!theme.occupied) {
-      pushProvinceAttribution(attributions, createProvinceAttribution(theme, patriarchId, value, {
-        route: 'patriarch',
-        officeKey: 'PATRIARCH',
-        mode: 'patriarch',
-        direct: false,
-      }));
-    }
+    if (!isBishopric(theme) || theme.bishop == null) continue;
+    pushProvinceAttribution(attributions, createProvinceAttribution(theme, theme.bishop, getThemeChurchValue(theme), {
+      route: 'bishops',
+      officeKey: `BISHOP_${theme.id}`,
+      mode: 'bishop',
+    }));
   }
-
   return attributions;
 }
 
 export function runIncome(state) {
   const flow = createIncomeFlowDraft();
-  const regionalTroopPools = Object.fromEntries(ECONOMIC_REGIONS.map((region) => [region, 0]));
-  let churchPool = 0;
   const income = {};
-  const incomeBreakdown = {
-    estate: {},
-    church: {},
-  };
+  const incomeBreakdown = { estate: {}, church: {} };
   const troops = {};
 
   const addCategorizedIncome = (category, playerId, amount) => {
@@ -427,37 +278,17 @@ export function runIncome(state) {
     incomeBreakdown[category][playerId] = (incomeBreakdown[category][playerId] || 0) + count;
   };
 
-  const routeChurchValue = (theme, amount) => {
-    const value = Math.max(0, Number(amount) || 0);
-    if (value <= 0) return;
-    if (theme.bishop != null) {
-      const route = flow.routes.church.bishops;
-      addFlowSource(flow, route, value, { themeId: theme.id });
-      addFlowRecipient(flow, route, theme.bishop, value);
-      addFlowOffice(route, `BISHOP_${theme.id}`, theme.bishop, value);
-      addCategorizedIncome('church', theme.bishop, value);
-    } else {
-      addFlowSource(flow, flow.routes.church.patriarch, value, { themeId: theme.id });
-      churchPool += value;
-    }
-  };
+  const regionHolders = Object.fromEntries(ECONOMIC_REGIONS.map((region) => {
+    const officeKey = getRegionalCommandKey(region);
+    return [region, { officeKey, holderId: findTitleHolder(state, officeKey) }];
+  }));
+  const patriarchId = findTitleHolder(state, 'PATRIARCH');
 
   for (const theme of Object.values(state.themes || {})) {
     if (!theme || theme.id === 'CPL') continue;
+    const imperial = isImperialProvince(theme);
 
-    if (theme.occupied) {
-      if (theme.bishop != null) {
-        const occupiedChurchValue = Math.max(0, Number(theme.origin?.C) || 0);
-        const route = flow.routes.church.bishops;
-        addFlowSource(flow, route, occupiedChurchValue, { themeId: theme.id });
-        addFlowRecipient(flow, route, theme.bishop, occupiedChurchValue);
-        addFlowOffice(route, `BISHOP_${theme.id}`, theme.bishop, occupiedChurchValue);
-        addCategorizedIncome('church', theme.bishop, occupiedChurchValue);
-      }
-      continue;
-    }
-
-    if (Number.isInteger(theme.owner)) {
+    if (imperial && Number.isInteger(theme.owner)) {
       const profit = getThemeOwnerIncome(theme);
       const route = flow.routes.profit.estates;
       addFlowSource(flow, route, profit, { themeId: theme.id });
@@ -465,44 +296,54 @@ export function runIncome(state) {
       addCategorizedIncome('estate', theme.owner, profit);
     }
 
-    if (theme.strategos != null) {
-      const troopCount = getThemeTroopCount(theme);
+    const troopCount = imperial ? getThemeTroopCount(theme) : 0;
+    if (troopCount > 0 && theme.strategos != null) {
       const officeKey = `STRAT_${theme.id}`;
       const route = flow.routes.troop.strategoi;
       addFlowSource(flow, route, troopCount, { themeId: theme.id });
       addFlowRecipient(flow, route, theme.strategos, troopCount);
-      addFlowOffice(route, officeKey, theme.strategos, troopCount, { normal: troopCount });
+      addFlowOffice(route, officeKey, theme.strategos, troopCount);
       addTroops(troops, officeKey, troopCount);
-    } else if (Object.prototype.hasOwnProperty.call(regionalTroopPools, theme.region)) {
-      const troopCount = getThemeTroopCount(theme);
-      const routeKey = FLOW_REGION_ROUTES[theme.region];
-      if (routeKey) addFlowSource(flow, flow.routes.troop[routeKey], troopCount, { themeId: theme.id });
-      regionalTroopPools[theme.region] += troopCount;
+    }
+    const region = regionHolders[theme.region];
+    if (troopCount > 0 && region?.officeKey) {
+      const route = flow.routes.troop[REGION_ROUTE_KEYS[theme.region]];
+      addFlowSource(flow, route, troopCount, { themeId: theme.id });
+      if (region.holderId != null) {
+        addFlowRecipient(flow, route, region.holderId, troopCount);
+        addFlowOffice(route, region.officeKey, region.holderId, troopCount);
+        addTroops(troops, region.officeKey, troopCount);
+      }
     }
 
-    routeChurchValue(theme, getThemeChurchValue(theme));
-  }
-
-  for (const region of ECONOMIC_REGIONS) {
-    const result = computeRegionalTroopCascade(state, region, regionalTroopPools[region]);
-    const route = flow.routes.troop[FLOW_REGION_ROUTES[region]];
-    for (const [officeKey, entry] of Object.entries(result)) {
-      const value = readTroopEntry(entry);
-      const total = value.normal + value.capitalLocked;
-      const holderId = getOfficeHolder(state, officeKey);
-      addFlowRecipient(flow, route, holderId, total);
-      addFlowOffice(route, officeKey, holderId, total, value);
-      addTroops(troops, officeKey, value.normal);
-      addTroops(troops, officeKey, value.capitalLocked, { capitalLocked: true });
+    const churchValue = isBishopric(theme) ? getThemeChurchValue(theme) : 0;
+    if (churchValue > 0 && theme.bishop != null) {
+      const route = flow.routes.church.bishops;
+      addFlowSource(flow, route, churchValue, { themeId: theme.id });
+      addFlowRecipient(flow, route, theme.bishop, churchValue);
+      addFlowOffice(route, `BISHOP_${theme.id}`, theme.bishop, churchValue);
+      addCategorizedIncome('church', theme.bishop, churchValue);
+    }
+    if (churchValue > 0 && imperial) {
+      const route = flow.routes.church.patriarch;
+      addFlowSource(flow, route, churchValue, { themeId: theme.id });
+      if (patriarchId != null) {
+        addFlowRecipient(flow, route, patriarchId, churchValue);
+        addFlowOffice(route, 'PATRIARCH', patriarchId, churchValue);
+        addCategorizedIncome('church', patriarchId, churchValue);
+      }
     }
   }
 
-  for (const [playerId, amount] of Object.entries(computeChurchCascade(state, churchPool))) {
-    const holderId = Number(playerId);
-    const route = flow.routes.church.patriarch;
-    addFlowRecipient(flow, route, holderId, amount);
-    addFlowOffice(route, 'PATRIARCH', holderId, amount);
-    addCategorizedIncome('church', holderId, amount);
+  const basileusTroops = getBasileusTroopCount(state);
+  if (basileusTroops > 0) {
+    const route = flow.routes.troop.basileus;
+    addFlowSource(flow, route, basileusTroops);
+    if (state.basileusId != null) {
+      addFlowRecipient(flow, route, state.basileusId, basileusTroops);
+      addFlowOffice(route, 'BASILEUS', state.basileusId, basileusTroops);
+      addTroops(troops, 'BASILEUS', basileusTroops);
+    }
   }
 
   return { income, incomeBreakdown, troops, flow: normalizeIncomeFlow(flow, state) };

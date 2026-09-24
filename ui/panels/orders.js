@@ -14,7 +14,6 @@ import {
 import {
   getDefaultDeploymentFunding,
   getDeploymentArmySourceKeys,
-  getDeploymentArmyTroopEntry,
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
   isStrategosDeploymentArmyKey,
@@ -121,16 +120,13 @@ function getDraftArmyBreakdown(state, playerId, draft, armyKeys) {
   let unfundedTroops = 0;
 
   for (const officeKey of armyKeys) {
-    const pool = getDeploymentArmyTroopEntry(state, playerId, officeKey);
-    const totalTroops = pool.normal + pool.capitalLocked;
+    const totalTroops = getArmyMaxTroops(state, playerId, officeKey);
     const order = draft.armies?.[officeKey] || {};
     const funded = normalizedFunded(order.funded, totalTroops) ?? getDefaultDeploymentFunding(totalTroops);
-    const fundedLocked = Math.min(pool.capitalLocked, funded);
-    const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
     const destination = isDeploymentDestination(order.destination) ? order.destination : null;
 
-    capitalTroops += fundedLocked + (destination === 'capital' ? fundedNormal : 0);
-    frontierTroops += destination === 'frontier' ? fundedNormal : 0;
+    capitalTroops += destination === 'capital' ? funded : 0;
+    frontierTroops += destination === 'frontier' ? funded : 0;
     unfundedTroops += Math.max(0, totalTroops - funded);
   }
 
@@ -315,7 +311,6 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
         ${deploymentPreview}
         <div class="army-card-stack">
           ${armyKeys.map((officeKey) => {
-            const entry = getDeploymentArmyTroopEntry(state, playerId, officeKey);
             const max = getArmyMaxTroops(state, playerId, officeKey);
             const current = draft.armies[officeKey];
             const currentFunded = normalizedFunded(current.funded, max) ?? getDefaultDeploymentFunding(max);
@@ -340,7 +335,6 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
                   <span class="army-card-count">${formatTroopsHtml(max, { label: 'Troops' })}</span>
                 </header>
                 ${sourceCount > 1 ? `<p class="army-card-sub">${sourceCount} Strategos commands combined.</p>` : ''}
-                ${entry.capitalLocked ? `<p class="army-card-sub">${formatTroopsHtml(entry.capitalLocked)} capital locked</p>` : ''}
                 ${lockedLabel ? `<p class="army-card-sub order-locked-sub">Deal lock: must deploy to ${lockedLabel}.</p>` : ''}
                 <div class="army-card-readiness">
                   <span class="readiness-pill ready">Funding: ${escapeHtml(fundingText)}</span>

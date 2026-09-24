@@ -4,7 +4,7 @@ import {
   SCORE_SHARE_STEP_PERCENT,
 } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
-import { readTroopEntry, runIncome } from '../engine/cascade.js';
+import { readTroopCount, runIncome } from '../engine/cascade.js';
 import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey } from '../engine/state.js';
 import {
   renderCourtPanel,
@@ -396,8 +396,7 @@ export function getPlayerTabEconomy(player, administration, state = null) {
   const income = administration?.income?.[player.id] || 0;
   const troops = Object.keys(state?.currentTroops || {}).reduce((total, officeKey) => {
     if (getOfficeHolder(state, officeKey) !== player.id) return total;
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    return total + entry.normal + entry.capitalLocked;
+    return total + readTroopCount(state.currentTroops?.[officeKey]);
   }, 0);
   return {
     reserve: Number(player.gold) || 0,
@@ -763,11 +762,6 @@ export function renderGameActionPanel({
       renderResolutionPanelDetailed(shell, state, {
         allowManualTitleReassignment: Boolean(resolution.allowManualTitleReassignment),
         activePlayerId,
-      });
-      shell.querySelectorAll('[data-defender-reward-choice]').forEach((button) => {
-        button.addEventListener('click', () => {
-          resolution.defenderRewardChoice?.(button.dataset.rewardId, button.dataset.choice);
-        });
       });
       const continueButton = shell.querySelector('[data-action="continue"]');
       if (!continueButton) break;

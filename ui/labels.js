@@ -17,7 +17,7 @@ import { escapeHtml } from './html.js';
 
 const FREE_FILL = '#6a4a8a';
 const CAPITAL_FILL = '#E49B0F';
-const OCCUPIED_FILL = '#625c52';
+const LOST_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
 const DARK_OUTLINE_MIX = '#1f1208';
 const CARTOUCHE_FILL_BY_REGION = {
@@ -123,7 +123,7 @@ export function getProvincePaletteStyleAttr(themeOrRegion) {
 
 export function getProvinceOwnerColor(state, theme) {
   if (!theme) return FREE_FILL;
-  if (theme.occupied) return OCCUPIED_FILL;
+  if (theme.lost) return LOST_FILL;
   if (Number.isInteger(theme.owner)) return getPlayer(state, theme.owner)?.color || '#5a3810';
   if (theme.id === 'CPL') return CAPITAL_FILL;
   return FREE_FILL;
@@ -314,15 +314,17 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
     variant ? `cartouche-${variant}` : '',
     ownership ? 'has-ownership' : '',
     churchValue > 0 ? 'has-church' : '',
-    theme.occupied ? 'occupied' : '',
+    theme.lost ? 'lost' : '',
   ].filter(Boolean).join(' ');
   // Keep plain-text value codes in the tooltip so screen-readers and text-only
   // summaries still convey the values.
   const valuesText = formatProvinceValuesText(theme);
+  const lostText = theme.lost ? ' · Lost to invaders: its estates and Strategos do not work until it is reconquered' : '';
   const tooltip = valuesText
-    ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
-    : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
-  return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}"><span class="province-token-name">${escapeHtml(theme.name)}</span>${values}${ownership}</span>`;
+    ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}${lostText}`
+    : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})${lostText}`;
+  const lostTag = theme.lost ? '<span class="province-token-lost">Lost</span>' : '';
+  return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}"><span class="province-token-name">${escapeHtml(theme.name)}</span>${lostTag}${values}${ownership}</span>`;
 }
 
 function getProvinceOfficeHolderId(theme, kind, explicitHolderId = undefined) {
@@ -363,7 +365,7 @@ export function renderProvinceOfficeBadge(state, kind, themeOrId, options = {}) 
     holder ? '' : 'vacant-office',
     ownership ? 'has-ownership' : '',
     Math.max(0, Number(theme.C) || 0) > 0 ? 'has-church' : '',
-    theme.occupied ? 'occupied' : '',
+    theme.lost ? 'lost' : '',
   ].filter(Boolean).join(' ');
   const valuesText = formatProvinceValuesText(theme);
   const holderText = holder ? `: ${formatPlayerLabel(holder)}` : '';

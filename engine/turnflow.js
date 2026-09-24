@@ -1,5 +1,5 @@
 // engine/turnflow.js - turn controller for the updated ruleset.
-import { readTroopEntry, runIncome } from './cascade.js';
+import { readTroopCount, runIncome } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
@@ -17,13 +17,12 @@ import {
   getPlayerName,
 } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
-import { getDefenderRewardGold, getDismissalGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
+import { getDismissalGold, getMercenaryHireCost } from './rules.js';
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
 import { getPreferredCoupCandidate, normalizeCoupRanking } from './coup.js';
 import {
   getDefaultDeploymentFunding,
   getDeploymentArmyDisplayName,
-  getDeploymentArmyTroopEntry,
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from './deployment.js';
@@ -128,17 +127,14 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
   let frontierTroops = 0;
 
   for (const officeKey of getOrderArmyKeys(state, player.id)) {
-    const pool = getDeploymentArmyTroopEntry(state, player.id, officeKey);
-    const totalTroops = pool.normal + pool.capitalLocked;
+    const totalTroops = getDeploymentArmyTroopTotal(state, player.id, officeKey);
     if (totalTroops <= 0) continue;
     const order = orders.armies?.[officeKey] || {};
     const rawFunded = Number.isInteger(Number(order.funded)) ? Number(order.funded) : getDefaultDeploymentFunding(totalTroops);
     const funded = Math.max(0, Math.min(totalTroops, rawFunded));
-    const fundedLocked = Math.min(pool.capitalLocked, funded);
-    const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
     const destination = normalizeDestination(order.destination);
-    const officeCapital = fundedLocked + (destination === 'capital' ? fundedNormal : 0);
-    const officeFrontier = destination === 'frontier' ? fundedNormal : 0;
+    const officeCapital = destination === 'capital' ? funded : 0;
+    const officeFrontier = destination === 'frontier' ? funded : 0;
 
     capitalTroops += officeCapital;
     frontierTroops += officeFrontier;
@@ -148,8 +144,6 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
       totalTroops,
       fundedTroops: funded,
       unfundedTroops: totalTroops - funded,
-      normalTroops: pool.normal,
-      capitalLockedTroops: pool.capitalLocked,
       destination,
       capitalTroops: officeCapital,
       frontierTroops: officeFrontier,
@@ -267,15 +261,11 @@ export function phaseIncome(state) {
         playerName: getPlayerName(state, Number(playerId)),
         amount,
       })),
-      troops: Object.entries(result.troops).map(([officeKey, entry]) => {
-        const troopEntry = readTroopEntry(entry);
-        return {
-          officeKey,
-          officeName: officeName(state, officeKey),
-          normal: troopEntry.normal,
-          capitalLocked: troopEntry.capitalLocked,
-        };
-      }),
+      troops: Object.entries(result.troops).map(([officeKey, entry]) => ({
+        officeKey,
+        officeName: officeName(state, officeKey),
+        troops: readTroopCount(entry),
+      })),
     },
   });
   return result;
@@ -482,8 +472,6 @@ export function phaseResolution(state) {
       contributions: frontierContributions,
     };
     applyInvasionResult(state, warResult);
-    state.pendingDefenderRewards = [];
-    warResult.defenderRewards = [];
     warResult.reconquestReward = applyAutomaticReconquestRewards(state, warResult, frontierContributions);
     applyBasileusLossPenalty(state, warResult);
     state.lastWarResult = warResult;
@@ -551,8 +539,10 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
   if (rewardProvinceCount <= 0) return null;
   const defenders = topRankedDefenders(contributions);
   if (!defenders.length) return null;
-  const gold = Math.ceil(rewardProvinceCount / defenders.length);
-  const capitalSupport = Math.floor(rewardProvinceCount / defenders.length);
+  const totalGold = rewardProvinceCount * BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE;
+  const totalTriumph = rewardProvinceCount * BALANCE.TRIUMPH_PER_PROVINCE;
+  const gold = Math.ceil(totalGold / defenders.length);
+  const capitalSupport = Math.floor(totalTriumph / defenders.length);
   const recipients = defenders.map((defender) => {
     const player = getPlayer(state, defender.playerId);
     if (player) player.gold += gold;
@@ -581,8 +571,8 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
     defenders: recipients,
     themeIds: recovered.slice(),
     rewardProvinceCount,
-    totalGold: rewardProvinceCount,
-    totalCapitalSupport: rewardProvinceCount,
+    totalGold,
+    totalCapitalSupport: totalTriumph,
     shareCount: defenders.length,
     gold,
     capitalSupport,
@@ -627,11 +617,12 @@ function applyBasileusLossPenalty(state, warResult) {
   const lost = Array.isArray(warResult?.themesLost) ? warResult.themesLost.length : 0;
   if (lost <= 0) return null;
   const penalizedBasileusId = state.basileusId;
+  const unrest = lost * BALANCE.UNREST_PER_LOST_PROVINCE;
   const penalty = addTemporaryCapitalSupport(state, {
     kind: 'lost_provinces',
-    label: 'Lost-province unrest',
+    label: 'Unrest',
     playerId: penalizedBasileusId,
-    amount: -lost,
+    amount: -unrest,
     activeRound: state.round + 1,
     themeIds: warResult.themesLost,
   });
@@ -639,180 +630,16 @@ function applyBasileusLossPenalty(state, warResult) {
     category: 'resolution',
     type: 'basileus_loss_penalty',
     actorId: penalizedBasileusId,
-    summary: `${getPlayerName(state, penalizedBasileusId)} loses ${formatTroops(lost, 'province')} and suffers ${formatTroops(lost)} less capital support next round.`,
+    summary: `${getPlayerName(state, penalizedBasileusId)} loses ${formatTroops(lost, 'province')}: Unrest costs the Basileus ${unrest} support in the next coup.`,
     details: {
       basileusId: penalizedBasileusId,
       playerId: penalizedBasileusId,
       themesLost: warResult.themesLost.slice(),
-      capitalSupport: penalty?.amount || -lost,
+      capitalSupport: penalty?.amount || -unrest,
       activeRound: state.round + 1,
     },
   });
   return penalty;
-}
-
-function restoreReconqueredTheme(state, theme) {
-  if (!theme || theme.id === 'CPL') return false;
-  theme.occupied = false;
-  if (theme.suspendedOwner != null) {
-    theme.owner = theme.suspendedOwner;
-    theme.suspendedOwner = null;
-  } else {
-    theme.owner = null;
-  }
-  theme.strategos = null;
-  return true;
-}
-
-function setReconquestThemeStatus(state, themeId, recovered) {
-  const theme = state.themes[themeId];
-  if (!theme || theme.id === 'CPL') return false;
-  if (recovered) return restoreReconqueredTheme(state, theme);
-  theme.occupied = true;
-  theme.strategos = null;
-  return true;
-}
-
-function syncRewardTheme(reward, state, themeId) {
-  const theme = state.themes[themeId];
-  reward.themeId = themeId;
-  reward.themeName = theme?.name || themeId;
-  reward.goldValue = getDefenderRewardGold(theme);
-}
-
-function getReconquestThemeOrder(rewards) {
-  return rewards
-    .map((reward, fallbackIndex) => ({
-      themeId: reward.originalThemeId || reward.themeId,
-      index: Number.isFinite(Number(reward.reconquestIndex)) ? Number(reward.reconquestIndex) : fallbackIndex,
-    }))
-    .filter((entry) => Boolean(entry.themeId))
-    .sort((a, b) => a.index - b.index)
-    .map((entry) => entry.themeId);
-}
-
-function getRemainingReconquestThemeIds(rewards) {
-  const assigned = new Set(rewards.filter((reward) => reward.resolved && reward.themeId).map((reward) => reward.themeId));
-  return getReconquestThemeOrder(rewards).filter((themeId) => !assigned.has(themeId));
-}
-
-function reassignUnresolvedDefenderRewards(state, rewards) {
-  const remaining = getRemainingReconquestThemeIds(rewards);
-  let nextIndex = 0;
-  for (const reward of rewards) {
-    if (reward.resolved) continue;
-    const themeId = remaining[nextIndex];
-    if (themeId) syncRewardTheme(reward, state, themeId);
-    nextIndex += 1;
-  }
-}
-
-function preparePendingReconquestRewards(state, rewards) {
-  if (!Array.isArray(rewards) || rewards.length === 0) return;
-  for (const themeId of getReconquestThemeOrder(rewards)) setReconquestThemeStatus(state, themeId, false);
-  reassignUnresolvedDefenderRewards(state, rewards);
-}
-
-export function createDefenderRewardQueue(state, warResult, contributions) {
-  const themes = Array.isArray(warResult?.themesRecovered) ? warResult.themesRecovered : [];
-  const defenders = topRankedDefenders(contributions);
-  if (themes.length === 0 || defenders.length === 0) return [];
-  return themes.map((themeId, i) => {
-    const defender = defenders[i % defenders.length];
-    const theme = state.themes[themeId];
-    return {
-      id: `${state.round}:${i}:${themeId}:${defender.playerId}`,
-      themeId,
-      originalThemeId: themeId,
-      reconquestIndex: i,
-      themeName: theme?.name || themeId,
-      defenderId: defender.playerId,
-      defenderName: defender.playerName,
-      rank: (i % defenders.length) + 1,
-      troops: defender.troops,
-      goldValue: getDefenderRewardGold(theme),
-      resolved: false,
-      choice: null,
-      gold: 0,
-    };
-  });
-}
-
-export function getPendingDefenderRewards(state, playerId = null) {
-  const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards : [];
-  return rewards.filter((reward) => !reward.resolved && (playerId == null || reward.defenderId === playerId));
-}
-
-export function hasPendingDefenderRewards(state) {
-  return getPendingDefenderRewards(state).length > 0;
-}
-
-export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'land') {
-  const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards : [];
-  const reward = rewards.find((entry) => entry.id === rewardId);
-  if (!reward) return { ok: false, reason: 'No such defender reward.' };
-  if (reward.resolved) return { ok: false, reason: 'That defender reward is already resolved.' };
-  if (reward.defenderId !== playerId) return { ok: false, reason: 'Only the rewarded defender may choose this reward.' };
-
-  const remainingThemeIds = getRemainingReconquestThemeIds(rewards);
-  const normalizedChoice = choice === 'gold' ? 'gold' : 'empire';
-  const affectedThemeId = normalizedChoice === 'gold' ? remainingThemeIds[remainingThemeIds.length - 1] : remainingThemeIds[0];
-  const theme = state.themes[affectedThemeId];
-  if (!theme) return { ok: false, reason: 'Rewarded province no longer exists.' };
-  syncRewardTheme(reward, state, affectedThemeId);
-
-  if (normalizedChoice === 'empire') {
-    if (!setReconquestThemeStatus(state, affectedThemeId, true)) return { ok: false, reason: 'That province can no longer be restored.' };
-    reward.choice = 'empire';
-    reward.gold = 0;
-  } else {
-    const player = getPlayer(state, playerId);
-    const gold = getDefenderRewardGold(theme);
-    if (player) player.gold += gold;
-    setReconquestThemeStatus(state, affectedThemeId, false);
-    reward.choice = 'gold';
-    reward.gold = gold;
-  }
-
-  reward.resolved = true;
-  reassignUnresolvedDefenderRewards(state, rewards);
-  state.log.push({ type: 'defender_reward', player: playerId, theme: reward.themeId, choice: reward.choice, gold: reward.gold || 0, round: state.round });
-  recordHistoryEvent(state, {
-    category: 'resolution',
-    type: 'defender_reward',
-    actorId: playerId,
-    summary: reward.choice === 'empire'
-      ? `${getPlayerName(state, playerId)} restores ${theme?.name || reward.themeId} to the empire as free-citizen land.`
-      : `${getPlayerName(state, playerId)} takes ${formatGold(reward.gold || 0)} while ${theme?.name || reward.themeId} remains occupied.`,
-    details: {
-      themeId: reward.themeId,
-      themeName: theme?.name || reward.themeId,
-      defenderId: playerId,
-      rank: reward.rank,
-      contribution: reward.troops,
-      choice: reward.choice,
-      gold: reward.gold || 0,
-      profit: getThemeProfitValue(theme),
-    },
-  });
-  return { ok: true, reward };
-}
-
-export function autoResolveDefenderRewards(state, shouldResolvePlayer = () => true) {
-  const resolved = [];
-  for (const reward of getPendingDefenderRewards(state)) {
-    if (!shouldResolvePlayer(reward.defenderId, reward)) continue;
-    const result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, 'empire');
-    if (result.ok) resolved.push(result.reward);
-  }
-  return resolved;
-}
-
-export function applyDefenderRewards(state, warResult, contributions) {
-  state.pendingDefenderRewards = createDefenderRewardQueue(state, warResult, contributions);
-  preparePendingReconquestRewards(state, state.pendingDefenderRewards);
-  if (warResult) warResult.defenderRewards = state.pendingDefenderRewards;
-  return autoResolveDefenderRewards(state);
 }
 
 export function phaseCleanup(state) {
@@ -845,7 +672,6 @@ export function phaseCleanup(state) {
   state.currentInvasion = null;
   state.lastCoupResult = null;
   state.lastWarResult = null;
-  state.pendingDefenderRewards = [];
   state.courtActions = null;
 
   if (shouldRunFinalIncome) {
