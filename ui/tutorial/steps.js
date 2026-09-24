@@ -10,6 +10,7 @@
 // and what the player must do (`task`). A step with `done` advances by
 // itself once the player has done it; a step without one waits for Next.
 import { getPlayerName } from '../../engine/state.js';
+import { buildFinalScores } from '../../engine/scoring.js';
 import { getPendingDefenderRewards } from '../../engine/turnflow.js';
 
 export const TUTORIAL_SEED = 254;
@@ -81,6 +82,19 @@ function warText(state) {
   if (war.outcome === 'victory') return `The empire sent ${troops} troops against ${strength}: a victory. Surplus troops reconquer lost provinces.`;
   if (war.outcome === 'defeat') return `The empire sent only ${troops} troops against ${strength}: a defeat, and the invader takes provinces along its route.`;
   return `The empire's ${troops} troops held the invader's ${strength} to a stalemate.`;
+}
+
+function resultText(state) {
+  const { scores, winners } = buildFinalScores(state);
+  const mine = scores.find((entry) => entry.playerId === ME);
+  const points = `${mine?.points ?? 0} point${mine?.points === 1 ? '' : 's'}`;
+  if (winners.some((entry) => entry.playerId === ME)) {
+    return winners.length > 1
+      ? `You share the victory with ${points}. The final standings show how each share was earned.`
+      : `You win with ${points}. The final standings show how each share was earned.`;
+  }
+  const leader = winners[0];
+  return `${leader ? name(state, leader.playerId) : 'A rival'} wins; you finish with ${points}. The final standings show where the points came from.`;
 }
 
 export const TUTORIAL_STEPS = [
@@ -292,7 +306,7 @@ export const TUTORIAL_STEPS = [
     title: 'The game is over',
     body: ({ state }) => (state.gameOver?.type === 'fall'
       ? 'Constantinople has fallen and every dynasty lost. It happens: when everyone waits for the others to defend, nobody does.'
-      : 'The Balance of Power has been scored. See the final standings for who came out on top.'),
+      : resultText(state)),
     task: 'Ready for a real game? Choose how many rivals you face, their temperaments, and how long the game lasts.',
     final: true,
   },
