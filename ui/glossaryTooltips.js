@@ -293,6 +293,9 @@ export function installGlossary(root = document.body) {
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       if (record.target.closest?.(IGNORED_MUTATION_SELECTOR)) continue;
+      // New text in a block starts its once-per-block count over.
+      markedInBlock.delete(record.target);
+      if (record.target.closest) markedInBlock.delete(record.target.closest(BLOCK_SELECTOR));
       for (const node of record.addedNodes) pending.add(node);
       if (record.removedNodes.length) tooltips.pruneDetached();
     }

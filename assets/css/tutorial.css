@@ -1,0 +1,219 @@
+/* assets/css/tutorial.css - The tutorial game: setup card, coach, spotlight, arrow. */
+
+/* ── Setup screen entry ──────────────────────────────────────────── */
+.tutorial-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(122, 77, 153, 0.4);
+  border-left: 4px solid var(--purple-1);
+  border-radius: var(--r-sm);
+  background: rgba(250, 244, 255, 0.55);
+}
+
+.tutorial-card-title {
+  margin: 0 0 2px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--purple-0);
+}
+
+.tutorial-card-text {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--umber-1);
+}
+
+.tutorial-card .btn-secondary {
+  margin-top: 0;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .tutorial-card { grid-template-columns: 1fr; }
+}
+
+/* ── In game ─────────────────────────────────────────────────────── */
+.tutorial-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  pointer-events: none;
+}
+
+/* Dims everything but the target; clicks still reach the page. */
+.tutorial-spotlight {
+  position: fixed;
+  border: 3px solid var(--gold-3);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 9999px rgba(30, 18, 6, 0.32), 0 0 18px 4px rgba(240, 200, 90, 0.75);
+  transition: left 160ms ease, top 160ms ease, width 160ms ease, height 160ms ease;
+  animation: tutorial-pulse 1.6s ease-in-out infinite;
+}
+
+.tutorial-arrow {
+  position: fixed;
+  color: var(--gold-3);
+  filter: drop-shadow(0 2px 3px rgba(30, 18, 6, 0.55));
+  transform: rotate(var(--tutorial-arrow-angle, 0deg));
+  animation: tutorial-nudge 0.9s ease-in-out infinite;
+}
+
+.tutorial-spotlight[hidden],
+.tutorial-arrow[hidden] { display: none; }
+
+@keyframes tutorial-pulse {
+  0%, 100% { border-color: var(--gold-3); }
+  50% { border-color: var(--gold-0); }
+}
+
+@keyframes tutorial-nudge {
+  0%, 100% { translate: 0 0; }
+  50% { translate: calc(cos(var(--tutorial-arrow-angle, 0deg)) * 8px) calc(sin(var(--tutorial-arrow-angle, 0deg)) * 8px); }
+}
+
+.tutorial-coach {
+  position: fixed;
+  left: max(20px, env(safe-area-inset-left));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  width: min(420px, calc(100vw - 40px));
+  max-height: calc(100vh - var(--topbar-height) - 40px);
+  overflow: auto;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  background: var(--parch-0);
+  color: var(--umber-0);
+  border: 1px solid var(--parch-3);
+  border-top: 4px solid var(--purple-1);
+  border-radius: var(--r-lg);
+  box-shadow: 0 10px 34px rgba(30, 18, 6, 0.35);
+  pointer-events: auto;
+}
+
+.tutorial-coach.is-raised {
+  bottom: auto;
+  top: calc(var(--topbar-height) + 16px);
+}
+
+.tutorial-coach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.tutorial-coach-kicker {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--purple-1);
+}
+
+.tutorial-coach-toggle {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--umber-3);
+  cursor: pointer;
+}
+
+.tutorial-coach-title {
+  margin: var(--sp-1) 0 var(--sp-2);
+  font-family: var(--font-display);
+  font-size: 19px;
+  letter-spacing: 0.02em;
+  color: var(--umber-0);
+}
+
+.tutorial-coach-body {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+/* What to do now. */
+.tutorial-coach-task {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--gold-1);
+  background: var(--gold-4);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.tutorial-coach.is-waiting .tutorial-coach-task {
+  border-left-color: var(--purple-1);
+  background: rgba(157, 111, 184, 0.14);
+  font-weight: 600;
+}
+
+.tutorial-coach-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.tutorial-coach-actions .btn-primary,
+.tutorial-coach-actions .btn-secondary {
+  margin-top: 0;
+  min-height: 40px;
+}
+
+.tutorial-coach-actions [hidden] { display: none; }
+
+.tutorial-coach-leave {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 4px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--umber-3);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tutorial-coach.is-collapsed .tutorial-coach-content { display: none; }
+.tutorial-coach.is-collapsed .tutorial-coach-title { margin-bottom: 0; font-size: 15px; }
+
+/* Toasts would sit under the coach card; move them to the top. */
+.tutorial-active .notification-toast-rail {
+  top: calc(var(--topbar-height) + 8px);
+  bottom: auto;
+  left: auto;
+  right: max(14px, env(safe-area-inset-right));
+  transform: none;
+}
+
+@media (max-width: 980px) {
+  .tutorial-coach,
+  .tutorial-coach.is-raised {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    width: auto;
+    max-height: 46vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-spotlight,
+  .tutorial-arrow { animation: none; }
+  .tutorial-spotlight { transition: none; }
+}
