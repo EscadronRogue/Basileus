@@ -2,11 +2,25 @@ import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
 import { loadBrowserAiOpponentRoster } from './ai/brain.js';
-import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from './ai/opponentRoster.js';
+import {
+  RANDOM_TUNED_OPPONENT_ID,
+  describeAiOpponentChoice,
+  getSelectableAiOpponents,
+  getTunedAiOpponents,
+} from './ai/opponentRoster.js';
 import { getDynastyProfileForSeat } from './data/invasions.js';
 import { dynastySeatStyle, escapeHtml } from './ui/html.js';
 import { clearLocalSave, describeLocalSave, readLocalSave } from './ui/localSave.js';
-import { renderRulesHtml } from './ui/rules.js';
+import { renderGlossaryHtml, renderRulesHtml } from './ui/rules.js';
+import { installGlossary } from './ui/glossaryTooltips.js';
+import { TutorialGuide } from './ui/tutorial/tutorial.js';
+import {
+  TUTORIAL_HUMAN_ID,
+  TUTORIAL_PLAYER_COUNT,
+  TUTORIAL_RIVALS,
+  TUTORIAL_SEED,
+  TUTORIAL_TURN_COUNT,
+} from './ui/tutorial/steps.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 const SETUP_CHOICE_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
@@ -288,7 +302,7 @@ function renderAiRoster() {
     const dynasty = getDynastyProfileForSeat(seat - 1).name;
     const displayName = selectedId === RANDOM_TUNED_OPPONENT_ID
       ? 'Random trained AI'
-      : selectedOpponent?.firstName || selectedOpponent?.id || 'Choose opponent';
+      : describeAiOpponentChoice(selectedOpponent) || 'Choose opponent';
     const randomTrainedButton = trainedOpponents.length ? `
       <button type="button"
         class="setup-ai-opponent-btn${selectedId === RANDOM_TUNED_OPPONENT_ID ? ' selected' : ''}"
@@ -306,8 +320,8 @@ function renderAiRoster() {
         </span>
         <span class="setup-ai-choice-row">
           ${randomTrainedButton}
-          ${aiOpponentRoster.map((opponent) => {
-            const label = opponent.firstName || opponent.id;
+          ${getSelectableAiOpponents(aiOpponentRoster).map((opponent) => {
+            const label = describeAiOpponentChoice(opponent);
             const selected = opponent.id === selectedId;
             return `
               <button type="button"
@@ -380,6 +394,7 @@ function buildAiOpponentSelections(playerCount, humanSeat, rng = Math.random) {
       playerId,
       id: opponent.id,
       firstName: opponent.firstName,
+      personality: opponent.personality || null,
       label: opponent.label,
       policy: opponent.policy || null,
       strategyWeights: opponent.strategyWeights || opponent.policy?.strategyWeights || null,
@@ -609,6 +624,74 @@ btnResumeGame.addEventListener('click', async () => {
   }
 });
 
+// The tutorial's rivals: the trained AI of each chosen temperament, or the
+// built-in policy of that temperament before any roster is trained.
+function buildTutorialRivals() {
+  const trained = getTrainedAiOpponents();
+  const fallbackNames = ['Leon', 'Nikephoros'];
+  return TUTORIAL_RIVALS.map((rival, index) => {
+    const opponent = trained.find((entry) => entry.personality === rival.personality);
+    if (opponent) {
+      return {
+        playerId: rival.playerId,
+        id: opponent.id,
+        firstName: opponent.firstName,
+        personality: rival.personality,
+        label: opponent.label,
+        policy: opponent.policy || null,
+        strategyWeights: opponent.strategyWeights || opponent.policy?.strategyWeights || null,
+      };
+    }
+    return {
+      playerId: rival.playerId,
+      id: `${rival.fallbackPolicy}-default`,
+      firstName: fallbackNames[index] || 'Basileios',
+      personality: rival.personality,
+      label: rival.personality,
+      policy: { policyId: rival.fallbackPolicy },
+      strategyWeights: null,
+    };
+  });
+}
+
+// The tutorial is a separate, fixed game. It never autosaves, so it cannot
+// replace a game the player left unfinished.
+document.getElementById('btnTutorial').addEventListener('click', async () => {
+  if (gameLaunchInFlight) return;
+  gameLaunchInFlight = true;
+  setSetupError('');
+  updateStartAvailability();
+  const backToSetup = () => window.location.reload();
+  const guide = new TutorialGuide({ onLeave: backToSetup, onFinish: backToSetup });
+  try {
+    setupDialog.style.display = 'none';
+    const game = new GameController({
+      playerCount: TUTORIAL_PLAYER_COUNT,
+      turnCount: TUTORIAL_TURN_COUNT,
+      deckSize: TUTORIAL_TURN_COUNT,
+      seed: TUTORIAL_SEED,
+      mode: 'single',
+      aiOpponentSelections: buildTutorialRivals(),
+      humanPlayerIds: [TUTORIAL_HUMAN_ID],
+      autosave: false,
+      onRender: () => guide.update(),
+    });
+    window.__basileus = game;
+    window.__basileusTutorial = guide;
+    await game.init();
+    guide.mount(game);
+  } catch (error) {
+    guide.destroy();
+    window.__basileus = null;
+    window.__basileusTutorial = null;
+    setupDialog.style.display = 'flex';
+    setSetupError(`Could not start the tutorial: ${error?.message || 'unknown error'}`);
+  } finally {
+    gameLaunchInFlight = false;
+    updateStartAvailability();
+  }
+});
+
 btnDiscardSave.addEventListener('click', () => {
   clearLocalSave();
   renderResumeCard();
@@ -617,7 +700,8 @@ btnDiscardSave.addEventListener('click', () => {
 // Leaving the page flushes the pending autosave so the latest move is kept.
 window.addEventListener('pagehide', () => window.__basileus?.saveNow?.());
 
-document.getElementById('rulesCardBody').innerHTML = renderRulesHtml();
+document.getElementById('rulesCardBody').innerHTML = renderRulesHtml() + renderGlossaryHtml();
+installGlossary(document.body);
 refreshSeatOptions();
 renderSetupChoiceControls();
 refreshModeVisibility();

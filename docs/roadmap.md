@@ -14,6 +14,10 @@ isn't lost.
   and by invader, in parallel across worker threads.
 - **AI deals, first step.** AI dynasties accept or refuse offers sent to them
   (`ai/deals.js`).
+- **Tutorial and glossary.** A separate tutorial game guides one full round;
+  key words explain themselves on hover in every game.
+- **AI personalities.** Seven temperaments trained on game outcomes only
+  (`ai/personalities.js`, `ai/train.js`, `docs/ai-training.md`).
 
 ## Game design decisions
 
@@ -26,12 +30,6 @@ These need a designer's call rather than code:
    route starts in provinces that begin occupied (PAR, BUL), leaving only four
    imperial provinces before the capital. Options: the capital cannot fall
    during grace rounds; a lower Bulgar weight; start PAR or BUL imperial.
-2. **Training's self-claim terms.** Since coups moved to rankings, the
-   `selfClaims` counters that `ai/train.js` rewards (credible throne bids,
-   coup wins) are always zero, so those objective terms do nothing. Measuring
-   "ranks itself first and commits 3+ capital troops" gives about 2% of orders
-   against the 12-25% band the objective was tuned for, so reviving them
-   would push training toward more coup attempts.
 
 ## AI brain follow-ups
 
@@ -42,12 +40,12 @@ estate value, frontier risk, coup pressure, and reward choices.
 Worth improving next:
 
 1. **AI-initiated deals and counter-offers.** AI seats only answer offers;
-   they never propose one or counter.
-2. **Move AI planning off the main thread.** Deployment planning for all AI
-   seats takes several seconds in the browser and freezes the page meanwhile;
-   a Web Worker (or at least a visible "deliberating" state) would help.
-3. Tune deployment assumptions against observed human play, especially how
+   they never propose one or counter. Personalities would make this richer:
+   a Kingmaker offering coup support for offices, a Landlord buying estates.
+2. Tune deployment assumptions against observed human play, especially how
    much capital support opponents reserve during high-threat invasions.
+3. Train against recorded human games once there are some, so the league
+   includes real human habits rather than only presets.
 
 ## Known limitations
 

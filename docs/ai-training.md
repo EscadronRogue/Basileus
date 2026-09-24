@@ -30,141 +30,88 @@ and when and to which invader the empire falls.
 ## Training
 
 ```sh
-npm run train:ai -- --generations 3 --population 10 --elite 3 --games 24
+npm run train:ai -- --generations 8
 ```
 
-### Core training
+Training produces one AI opponent per **personality** (`ai/personalities.js`):
+Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron and Strategist.
+Every AI uses the same planner (`ai/strategy.js`); a personality fixes the
+ranges of the few strategy weights that make its temperament (an Usurper
+always prizes the throne, an Opportunist always leans on others to hold the
+frontier) and training tunes everything else.
 
-- `--generations N`  
-  Number of evolutionary rounds. More generations means more refinement.
-  Default: `3`
+### What training rewards
 
-- `--population N`  
-  Number of candidate AI personalities tested per generation.
-  Default: `10`
+Only the result of the game. Each game is worth `1` for a win (shared on a
+tie) plus `0.25 x` finishing position (`1` for first, `0` for last). A fallen
+empire, or a game that does not finish, is worth `0` to every dynasty, as in
+the rules. Nothing rewards defending, prudence or duty for its own sake: an AI
+that lets others defend while it takes the throne is right to do so if that
+wins, and an AI that over-defends is punished by the free-riders it meets.
 
-- `--elite N`  
-  Number of best candidates preserved into the next generation.
-  Default: `3`
+### How it searches
 
-- `--games N`  
-  Number of games used for finalist re-evaluation. Every candidate is
-  screened on fewer games first, then the best finalists are re-tested on this
-  many games.
-  Default: `24`
+Each personality keeps a champion, starting from its base preset clamped into
+its trait ranges. Every generation:
 
-Total rough workload:
+1. The champion and `--offspring` mutants play the same `--screening-games`
+   seeded tables (common random numbers, so luck mostly cancels out).
+2. The best `--finalists` mutants and the champion replay `--confirm-games`
+   fresh tables.
+3. A mutant replaces the champion only if it did better on both sets. The
+   mutation step grows after a replacement and shrinks otherwise.
 
-```text
-generations x population x screening-games + finalists x finalist-games
-```
+Opponents come from a league: the current champion of every personality
+(`--champion-share`, default 60% of seats) and built-in presets (`--league`),
+which include free-riders and greedy players that exploit over-defending and
+usurpers that punish an empty capital. The evaluated AI rotates through every
+seat.
 
-So the defaults run `3 x 10 x 8 + 5 x 24 = 360` simulated games.
+After the last generation, the champion and the best archived versions of
+each personality replay `--final-games` fresh tables and the best is kept.
+Each champion is then benchmarked against tables of the default planner and of
+the roster saved before the run.
 
-- `--screening-games N`
-  Number of quick games used for every candidate in every generation.
-  Default: about one third of `--games`, minimum `4` for larger runs.
+### Reading the report
 
-- `--finalist-games N`
-  Number of games used to re-rank the finalist pool.
-  Default: same as `--games`
+For each personality the log prints its value, win rate, and how it plays:
 
-- `--finalists N`
-  Number of top distinct candidates to re-evaluate at the end.
-  Default: `5`
+- **fall** share of its games where the empire fell
+- **holds back** orders sending under a quarter of its fieldable troops to the frontier
+- **burns** orders that held back in a round the war was lost
+- **throne bids** orders with 3+ troops in the capital
+- **seizures** coups it won against a sitting Basileus, per game
+- **reigns** share of rounds it ended as Basileus
+- **estates**, **revokes** per game, and the share of its appointments given away
 
-- `--workers N`
-  Parallel worker threads used by the CLI trainer.
-  Default: up to `4`, based on available CPU cores.
+### Options
 
-### Game setup
+- `--generations N` generations (default `6`)
+- `--offspring N` mutants per personality per generation (default `6`)
+- `--finalists N` mutants per personality that replay the confirmation tables (default `2`)
+- `--screening-games N`, `--confirm-games N`, `--final-games N` tables per stage (defaults `36`, `72`, `160`)
+- `--benchmark-games N` tables per benchmark (default `60`; `0` skips it)
+- `--personalities a,b` train only some personalities
+- `--players 4,5,5` table sizes to draw from, weighted by repetition (default `4,5,5`)
+- `--decks 9` game lengths to draw from (default `9`)
+- `--mutation X` starting mutation step, as a share of each weight's range (default `0.2`)
+- `--mutation-rate X` share of weights each mutation touches (default `0.35`)
+- `--champion-share X` share of opponent seats taken by personality champions (default `0.6`)
+- `--league a,b,c` built-in presets for the other seats
+- `--seed N` fixed seed (default: random, printed in the log)
+- `--workers N` worker threads (default up to `4`)
+- `--output PATH` roster file (default `ai/tunedOpponents.json`)
+- `--no-save`, `--quiet`, `--json`
 
-- `--players N`  
-  Players per simulated game, `3`-`5`. Accepts lists or ranges such as `3,4,5` or `3-5`.
-  Default: `5`
-
-- `--deck N`  
-  Game length in turns. Accepts lists such as `6,9,12`.
-  Default: `9`
-
-Every training run uses a fresh random seed, printed in the report.
-
-### Learning behaviour
-
-- `--mutation X`  
-  How aggressively new candidates vary from elite parents. Higher means more exploration, lower means more refinement.
-  Default: `0.35`
-
-- `--fall-penalty X`  
-  Objective pressure around empire collapse. The trainer strongly prefers a fall rate near
-  50%. Below 50%, it sanctions prudent patterns such as safe war margins, heavy frontier
-  funding, and low coup pressure; above 50%, it sanctions fearless patterns such as thin
-  war margins, frequent defeats, and excessive capital/coup pressure. The farther the
-  fall rate drifts from 50%, the more those behavior signals matter, with extra guardrail
-  penalties below 25% or above 75%.
-  Default: `220`
-
-- `--opponent-mix robust|beginner`  
-  Opponent schedule used during training.
-  Default: `robust`
-
-  `robust` is the serious default: about 33% candidate self-play, a large saved-champion pool when available, a broad built-in curriculum, and low-frequency oddballs (`random`/`copycat`).
-
-  `beginner` keeps 25% candidate self-play, then trains against the built-in curriculum without saved champions.
-
-- `--self-play-every N`  
-  Every Nth evaluation game uses the candidate policy for all AI dynasties. This overrides the selected opponent mix's cadence.
-  Default: `3` with `robust`, `4` with `beginner`
-
-- `--champions N`  
-  Number of saved tuned opponents loaded from the output roster for the robust champion pool.
-  Default: `6`
-
-- `--save-champions N`
-  Number of newly trained champions exported to the output roster.
-  Default: `5`
-
-### Opponent league
-
-- `--league a,b,c`  
-  Custom non-champion opponent pool used during training. In `beginner` mode it is the full non-self-play league. In `robust` mode it replaces the built-in non-champion bucket while saved champions still participate.
-  Current useful values include:
-  `strategic`, `defender`, `usurper`, `profiteer`, `patron`, `tyrant`, `kingmaker`, `freeRider`, `overDefender`, `estateShark`, `antiLeader`, `greedy`, `loyalist`, `random`, `copycat`.
-
-Example:
-
-```sh
-npm run train:ai -- --league strategic,defender,random,copycat
-```
-
-### Saving and output
-
-- `--no-save`  
-  Runs training but does not save the trained champions.
-
-- `--output PATH`  
-  Saves trained opponents somewhere other than `ai/tunedOpponents.json`.
-
-- `--quiet`  
-  Suppresses progress logs, keeps only final report.
-
-- `--json`  
-  Outputs machine-readable JSON and disables progress lines.
-
-A serious run:
-
-```sh
-npm run train:ai -- --generations 8 --population 16 --elite 4 --games 40 --fall-penalty 220
-```
-
-A beginner-friendly run without saved champion opponents:
-
-```sh
-npm run train:ai -- --opponent-mix beginner
-```
+A default run plays about 3,300 games per generation; on four cores a
+generation takes around ten minutes.
 
 A quick smoke run:
 
 ```sh
-npm run train:ai -- --generations 1 --population 4 --games 6 --no-save
+npm run train:ai -- --generations 1 --offspring 2 --screening-games 4 --confirm-games 4 --final-games 4 --benchmark-games 4 --no-save
 ```
+
+The roster file replaces the previous one. Each entry keeps its personality,
+trait-bounded weights, final metrics and training settings; the file also
+records the benchmark.

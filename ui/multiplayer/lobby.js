@@ -1,7 +1,12 @@
 // ui/multiplayer/lobby.js - the pre-game room lobby: settings, seats, AI choices, and start.
 
 import { getDynastyProfileForSeat } from '../../data/invasions.js';
-import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from '../../ai/opponentRoster.js';
+import {
+  RANDOM_TUNED_OPPONENT_ID,
+  describeAiOpponentChoice,
+  getSelectableAiOpponents,
+  getTunedAiOpponents,
+} from '../../ai/opponentRoster.js';
 import { dynastySeatStyle, escapeHtml } from '../html.js';
 
 export function dynastyNameForSeat(seatOrId) {
@@ -114,14 +119,14 @@ export function renderMultiplayerLobby(controller) {
                           Random trained
                         </button>
                       ` : ''}
-                      ${aiOpponents.map((opponent) => {
+                      ${getSelectableAiOpponents(aiOpponents).map((opponent) => {
                         const selected = opponent.id === seat.aiOpponentId;
                         return `
                           <button type="button"
                             class="setup-ai-opponent-btn multiplayer-ai-opponent${selected ? ' selected' : ''}"
                             data-seat-id="${seat.seatId}"
                             data-ai-opponent="${escapeHtml(opponent.id)}">
-                            ${escapeHtml(opponent.firstName || opponent.id)}
+                            ${escapeHtml(describeAiOpponentChoice(opponent))}
                           </button>
                         `;
                       }).join('')}

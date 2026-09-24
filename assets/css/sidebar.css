@@ -246,15 +246,26 @@
   padding: 0;
 }
 
+/* Toasts sit over the map, away from the sidebar's confirm buttons. */
 .notification-toast-rail {
   position: fixed;
-  right: max(14px, env(safe-area-inset-right));
+  left: max(14px, env(safe-area-inset-left));
   bottom: max(14px, env(safe-area-inset-bottom));
   z-index: 80;
   display: grid;
   gap: 8px;
   width: min(360px, calc(100vw - 28px));
   pointer-events: none;
+}
+
+/* Stacked layout: the sidebar runs under the map, so use the top edge. */
+@media (max-width: 980px) {
+  .notification-toast-rail {
+    top: calc(var(--topbar-height) + 8px);
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
 }
 
 .notification-toast {
@@ -789,3 +800,11 @@
 }
 
 .dashboard-opinion-debt { font-size: 11px; color: var(--umber-2); }
+
+/* Long names (an AI with its temperament) are clipped, not spilled. */
+.sidebar-panel-badge {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

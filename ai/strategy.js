@@ -4,6 +4,8 @@ import { getAvailableLandBidGold, getLandAuctionBidEntries, getMinimumLandBid } 
 import { getMercenaryHireCost, getThemeOwnerIncome } from '../engine/rules.js';
 import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
 import { getFreeThemes, getPlayer } from '../engine/state.js';
+import { getCapitalSupportEntries } from '../engine/capitalSupport.js';
+import { clonePlainData } from '../engine/clone.js';
 import {
   getDeploymentArmyTroopEntry,
   getDeploymentArmyTroopTotal,
@@ -136,20 +138,7 @@ function compareScoredActions(state, playerId, left, right, salt = '') {
 }
 
 function cloneStateForAI(state) {
-  let clone;
-  try {
-    clone = structuredClone({ ...state, rng: null });
-  } catch {
-    clone = JSON.parse(JSON.stringify(state));
-    if (state.courtActions) {
-      clone.courtActions = {
-        ...clone.courtActions,
-        playerConfirmed: new Set([...(state.courtActions.playerConfirmed || new Set())]),
-      };
-    }
-  }
-  clone.rng = state.rng;
-  return clone;
+  return clonePlainData(state);
 }
 
 function materializeAuctions(state) {
@@ -648,6 +637,7 @@ function estimateOtherDeployment(state, playerId, memory = null) {
   let maxCapitalTroops = 0;
   let incumbentCapitalTroops = 0;
   let contributingPlayers = 0;
+  const capitalByPlayer = {};
 
   for (const player of state.players || []) {
     if (player.id === playerId) continue;
@@ -661,6 +651,7 @@ function estimateOtherDeployment(state, playerId, memory = null) {
     frontierTroops += expectedFrontier;
     maxFrontierTroops = Math.max(maxFrontierTroops, expectedFrontier);
     const expectedCapital = total * ratios.capitalRatio;
+    capitalByPlayer[player.id] = expectedCapital;
     maxCapitalTroops = Math.max(maxCapitalTroops, expectedCapital);
     if (player.id === state.basileusId) incumbentCapitalTroops += expectedCapital;
   }
@@ -669,6 +660,7 @@ function estimateOtherDeployment(state, playerId, memory = null) {
     frontierTroops,
     maxCapitalTroops,
     incumbentCapitalTroops,
+    capitalByPlayer,
     averageFrontierTroops: contributingPlayers ? frontierTroops / contributingPlayers : 0,
     maxFrontierTroops,
   };
@@ -948,17 +940,6 @@ function scoreCoalitionFit(state, playerId, summary, leaderId, weights, context 
   return -summary.capitalTroops * 1.1;
 }
 
-function frontierSafetyScale(state, summary, estimates, weights = DEFAULT_STRATEGY_WEIGHTS) {
-  const invasion = state.currentInvasion;
-  if (!invasion) return 1;
-  const expectedStrength = estimateInvasionStrength(invasion);
-  const highStrength = estimateHighInvasionStrength(invasion);
-  const totalFrontier = summary.frontierTroops + reliableEstimatedFrontier(estimates, weights);
-  const low = Math.max(0, expectedStrength - 2);
-  const high = Math.max(low + 1, highStrength);
-  return clamp((totalFrontier - low) / (high - low), 0.25, 1);
-}
-
 function scoreSupportRelationship(state, playerId, candidateId, capitalTroops, leaderId, weights, context = {}) {
   if (!Number.isInteger(candidateId) || candidateId === playerId || capitalTroops <= 0) return 0;
   const relScore = relationshipScore(context.memory, playerId, candidateId);
@@ -972,72 +953,87 @@ function scoreSupportRelationship(state, playerId, candidateId, capitalTroops, l
   return clamp(value, -weights.relationshipCap * 1.4, weights.relationshipCap * 1.4);
 }
 
-function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLeaderId(state, playerId), weights = DEFAULT_STRATEGY_WEIGHTS, context = {}) {
-  const safetyScale = frontierSafetyScale(state, summary, estimates, weights);
-  const table = context.memory?.table || {};
-  const final = context.final || projectedScoring(state);
-  const rivalCapital = Math.max(estimates.maxCapitalTroops, estimates.incumbentCapitalTroops);
-  const ownCapital = Math.max(0, summary.capitalTroops);
-  const leverage = clamp(ownCapital / Math.max(1, rivalCapital + 1), 0, 1.25);
-  const decisiveTroops = Math.max(0, ownCapital - rivalCapital);
-  const candidatePreference = scoreBasileusPreference(
-    state,
-    context.memory,
-    playerId,
-    summary.candidate,
-    final,
-    leaderId,
-    weights,
-  );
-  const incumbentPreference = playerId !== state.basileusId
-    ? scoreBasileusPreference(state, context.memory, playerId, state.basileusId, final, leaderId, weights)
-    : 0;
-  const regimeDelta = summary.candidate !== state.basileusId && playerId !== state.basileusId
-    ? Math.max(0, candidatePreference - incumbentPreference)
-    : 0;
-  const incumbentUrgency = scoreIncumbentRegimeUrgency(state, context.memory, playerId, final, leaderId, weights);
-  const urgencyScale = clamp(0.35 + safetyScale * 0.65 + Math.min(0.35, incumbentUrgency * 0.035), 0.35, 1.35);
-  const urgencyValue = incumbentUrgency * urgencyScale;
-  const opportunity = ownCapital
-    * weights.coupOpportunityWeight
-    * safetyScale
-    * (0.45 + Math.min(1, leverage) + (table.underCouping || 0) * 0.25);
+// ── Coup model ─────────────────────────────────────────────────────────
+// A coup is a weighted vote: each dynasty's capital troops support every
+// claimant by rank (first 100%, last 0%, even steps between), the Basileus's
+// fortifications back the Basileus, and the Patriarch's influence follows
+// the Patriarch's ranking. The AI projects every claimant's total for a
+// candidate order, turns totals into win chances, and scores the order by
+// what each possible Basileus would mean for it.
 
-  if (summary.candidate === playerId) {
-    let value = candidatePreference * Math.min(1, leverage) * safetyScale
-      + ownCapital * weights.selfClaim * 1.2 * safetyScale
-      + decisiveTroops * weights.selfClaim * 1.1 * safetyScale
-      + opportunity;
-    value += regimeDelta * Math.min(1, leverage) * safetyScale * 0.35;
-    value += urgencyValue * Math.min(1.4, ownCapital * 0.22);
-    if (ownCapital <= 0) value -= 5;
-    value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
-    value -= ownCapital * (table.overCouping || 0) * 0.18;
-    return value;
+// How a rival is expected to rank claimants: itself first, then by how much
+// it likes each of the others.
+function predictCoupRanking(state, memory, voterId) {
+  const others = (state.players || [])
+    .map((player) => player.id)
+    .filter((id) => id !== voterId)
+    .sort((left, right) => (
+      relationshipScore(memory, voterId, right) - relationshipScore(memory, voterId, left)
+    ) || (left - right));
+  return [voterId, ...others];
+}
+
+export function projectCoupVotes(state, playerId, summary, estimates, memory = null) {
+  const playerCount = (state.players || []).length;
+  const votes = Object.fromEntries((state.players || []).map((player) => [player.id, 0]));
+  const addRanked = (ranking, troops, support = null) => {
+    if (!(troops > 0)) return;
+    ranking.forEach((candidateId, rankIndex) => {
+      if (support && support[candidateId] === false) return;
+      if (!(candidateId in votes)) return;
+      votes[candidateId] += troops * getCoupRankWeight(playerCount, rankIndex);
+    });
+  };
+  addRanked(summary.ranking, summary.capitalTroops, summary.candidateSupport);
+  for (const player of state.players || []) {
+    if (player.id === playerId) continue;
+    addRanked(predictCoupRanking(state, memory, player.id), Number(estimates?.capitalByPlayer?.[player.id]) || 0);
   }
-
-  if (summary.candidate === state.basileusId) {
-    let value = 0;
-    if (playerId === state.basileusId) value = ownCapital * 1.5 * weights.incumbentDefense + opportunity * 0.45;
-    else value = candidatePreference * Math.min(1, leverage) + ownCapital * 0.25 * weights.incumbentDefense;
-    if (playerId === state.basileusId) {
-      value += ownCapital * weights.coupOpportunityWeight * safetyScale * 0.35;
+  for (const entry of getCapitalSupportEntries(state)) {
+    const holderId = Number(entry.playerId);
+    const amount = Number(entry.amount) || 0;
+    if (!Number.isInteger(holderId) || !amount || !(holderId in votes)) continue;
+    if (entry.titleKey === 'PATRIARCH') {
+      if (holderId === playerId) addRanked(summary.ranking, amount, summary.candidateSupport);
+      else addRanked(predictCoupRanking(state, memory, holderId), amount);
     } else {
-      value -= urgencyValue * Math.min(1.4, ownCapital * 0.24);
+      votes[holderId] += amount;
     }
-    value += scoreSupportRelationship(state, playerId, summary.candidate, ownCapital, leaderId, weights, context);
-    value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
-    return value;
   }
+  return votes;
+}
 
-  let value = candidatePreference * Math.min(1, leverage)
-    + ownCapital * weights.supportOtherClaimant
-    + opportunity;
-  value += regimeDelta * Math.min(1, leverage) * 0.35;
-  value += urgencyValue * Math.min(1.4, ownCapital * 0.2);
-  value += scoreSupportRelationship(state, playerId, summary.candidate, ownCapital, leaderId, weights, context);
+// Other dynasties' capital troops are only estimates, so close totals are
+// uncertain; a softmax over vote totals turns them into win chances. Ties
+// favour the sitting Basileus.
+const COUP_VOTE_TEMPERATURE = 1.4;
+
+export function coupWinChances(state, votes) {
+  const ids = Object.keys(votes).map(Number);
+  const adjusted = ids.map((id) => (votes[id] || 0) + (id === state.basileusId ? 0.05 : 0));
+  const top = Math.max(...adjusted);
+  const weights = adjusted.map((value) => Math.exp((value - top) / COUP_VOTE_TEMPERATURE));
+  const total = weights.reduce((sum, value) => sum + value, 0) || 1;
+  return Object.fromEntries(ids.map((id, index) => [id, weights[index] / total]));
+}
+
+function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLeaderId(state, playerId), weights = DEFAULT_STRATEGY_WEIGHTS, context = {}) {
+  const final = context.final || projectedScoring(state);
+  const chances = coupWinChances(state, projectCoupVotes(state, playerId, summary, estimates, context.memory));
+  if (!context.claimantValues) {
+    const incumbentUrgency = scoreIncumbentRegimeUrgency(state, context.memory, playerId, final, leaderId, weights);
+    context.claimantValues = Object.fromEntries((state.players || []).map((player) => {
+      let value = scoreBasileusPreference(state, context.memory, playerId, player.id, final, leaderId, weights);
+      if (player.id === state.basileusId && player.id !== playerId) value -= incumbentUrgency;
+      return [player.id, value];
+    }));
+  }
+  let value = 0;
+  for (const [candidateId, chance] of Object.entries(chances)) value += chance * (context.claimantValues[candidateId] || 0);
+  // Ambition: some dynasties value holding the throne beyond its projected payoff.
+  value += (chances[playerId] || 0) * weights.coupOpportunityWeight * weights.throneBase * 0.25;
+  value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops, leaderId, weights, context) * 0.5;
   value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
-  value -= ownCapital * (table.overCouping || 0) * 0.18;
   return value;
 }
 
@@ -1145,10 +1141,10 @@ function scoreDeploymentTactics(state, playerId, action, context = {}) {
   }
 
   const coupKey = [
+    summary.ranking.join(','),
+    Object.entries(summary.candidateSupport || {}).filter(([, enabled]) => enabled === false).map(([id]) => id).join(','),
     summary.candidate,
     summary.capitalTroops,
-    estimates.maxCapitalTroops,
-    estimates.incumbentCapitalTroops,
   ].join(':');
   let coupValue = context.coupScoreCache?.get(coupKey);
   if (coupValue == null) {
@@ -1257,6 +1253,15 @@ function scoreEstateAction(state, final, playerId, action, weights) {
     - (threatened ? weights.estateThreatPenalty : 0);
 }
 
+// Bidding above the minimum is worth something only while it raises the
+// chance of winning the auction. Once the bid beats every rival's whole
+// purse the estate is certain, and anything more is wasted gold.
+export function estateBidPressure(weights) {
+  const configured = weights.estateBidPressure == null ? NaN : Number(weights.estateBidPressure);
+  if (Number.isFinite(configured)) return Math.max(0, configured);
+  return Math.max(0, (Number(weights.estateProfit) || 0) * 0.28 - (Number(weights.estateBidCost) || 0) * 0.2);
+}
+
 function scoreEstateBidPremium(state, playerId, theme, bid, weights) {
   const minimum = Math.max(0, Number(getMinimumLandBid(state, theme.id)) || 0);
   const premium = Math.max(0, bid - minimum);
@@ -1264,19 +1269,16 @@ function scoreEstateBidPremium(state, playerId, theme, bid, weights) {
   const maximum = Math.max(minimum, Number(getAvailableLandBidGold(state, playerId, theme.id)) || minimum);
   if (maximum <= minimum) return 0;
 
-  const eligibleRivals = (state.players || [])
+  const rivalPurses = (state.players || [])
     .filter((player) => player.id !== playerId)
-    .filter((player) => getAvailableLandBidGold(state, player.id, theme.id) >= minimum)
-    .length;
-  const competition = Math.min(1, eligibleRivals / Math.max(1, (state.players || []).length - 1));
-  const configuredPressure = Number(weights.estateBidPressure);
-  const derivedPressure = Math.max(
-    0,
-    (Number(weights.estateProfit) || 0) * 0.28 - (Number(weights.estateBidCost) || 0) * 0.2,
-  );
-  const pressure = Number.isFinite(configuredPressure) ? Math.max(0, configuredPressure) : derivedPressure;
-  const rangeShare = Math.min(1, premium / Math.max(1, maximum - minimum));
-  return premium * pressure * (0.65 + competition * 0.35) * (1 - rangeShare * 0.08);
+    .map((player) => Number(getAvailableLandBidGold(state, player.id, theme.id)) || 0)
+    .filter((gold) => gold >= minimum);
+  if (!rivalPurses.length) return 0;
+  const competition = Math.min(1, rivalPurses.length / Math.max(1, (state.players || []).length - 1));
+  const needed = Math.max(1, Math.max(...rivalPurses) - minimum + 1);
+  const useful = Math.min(premium, needed);
+  const rangeShare = Math.min(1, useful / needed);
+  return useful * estateBidPressure(weights) * (0.65 + competition * 0.35) * (1 - rangeShare * 0.08);
 }
 
 export function chooseStrategicRewardChoice(state, meta, reward) {

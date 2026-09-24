@@ -20,7 +20,6 @@ import { getPlayerStyleAttr, renderCartouchedText, renderPlayerRoleName } from '
 import { formatGoldHtml, formatTroopsHtml, renderIconSet } from './icons.js';
 import { escapeHtml } from './html.js';
 import { announceGameProgress } from './announcer.js';
-import { renderPhaseGuide } from './phaseGuide.js';
 
 export function createDefaultUiState() {
   return {
@@ -742,8 +741,6 @@ export function renderGameActionPanel({
   if (error) {
     body.innerHTML = `<div class="action-error" role="alert">${renderCartouchedText(state, error)}</div>`;
   }
-
-  if (!shouldRenderFinalReckoning(state)) renderPhaseGuide(body, state.phase);
 
   const shell = document.createElement('div');
   body.appendChild(shell);

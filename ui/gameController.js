@@ -17,6 +17,7 @@ import {
 } from '../game/runtime.js';
 import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta, hydrateAiOpponent } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
+import { getPersonality } from '../ai/personalities.js';
 import { createMapSVG, focusProvince, setHoveredProvince } from '../render/mapRenderer.js';
 import {
   applyProvinceInterfaceState,
@@ -59,6 +60,8 @@ export class GameController {
     this.lastPhaseKey = null;
     this.autosaveEnabled = config.autosave !== false;
     this.autosaveTimer = null;
+    // Called after every render; the tutorial follows the game through it.
+    this.onRender = typeof config.onRender === 'function' ? config.onRender : null;
   }
 
   async init() {
@@ -160,6 +163,14 @@ export class GameController {
     return this.config.mode === 'single' && this.aiMeta !== null;
   }
 
+  // The temperament of each AI seat, as shown next to its name.
+  aiTemperament(playerId) {
+    const selection = (this.config.aiOpponentSelections || []).find((entry) => Number(entry.playerId) === playerId);
+    const personality = getPersonality(selection?.personality)
+      || getPersonality(this.aiMeta?.players?.[playerId]?.opponent?.personality);
+    return personality?.title || null;
+  }
+
   assignPlayerFirstNames() {
     if (!this.state) return;
     for (const player of this.state.players) {
@@ -172,6 +183,7 @@ export class GameController {
       if (aiName) {
         player.firstName = aiName;
         player.isAIControlled = true;
+        player.aiTemperament = this.aiTemperament(player.id) || player.aiTemperament || null;
       }
     }
   }
@@ -231,6 +243,7 @@ export class GameController {
       scrollPhasePanelIntoView({ initial: initialPhase });
     }
     this.scheduleAutosave();
+    this.onRender?.(this);
   }
 
   setActionError(reason) {

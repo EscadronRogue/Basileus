@@ -347,7 +347,9 @@ export function formatPlayerLabel(player) {
   if (!player) return '';
   const dynasty = player.dynasty || '';
   const label = player.firstName ? `${player.firstName} ${dynasty}`.trim() : dynasty;
-  return player.isAIControlled ? `${label} (AI)`.trim() : label;
+  if (!player.isAIControlled) return label;
+  // `aiTemperament` is display text set by the UI, such as "Usurper".
+  return `${label} (${player.aiTemperament ? `${player.aiTemperament} AI` : 'AI'})`.trim();
 }
 
 // Name without the "(AI)" marker, for narrative history text.
