@@ -114,6 +114,15 @@
   stroke-width: 1.55;
   stroke-opacity: 0.38;
 }
+.region-stroke.map-filter-route {
+  stroke-width: 3.4;
+  stroke-opacity: 1;
+}
+.region-stroke.map-filter-lost {
+  stroke-width: 2;
+  stroke-opacity: 0.7;
+  stroke-dasharray: 3 2;
+}
 .region-stroke.hovered  { stroke-width: 3.1; stroke-opacity: 1; }
 .region-stroke.selected,
 .region-stroke.selected.hovered {
@@ -261,6 +270,7 @@
     drop-shadow(0 0 0.42px rgba(20,8,0,0.86))
     drop-shadow(0 0 0.55px rgba(250,226,150,0.78));
 }
+.game-map.map-filter-invasion .map-cart-marker,
 .game-map.map-filter-estates .map-cart-marker:not(.map-cart-marker-estate),
 .game-map.map-filter-strategoi .map-cart-marker:not(.map-cart-marker-strategos),
 .game-map.map-filter-bishops .map-cart-marker:not(.map-cart-marker-bishop) {
@@ -306,6 +316,26 @@
 .invasion-cartouche {
   pointer-events: none;
 }
+
+/* Invasion ladder tags on the route: what the invader must win by. */
+.invasion-ladder-tag-bg {
+  fill: #fffaf0;
+  stroke: var(--invasion-lost-border);
+  stroke-width: 0.35;
+}
+.invasion-ladder-tag.capital .invasion-ladder-tag-bg {
+  fill: var(--invasion-lost-border);
+}
+.invasion-ladder-tag-text {
+  font-family: var(--font-display);
+  font-size: 2.6px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: var(--invasion-lost-border);
+  pointer-events: none;
+}
+.invasion-ladder-tag.capital .invasion-ladder-tag-text { fill: #ffffff; }
 
 .invasion-cartouche-bg {
   fill: var(--invasion-lost-fill);

@@ -5,6 +5,7 @@ import {
   buildProvinceEstateAttributions,
   buildProvinceTroopAttributions,
 } from '../../engine/cascade.js';
+import { buildInvasionLadder } from '../../engine/combat.js';
 import { getThreatenedThemeIds } from '../../engine/rules.js';
 import { getProvinceEstateTotal } from '../../engine/estates.js';
 import { applyLabelScale, updateMapCartoucheMarkers, updateMapCartoucheValues } from './cartouches.js';
@@ -80,14 +81,64 @@ function applyMapFilterClass(svg, filterId) {
 }
 
 function buildMapFilterAttributions(state, filterId) {
+  if (filterId === MAP_FILTERS.INVASION) return buildInvasionFilterAttributions(state);
   if (filterId === MAP_FILTERS.ESTATES) return buildProvinceEstateAttributions(state);
   if (filterId === MAP_FILTERS.STRATEGOI) return buildProvinceTroopAttributions(state);
   if (filterId === MAP_FILTERS.BISHOPS) return buildProvinceChurchAttributions(state);
   return {};
 }
 
+// Invasion filter: provinces on the route in red, the deepest red for the
+// first ones the invader would take; lost provinces in grey.
+function buildInvasionFilterAttributions(state) {
+  const attributions = {};
+  for (const theme of Object.values(state.themes || {})) {
+    if (theme.lost) attributions[theme.id] = { invasion: 'lost' };
+  }
+  const steps = buildInvasionLadder(state, state.currentInvasion?.route || []).filter((step) => step.status !== 'lost');
+  steps.forEach((step, index) => {
+    attributions[step.themeId] = { invasion: 'route', order: index, count: steps.length };
+  });
+  return attributions;
+}
+
+function resolveInvasionFilterStyle(attribution) {
+  if (attribution?.invasion === 'lost') {
+    return {
+      classes: ['map-filtered', 'map-filter-lost'],
+      fill: '#8d8478',
+      outline: 'rgba(46,30,15,0.5)',
+      cartFill: '#6f675c',
+      cartOutline: 'rgba(46,30,15,0.6)',
+      cartInk: '#ffffff',
+    };
+  }
+  if (attribution?.invasion === 'route') {
+    const share = attribution.count > 1 ? attribution.order / (attribution.count - 1) : 0;
+    const strength = Math.round(85 - share * 50);
+    const color = `color-mix(in srgb, #a03030 ${strength}%, #fff4e8 ${100 - strength}%)`;
+    return {
+      classes: ['map-filtered', 'map-filter-route'],
+      fill: color,
+      outline: '#a03030',
+      cartFill: color,
+      cartOutline: '#a03030',
+      cartInk: strength > 55 ? '#ffffff' : 'var(--umber-1)',
+    };
+  }
+  return {
+    classes: ['map-filtered', 'map-filter-neutral'],
+    fill: '#ffffff',
+    outline: 'rgba(46,30,15,0.22)',
+    cartFill: '#ffffff',
+    cartOutline: 'rgba(46,30,15,0.30)',
+    cartInk: 'var(--umber-1)',
+  };
+}
+
 function resolveProvinceFilterStyle(state, theme, attribution) {
   if (mapRuntime.activeMapFilter === MAP_FILTERS.REGIONS) return null;
+  if (mapRuntime.activeMapFilter === MAP_FILTERS.INVASION) return resolveInvasionFilterStyle(attribution);
   if (!theme || theme.id === 'CPL' || !attribution || attribution.playerId == null) {
     return {
       classes: ['map-filtered', 'map-filter-neutral', attribution?.tied ? 'map-filter-tied' : ''].filter(Boolean),

@@ -816,7 +816,7 @@ export function renderGameFrame({
   announceGameProgress(state);
   renderConnectionBadge?.();
   updateMapState(state, uiState?.mapFilter || 'regions');
-  drawInvasionRoute(state.currentInvasion);
+  drawInvasionRoute(state.currentInvasion, state);
   setSelectedProvince(selectedProvinceId);
   renderPlayerDashboard(
     document.getElementById('playerDashboard'),

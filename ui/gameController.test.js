@@ -5,6 +5,7 @@ import { createGameState } from '../engine/state.js';
 import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
 import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
+import { resolveInvasion } from '../engine/combat.js';
 import { addEstates } from '../engine/estates.js';
 import { phaseEstates } from '../engine/turnflow.js';
 import { addEstateToDraft } from './panels/estates.js';
@@ -809,6 +810,38 @@ test('war resolution shows frontier contributor details', () => {
   assert.match(container.innerHTML, /Frontier contributions/);
   assert.match(container.innerHTML, /frontier-troops/);
   assert.doesNotMatch(container.innerHTML, /No frontier troops were committed/);
+});
+
+test('war resolution lists the strength spent on each province and what was left', () => {
+  const state = makeState();
+  state.phase = 'resolution';
+  for (const theme of Object.values(state.themes)) theme.lost = false;
+  state.lastWarResult = resolveInvasion(state, 2, 7, { route: ['THS', 'STR', 'MAK', 'THR', 'CPL'] });
+  state.lastWarResult.contributions = [];
+  const container = makePanelContainer();
+
+  renderResolutionPanel(container, state);
+
+  assert.match(container.innerHTML, /The invader won by 5/);
+  assert.match(container.innerHTML, /war-ledger-step taken[\s\S]*costs 1[\s\S]*war-ledger-step taken[\s\S]*costs 2[\s\S]*war-ledger-step held[\s\S]*costs 3/);
+  assert.match(container.innerHTML, /The invader spent 3 and had 2 left over\./);
+});
+
+test('estates and deployment show the invasion ladder', () => {
+  const state = makeState();
+  for (const theme of Object.values(state.themes)) theme.lost = false;
+  state.themes.STR.lost = true;
+  state.currentInvasion = { id: 'bulgars', name: 'Bulgars', route: ['THS', 'STR', 'MAK', 'CPL'], strength: [4, 6] };
+  state.phase = 'deployment';
+  state.currentTroops = { BASILEUS: 2 };
+  const container = makePanelContainer();
+
+  renderOrdersPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-invasion-card/);
+  assert.match(container.innerHTML, /Strength[\s\S]*4–6/);
+  assert.match(container.innerHTML, /data-ladder-step="THS"[\s\S]*\+1<\/span>[\s\S]*data-ladder-step="STR"[\s\S]*already lost[\s\S]*data-ladder-step="MAK"[\s\S]*\+3<\/span>[\s\S]*data-ladder-step="CPL"[\s\S]*\+6<\/span>/);
+  assert.match(container.innerHTML, /retakes a lost province/);
 });
 
 test('coup resolution shows each claimant\'s support by source', () => {

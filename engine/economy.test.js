@@ -19,6 +19,7 @@ import { PROVINCES } from '../data/provinces.js';
 import {
   createGameState,
   createInvasionInstance,
+  makeRng,
   canTriggerInvasion,
   getEmpireProvinceStrength,
   getInvasionStrengthBounds,
@@ -33,7 +34,7 @@ import {
   readTroopCount,
   runIncome,
 } from './cascade.js';
-import { applyInvasionResult, resolveInvasion } from './combat.js';
+import { applyInvasionResult, buildInvasionLadder, buildReconquestLadder, resolveInvasion } from './combat.js';
 import { addEstates, getEstateCount } from './estates.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { serializePublicGameState } from './publicState.js';
@@ -974,6 +975,60 @@ test('nobody backed in the coup leaves the Basileus on the throne', () => {
     assert.equal(result.winner, 0);
   } finally {
     resetBalance();
+  }
+});
+
+test('the invasion ladder costs 1, 2, 3... per imperial province, crosses lost ones free, and ends at Constantinople', () => {
+  const state = makeState();
+  for (const theme of Object.values(state.themes)) theme.lost = false;
+  state.themes.STR.lost = true;
+  const ladder = buildInvasionLadder(state, ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL']);
+  assert.deepEqual(ladder.map((step) => [step.themeId, step.status, step.cost, step.needed]), [
+    ['CHE', 'imperial', 1, 1],
+    ['PAR', 'imperial', 2, 3],
+    ['BUL', 'imperial', 3, 6],
+    ['THS', 'imperial', 4, 10],
+    ['STR', 'lost', 0, 10],
+    ['MAK', 'imperial', 5, 15],
+    ['THR', 'imperial', 6, 21],
+    ['CPL', 'capital', 7, 28],
+  ]);
+  const back = buildReconquestLadder(state, ['CHE', 'PAR', 'STR', 'MAK', 'CPL'], new Set(['PAR', 'MAK']));
+  assert.deepEqual(back.map((step) => [step.themeId, step.status, step.cost, step.needed]), [
+    ['MAK', 'lost', 1, 1],
+    ['STR', 'imperial', 0, 1],
+    ['PAR', 'lost', 2, 3],
+    ['CHE', 'imperial', 0, 3],
+  ]);
+});
+
+test('every war records the strength spent on each province and the strength left over', () => {
+  const route = ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'];
+  const rng = makeRng(99);
+  for (let trial = 0; trial < 300; trial += 1) {
+    const state = makeState();
+    for (const theme of Object.values(state.themes)) theme.lost = theme.id !== 'CPL' && rng() < 0.35;
+    const frontier = Math.floor(rng() * 30);
+    const strength = Math.floor(rng() * 30);
+    const result = resolveInvasion(state, frontier, strength, { route });
+    const spent = result.steps.reduce((sum, step) => sum + step.spent, 0);
+    assert.equal(result.spent, spent);
+    if (result.outcome === 'stalemate') {
+      assert.equal(result.steps.length, 0);
+      continue;
+    }
+    assert.equal(result.margin, Math.abs(frontier - strength));
+    assert.equal(result.leftover, result.margin - result.spent);
+    assert.ok(result.leftover >= 0);
+    const stopped = result.steps.find((step) => step.outcome === 'held' || step.outcome === 'out_of_reach');
+    if (stopped) assert.ok(stopped.cost > result.leftover, 'the leftover never pays for the next step');
+    const won = result.steps.filter((step) => step.outcome === 'taken' || step.outcome === 'retaken').map((step) => step.themeId);
+    if (result.outcome === 'defeat') {
+      assert.deepEqual(won.filter((id) => id !== 'CPL'), result.themesLost);
+      assert.equal(won.includes('CPL'), result.reachedCPL);
+    } else {
+      assert.deepEqual(won, result.themesRecovered);
+    }
   }
 });
 

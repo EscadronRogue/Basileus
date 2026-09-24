@@ -1,5 +1,8 @@
-// render/map/invasion.js - the current invasion route and its origin cartouche.
+// render/map/invasion.js - the current invasion route, its origin cartouche,
+// and on the route the amount the invader must beat the frontier by to take
+// each province (the invasion ladder).
 
+import { buildInvasionLadder } from '../../engine/combat.js';
 import { svgUseIcon } from '../../ui/icons.js';
 import {
   INVASION_ORIGIN_IDS,
@@ -12,7 +15,9 @@ import {
   mapRuntime,
 } from './state.js';
 
-export function drawInvasionRoute(invasion) {
+// `state` gives the ladder tags; without it (or once the war is fought) the
+// route is drawn bare.
+export function drawInvasionRoute(invasion, state = null) {
   const routeLayer = document.getElementById('layer-invasion-route');
   const cartoucheLayer = document.getElementById('layer-invasion');
   if (!routeLayer || !cartoucheLayer) return;
@@ -25,9 +30,13 @@ export function drawInvasionRoute(invasion) {
   const originPoint = resolveInvasionOrigin(invasion);
   if (originPoint) points.push(originPoint);
 
+  const routeIds = [];
   for (const provinceId of invasion.route) {
     const centroid = mapRuntime.provinceCentroids[provinceId];
-    if (centroid) points.push(centroid);
+    if (centroid) {
+      points.push(centroid);
+      routeIds.push(provinceId);
+    }
   }
 
   if (points.length < 2) return;
@@ -51,7 +60,50 @@ export function drawInvasionRoute(invasion) {
     routeLayer.appendChild(marker);
   }
 
+  if (state && state.phase !== 'resolution' && originPoint) {
+    appendLadderTags(cartoucheLayer, state, invasion, points, routeIds);
+  }
   appendInvasionCartouche(cartoucheLayer, invasion, points[0]);
+}
+
+// A tag on the route just before each province: "+3" means the invader takes
+// it if it beats the frontier by 3 or more. Lost provinces cost nothing and
+// get no tag.
+function appendLadderTags(layer, state, invasion, points, routeIds) {
+  const ladder = new Map(buildInvasionLadder(state, invasion.route).map((step) => [step.themeId, step]));
+  routeIds.forEach((provinceId, index) => {
+    const step = ladder.get(provinceId);
+    if (!step || step.status === 'lost') return;
+    const from = points[index];
+    const to = points[index + 1];
+    if (!from || !to) return;
+    const cx = from.cx + (to.cx - from.cx) * 0.55;
+    const cy = from.cy + (to.cy - from.cy) * 0.55;
+    const text = `+${step.needed}`;
+    const width = 2 + text.length * 1.5;
+    const height = 4;
+    const group = document.createElementNS(SVG_NS, 'g');
+    group.setAttribute('class', `invasion-ladder-tag${step.status === 'capital' ? ' capital' : ''}`);
+    group.setAttribute('data-ladder-tag', provinceId);
+    group.setAttribute('transform', `translate(${(cx - width / 2).toFixed(2)} ${(cy - height / 2).toFixed(2)})`);
+    const title = document.createElementNS(SVG_NS, 'title');
+    const name = state.themes?.[provinceId]?.name || provinceId;
+    title.textContent = `The invader takes ${name} if it beats the frontier by ${step.needed} or more.`;
+    group.appendChild(title);
+    const bg = document.createElementNS(SVG_NS, 'rect');
+    bg.setAttribute('class', 'invasion-ladder-tag-bg');
+    bg.setAttribute('width', width.toFixed(2));
+    bg.setAttribute('height', height.toFixed(2));
+    bg.setAttribute('rx', (height / 2).toFixed(2));
+    group.appendChild(bg);
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'invasion-ladder-tag-text');
+    label.setAttribute('x', (width / 2).toFixed(2));
+    label.setAttribute('y', (height / 2).toFixed(2));
+    label.textContent = text;
+    group.appendChild(label);
+    layer.appendChild(group);
+  });
 }
 
 function resolveInvasionOrigin(invasion) {

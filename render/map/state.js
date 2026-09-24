@@ -61,6 +61,7 @@ export const MAP_FILTERS = Object.freeze({
   ESTATES: 'estates',
   STRATEGOI: 'strategoi',
   BISHOPS: 'bishops',
+  INVASION: 'invasion',
 });
 
 export const MAP_FILTER_LABELS = Object.freeze({
@@ -68,6 +69,7 @@ export const MAP_FILTER_LABELS = Object.freeze({
   [MAP_FILTERS.ESTATES]: 'Estates',
   [MAP_FILTERS.STRATEGOI]: 'Strategoi',
   [MAP_FILTERS.BISHOPS]: 'Bishops',
+  [MAP_FILTERS.INVASION]: 'Invasion',
 });
 
 export const MAP_FILTER_TO_MARKER_KIND = Object.freeze({

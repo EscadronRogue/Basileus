@@ -15,6 +15,7 @@ import { getSpendableGold } from '../../engine/deals.js';
 import { getRegionLabel, renderEstateStack, renderProvinceBadge } from '../labels.js';
 import { formatGoldHtml } from '../icons.js';
 import { escapeHtml } from '../html.js';
+import { renderInvasionCard } from './invasion.js';
 import { bindSelectAction, getDraftBucket } from './shared.js';
 
 const REGION_ORDER = ['east', 'west', 'sea'];
@@ -119,6 +120,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
         <span>${canAddMore ? `Next one ${formatGoldHtml(nextPrice)}` : `Next one ${formatGoldHtml(nextPrice)}: not enough gold`}</span>
       </div>
       ${locked ? '<p class="panel-empty estate-locked-note">Your estates are locked. Change the plan to edit it.</p>' : ''}
+      ${renderInvasionCard(state)}
       ${regions.map((group) => `
         <div class="estate-region">
           <h4 class="estate-region-title">${escapeHtml(getRegionLabel(group.region))}</h4>

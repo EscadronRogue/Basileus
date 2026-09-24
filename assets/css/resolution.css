@@ -253,10 +253,6 @@
   border-left: 4px solid;
   background: rgba(255,252,240,0.6);
 }
-.war-result-row.lost {
-  border-left-color: var(--crimson-1);
-  background: rgba(160,48,48,0.06);
-}
 .war-result-row.recovered {
   border-left-color: var(--win);
   background: rgba(58,107,40,0.06);
@@ -268,13 +264,59 @@
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
-.war-result-row.lost .war-result-row-label { color: var(--crimson-1); }
 .war-result-row.recovered .war-result-row-label { color: var(--win); }
-.war-result-tokens {
+.war-ledger {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border-left: 4px solid var(--umber-3);
+  background: rgba(255,252,240,0.6);
 }
+.war-defeat .war-ledger { border-left-color: var(--crimson-1); background: rgba(160,48,48,0.06); }
+.war-victory .war-ledger { border-left-color: var(--win); background: rgba(58,107,40,0.06); }
+.war-ledger-title,
+.war-ledger-total {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--umber-2);
+}
+.war-ledger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.war-ledger-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--umber-2);
+}
+.war-ledger-cost { font-variant-numeric: tabular-nums; }
+.war-ledger-outcome {
+  min-width: 88px;
+  text-align: right;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.war-ledger-step.taken .war-ledger-outcome { color: var(--crimson-1); }
+.war-ledger-step.retaken .war-ledger-outcome { color: var(--win); }
+.war-ledger-step.held .war-ledger-outcome,
+.war-ledger-step.out_of_reach .war-ledger-outcome,
+.war-ledger-step.crossed .war-ledger-outcome { color: var(--umber-3); }
 
 /* Coup outcome card */
 .coup-outcome-badge {

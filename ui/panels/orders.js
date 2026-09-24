@@ -20,6 +20,7 @@ import {
 } from '../../engine/deployment.js';
 import { formatGoldHtml, formatHalves, formatMercenariesHtml, formatSupportHtml, formatTroopsHtml, renderIcon } from '../icons.js';
 import { escapeHtml } from '../html.js';
+import { renderInvasionCard } from './invasion.js';
 import { getPlayerStyleAttr, renderCartouchedText, renderPlayerChip } from '../labels.js';
 import {
   bindSelectAction,
@@ -369,6 +370,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
       <p class="section-hint">Send each army to the Frontier to fight the invasion, or to Constantinople to back a claimant in the coup. Troops you do not field are dismissed and pay you ${formatGoldHtml(BALANCE.GOLD_PER_DISMISSED_TROOP)} each.</p>
       ${alreadyLocked ? '<div class="panel-empty">Deployment orders locked.</div>' : `
         ${lockNotice}
+        ${renderInvasionCard(state)}
         ${deploymentPreview}
         <div class="army-card-stack">
           ${armyKeys.map((officeKey) => {

@@ -3,8 +3,9 @@
 import { getPlayer } from '../../engine/state.js';
 import { formatGoldHtml, formatMercenariesHtml, formatSupportHtml, formatTroopsHtml } from '../icons.js';
 import { escapeHtml } from '../html.js';
-import { renderPlayerChip, renderPlayerRoleName, renderProvinceBadge } from '../labels.js';
-import { renderArmyOfficeBadge, renderPickerStep } from './shared.js';
+import { renderWarLedger } from './invasion.js';
+import { renderPlayerChip, renderPlayerRoleName } from '../labels.js';
+import { renderArmyOfficeBadge } from './shared.js';
 
 export function renderResolutionPanel(container, state, options = {}) {
   return renderResolutionPanelDetailed(container, state, options);
@@ -155,8 +156,6 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
   const outcomeLabel = empireFell ? 'Empire falls' : outcome.toUpperCase();
   const empireTroops = Math.max(0, Number(war.frontierTroops) || 0);
   const invaderStrength = Math.max(0, Number(war.invaderStrength) || 0);
-  const themesLost = Array.isArray(war.themesLost) ? war.themesLost : [];
-  const themesRecovered = Array.isArray(war.themesRecovered) ? war.themesRecovered : [];
   const frontierBreakdown = renderFrontierContributionBreakdown(state, war.contributions);
   const reconquestReward = war.reconquestReward || null;
 
@@ -179,18 +178,7 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
         </div>
       </div>
       ${frontierBreakdown}
-      ${themesLost.length ? `
-        <div class="war-result-row lost">
-          <span class="war-result-row-label">Lost to the invader</span>
-          <div class="war-result-tokens">${themesLost.map((id) => renderProvinceBadge(state, state.themes[id] || { id, name: id }, { compact: true })).join(' ')}</div>
-        </div>
-      ` : ''}
-      ${themesRecovered.length ? `
-        <div class="war-result-row recovered">
-          <span class="war-result-row-label">Reclaimed for the empire</span>
-          <div class="war-result-tokens">${themesRecovered.map((id) => renderProvinceBadge(state, state.themes[id] || { id, name: id }, { compact: true })).join(' ')}</div>
-        </div>
-      ` : ''}
+      ${renderWarLedger(state, war)}
       ${reconquestReward ? renderReconquestRewardRow(state, reconquestReward) : ''}
     </article>
   `;
@@ -217,7 +205,7 @@ function renderReconquestRewardRow(state, reward) {
     Number(reward.rewardProvinceCount ?? reward.totalGold ?? reward.totalCapitalSupport) || 0,
   );
   const repulseNote = rewardProvinceCount > recoveredCount
-    ? `<span class="muted">Repulse value: ${rewardProvinceCount} province win${rewardProvinceCount === 1 ? '' : 's'}.</span>`
+    ? `<span class="muted">The frontier's lead was worth ${rewardProvinceCount} province${rewardProvinceCount === 1 ? '' : 's'} on the ladder, lost or not.</span>`
     : '';
   return `
     <div class="war-result-row recovered reconquest-reward-row">

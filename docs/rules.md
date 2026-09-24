@@ -52,7 +52,7 @@ Each province outside Constantinople has three original values: **P** (profit to
 ## Coup & War
 
 - **Coup.** Each dynasty's troops in Constantinople give full support to its first choice and 50% to its second. The Theodosian Walls give the Basileus 2 support. The Patriarch's influence (1) follows the Patriarch's choices like troops do. Triumph adds support for last round's best defender, Unrest takes some from a Basileus who lost provinces. The most support wins the throne; if nobody has any, the Basileus stays. A tie goes to the claimant with more of the Patriarch's influence, then to the Basileus, then to seating order. A new Basileus hands out all four major offices at the start of the next round.
-- **War.** Frontier troops minus invader strength. Win → reconquer lost provinces along the route (cost 1, then +1, +1…). Lose → the invader advances along the route capturing provinces at the same rising cost. If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.
+- **War.** All troops at the frontier fight the invader. If the invader is stronger, it walks its route and takes provinces with the strength it has left over: the first imperial province costs it 1, the next 2, then 3 and so on, and lost provinces cost nothing. Some routes end at Constantinople: taking it makes the empire fall and nobody wins. If the frontier is stronger, its lead retakes lost provinces on the route the same way, starting from the end nearest Constantinople. The invasion card and the Invasion map filter show how much the invader must win by to take each province.
 - **Best defender.** When the empire wins the war, the top frontier contributor gains 1 gold and 1 temporary Triumph support for each province the surplus could reconquer along the route, even if none remain to restore. Tied top contributors share it equally: gold rounds up, Triumph rounds down. Triumph counts for that dynasty itself, in the next coup only.
 
 ## Glossary
@@ -84,7 +84,7 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **Patriarch's influence** (throne): The Patriarch brings 1 support to every coup. It follows the Patriarch's coup choices like troops do: all of it to the first choice, half to the second.
 - **Triumph** (throne): Support earned by the best defender: 1 for each province the war surplus could reconquer. It counts for that dynasty itself in the next coup only.
 - **Unrest** (throne): When the empire loses provinces, the Basileus who lost them has 1 less support per lost province in the next coup.
-- **Invasion** (war): This round's threat: an enemy with a strength range and a route of provinces. A capital invasion that breaks through can reach Constantinople; a limited invasion stops once it has taken its route.
+- **Invasion** (war): This round's enemy: an estimated strength and a route of provinces. If it beats the frontier, it takes provinces along the route, each costing it 1 more than the last; a route that ends at Constantinople can make the empire fall.
 - **Resolution** (phase): Orders are revealed. The coup is decided first, then frontier troops fight the invasion.
 - **Occupied** (war): A province taken by invaders. Its owner and Strategos are suspended and its Bishop keeps only the original church value until the empire reconquers it.
 - **Reconquest** (war): When the empire wins a war, the surplus frontier troops recover occupied provinces along the route: the first costs 1 troop, the next 2, and so on.

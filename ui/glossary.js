@@ -208,7 +208,7 @@ export const GLOSSARY_TERMS = [
     term: 'Invasion',
     category: 'War',
     aliases: ['invasions', 'invasion', 'invaders', 'invader'],
-    definition: 'This round\'s threat: an enemy with a strength range and a route of provinces. A capital invasion that breaks through can reach Constantinople; a limited invasion stops once it has taken its route.',
+    definition: 'This round\'s enemy: an estimated strength and a route of provinces. If it beats the frontier, it takes provinces along the route, each costing it 1 more than the last; a route that ends at Constantinople can make the empire fall.',
   },
   {
     id: 'resolution',
