@@ -10,7 +10,6 @@ import { chromium } from 'playwright';
 import { startMultiplayerServer } from '../multiplayer/server.js';
 
 const PHASE_BUTTONS = [
-  '[data-defender-reward-choice][data-choice="empire"]',
   '[data-action="confirm-court-plan"]',
   '[data-action="confirm-estates"]',
   '[data-action="continue"]',
@@ -262,7 +261,7 @@ test('the tutorial guides a full round, then leaves no save behind', async (t) =
       await clickSocket('[data-court-power="DOM_EAST"] [data-wire-player-finish="0"]');
     },
     'court-lock': () => page.click('[data-action="confirm-court-plan"]'),
-    'estates-bid': () => page.click('.estate-card:not(.disabled) [data-action="bid-estate"]'),
+    'estates-bid': () => page.locator('[data-estate-add]:not([disabled])').first().click(),
     'estates-lock': () => page.click('[data-action="confirm-estates"]'),
     'deploy-frontier': async () => {
       while (await page.locator('.army-card.unresolved').count()) {
@@ -270,7 +269,6 @@ test('the tutorial guides a full round, then leaves no save behind', async (t) =
       }
     },
     'deploy-lock': () => page.click('[data-action="lock-orders"]'),
-    'defender-reward': () => page.click('[data-defender-reward-choice][data-choice="empire"]'),
     'resolution-continue': () => page.click('[data-action="continue"]'),
   };
   const seen = [];

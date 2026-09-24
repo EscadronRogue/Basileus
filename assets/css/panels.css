@@ -896,3 +896,8 @@
 }
 .theme-values { color: var(--umber-3); margin-left: 3px; }
 
+
+/* Dashboard: estates are listed with how many the dynasty holds there. */
+.dashboard-estate-entry { display: inline-flex; align-items: center; gap: 2px; }
+.dashboard-estate-entry.disabled { opacity: 0.55; }
+.dashboard-estate-count { font-family: var(--font-display); font-weight: 700; font-size: 12px; color: inherit; }

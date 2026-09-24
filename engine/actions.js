@@ -1,4 +1,4 @@
-// engine/actions.js - estates, court actions, title redistribution, and coups.
+// engine/actions.js - Offices phase actions (appointments, revocations), title redistribution, and coups.
 import {
   findTitleHolder,
   getPlayer,
@@ -6,7 +6,6 @@ import {
   hasRevocationTargetLock,
   recordAppointmentChoice,
   recordRevocationChoice,
-  requireRng,
   getPlayerLabel,
 } from './state.js';
 import { recordHistoryEvent } from './history.js';
@@ -14,14 +13,19 @@ import { getPlayerFinalScore } from './scoring.js';
 import {
   autoRefuseAwaitingDeals,
   consumeAppointmentPromise,
-  getSpendableGold,
   validateAppointmentPromiseChoice,
 } from './deals.js';
-import { getThemeLandPrice } from './rules.js';
+import {
+  canHoldEstates,
+  getEstateCount,
+  getProvinceEstateHolders,
+  getRevocableEstateCount,
+  removeRevocableEstates,
+} from './estates.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
-import { formatGold } from './presentation.js';
+import { BALANCE } from '../data/balance.js';
 import { getCapitalSupportEntries } from './capitalSupport.js';
-import { getCoupRankWeight, normalizeCoupRanking, normalizeCoupSupport } from './coup.js';
+import { buildDefaultCoupChoices, getCoupChoiceShares, normalizeCoupChoices } from './coup.js';
 
 const STRATEGOS_TITLE_BY_REGION = {
   east: 'DOM_EAST',
@@ -29,22 +33,16 @@ const STRATEGOS_TITLE_BY_REGION = {
   sea: 'ADMIRAL',
 };
 
-export const COURT_POWER_APPOINTMENT_LIMIT = 2;
-export const COURT_POWER_REVOCATION_LIMIT = 2;
-export const COURT_POWER_ACTION_LIMIT = COURT_POWER_APPOINTMENT_LIMIT;
-export const BASILEUS_COURT_REVOCATION_LIMIT = 4;
-export const PRIVATE_ESTATE_REVOCATION_COMPENSATION = 1;
-
 export function getCourtPowerAppointmentLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? 0 : COURT_POWER_APPOINTMENT_LIMIT;
+  return powerKey === 'BASILEUS' ? 0 : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
 export function getCourtPowerRevocationLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? BASILEUS_COURT_REVOCATION_LIMIT : COURT_POWER_REVOCATION_LIMIT;
+  return powerKey === 'BASILEUS' ? BALANCE.BASILEUS_REVOCATION_LIMIT : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
 export function getCourtPowerActionLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? BASILEUS_COURT_REVOCATION_LIMIT : COURT_POWER_ACTION_LIMIT;
+  return powerKey === 'BASILEUS' ? BALANCE.BASILEUS_REVOCATION_LIMIT : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
 function themeName(state, themeId) {
@@ -66,10 +64,6 @@ function fail(reason) {
 
 export function getMinorTitleSlotKey(themeId, titleType) {
   return `minor:${themeId}:${titleType}`;
-}
-
-export function getThemeOwnershipSlotKey(themeId) {
-  return `theme:${themeId}`;
 }
 
 function ensureCourtActionState(state) {
@@ -317,239 +311,10 @@ function recordRevocation(state, revokerId, targetPlayerId, slotKeys, powerKey) 
   markCourtActionUsed(state, revokerId, powerKey, 'revoke');
 }
 
-// Estates
-function ensureLandAuctions(state) {
-  if (!state.landAuctions || typeof state.landAuctions !== 'object') state.landAuctions = {};
-  return state.landAuctions;
-}
-
-function ensureLandAuctionTieBreakers(state) {
-  if (!state.landAuctionTieBreakers || typeof state.landAuctionTieBreakers !== 'object') {
-    state.landAuctionTieBreakers = {};
-  }
-  return state.landAuctionTieBreakers;
-}
-
-function normalizeLandBidEntry(playerId, bid) {
-  const bidderId = Number(bid?.bidderId ?? playerId);
-  const amount = Number(bid?.amount);
-  if (!Number.isInteger(bidderId) || !Number.isFinite(amount) || amount <= 0) return null;
-  return {
-    bidderId,
-    amount,
-    round: bid?.round,
-  };
-}
-
-export function getLandAuctionBidEntries(auction = null) {
-  if (!auction || typeof auction !== 'object') return [];
-  if (auction.bids && typeof auction.bids === 'object') {
-    return Object.entries(auction.bids)
-      .map(([playerId, bid]) => normalizeLandBidEntry(playerId, bid))
-      .filter(Boolean)
-      .sort((left, right) => left.bidderId - right.bidderId);
-  }
-  const legacy = normalizeLandBidEntry(auction.bidderId, auction);
-  return legacy ? [legacy] : [];
-}
-
-function normalizeLandAuction(auction, themeId, round) {
-  const bids = {};
-  for (const bid of getLandAuctionBidEntries(auction)) {
-    bids[bid.bidderId] = {
-      bidderId: bid.bidderId,
-      amount: bid.amount,
-      round: bid.round ?? round,
-    };
-  }
-  return { themeId, round, bids };
-}
-
-function getOrCreateLandAuction(state, themeId) {
-  const auctions = ensureLandAuctions(state);
-  const normalized = normalizeLandAuction(auctions[themeId], themeId, state.round);
-  auctions[themeId] = normalized;
-  return normalized;
-}
-
-export function getLandAuction(state, themeId) {
-  return ensureLandAuctions(state)[themeId] || null;
-}
-
-function normalizeRound(value) {
-  const round = Number(value);
-  return Number.isInteger(round) && round >= 0 ? round : null;
-}
-
-export function getPrivateEstatePurchasedRound(theme) {
-  return normalizeRound(theme?.privateEstatePurchasedRound);
-}
-
-export function wasPrivateEstateBoughtLastTurn(state, themeOrId) {
-  const theme = typeof themeOrId === 'string' ? state?.themes?.[themeOrId] : themeOrId;
-  const purchasedRound = getPrivateEstatePurchasedRound(theme);
-  const currentRound = normalizeRound(state?.round);
-  return purchasedRound != null && currentRound != null && currentRound - purchasedRound === 1;
-}
-
-export function getMinimumLandBid(state, themeId) {
-  const theme = state.themes[themeId];
-  return getThemeLandPrice(theme);
-}
-
-export function getPlayerLandBid(state, themeId, playerId) {
-  return getLandAuctionBidEntries(getLandAuction(state, themeId))
-    .find((bid) => bid.bidderId === Number(playerId)) || null;
-}
-
-export function getLandBidCommitment(state, playerId, options = {}) {
-  const exceptThemeId = options.exceptThemeId || null;
-  const normalizedPlayerId = Number(playerId);
-  return Object.entries(ensureLandAuctions(state)).reduce((total, [themeId, auction]) => {
-    if (exceptThemeId && themeId === exceptThemeId) return total;
-    const bid = getLandAuctionBidEntries(auction).find((entry) => entry.bidderId === normalizedPlayerId);
-    return total + (Number(bid?.amount) || 0);
-  }, 0);
-}
-
-export function getAvailableLandBidGold(state, playerId, themeId = null) {
-  return Math.max(0, getSpendableGold(state, playerId) - getLandBidCommitment(state, playerId, {
-    exceptThemeId: themeId,
-  }));
-}
-
-export function getLandBidAmountOptions(state, playerId, themeId) {
-  const minimum = Math.ceil(Number(getMinimumLandBid(state, themeId)) || 0);
-  const maximum = Math.floor(Number(getAvailableLandBidGold(state, playerId, themeId)) || 0);
-  if (minimum <= 0 || maximum < minimum) return [];
-  return Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index)
-    .filter((amount) => canBuyTheme(state, playerId, themeId, amount).ok);
-}
-
-export function canBuyTheme(state, playerId, themeId, amount = null) {
-  if (state.phase !== 'estates') return fail('Estate bidding is only available during Estates.');
-  const theme = state.themes[themeId];
-  if (!theme) return fail('Theme not found.');
-  if (theme.occupied) return fail('Theme is occupied.');
-  if (theme.owner !== null) return fail('Theme already owned.');
-  if (theme.id === 'CPL') return fail('Cannot buy Constantinople.');
-  const current = getPlayerLandBid(state, themeId, playerId);
-  const minimumBid = getThemeLandPrice(theme);
-  const cost = amount == null ? (Number(current?.amount) || minimumBid) : Number(amount);
-  if (!Number.isFinite(cost) || cost < minimumBid) {
-    return fail(`Bid must be at least ${formatGold(minimumBid)}.`);
-  }
-  const availableForTheme = getAvailableLandBidGold(state, playerId, themeId);
-  if (availableForTheme < cost) {
-    return fail(`Need ${formatGold(cost)} of unreserved gold for this sealed bid, have ${formatGold(availableForTheme)}.`);
-  }
-  return { ok: true, cost, minimumBid, current, availableForTheme };
-}
-
-export function buyTheme(state, playerId, themeId, amount = null) {
-  const check = canBuyTheme(state, playerId, themeId, amount);
-  if (!check.ok) return check;
-  const auction = getOrCreateLandAuction(state, themeId);
-  auction.bids[playerId] = { bidderId: playerId, amount: check.cost, round: state.round };
-  state.log.push({ type: 'land_bid', player: playerId, theme: themeId, bid: check.cost, round: state.round });
-  return { ok: true };
-}
-
-function getLandAuctionTieKey(playerIds) {
-  return playerIds.slice().sort((left, right) => left - right).join(':');
-}
-
-function resolveLandAuctionTie(state, tiedBids) {
-  const tied = tiedBids.slice().sort((left, right) => left.bidderId - right.bidderId);
-  if (tied.length <= 1) return { winner: tied[0] || null, tieBreak: null };
-
-  const tieBreakers = ensureLandAuctionTieBreakers(state);
-  const tieKey = getLandAuctionTieKey(tied.map((bid) => bid.bidderId));
-  const storedIndex = Number(tieBreakers[tieKey]);
-  const winnerIndex = Number.isInteger(storedIndex)
-    ? ((storedIndex % tied.length) + tied.length) % tied.length
-    : Math.floor(requireRng(state)() * tied.length);
-  tieBreakers[tieKey] = (winnerIndex + 1) % tied.length;
-
-  return {
-    winner: tied[winnerIndex],
-    tieBreak: {
-      method: 'rotating_random',
-      tiedPlayerIds: tied.map((bid) => bid.bidderId),
-      winnerId: tied[winnerIndex].bidderId,
-      nextIndex: tieBreakers[tieKey],
-    },
-  };
-}
-
-export function resolveLandAuctionWinner(state, themeId, auction) {
-  const validBids = getLandAuctionBidEntries(auction)
-    .filter((bid) => getPlayer(state, bid.bidderId))
-    .sort((left, right) => (right.amount - left.amount) || (left.bidderId - right.bidderId));
-  if (!validBids.length) return { winner: null, bids: [], tieBreak: null };
-
-  const winningAmount = validBids[0].amount;
-  const tied = validBids.filter((bid) => bid.amount === winningAmount);
-  const resolved = resolveLandAuctionTie(state, tied);
-  return {
-    themeId,
-    winner: resolved.winner,
-    bids: validBids,
-    tieBreak: resolved.tieBreak,
-  };
-}
-
-export function settleLandAuctions(state) {
-  const auctions = ensureLandAuctions(state);
-  for (const [themeId, auction] of Object.entries(auctions)) {
-    const theme = state.themes[themeId];
-    if (!theme || theme.occupied || theme.owner !== null || theme.id === 'CPL') {
-      delete auctions[themeId];
-      continue;
-    }
-    const result = resolveLandAuctionWinner(state, themeId, auction);
-    const winner = getPlayer(state, Number(result.winner?.bidderId));
-    const winningBid = Number(result.winner?.amount) || 0;
-    if (!winner || winningBid <= 0) {
-      delete auctions[themeId];
-      continue;
-    }
-    theme.owner = winner.id;
-    theme.privateEstatePurchasedRound = state.round;
-    winner.gold -= winningBid;
-    state.log.push({
-      type: 'buy',
-      player: winner.id,
-      theme: themeId,
-      cost: winningBid,
-      round: state.round,
-      bids: result.bids,
-      tieBreak: result.tieBreak,
-    });
-    recordHistoryEvent(state, {
-      category: 'estates',
-      type: 'buy_theme',
-      actorId: winner.id,
-      summary: result.tieBreak
-        ? `${getPlayerLabel(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)} after a tied sealed bid.`
-        : `${getPlayerLabel(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)}.`,
-      details: {
-        themeId,
-        themeName: themeName(state, themeId),
-        cost: winningBid,
-        purchasedRound: getPrivateEstatePurchasedRound(theme),
-        bids: result.bids,
-        tieBreak: result.tieBreak,
-      },
-    });
-    delete auctions[themeId];
-  }
-}
-
 // Appointments
 export function appointStrategos(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
-  if (!theme || theme.occupied || theme.id === 'CPL') return fail('Invalid theme.');
+  if (!theme || theme.lost || theme.id === 'CPL') return fail('Invalid theme.');
   if (!isValidPlayerId(state, appointeeId)) return fail('Choose an appointee.');
   if (theme.strategos !== null) return fail('This strategos title is already appointed.');
   const requiredTitle = STRATEGOS_TITLE_BY_REGION[theme.region];
@@ -624,6 +389,9 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   if (titleType !== 'strategos' && titleType !== 'bishop') return fail('Invalid minor title.');
   if (titleType === 'strategos' && theme.strategos == null) return fail('That strategos title is already vacant.');
   if (titleType === 'bishop' && theme.bishop == null) return fail('That bishop title is already vacant.');
+  if (titleType === 'strategos' && theme.lost) {
+    return fail(`${themeName(state, themeId)} is lost; its Strategos cannot be revoked until it is reconquered.`);
+  }
   const slotKey = getMinorTitleSlotKey(themeId, titleType);
   const sameTurn = currentTurnTitleBlock(state, slotKey, `The ${titleType} of ${themeName(state, themeId)}`);
   if (!sameTurn.ok) return sameTurn;
@@ -665,50 +433,55 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   return { ok: true };
 }
 
-export function revokeTheme(state, themeId, revokerId = state.basileusId) {
-  const check = canRevokeTheme(state, themeId, revokerId);
-  if (!check.ok) return check;
-  const { theme, targetPlayerId } = check;
-  const targetPlayer = getPlayer(state, targetPlayerId);
-  const compensation = PRIVATE_ESTATE_REVOCATION_COMPENSATION;
-
-  if (targetPlayer && compensation > 0) targetPlayer.gold += compensation;
-  theme.owner = null;
-  theme.privateEstatePurchasedRound = null;
-  recordRevocation(state, revokerId, targetPlayerId, [getThemeOwnershipSlotKey(themeId)], 'BASILEUS');
-  state.log.push({ type: 'revoke_theme', theme: themeId, round: state.round, revokerId, compensation });
-  recordHistoryEvent(state, {
-    category: 'court',
-    type: 'revoke_theme',
-    actorId: revokerId,
-    summary: `${getPlayerLabel(state, revokerId)} strips ${themeName(state, themeId)} from private ownership and pays ${getPlayerLabel(state, targetPlayerId)} ${formatGold(compensation)}.`,
-    details: {
-      themeId,
-      themeName: themeName(state, themeId),
-      revokedPlayerId: targetPlayerId,
-      revokedPlayerIds: [targetPlayerId],
-      revokedPlayerName: getPlayerLabel(state, targetPlayerId),
-      compensation,
-    },
-  });
-  return { ok: true, compensation };
+export function getEstateRevocationValue(themeId, playerId) {
+  return `estates:${themeId}:${playerId}`;
 }
 
-export function canRevokeTheme(state, themeId, revokerId = state.basileusId) {
+// One Basileus action takes every estate a dynasty holds in one province,
+// except the ones it built in the latest Estates phase.
+export function canRevokeEstates(state, themeId, targetPlayerId, revokerId = state.basileusId) {
   const theme = state.themes[themeId];
-  if (!theme || !Number.isInteger(theme.owner)) return fail('No private estate to revoke.');
-  if (revokerId !== state.basileusId) return fail('Only the Basileus can revoke private estates.');
-  if (wasPrivateEstateBoughtLastTurn(state, theme)) {
-    return fail(`${themeName(state, themeId)} was bought last turn and cannot be revoked until next turn.`);
+  const targetId = Number(targetPlayerId);
+  if (!theme || !canHoldEstates(theme) || !Number.isInteger(targetId) || getEstateCount(theme, targetId) <= 0) {
+    return fail('No estates to revoke there.');
+  }
+  if (revokerId !== state.basileusId) return fail('Only the Basileus can revoke estates.');
+  if (theme.lost) return fail(`${themeName(state, themeId)} is lost; its estates cannot be revoked until it is reconquered.`);
+  if (getRevocableEstateCount(theme, targetId) <= 0) {
+    return fail(`${getPlayerLabel(state, targetId)}'s estates in ${themeName(state, themeId)} were built last round and cannot be revoked yet.`);
   }
   const actionCheck = checkCourtActionAvailable(state, revokerId, 'BASILEUS', 'revoke');
   if (!actionCheck.ok) return actionCheck;
-  const sameTurn = checkRevocationCurrentTurnAppointment(state, `theme:${themeId}`);
-  if (!sameTurn.ok) return sameTurn;
-  const targetPlayerId = theme.owner;
-  const targetCheck = checkRevocationTargetCooldown(state, revokerId, targetPlayerId);
+  const targetCheck = checkRevocationTargetCooldown(state, revokerId, targetId);
   if (!targetCheck.ok) return targetCheck;
-  return { ok: true, theme, targetPlayerId };
+  return { ok: true, theme, targetPlayerId: targetId, count: getRevocableEstateCount(theme, targetId) };
+}
+
+export function revokeEstates(state, themeId, targetPlayerId, revokerId = state.basileusId) {
+  const check = canRevokeEstates(state, themeId, targetPlayerId, revokerId);
+  if (!check.ok) return check;
+  const { theme, targetPlayerId: targetId } = check;
+  const removed = removeRevocableEstates(theme, targetId);
+  const refund = removed * (Number(BALANCE.ESTATE_REVOCATION_REFUND) || 0);
+  if (refund > 0) getPlayer(state, targetId).gold += refund;
+  recordRevocation(state, revokerId, targetId, [getEstateRevocationValue(themeId, targetId)], 'BASILEUS');
+  state.log.push({ type: 'revoke_estates', theme: themeId, player: targetId, count: removed, round: state.round, revokerId });
+  recordHistoryEvent(state, {
+    category: 'court',
+    type: 'revoke_estates',
+    actorId: revokerId,
+    summary: `${getPlayerLabel(state, revokerId)} revokes ${removed} estate${removed === 1 ? '' : 's'} of ${getPlayerLabel(state, targetId)} in ${themeName(state, themeId)}.`,
+    details: {
+      themeId,
+      themeName: themeName(state, themeId),
+      count: removed,
+      refund,
+      revokedPlayerId: targetId,
+      revokedPlayerIds: [targetId],
+      revokedPlayerName: getPlayerLabel(state, targetId),
+    },
+  });
+  return { ok: true, count: removed, refund };
 }
 
 function unique(values) {
@@ -721,13 +494,12 @@ function hasBasileusRevocationTarget(state) {
     && (
       (
         theme.strategos != null
+        && !theme.lost
         && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
       )
-      || (
-        Number.isInteger(theme.owner)
-        && !theme.occupied
-        && canRevokeTheme(state, theme.id, state.basileusId).ok
-      )
+      || getProvinceEstateHolders(theme).some((holder) => (
+        canRevokeEstates(state, theme.id, holder.playerId, state.basileusId).ok
+      ))
     )
   ));
 }
@@ -737,7 +509,7 @@ function hasStrategosAppointmentTarget(state, powerKey) {
   if (!region) return false;
   return Object.values(state.themes || {}).some((theme) => (
     theme.id !== 'CPL'
-    && !theme.occupied
+    && !theme.lost
     && theme.strategos == null
     && theme.region === region
     && !isTitleRevokedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
@@ -751,6 +523,7 @@ function hasStrategosRevocationTarget(state, powerKey) {
     theme.id !== 'CPL'
     && theme.region === region
     && theme.strategos != null
+    && !theme.lost
     && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
   ));
 }
@@ -865,8 +638,13 @@ export function autoConfirmFinishedCourtPlayers(state) {
   return confirmed;
 }
 
-function isRankedCapitalSupport(entry) {
-  return entry?.titleKey === 'PATRIARCH';
+// Where a coup contribution comes from, for the Resolution panel and history.
+function getSupportSource(entry) {
+  if (entry?.titleKey === 'BASILEUS') return 'walls';
+  if (entry?.titleKey === 'PATRIARCH') return 'patriarch';
+  if (entry?.kind === 'reconquest') return 'triumph';
+  if (entry?.kind === 'lost_provinces') return 'unrest';
+  return 'support';
 }
 
 const COUP_TIE_EPSILON = 1e-9;
@@ -934,75 +712,75 @@ function resolveCoupTie(state, tied, patriarchSupport) {
   };
 }
 
+// Every claimant's support: troops in Constantinople and the Patriarch's
+// influence follow their owner's first and second choice; the Theodosian
+// Walls, Triumph and Unrest apply to their holder directly. Most support
+// wins; with nobody supported, the Basileus keeps the throne.
 export function resolveCoup(state, allOrders, capitalTroops) {
   const ballots = [];
   const candidateVotes = {};
   const contributions = [];
-  const playerCount = state.players.length;
 
-  const addRankedContributions = (pid, orders, sourceTroops, passiveEntry = null) => {
-    const ranking = normalizeCoupRanking(state, pid, orders?.ranking, orders?.candidate);
-    const candidateSupport = normalizeCoupSupport(state, orders?.candidateSupport);
-    const weightedVotes = ranking.map((candidateId, rankIndex) => {
-      const weight = getCoupRankWeight(playerCount, rankIndex);
-      const enabled = candidateSupport[candidateId] !== false;
-      const votes = enabled ? sourceTroops * weight : 0;
-      candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
-      if (votes > 0) {
-        contributions.push({
-          playerId: pid,
-          candidateId,
-          troops: votes,
-          votes,
-          sourceTroops,
-          rank: rankIndex + 1,
-          weight,
-          passive: Boolean(passiveEntry),
-          enabled,
-          distributed: Boolean(passiveEntry),
-          supportId: passiveEntry?.id,
-          supportKind: passiveEntry?.kind,
-          supportLabel: passiveEntry?.label,
-          titleKey: passiveEntry?.titleKey || null,
-        });
-      }
-      return { candidateId, rank: rankIndex + 1, weight, votes, enabled };
-    });
-    return { ranking, candidateSupport, weightedVotes };
+  const addChoices = (pid, choices, sourceTroops, source, passiveEntry = null) => {
+    const shares = getCoupChoiceShares(choices);
+    for (const share of shares) {
+      const votes = sourceTroops * share.weight;
+      if (!(votes > 0)) continue;
+      candidateVotes[share.candidateId] = (candidateVotes[share.candidateId] || 0) + votes;
+      contributions.push({
+        playerId: pid,
+        candidateId: share.candidateId,
+        troops: votes,
+        votes,
+        sourceTroops,
+        choice: share.choiceIndex + 1,
+        weight: share.weight,
+        source,
+        passive: Boolean(passiveEntry),
+        supportId: passiveEntry?.id,
+        supportKind: passiveEntry?.kind,
+        supportLabel: passiveEntry?.label,
+        titleKey: passiveEntry?.titleKey || null,
+      });
+    }
+    return shares;
   };
 
   for (const [pidStr, orders] of Object.entries(allOrders || {})) {
     const pid = Number(pidStr);
     const troops = Math.max(0, Number(capitalTroops[pid]) || 0);
-    const ranked = addRankedContributions(pid, orders, troops);
+    const choices = normalizeCoupChoices(state, orders?.coupChoices);
+    const shares = addChoices(pid, choices, troops, 'troops');
     ballots.push({
       playerId: pid,
-      candidateId: ranked.ranking[0],
-      ranking: ranked.ranking,
-      candidateSupport: ranked.candidateSupport,
+      candidateId: choices[0] ?? null,
+      coupChoices: choices,
       troops,
-      weightedVotes: ranked.weightedVotes,
+      shares: shares.map((share) => ({ ...share, votes: troops * share.weight })),
     });
   }
 
   const passiveSupport = getCapitalSupportEntries(state);
   for (const entry of passiveSupport) {
-    const candidateId = Number(entry.playerId);
-    const votes = Number(entry.amount) || 0;
-    if (!Number.isInteger(candidateId) || votes === 0) continue;
-    if (isRankedCapitalSupport(entry)) {
-      addRankedContributions(candidateId, allOrders?.[candidateId] || {}, Math.max(0, votes), entry);
+    const holderId = Number(entry.playerId);
+    const amount = Number(entry.amount) || 0;
+    if (!Number.isInteger(holderId) || amount === 0) continue;
+    const source = getSupportSource(entry);
+    if (source === 'patriarch') {
+      const choices = normalizeCoupChoices(state, allOrders?.[holderId]?.coupChoices ?? buildDefaultCoupChoices(state, holderId));
+      addChoices(holderId, choices, Math.max(0, amount), source, entry);
       continue;
     }
-    candidateVotes[candidateId] = (candidateVotes[candidateId] || 0) + votes;
+    candidateVotes[holderId] = (candidateVotes[holderId] || 0) + amount;
     contributions.push({
-      playerId: candidateId,
-      candidateId,
-      troops: votes,
-      votes,
-      sourceTroops: votes,
-      rank: 0,
+      playerId: holderId,
+      candidateId: holderId,
+      troops: amount,
+      votes: amount,
+      sourceTroops: amount,
+      choice: 0,
       weight: 1,
+      source,
       passive: true,
       supportId: entry.id,
       supportKind: entry.kind,

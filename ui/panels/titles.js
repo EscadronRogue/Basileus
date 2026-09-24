@@ -127,7 +127,7 @@ export function renderTitleRedistributionPanel(container, state, playerId, callb
 
   container.innerHTML = `
     <section class="phase-card title-redistribution-panel">
-      <h3>Assign Major Offices</h3>
+      <h3>Major offices</h3>
       <p class="section-hint">${isBasileus ? `Tie each office to a dynasty. ${ruleText}` : 'Waiting for the Basileus to assign the major offices.'}</p>
       <section class="court-link-section court-wire-section title-redist-wire-section">
         <header class="court-link-section-head">

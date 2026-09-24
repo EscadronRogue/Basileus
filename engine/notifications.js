@@ -1,5 +1,5 @@
 import { summarizeDealClause } from './deals.js';
-import { getPlayerLabel } from './state.js';
+import { getPlayerLabel, isDealsEnabled } from './state.js';
 
 const NOTIFICATION_TONES = new Set(['negative', 'positive', 'neutral']);
 
@@ -116,7 +116,7 @@ function buildObligationNotifications(state, viewerId, dealView, notifications) 
   const locks = dealView?.orderLocks;
   if (locks?.ok && (locks.candidateId != null || locks.officeSelections?.length)) {
     const lockedBits = [];
-    if (locks.candidateName) lockedBits.push(`coup rank: ${locks.candidateName}`);
+    if (locks.candidateName) lockedBits.push(`coup choice: ${locks.candidateName}`);
     if (locks.officeSelections?.length) lockedBits.push(`${locks.officeSelections.length} deployment lock${locks.officeSelections.length === 1 ? '' : 's'}`);
     pushNotification(notifications, {
       id: `order-lock:${viewerId}:${state.round}:${locks.candidateId ?? 'none'}:${locks.officeSelections?.length || 0}`,
@@ -135,7 +135,7 @@ function buildObligationNotifications(state, viewerId, dealView, notifications) 
 
 const REVOCATION_EVENT_TYPES = new Set([
   'revoke_minor_title',
-  'revoke_theme',
+  'revoke_estates',
 ]);
 
 function normalizePlayerId(value) {
@@ -201,11 +201,6 @@ function pushHistoryNotification(notifications, event, viewerId, notification) {
   });
 }
 
-function getViewerBid(details, viewerId) {
-  const bids = Array.isArray(details.bids) ? details.bids : [];
-  return bids.find((bid) => normalizePlayerId(bid?.bidderId) === viewerId) || null;
-}
-
 function getAssignedTitles(details, viewerId) {
   const assignments = details.assignments && typeof details.assignments === 'object'
     ? Object.values(details.assignments)
@@ -227,25 +222,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
   for (const event of state.history || []) {
     if (!event?.id) continue;
     const details = eventDetails(event);
-
-    if (event.type === 'buy_theme') {
-      const winnerId = normalizePlayerId(event.actorId);
-      const viewerBid = getViewerBid(details, normalizedViewerId);
-      if (winnerId === normalizedViewerId) {
-        pushHistoryNotification(notifications, event, viewerId, {
-          kind: 'estate_won',
-          title: 'You won an estate',
-          tone: 'positive',
-        });
-      } else if (viewerBid) {
-        pushHistoryNotification(notifications, event, viewerId, {
-          kind: 'estate_lost',
-          title: `You lost the bid for ${details.themeName || 'an estate'}`,
-          tone: 'negative',
-        });
-      }
-      continue;
-    }
 
     if (event.type === 'appoint_strategos' || event.type === 'appoint_bishop') {
       if (isCourtEventStillOpen(state, event)) continue;
@@ -311,19 +287,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
       continue;
     }
 
-    if (event.type === 'defender_reward') {
-      const defenderId = normalizePlayerId(details.defenderId ?? event.actorId);
-      if (defenderId === normalizedViewerId) {
-        pushHistoryNotification(notifications, event, viewerId, {
-          kind: 'defender_reward_resolved',
-          title: 'Your defender reward resolved',
-          tone: 'positive',
-          action: 'open_resolution',
-        });
-      }
-      continue;
-    }
-
     if (event.type === 'new_basileus') {
       const newBasileusId = normalizePlayerId(details.newBasileusId);
       const oldBasileusId = normalizePlayerId(details.oldBasileusId);
@@ -383,24 +346,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
   }
 }
 
-function buildPendingRewardNotifications(state, viewerId, notifications) {
-  for (const reward of state.pendingDefenderRewards || []) {
-    if (reward.resolved || Number(reward.defenderId) !== Number(viewerId)) continue;
-    pushNotification(notifications, {
-      id: `defender-reward:${reward.id}`,
-      kind: 'defender_reward',
-      title: 'You earned a defender reward',
-      body: `${reward.themeName || reward.themeId} awaits your choice.`,
-      urgent: true,
-      toast: true,
-      tone: 'positive',
-      action: 'open_resolution',
-      round: state.round,
-      phase: state.phase,
-    });
-  }
-}
-
 export function buildPrivateNotifications(state, viewerId, dealView = null) {
   const notifications = [];
   if (!state || viewerId == null) {
@@ -410,11 +355,12 @@ export function buildPrivateNotifications(state, viewerId, dealView = null) {
     };
   }
 
-  buildDealNotifications(state, viewerId, dealView, notifications);
-  buildObligationNotifications(state, viewerId, dealView, notifications);
+  if (isDealsEnabled(state)) {
+    buildDealNotifications(state, viewerId, dealView, notifications);
+    buildObligationNotifications(state, viewerId, dealView, notifications);
+  }
   buildRevocationNotifications(state, viewerId, notifications);
   buildHistoryEventNotifications(state, viewerId, notifications);
-  buildPendingRewardNotifications(state, viewerId, notifications);
 
   notifications.sort((left, right) => (
     (right.urgent ? 1 : 0) - (left.urgent ? 1 : 0)

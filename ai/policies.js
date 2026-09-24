@@ -3,7 +3,6 @@ import {
   listLegalCourtActions,
   listLegalEstateActions,
   listLegalOrderActions,
-  listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
 import {
@@ -12,7 +11,6 @@ import {
   chooseStrategicCourtAction,
   chooseStrategicEstateActions,
   chooseStrategicOrderAction,
-  chooseStrategicRewardChoice,
   chooseStrategicTitleAssignment,
   describeOrderChoice,
 } from './strategy.js';
@@ -51,7 +49,7 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
   },
   profiteer: {
     estateProfit: 7.8,
-    estateBidCost: 0.65,
+    estatePriceWeight: 0.65,
     estateThreatPenalty: 0.28,
     reserveValue: 0.68,
     mercenaryCostPenalty: 0.25,
@@ -67,7 +65,7 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     leaderDenial: 0.75,
     rivalDenial: 0.12,
     estateProfit: 6,
-    estateBidCost: 0.95,
+    estatePriceWeight: 0.95,
     selfClaim: 1.2,
     invasionShortfallPenalty: 4.4,
     invasionSafetyValue: 0.6,
@@ -169,7 +167,7 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
   },
   freeRider: {
     estateProfit: 5.8,
-    estateBidCost: 0.9,
+    estatePriceWeight: 0.9,
     invasionShortfallPenalty: 2.2,
     invasionSafetyValue: 0.2,
     invasionSurplusPenalty: 1.35,
@@ -207,13 +205,53 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     backerRevocationMercy: 1.1,
     allyDefenseReliance: 0.55,
   },
+  // Probe presets for balance runs (ai/simulate.js --probe): one plays it
+  // safe everywhere, the other takes every risk. The rules should punish the
+  // first and reward the second.
+  cautious: {
+    invasionShortfallPenalty: 10,
+    invasionSafetyValue: 2.7,
+    invasionSurplusPenalty: 0.08,
+    capitalFallPenalty: 1200,
+    capitalRiskPenalty: 440,
+    recoveryBonus: 1.8,
+    estatePriceWeight: 1.8,
+    estateThreatPenalty: 4,
+    reserveValue: 0.9,
+    mercenaryCostPenalty: 0.3,
+    throneBase: 8,
+    selfClaim: 0.25,
+    incumbentDefense: 1.4,
+    supportOtherClaimant: 0.4,
+    defenseContextWeight: 2.1,
+    coupOpportunityWeight: 0.08,
+    allyDefenseReliance: 0.55,
+  },
+  gambler: {
+    throneBase: 60,
+    selfClaim: 2.2,
+    coupOpportunityWeight: 2,
+    incumbentDefense: 0.3,
+    supportOtherClaimant: 0.1,
+    capitalFallPenalty: 150,
+    capitalRiskPenalty: 40,
+    invasionShortfallPenalty: 2,
+    invasionSafetyValue: 0.2,
+    invasionSurplusPenalty: 1.6,
+    estateProfit: 7,
+    estatePriceWeight: 0.5,
+    estateThreatPenalty: 0.2,
+    reserveValue: 0.15,
+    mercenaryCostPenalty: 0.05,
+    allyDefenseReliance: 1,
+  },
   estateShark: {
     ownRecipientBonus: 4.2,
     appointmentUnlockBonus: 5.5,
     leaderDenial: 1.25,
     rivalDenial: 0.6,
     estateProfit: 8.6,
-    estateBidCost: 0.55,
+    estatePriceWeight: 0.55,
     estateThreatPenalty: 0.15,
     invasionShortfallPenalty: 3.8,
     invasionSafetyValue: 0.6,
@@ -308,7 +346,7 @@ function destinationShare(orders, destination) {
 function scoreCopycatOrder(source, action) {
   const orders = action.orders || {};
   let score = 0;
-  if (orders.candidate === source.candidate) score += 12;
+  if ((orders.coupChoices || []).join(',') === (source.coupChoices || []).join(',')) score += 12;
   if (orders.mercenaries?.destination === source.mercenaries?.destination) score += 3;
   score -= Math.abs((Number(orders.mercenaries?.count) || 0) - (Number(source.mercenaries?.count) || 0)) * 0.8;
   score -= Math.abs(destinationShare(orders, 'frontier') - destinationShare(source, 'frontier')) * 6;
@@ -358,17 +396,6 @@ export function applyPolicyEstateActions(state, meta, playerId) {
     applied.push(action);
   }
   return applied;
-}
-
-export function choosePolicyRewardChoice(state, meta, reward) {
-  if (getPolicyId(meta, reward?.defenderId) === 'random') {
-    const action = pickAction(
-      state,
-      listLegalRewardActions(state, reward?.defenderId).filter((entry) => entry.rewardId === reward?.id),
-    );
-    return action?.choice || 'empire';
-  }
-  return chooseStrategicRewardChoice(state, meta, reward);
 }
 
 export function choosePolicyTitleAssignment(state, meta, basileusId) {

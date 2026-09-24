@@ -3,15 +3,7 @@
 // Writes short summaries of new phases, invasions, and turn results into a
 // polite live region (#liveAnnouncer) so non-visual players hear what changed.
 import { getPlayerName } from '../engine/state.js';
-
-const PHASE_ANNOUNCEMENTS = {
-  title_redistribution: 'Assign offices',
-  court: 'Court: appoint and revoke',
-  estates: 'Estates: bid for land',
-  deployment: 'Deployment: send armies',
-  resolution: 'Resolution',
-  scoring: 'Final score',
-};
+import { getPlayerPhaseName } from '../data/terms.js';
 
 let lastAnnouncementKey = null;
 
@@ -62,7 +54,7 @@ export function describeGameProgress(state) {
   }
   if (state.gameOver || state.phase === 'scoring') return 'The game is over. Final standings are shown.';
   if (state.phase === 'resolution') return `Round ${state.round} resolved. ${describeResolution(state)}`.trim();
-  const phase = PHASE_ANNOUNCEMENTS[state.phase];
+  const phase = getPlayerPhaseName(state.phase);
   if (!phase) return '';
   const invasion = state.phase === 'court' || state.phase === 'title_redistribution' ? describeInvasion(state.currentInvasion) : '';
   return `Round ${state.round} of ${state.maxRounds}. ${phase}. ${invasion}`.trim();

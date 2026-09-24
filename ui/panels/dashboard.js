@@ -1,6 +1,6 @@
 // ui/panels/dashboard.js - the active dynasty's dashboard card.
 
-import { readTroopEntry, runIncome } from '../../engine/cascade.js';
+import { readTroopCount, runIncome } from '../../engine/cascade.js';
 import {
   getOfficeDisplayName,
   getOfficeHolder,
@@ -11,6 +11,7 @@ import {
 import { formatChurchHtml, formatGoldHtml, formatTroopsHtml, renderIcon } from '../icons.js';
 import { escapeHtml } from '../html.js';
 import { getPlayerStyleAttr, renderOwnershipBadge, renderProvinceBadge, renderTitleBadge } from '../labels.js';
+import { countDynastyEstates, getDynastyEstates } from '../../engine/estates.js';
 import { playerInitial } from './shared.js';
 
 function getDashboardEconomy(state, playerId) {
@@ -31,8 +32,7 @@ function getDashboardEconomy(state, playerId) {
   } catch (err) { churchYield = 0; }
   for (const officeKey of Object.keys(state.currentTroops || {})) {
     if (getOfficeHolder(state, officeKey) !== playerId) continue;
-    const entry = readTroopEntry(state.currentTroops[officeKey]);
-    troops += entry.normal + entry.capitalLocked;
+    troops += readTroopCount(state.currentTroops[officeKey]);
   }
   return {
     reserve: Math.max(0, Number(player.gold) || 0),
@@ -51,26 +51,37 @@ function getPlayerPrimaryRoleLabel(state, playerId) {
 function getDashboardHoldings(state, playerId) {
   const themes = Object.values(state?.themes || {}).filter((theme) => theme?.id !== 'CPL');
   return {
-    estate: themes.filter((theme) => !theme.occupied && theme.owner === playerId),
-    strategos: themes.filter((theme) => !theme.occupied && theme.strategos === playerId),
-    bishop: themes.filter((theme) => theme.bishop === playerId),
+    // Holdings in lost provinces are listed too, drawn as switched off.
+    estate: getDynastyEstates(state, playerId).map((entry) => ({ theme: state.themes[entry.themeId], count: entry.count })),
+    strategos: themes.filter((theme) => theme.strategos === playerId).map((theme) => ({ theme })),
+    bishop: themes.filter((theme) => theme.bishop === playerId).map((theme) => ({ theme })),
   };
 }
 
-function renderDashboardHoldingRow(state, playerId, kind, themes) {
-  if (!themes.length) return '';
+function renderHoldingEntry(state, entry) {
+  const badge = renderProvinceBadge(state, entry.theme, { compact: true });
+  if (!entry.count) return badge;
+  return `<span class="dashboard-estate-entry${entry.theme.lost ? ' disabled' : ''}">${badge}<span class="dashboard-estate-count">×${entry.count}</span></span>`;
+}
+
+function renderDashboardHoldingRow(state, playerId, kind, entries) {
+  if (!entries.length) return '';
   const player = getPlayer(state, playerId);
   const label = renderOwnershipBadge(state, {
     kind,
     holderId: playerId,
     color: player?.color || '#5a3810',
     accent: 'rgba(20,8,0,0.76)',
-  }, { compact: true, hideHolder: true });
+  }, {
+    compact: true,
+    hideHolder: true,
+    label: kind === 'estate' ? `Estates ×${countDynastyEstates(state, playerId)}` : undefined,
+  });
   return `
     <div class="dashboard-holding-row dashboard-holding-${kind}">
       <span class="dashboard-holding-kind">${label}</span>
       <span class="dashboard-holding-list">
-        ${themes.map((theme) => renderProvinceBadge(state, theme, { compact: true })).join(' ')}
+        ${entries.map((entry) => renderHoldingEntry(state, entry)).join(' ')}
       </span>
     </div>
   `;

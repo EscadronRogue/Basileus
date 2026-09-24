@@ -30,6 +30,7 @@ import {
   saveMultiplayerSession,
 } from './connection.js';
 import { dynastyNameForSeat, renderMultiplayerLobby } from './lobby.js';
+import { addEstateToDraft } from '../panels/estates.js';
 
 export async function launchMultiplayerClient(options = {}) {
   const playerName = String(options.playerName || '').trim() || 'Guest';
@@ -467,23 +468,15 @@ export class MultiplayerController {
       && controlledSeatId != null
       && controlledSeatId === state.basileusId
       && !this.privateSnapshot?.pendingAiTitleAssignment;
-    const seats = this.roomSnapshot?.seats || [];
-    const pendingHumanDefenderReward = state.pendingDefenderRewards?.some((reward) => (
-      !reward.resolved
-      && seats.some((seat) => seat.seatId === reward.defenderId && seat.kind === 'human')
-    ));
 
     const resolution = {};
     if (waitingForHumanReassignment) {
       resolution.disabledText = 'Waiting For New Basileus';
-    } else if (pendingHumanDefenderReward) {
-      resolution.disabledText = 'Resolve Rewards';
     } else if (!this.isHost() && state.phase === 'resolution' && this.roomSnapshot?.hostConnected !== false) {
       resolution.disabledText = 'Host Continues';
     } else {
       resolution.continue = () => this.send('continue_after_resolution');
     }
-    resolution.defenderRewardChoice = (rewardId, choice) => this.send('defender_reward_choice', { rewardId, choice });
 
     const body = renderGameActionPanel({
       panel: document.getElementById('actionPanel'),
@@ -622,13 +615,9 @@ export class MultiplayerController {
 
   createEstateHandlers() {
     return {
-      buy: (themeId, data = {}) => this.send('estate_action', { action: 'buy', themeId, amount: data.amount }),
-      submitEstatePlan: ({ bids = [] } = {}) => {
-        bids.forEach((bid) => this.send('estate_action', {
-          action: 'buy',
-          themeId: bid.themeId,
-          amount: bid.amount,
-        }));
+      // The whole plan is sent once, then the dynasty locks.
+      submitEstatePlan: ({ plan = {} } = {}) => {
+        this.send('estate_action', { action: 'plan', plan });
         this.send('confirm_estates');
       },
     };
@@ -670,6 +659,9 @@ export class MultiplayerController {
         this.renderGame();
       },
       onProvinceSelect: (provinceId) => {
+        // During Estates a map click also plans an estate there.
+        const seatId = this.getControlledSeatId();
+        if (seatId != null) addEstateToDraft(this.uiState, this.state, seatId, provinceId);
         this.selectProvince(provinceId);
       },
       onProvinceHover: (provinceId) => {

@@ -1,8 +1,6 @@
 import { MAJOR_TITLES } from '../data/titles.js';
+import { BALANCE } from '../data/balance.js';
 import { findTitleHolder, getPlayerName } from './state.js';
-
-export const BASILEUS_CAPITAL_SUPPORT = 2;
-export const PATRIARCH_CAPITAL_SUPPORT = 1;
 
 function ensureTemporaryCapitalSupport(state) {
   if (!Array.isArray(state.temporaryCapitalSupport)) state.temporaryCapitalSupport = [];
@@ -74,10 +72,10 @@ export function getCapitalSupportEntries(state, round = state?.round) {
     entries.push({
       id: 'title:BASILEUS',
       kind: 'title',
-      label: 'Basileus fortifications',
+      label: 'Theodosian Walls',
       playerId: basileusId,
       titleKey: 'BASILEUS',
-      amount: BASILEUS_CAPITAL_SUPPORT,
+      amount: BALANCE.THEODOSIAN_WALLS_SUPPORT,
       activeRound,
     });
   }
@@ -87,10 +85,10 @@ export function getCapitalSupportEntries(state, round = state?.round) {
     entries.push({
       id: 'title:PATRIARCH',
       kind: 'title',
-      label: 'Patriarchal influence',
+      label: "Patriarch's influence",
       playerId: patriarchId,
       titleKey: 'PATRIARCH',
-      amount: PATRIARCH_CAPITAL_SUPPORT,
+      amount: BALANCE.PATRIARCH_INFLUENCE,
       activeRound,
     });
   }

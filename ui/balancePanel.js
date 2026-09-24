@@ -65,28 +65,22 @@ const SANKEY_RESOURCE_COLORS = {
   church: '#2e5490',
 };
 const SANKEY_ROUTE_COLORS = {
-  east_pool: REGION_BORDER_COLORS[REGIONS.EAST],
-  west_pool: REGION_BORDER_COLORS[REGIONS.WEST],
-  sea_pool: REGION_BORDER_COLORS[REGIONS.SEA],
+  east: REGION_BORDER_COLORS[REGIONS.EAST],
+  west: REGION_BORDER_COLORS[REGIONS.WEST],
+  sea: REGION_BORDER_COLORS[REGIONS.SEA],
+  basileus: REGION_BORDER_COLORS[REGIONS.CPL],
 };
 const SANKEY_ROUTE_LABELS = {
   estates: 'Estates',
   strategoi: 'Strategoi',
-  east_pool: 'East',
-  west_pool: 'West',
-  sea_pool: 'Sea',
+  east: 'East',
+  west: 'West',
+  sea: 'Sea',
+  basileus: 'Empire',
   bishops: 'Bishops',
   patriarch: 'Patriarch',
 };
-const SANKEY_ROUTE_META = {
-  estates: '',
-  strategoi: '',
-  east_pool: '',
-  west_pool: '',
-  sea_pool: '',
-  bishops: '',
-  patriarch: '',
-};
+const SANKEY_ROUTE_META = {};
 const SANKEY_OFFICE_LABELS = {
   BASILEUS: 'Basileus',
   DOM_EAST: 'Dom. East',
@@ -94,8 +88,8 @@ const SANKEY_OFFICE_LABELS = {
   ADMIRAL: 'Admiral',
   PATRIARCH: 'Patriarch',
 };
-const SANKEY_ROUTE_ORDER = ['estates', 'strategoi', 'east_pool', 'west_pool', 'sea_pool', 'bishops', 'patriarch'];
-const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east_pool', 'west_pool', 'sea_pool']);
+const SANKEY_ROUTE_ORDER = ['estates', 'strategoi', 'east', 'basileus', 'west', 'sea', 'bishops', 'patriarch'];
+const SANKEY_CASCADE_ROUTE_KEYS = new Set(['east', 'west', 'sea', 'basileus']);
 const SANKEY_OFFICE_ORDER = ['DOM_EAST', 'BASILEUS', 'DOM_WEST', 'ADMIRAL', 'PATRIARCH'];
 const INCOME_FLOW_MIN_ZOOM = 0.25;
 const INCOME_FLOW_MAX_ZOOM = 4;

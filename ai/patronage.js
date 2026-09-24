@@ -15,7 +15,7 @@ export function estimateMajorTitleYield(state, titleKey) {
   const region = MAJOR_TITLES[titleKey]?.region;
   if (!region) return 0;
   const pool = Object.values(state?.themes || {}).reduce((total, theme) => {
-    if (!theme || theme.id === 'CPL' || theme.occupied || theme.region !== region || theme.strategos != null) return total;
+    if (!theme || theme.id === 'CPL' || theme.lost || theme.region !== region || theme.strategos != null) return total;
     return total + Math.max(0, Number(theme.T ?? theme.origin?.T) || 0);
   }, 0);
   return Math.ceil(pool * 2 / 3);

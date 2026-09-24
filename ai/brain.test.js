@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os';
 import { createGameState, makeRng } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
 import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
-import { getLandBidAmountOptions, validateMajorTitleAssignments } from '../engine/actions.js';
+import { validateMajorTitleAssignments } from '../engine/actions.js';
+import { getPreferredCoupCandidate } from '../engine/coup.js';
+import { addEstates, getEstateCount } from '../engine/estates.js';
+import { phaseEstates } from '../engine/turnflow.js';
 import {
   handleContinueAfterResolution,
   handleManualTitleReassignment,
@@ -22,7 +25,7 @@ import {
   planMajorTitleAssignment,
   runAICourtAutomation,
 } from './brain.js';
-import { applyLegalAction, listLegalCourtActions, listLegalEstateActions } from './legalActions.js';
+import { applyLegalAction, listLegalCourtActions, listLegalEstateActions, listLegalOrderActions } from './legalActions.js';
 import { getAiMemory, getRelationship } from './memory.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 import { simulateGame, simulateGames } from './simulate.js';
@@ -129,7 +132,7 @@ test('trained AI roster keeps saved weights and personality as written', () => {
 test('strategic court automation only controls AI players', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
-  state.themes.SAM.owner = 1;
+  addEstates(state.themes.SAM, 1, 1, { recent: false });
   state.phase = 'income';
   phaseCourt(state);
 
@@ -207,17 +210,16 @@ test('strategic orders use the deployment schema and include decision metadata',
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
   state.phase = 'deployment';
   state.currentTroops = {
-    DOM_EAST: { normal: 2, capitalLocked: 0 },
-    PATRIARCH: { normal: 1, capitalLocked: 0 },
+    DOM_EAST: 2,
+    PATRIARCH: 1,
   };
 
   const orders = buildAIOrders(state, meta, 1);
   const validation = submitHumanOrders(state, 1, orders);
 
   assert.equal(validation.ok, true);
-  assert.equal(Number.isInteger(orders.candidate), true);
-  assert.deepEqual(orders.ranking.slice(0, 1), [1]);
-  assert.equal(orders.ranking.length, state.players.length);
+  assert.equal(orders.coupChoices.length >= 1 && orders.coupChoices.length <= 2, true);
+  assert.equal(orders.coupChoices.includes(1), true);
   assert.equal(orders.mercenaries.count >= 0, true);
   assert.equal(orders.armies.DOM_EAST.funded >= 0, true);
   assert.equal(orders.armies.PATRIARCH.funded >= 0, true);
@@ -225,7 +227,7 @@ test('strategic orders use the deployment schema and include decision metadata',
   assert.equal(orders.debug.decision.factors[0].label, 'frontier');
 });
 
-test('AI coup support blocks the two least-liked claimants in 5-player games', () => {
+test('AI never backs its two least-liked claimants in 5-player games', () => {
   const state = createGameState({ playerCount: 5, deckSize: 1, seed: 22, historyEnabled: true });
   state.basileusId = 0;
   state.nextBasileusId = 0;
@@ -234,24 +236,23 @@ test('AI coup support blocks the two least-liked claimants in 5-player games', (
   state.round = 2;
   state.phase = 'deployment';
   state.currentTroops = {
-    DOM_EAST: { normal: 3, capitalLocked: 0 },
+    DOM_EAST: 3,
   };
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 3, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
-    { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'revoke_theme', actorId: 4, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
+    { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'revoke_estates', actorId: 4, details: { revokedPlayerId: 1, revokedPlayerIds: [1], count: 1 } },
   );
   const meta = createAIMeta(state, { humanPlayerIds: [0, 2, 3, 4] });
 
   const orders = buildAIOrders(state, meta, 1);
+  const choiceSets = listLegalOrderActions(state, 1, { memory: getAiMemory(state, meta) })
+    .map((action) => action.orders.coupChoices.join(','));
 
-  assert.equal(orders.candidateSupport[1], true);
-  assert.equal(orders.candidateSupport[0], true);
-  assert.equal(orders.candidateSupport[2], true);
-  assert.equal(orders.candidateSupport[3], false);
-  assert.equal(orders.candidateSupport[4], false);
+  assert.equal(orders.coupChoices.some((candidateId) => candidateId === 3 || candidateId === 4), false);
+  assert.deepEqual([...new Set(choiceSets)].sort(), ['0,1', '1', '1,0', '1,2', '2,1']);
 });
 
-test('AI coup support blocks the single least-liked claimant in 3-player games', () => {
+test('AI never backs its least-liked claimant in 3-player games', () => {
   const state = createGameState({ playerCount: 3, deckSize: 1, seed: 23, historyEnabled: true });
   state.basileusId = 0;
   state.nextBasileusId = 0;
@@ -260,7 +261,7 @@ test('AI coup support blocks the single least-liked claimant in 3-player games',
   state.round = 2;
   state.phase = 'deployment';
   state.currentTroops = {
-    DOM_EAST: { normal: 3, capitalLocked: 0 },
+    DOM_EAST: 3,
   };
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 2, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
@@ -268,10 +269,11 @@ test('AI coup support blocks the single least-liked claimant in 3-player games',
   const meta = createAIMeta(state, { humanPlayerIds: [0, 2] });
 
   const orders = buildAIOrders(state, meta, 1);
+  const choiceSets = listLegalOrderActions(state, 1, { memory: getAiMemory(state, meta) })
+    .map((action) => action.orders.coupChoices.join(','));
 
-  assert.equal(orders.candidateSupport[1], true);
-  assert.equal(orders.candidateSupport[0], true);
-  assert.equal(orders.candidateSupport[2], false);
+  assert.equal(orders.coupChoices.includes(2), false);
+  assert.deepEqual([...new Set(choiceSets)].sort(), ['0,1', '1', '1,0']);
 });
 
 test('AI memory values major title quality instead of treating every title as equal', () => {
@@ -281,7 +283,7 @@ test('AI memory values major title quality instead of treating every title as eq
   state.round = 2;
   for (const theme of Object.values(state.themes)) {
     if (theme.id === 'CPL') continue;
-    theme.occupied = false;
+    theme.lost = false;
     theme.strategos = null;
     theme.bishop = null;
     theme.T = theme.region === 'east' ? 6 : 1;
@@ -325,14 +327,14 @@ test('AI deployment creates urgent opposition to a hostile incumbent Basileus', 
   };
   for (const player of state.players) player.gold = 8;
   state.currentTroops = {
-    BASILEUS: { normal: 3, capitalLocked: 0 },
-    DOM_EAST: { normal: 5, capitalLocked: 0 },
-    DOM_WEST: { normal: 2, capitalLocked: 0 },
-    ADMIRAL: { normal: 2, capitalLocked: 0 },
-    PATRIARCH: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 3,
+    DOM_EAST: 5,
+    DOM_WEST: 2,
+    ADMIRAL: 2,
+    PATRIARCH: 2,
   };
   state.history.push(
-    { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_theme', actorId: 0, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
+    { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'revoke_estates', actorId: 0, details: { revokedPlayerId: 1, revokedPlayerIds: [1], count: 1 } },
     { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'revoke_minor_title', actorId: 0, details: { revokedPlayerId: 1, revokedPlayerIds: [1] } },
   );
   const meta = createAIMeta(state, {
@@ -359,8 +361,7 @@ test('AI deployment creates urgent opposition to a hostile incumbent Basileus', 
   const orders = buildAIOrders(state, meta, 1);
   const regimeFactor = orders.debug.decision.factors.find((factor) => factor.label === 'regime');
 
-  assert.equal(orders.candidateSupport[0], false);
-  assert.notEqual(orders.candidate, 0);
+  assert.equal(orders.coupChoices.includes(0), false);
   assert.equal(capitalTroopsFromOrders(orders) > 0, true);
   assert.equal(regimeFactor.value > 0, true);
 });
@@ -382,7 +383,7 @@ function makeReserveDeploymentState(strength, route = ['OPS', 'CPL']) {
     route,
   };
   state.currentTroops = {
-    DOM_EAST: { normal: 6, capitalLocked: 0 },
+    DOM_EAST: 6,
   };
   return state;
 }
@@ -390,7 +391,7 @@ function makeReserveDeploymentState(strength, route = ['OPS', 'CPL']) {
 const RESERVE_DEPLOYMENT_WEIGHTS = {
   reserveValue: 1.2,
   estateProfit: 8,
-  estateBidCost: 0.6,
+  estatePriceWeight: 0.6,
   invasionShortfallPenalty: 8,
   invasionSafetyValue: 0.2,
   invasionSurplusPenalty: 1.4,
@@ -424,8 +425,8 @@ test('AI deployment defunds surplus troops when frontier and coup urgency are lo
   const orders = buildAIOrders(state, meta, 1);
   const funded = Number(orders.armies.DOM_EAST.funded) || 0;
 
-  assert.equal(funded < state.currentTroops.DOM_EAST.normal, true);
-  assert.equal(state.currentTroops.DOM_EAST.normal - funded > 0, true);
+  assert.equal(funded < state.currentTroops.DOM_EAST, true);
+  assert.equal(state.currentTroops.DOM_EAST - funded > 0, true);
   assert.equal(frontierTroopsFromOrders(orders) > 0, true);
 });
 
@@ -435,20 +436,20 @@ test('AI deployment keeps funding troops when underfunding risks Constantinople'
 
   const orders = buildAIOrders(state, meta, 1);
 
-  assert.equal(orders.armies.DOM_EAST.funded, state.currentTroops.DOM_EAST.normal);
-  assert.equal(frontierTroopsFromOrders(orders) >= state.currentTroops.DOM_EAST.normal, true);
+  assert.equal(orders.armies.DOM_EAST.funded, state.currentTroops.DOM_EAST);
+  assert.equal(frontierTroopsFromOrders(orders) >= state.currentTroops.DOM_EAST, true);
 });
 
 test('deployment submission defaults army funding but still rejects missing destinations', () => {
   const state = makeState();
   state.phase = 'deployment';
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 2,
   };
 
   const missingArmyDestination = submitHumanOrders(state, 0, {
     mercenaries: { count: 0, destination: 'frontier' },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(missingArmyDestination.ok, false);
   assert.match(missingArmyDestination.reason, /destination/);
@@ -456,24 +457,24 @@ test('deployment submission defaults army funding but still rejects missing dest
   const destinationOnly = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { destination: 'frontier' } },
     mercenaries: { count: 0, destination: 'frontier' },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(destinationOnly.ok, true);
   assert.equal(destinationOnly.orders.armies.BASILEUS.funded, 1);
   delete state.allOrders[0];
 
-  const defaultRanking = submitHumanOrders(state, 0, {
+  const defaultChoices = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
     mercenaries: { count: 0, destination: 'frontier' },
   });
-  assert.equal(defaultRanking.ok, true);
-  assert.deepEqual(defaultRanking.orders.ranking, [0, 1, 2, 3]);
+  assert.equal(defaultChoices.ok, true);
+  assert.deepEqual(defaultChoices.orders.coupChoices, [0]);
   delete state.allOrders[0];
 
   const missingMercenaryDestination = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 2, destination: 'frontier' } },
     mercenaries: { count: 1 },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(missingMercenaryDestination.ok, false);
   assert.match(missingMercenaryDestination.reason, /mercenaries/);
@@ -481,46 +482,43 @@ test('deployment submission defaults army funding but still rejects missing dest
 
 test('legal estate actions dispatch through the shared AI action path', () => {
   const state = makeState();
-  state.phase = 'estates';
+  phaseEstates(state);
   state.players[1].gold = 5;
 
-  const bidAmounts = getLandBidAmountOptions(state, 1, 'OPS');
-  assert.deepEqual(bidAmounts, [2, 3, 4, 5]);
-  const legalAmounts = listLegalEstateActions(state, 1)
-    .filter((action) => action.payload?.themeId === 'OPS')
-    .map((action) => action.payload.amount);
-  assert.deepEqual(legalAmounts, bidAmounts);
-
-  const action = listLegalEstateActions(state, 1).find((entry) => entry.payload.amount === 5);
+  const actions = listLegalEstateActions(state, 1);
+  assert.equal(actions.some((action) => action.payload?.plan?.ANT), false, 'no estates in lost provinces');
+  const action = actions.find((entry) => entry.payload.plan.OPS === 1);
   const result = applyLegalAction(state, action);
 
   assert.equal(result.ok, true);
-  assert.equal(Boolean(state.landAuctions[action.payload.themeId]), true);
-  assert.equal(state.landAuctions[action.payload.themeId].bids[1].amount, 5);
+  assert.deepEqual(state.estatePlans[1], { OPS: 1 });
 });
 
-test('tuned estate strategy can choose premium bids above the minimum', () => {
+test('estate strategy spreads a plan over several provinces within its purse', () => {
   const state = makeState();
-  state.phase = 'estates';
-  for (const player of state.players) player.gold = 4;
+  phaseEstates(state);
+  for (const player of state.players) player.gold = 12;
   const meta = createAIMeta(state, {
     humanPlayerIds: [0, 2, 3],
     aiPlayers: {
       1: {
         policy: {
           policyId: 'tuned',
-          strategyWeights: {
-            estateProfit: 4,
-            estateBidCost: 0.35,
-          },
+          strategyWeights: { estateProfit: 6, estatePriceWeight: 0.35, estateSpread: 2 },
         },
       },
     },
   });
 
-  const actions = chooseStrategicEstateActions(state, meta, 1);
+  const [action] = chooseStrategicEstateActions(state, meta, 1);
+  const plan = action.payload.plan;
+  const count = Object.values(plan).reduce((total, value) => total + value, 0);
+  const cost = (count * (count + 1)) / 2;
 
-  assert.equal(actions.some((action) => Number(action.payload?.amount) > 2), true);
+  assert.equal(count >= 2, true, 'a cheap first estate is always worth building');
+  assert.equal(cost <= 12, true);
+  assert.equal(Object.keys(plan).length >= 2, true, 'a high spread weight avoids stacking');
+  assert.equal(applyLegalAction(state, action).ok, true);
 });
 
 test('AI court legal actions use the shared two-action court power limit', () => {
@@ -551,11 +549,10 @@ test('AI court legal actions use the shared two-action court power limit', () =>
   assert.equal(revocationModeActions.some((action) => action.payload?.action === 'appoint-strategos'), true);
 });
 
-test('AI legal court actions exclude private estates bought last turn', () => {
+test('AI legal court actions exclude estates built last round', () => {
   const state = makeState();
   state.round = 2;
-  state.themes.OPS.owner = 2;
-  state.themes.OPS.privateEstatePurchasedRound = 1;
+  addEstates(state.themes.OPS, 2, 1, { recent: true });
   state.themes.KAP.strategos = 1;
   state.phase = 'income';
   phaseCourt(state);
@@ -563,7 +560,7 @@ test('AI legal court actions exclude private estates bought last turn', () => {
   const actions = listLegalCourtActions(state, state.basileusId);
 
   assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'minor:KAP:strategos'), true);
-  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'theme:OPS'), false);
+  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'estates:OPS:2'), false);
 });
 
 test('AI court planner uses another appointment to unlock future self-appointments', () => {
@@ -610,8 +607,8 @@ test('AI simulation runner completes deterministic all-AI games', () => {
   assert.equal(result.completed + result.stuck, 3);
   assert.equal(result.resolutions > 0, true);
   assert.equal(Number.isFinite(result.scoring.winnerScore), true);
-  assert.equal(result.estates.bidsPerGame > 0, true);
-  assert.equal(result.estates.bidGoldPerGame > 0, true);
+  assert.equal(result.estates.builtPerGame > 0, true);
+  assert.equal(result.estates.goldSpentPerGame > 0, true);
   assert.equal(result.fallPressure.target, 'acceptable 25%-75%, ideal 40%-50%');
   assert.equal(result.diagnostics.some((entry) => entry.includes('Low self-claim') || entry.includes('Low estate bidding')), false);
 });
@@ -750,16 +747,16 @@ test('simultaneous AI planning ignores already submitted human deployment orders
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
   state.phase = 'deployment';
   state.currentTroops = {
-    BASILEUS: { normal: 1, capitalLocked: 0 },
-    DOM_EAST: { normal: 1, capitalLocked: 0 },
-    DOM_WEST: { normal: 1, capitalLocked: 0 },
-    ADMIRAL: { normal: 1, capitalLocked: 0 },
+    BASILEUS: 1,
+    DOM_EAST: 1,
+    DOM_WEST: 1,
+    ADMIRAL: 1,
   };
 
   const humanSubmit = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 1, destination: 'capital' } },
     mercenaries: { count: 0, destination: 'frontier' },
-    candidate: 0,
+    coupChoices: [0],
   });
   assert.equal(humanSubmit.ok, true);
 
@@ -785,10 +782,10 @@ function prepareCoalitionDeploymentState() {
   const state = makeState();
   state.phase = 'deployment';
   state.currentTroops = {
-    BASILEUS: { normal: 4, capitalLocked: 0 },
-    DOM_EAST: { normal: 1, capitalLocked: 0 },
-    DOM_WEST: { normal: 1, capitalLocked: 0 },
-    ADMIRAL: { normal: 1, capitalLocked: 0 },
+    BASILEUS: 4,
+    DOM_EAST: 1,
+    DOM_WEST: 1,
+    ADMIRAL: 1,
   };
   return state;
 }
@@ -811,9 +808,9 @@ test('AI coup coalition planning rallies weak AI dynasties behind one friendly c
 
   const plans = buildSimultaneousAIOrders(state, meta);
 
-  // Dynasty 2 appointed both others, so they rank it first and it claims the
-  // throne itself: all three coup ballots put the same claimant on top.
-  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.ranking[0]]), [
+  // Dynasty 2 appointed both others, so they choose it first and it claims
+  // the throne itself: all three put the same claimant first.
+  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.coupChoices[0]]), [
     [1, 2],
     [2, 2],
     [3, 2],
@@ -822,7 +819,7 @@ test('AI coup coalition planning rallies weak AI dynasties behind one friendly c
 
 test('AI coup coalition planning can support a human claimant with good relations', () => {
   const state = prepareCoalitionDeploymentState();
-  state.currentTroops.ADMIRAL = { normal: 2, capitalLocked: 0 };
+  state.currentTroops.ADMIRAL = 2;
   state.history.push(
     { id: 'h1', index: 1, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 3, details: { appointeeId: 1 } },
     { id: 'h2', index: 2, round: 1, phase: 'court', category: 'court', type: 'appoint_strategos', actorId: 3, details: { appointeeId: 2 } },
@@ -838,7 +835,7 @@ test('AI coup coalition planning can support a human claimant with good relation
 
   const plans = buildSimultaneousAIOrders(state, meta);
 
-  assert.deepEqual(plans.map((plan) => [plan.playerId, plan.orders.candidate]), [[1, 3], [2, 3]]);
+  assert.deepEqual(plans.map((plan) => [plan.playerId, getPreferredCoupCandidate(state, plan.playerId, plan.orders)]), [[1, 3], [2, 3]]);
 });
 
 function safeSurplusDeploymentState() {
@@ -851,10 +848,10 @@ function safeSurplusDeploymentState() {
     route: ['OPS', 'OPT', 'CPL'],
   };
   state.currentTroops = {
-    BASILEUS: { normal: 6, capitalLocked: 0 },
-    DOM_EAST: { normal: 6, capitalLocked: 0 },
-    DOM_WEST: { normal: 6, capitalLocked: 0 },
-    ADMIRAL: { normal: 6, capitalLocked: 0 },
+    BASILEUS: 6,
+    DOM_EAST: 6,
+    DOM_WEST: 6,
+    ADMIRAL: 6,
   };
   return state;
 }
@@ -875,7 +872,7 @@ test('an ambitious AI turns a safe frontier surplus into a throne bid', () => {
 
   const orders = buildAIOrders(state, meta, 1);
 
-  assert.equal(orders.ranking[0], 1);
+  assert.equal(orders.coupChoices[0], 1);
   assert.equal(capitalCommitment(orders) >= 3, true);
 });
 
@@ -923,7 +920,7 @@ test('AI Basileus title planning rewards loyal backers with stronger offices', (
   state.round = 2;
   for (const theme of Object.values(state.themes)) {
     if (theme.id === 'CPL') continue;
-    theme.occupied = false;
+    theme.lost = false;
     theme.strategos = null;
     theme.bishop = null;
     theme.T = theme.region === 'east' ? 6 : 1;

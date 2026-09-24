@@ -14,7 +14,7 @@ const AI = 2;
 // Seats 1 and 2 hold offices, so neither is auto-confirmed when Court opens
 // (a dynasty with nothing to do at Court confirms at once and cannot deal).
 function courtWithAiSeats() {
-  const state = createGameState({ playerCount: 4, deckSize: 6, seed: 11, historyEnabled: true });
+  const state = createGameState({ playerCount: 4, deckSize: 6, seed: 11, historyEnabled: true, features: { deals: true } });
   setDealParticipantIds(state, state.players.map((player) => player.id));
   for (const player of state.players) player.gold = 10;
   state.phase = 'income';
@@ -73,4 +73,19 @@ test('clause values are signed by direction and discounted when conditional', ()
   assert.ok(valueClauseForPlayer(state, ask, AI) < 0);
   assert.ok(valueClauseForPlayer(state, conditional, AI) < valueClauseForPlayer(state, gift, AI));
   assert.equal(valueClauseForPlayer(state, gift, 3), 0, 'bystanders are unaffected');
+});
+
+test('deal commands are refused while deals are switched off', () => {
+  const state = createGameState({ playerCount: 4, deckSize: 6, seed: 11, historyEnabled: true });
+  setDealParticipantIds(state, state.players.map((player) => player.id));
+  state.phase = 'income';
+  phaseCourt(state);
+  const meta = createAIMeta(state, { humanPlayerIds: [HUMAN], aiPlayers: {} });
+  const result = handleHumanCourtAction(state, meta, {}, HUMAN, {
+    action: 'deal-send',
+    counterpartyId: AI,
+    clauses: [{ kind: 'gold', direction: 'give', amount: 1 }],
+  });
+  assert.equal(result.ok, false);
+  assert.equal(state.dealThreads.length, 0);
 });

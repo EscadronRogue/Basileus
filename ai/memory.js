@@ -31,9 +31,6 @@ function createPlayerMemory(playerId) {
     selfAppointments: 0,
     otherAppointments: 0,
     revocations: 0,
-    rewardChoices: 0,
-    rewardGoldChoices: 0,
-    rewardEmpireChoices: 0,
     dealFailures: 0,
     dealTransfers: 0,
     titleAssignments: 0,
@@ -259,7 +256,7 @@ function handleRevocation(memory, event, weight) {
   for (const rawId of revokedIds) {
     const targetId = Number(rawId);
     if (!Number.isInteger(targetId)) continue;
-    noteHarm(memory, actorId, targetId, weight * (event.type === 'revoke_theme' ? 1.35 : 1));
+    noteHarm(memory, actorId, targetId, weight * (event.type === 'revoke_estates' ? 1 + 0.35 * Math.max(1, Number(event.details?.count) || 1) : 1));
   }
 }
 
@@ -331,10 +328,11 @@ function handleOrders(memory, event, weight, state) {
   addPlayer(memory, actorId, 'fundedTroops', fundedTroops * weight);
   addPlayer(memory, actorId, 'idleTroops', idleTroops * weight);
 
-  // Who the dynasty put first. `candidateId` is its best choice other than
-  // itself, so ranking itself first with troops in the capital is a claim.
-  const ranking = Array.isArray(details.ranking) ? details.ranking.map(Number) : [];
-  const topChoice = Number.isInteger(ranking[0]) ? ranking[0] : candidateId;
+  // Who the dynasty chose first. `candidateId` is the claimant it backs
+  // besides itself, so choosing itself first with troops in Constantinople is
+  // a claim.
+  const coupChoices = Array.isArray(details.coupChoices) ? details.coupChoices.map(Number) : [];
+  const topChoice = Number.isInteger(coupChoices[0]) ? coupChoices[0] : candidateId;
   if (topChoice === actorId) {
     if (capitalTroops > 0) addPlayer(memory, actorId, 'selfClaims', weight);
   } else if (topChoice === state.basileusId) {
@@ -386,29 +384,6 @@ function handleWarResult(memory, event, weight, state) {
   }
 }
 
-function handleDefenderReward(memory, event, weight, state) {
-  const actorId = Number(event.actorId);
-  if (!Number.isInteger(actorId)) return;
-  const choice = event.details?.choice;
-  addPlayer(memory, actorId, 'rewardChoices', weight);
-  if (choice === 'gold') addPlayer(memory, actorId, 'rewardGoldChoices', weight);
-  else if (choice === 'empire') addPlayer(memory, actorId, 'rewardEmpireChoices', weight);
-
-  const stakeholderIds = themeStakeOwnerIds(state, event.details?.themeId);
-  if (choice === 'empire') {
-    for (const viewerId of playerIds(memory)) {
-      if (viewerId === actorId) continue;
-      addRelation(memory, viewerId, actorId, { favor: 0.35 * weight, trust: 0.16 * weight });
-    }
-    for (const stakeholderId of stakeholderIds) {
-      if (stakeholderId !== actorId) noteBenefit(memory, actorId, stakeholderId, 1.25 * weight, { trustScale: 0.25 });
-    }
-  } else if (choice === 'gold') {
-    for (const stakeholderId of stakeholderIds) {
-      if (stakeholderId !== actorId) noteHarm(memory, actorId, stakeholderId, 0.8 * weight);
-    }
-  }
-}
 
 function finalizeRelationships(memory) {
   for (const row of Object.values(memory.relationships)) {
@@ -439,7 +414,6 @@ function finalizePlayerPatterns(memory) {
     const totalTroops = Math.max(EPSILON, entry.totalTroops);
     const orders = Math.max(EPSILON, entry.orders);
     const appointments = Math.max(EPSILON, entry.appointments);
-    const rewards = Math.max(EPSILON, entry.rewardChoices);
     entry.defenseReliability = clamp((entry.frontierTroops / totalTroops) * 1.2 + (entry.fundedTroops / totalTroops) * 0.45, 0, 1.5);
     entry.fundingGreed = clamp(entry.idleTroops / totalTroops, 0, 1);
     entry.coupPressure = clamp((entry.capitalTroops / totalTroops) * 1.15 + ((entry.selfClaims + entry.otherBacks) / orders) * 0.45, 0, 1.8);
@@ -449,7 +423,6 @@ function finalizePlayerPatterns(memory) {
     entry.revocationAggression = clamp(entry.revocations / orders, 0, 1.5);
     entry.incumbentLoyalty = clamp(entry.incumbentBacks / orders, 0, 1);
     entry.kingmaking = clamp(entry.otherBacks / orders, 0, 1);
-    entry.rewardGoldRate = clamp(entry.rewardGoldChoices / rewards, 0, 1);
   }
 
   const orderEntries = entries.filter((entry) => entry.orders > 0);
@@ -482,7 +455,6 @@ function buildMemoryKey(state) {
     state?.phase || '',
     Array.isArray(state?.history) ? state.history.length : 0,
     Object.keys(state?.allOrders || {}).length,
-    Array.isArray(state?.pendingDefenderRewards) ? state.pendingDefenderRewards.filter((reward) => reward.resolved).length : 0,
   ].join(':');
 }
 
@@ -492,13 +464,12 @@ export function buildAiMemory(state) {
   for (const event of history) {
     const weight = decayedWeight(state, event);
     if (['appoint_strategos', 'appoint_bishop'].includes(event.type)) handleAppointment(memory, event, weight);
-    else if (['revoke_minor_title', 'revoke_theme'].includes(event.type)) handleRevocation(memory, event, weight);
+    else if (['revoke_minor_title', 'revoke_estates'].includes(event.type)) handleRevocation(memory, event, weight);
     else if (event.type === 'title_redistribution') handleTitleRedistribution(memory, event, weight, state);
     else if (event.type === 'deal_gold_transfer' || event.type === 'deal_estate_transfer') handleDealTransfer(memory, event, weight);
     else if (event.type === 'deal_obligation_failed') handleDealFailure(memory, event, weight);
     else if (event.type === 'orders_revealed') handleOrders(memory, event, weight, state);
     else if (event.type === 'war_result') handleWarResult(memory, event, weight, state);
-    else if (event.type === 'defender_reward') handleDefenderReward(memory, event, weight, state);
   }
   finalizeRelationships(memory);
   finalizePlayerPatterns(memory);

@@ -5,12 +5,7 @@
 // key words, which are marked in turn, so a tooltip can be followed into the
 // next one. Numbers come from the engine so definitions match the rules.
 import { MAJOR_TITLES } from '../data/titles.js';
-import {
-  BASILEUS_COURT_REVOCATION_LIMIT,
-  COURT_POWER_ACTION_LIMIT,
-  PRIVATE_ESTATE_REVOCATION_COMPENSATION,
-} from '../engine/actions.js';
-import { BASILEUS_CAPITAL_SUPPORT, PATRIARCH_CAPITAL_SUPPORT } from '../engine/capitalSupport.js';
+import { BALANCE } from '../data/balance.js';
 import { SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PERSONALITIES } from '../ai/personalities.js';
 
@@ -24,7 +19,7 @@ export const GLOSSARY_TERMS = [
     term: 'Basileus',
     category: 'Office',
     aliases: ['Basileus', 'emperor'],
-    definition: `The emperor. Starts every coup with ${BASILEUS_CAPITAL_SUPPORT} passive capital support, may make up to ${BASILEUS_COURT_REVOCATION_LIMIT} revocations of Strategoi and estates in Court, and hands out the major titles after taking the throne. Troops that no Strategos, Domestic or Admiral receives flow to the Basileus.`,
+    definition: `The emperor. Starts every coup with ${BALANCE.THEODOSIAN_WALLS_SUPPORT} passive capital support, may make up to ${BALANCE.BASILEUS_REVOCATION_LIMIT} revocations of Strategoi and estates in Court, and hands out the major titles after taking the throne. Troops that no Strategos, Domestic or Admiral receives flow to the Basileus.`,
   },
   {
     id: 'major-titles',
@@ -38,21 +33,21 @@ export const GLOSSARY_TERMS = [
     term: 'Domestic',
     category: 'Office',
     aliases: ['Domestic of the East', 'Domestic of the West', 'Domestics', 'Domestic'],
-    definition: `Commander of the eastern or western provinces. Appoints and revokes Strategoi in that region, up to ${COURT_POWER_ACTION_LIMIT} actions per Court, and raises the troops of its provinces that have no Strategos.`,
+    definition: `Commander of the eastern or western provinces. Appoints and revokes Strategoi in that region, up to ${BALANCE.MAJOR_OFFICE_ACTION_LIMIT} actions per Court, and raises the troops of its provinces that have no Strategos.`,
   },
   {
     id: 'admiral',
     term: 'Admiral',
     category: 'Office',
     aliases: ['Admiral of the Fleet', 'Admiral'],
-    definition: `Commander of the sea provinces. Appoints and revokes Strategoi there, up to ${COURT_POWER_ACTION_LIMIT} actions per Court, and raises the troops of sea provinces that have no Strategos.`,
+    definition: `Commander of the sea provinces. Appoints and revokes Strategoi there, up to ${BALANCE.MAJOR_OFFICE_ACTION_LIMIT} actions per Court, and raises the troops of sea provinces that have no Strategos.`,
   },
   {
     id: 'patriarch',
     term: 'Patriarch',
     category: 'Office',
     aliases: ['Patriarch', 'Patriarchal'],
-    definition: `Head of the Church. Appoints and revokes Bishops, collects the church gold no Bishop claims, and adds ${PATRIARCH_CAPITAL_SUPPORT} passive capital support to the coup, split by the Patriarch's own ranking. Breaks coup ties.`,
+    definition: `Head of the Church. Appoints and revokes Bishops and brings the Patriarch's influence (${BALANCE.PATRIARCH_INFLUENCE} support) to the coup, which follows the Patriarch's own coup choices. Breaks coup ties.`,
   },
   {
     id: 'strategos',
@@ -80,7 +75,7 @@ export const GLOSSARY_TERMS = [
     term: 'Revocation',
     category: 'Court',
     aliases: ['revocations', 'revocation', 'revokes', 'revoke'],
-    definition: `Taking a Strategos or Bishop seat, or a private estate, away during Court. Free, but it uses one of the office's actions. Estates bought last turn cannot be revoked yet; an older estate pays its owner ${PRIVATE_ESTATE_REVOCATION_COMPENSATION} gold when revoked.`,
+    definition: `Taking a Strategos or Bishop away, or all of one dynasty's estates in one province. Each revocation uses one of the office's actions. Estates built last round cannot be revoked yet.`,
   },
   {
     id: 'title-redistribution',
@@ -94,14 +89,7 @@ export const GLOSSARY_TERMS = [
     term: 'Court',
     category: 'Phase',
     aliases: ['Court'],
-    definition: 'The political phase. Offices appoint and revoke titles, and dynasties may negotiate deals. Nothing happens until each dynasty confirms its court plan.',
-  },
-  {
-    id: 'deal',
-    term: 'Deal',
-    category: 'Court',
-    aliases: ['deals', 'deal'],
-    definition: 'A binding agreement offered in Court: gold, estates, coup support, frontier support, promised appointments or protection from revocation. The game enforces the terms.',
+    definition: 'The political phase. Offices appoint and revoke titles. Nothing happens until each dynasty confirms its court plan.',
   },
   {
     id: 'income',
@@ -178,42 +166,49 @@ export const GLOSSARY_TERMS = [
     term: 'Coup',
     category: 'Throne',
     aliases: ['coups', 'coup'],
-    definition: 'The contest for the throne, decided every Resolution before the war. Capital troops support the claimants in their owner\'s ranking: full support to first place, none to last, scaled in between. Most support wins; ties go to the most Patriarchal support, then to the sitting Basileus.',
+    definition: `The contest for the throne, decided in every Resolution before the war. Each dynasty's troops in Constantinople give full support to its first choice and half to its second. The claimant with the most support becomes Basileus; if nobody has any, the Basileus stays. A tie goes to the claimant with more of the Patriarch's influence, then to the Basileus.`,
   },
   {
-    id: 'ranking',
-    term: 'Ranking',
+    id: 'coup-choice',
+    term: 'Coup choices',
     category: 'Throne',
-    aliases: ['claimants', 'claimant', 'ranking'],
-    definition: 'In Deployment every dynasty ranks all claimants to the throne, itself included. Its capital troops follow that ranking in the coup. A claimant can also be switched off to give it no support at all.',
+    aliases: ['first choice', 'second choice', 'claimant', 'claimants', 'coup choice'],
+    definition: `In Deployment each dynasty picks up to two claimants, itself allowed: its first choice gets full support from its troops in Constantinople, its second choice gets ${Math.round((BALANCE.COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100)}%. With no choice, those troops back nobody.`,
   },
   {
-    id: 'passive-support',
-    term: 'Passive capital support',
+    id: 'theodosian-walls',
+    term: 'Theodosian Walls',
     category: 'Throne',
-    aliases: ['passive capital support', 'passive support'],
-    definition: `Coup support that never leaves Constantinople: the Basileus's ${BASILEUS_CAPITAL_SUPPORT}, the Patriarch's ${PATRIARCH_CAPITAL_SUPPORT}, plus any Triumph or unrest this round. It cannot be unfunded and never counts for scoring.`,
+    aliases: ['Theodosian Walls', 'walls'],
+    definition: `The walls of Constantinople give the Basileus ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support in every coup.`,
+  },
+  {
+    id: 'patriarch-influence',
+    term: "Patriarch's influence",
+    category: 'Throne',
+    aliases: ["Patriarch's influence", 'influence'],
+    definition: `The Patriarch brings ${BALANCE.PATRIARCH_INFLUENCE} support to every coup. It follows the Patriarch's coup choices like troops do: all of it to the first choice, half to the second.`,
   },
   {
     id: 'triumph',
     term: 'Triumph',
     category: 'Throne',
     aliases: ['Triumph'],
-    definition: 'Temporary coup support earned by the best defender: 1 for each province the war surplus could reconquer. It follows that dynasty\'s ranking in the next coup only.',
+    definition: `Support earned by the best defender: ${BALANCE.TRIUMPH_PER_PROVINCE} for each province the war surplus could reconquer. It counts for that dynasty itself in the next coup only.`,
   },
   {
     id: 'unrest',
     term: 'Unrest',
     category: 'Throne',
     aliases: ['unrest'],
-    definition: 'When the empire loses provinces, the Basileus has 1 less passive capital support per lost province in the next coup.',
+    definition: `When the empire loses provinces, the Basileus who lost them has ${BALANCE.UNREST_PER_LOST_PROVINCE} less support per lost province in the next coup.`,
   },
   {
     id: 'invasion',
     term: 'Invasion',
     category: 'War',
     aliases: ['invasions', 'invasion', 'invaders', 'invader'],
-    definition: 'This round\'s threat: an enemy with a strength range and a route of provinces. A capital invasion that breaks through can reach Constantinople; a limited invasion stops once it has taken its route.',
+    definition: 'This round\'s enemy: an estimated strength and a route of provinces. If it beats the frontier, it takes provinces along the route, each costing it 1 more than the last; a route that ends at Constantinople can make the empire fall.',
   },
   {
     id: 'resolution',
@@ -223,10 +218,10 @@ export const GLOSSARY_TERMS = [
     definition: 'Orders are revealed. The coup is decided first, then frontier troops fight the invasion.',
   },
   {
-    id: 'occupied',
+    id: 'lost',
     term: 'Occupied',
     category: 'War',
-    aliases: ['occupied'],
+    aliases: ['lost'],
     definition: 'A province taken by invaders. Its owner and Strategos are suspended and its Bishop keeps only the original church value until the empire reconquers it.',
   },
   {

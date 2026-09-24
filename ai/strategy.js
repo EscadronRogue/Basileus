@@ -1,27 +1,41 @@
 import { runIncome } from '../engine/cascade.js';
 import { resolveInvasion } from '../engine/combat.js';
-import { getAvailableLandBidGold, getLandAuctionBidEntries, getMinimumLandBid } from '../engine/actions.js';
-import { getMercenaryHireCost, getThemeOwnerIncome } from '../engine/rules.js';
+import {
+  addEstates,
+  countPlannedEstates,
+  getEstateCount,
+  getNextEstatePrice,
+  getProvinceEstateHolders,
+  getRevocableEstateCount,
+} from '../engine/estates.js';
+import { getSpendableGold } from '../engine/deals.js';
+import { INVASIONS } from '../data/invasions.js';
+import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
-import { getFreeThemes, getPlayer } from '../engine/state.js';
+import { getPlayer } from '../engine/state.js';
 import { getCapitalSupportEntries } from '../engine/capitalSupport.js';
 import { clonePlainData } from '../engine/clone.js';
 import {
-  getDeploymentArmyTroopEntry,
   getDeploymentArmyTroopTotal,
   getPlayerDeploymentArmyKeys,
 } from '../engine/deployment.js';
-import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
+import {
+  buildDefaultCoupChoices,
+  getCoupChoiceShares,
+  getPreferredCoupCandidate,
+  normalizeCoupChoices,
+} from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { BALANCE } from '../data/balance.js';
 import { analyzeMajorTitleAssignments, estimateMajorTitleYield } from './patronage.js';
 import {
   applyLegalAction,
   getActionThemeId,
   getActionTargetPlayerId,
   listLegalCourtActions,
-  listLegalEstateActions,
+  buildEstatePlanAction,
+  listEstateSites,
   listLegalOrderActions,
-  listLegalRewardActions,
   listLegalTitleAssignments,
 } from './legalActions.js';
 import {
@@ -33,7 +47,7 @@ import {
 
 const COURT_GAIN_FLOOR = 0.35;
 const ESTATE_GAIN_FLOOR = 0.2;
-const MAX_ESTATE_BIDS_PER_AI = 3;
+const MAX_ESTATES_PER_ROUND = 16;
 const SCORE_TIE_EPSILON = 0.001;
 
 export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
@@ -44,8 +58,9 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   courtGainFloor: COURT_GAIN_FLOOR,
   estateGainFloor: ESTATE_GAIN_FLOOR,
   estateProfit: 4,
-  estateBidCost: 1.15,
+  estatePriceWeight: 1.15,
   estateThreatPenalty: 1.5,
+  estateSpread: 0.6,
   invasionShortfallPenalty: 5.5,
   invasionSafetyValue: 1.2,
   invasionSurplusPenalty: 0.55,
@@ -90,6 +105,10 @@ function getStrategyWeights(meta, playerId) {
     ...DEFAULT_STRATEGY_WEIGHTS,
     ...overrides,
   };
+  // Weights saved before estates were built instead of bid for.
+  if (overrides.estateBidCost != null && overrides.estatePriceWeight == null) {
+    raw.estatePriceWeight = Number(overrides.estateBidCost);
+  }
   if (overrides.invasionMargin != null && overrides.invasionShortfallPenalty == null) {
     raw.invasionShortfallPenalty = clamp(Number(overrides.invasionMargin), 0.35, 2.4) * 3.1;
   }
@@ -141,22 +160,19 @@ function cloneStateForAI(state) {
   return clonePlainData(state);
 }
 
-function materializeAuctions(state) {
-  for (const auction of Object.values(state.landAuctions || {})) {
-    const theme = state.themes?.[auction.themeId];
-    const winner = getLandAuctionBidEntries(auction)
-      .filter((bid) => state.players.some((player) => player.id === bid.bidderId))
-      .sort((left, right) => (right.amount - left.amount) || (left.bidderId - right.bidderId))[0];
-    const bidderId = Number(winner?.bidderId);
-    if (!theme || theme.id === 'CPL' || theme.occupied || theme.owner != null) continue;
-    if (!state.players.some((player) => player.id === bidderId)) continue;
-    theme.owner = bidderId;
+// A plan not yet built counts as built when the AI projects the score.
+function materializeEstatePlans(state) {
+  for (const [playerId, plan] of Object.entries(state.estatePlans || {})) {
+    for (const [themeId, count] of Object.entries(plan || {})) {
+      addEstates(state.themes?.[themeId], Number(playerId), count);
+    }
   }
+  state.estatePlans = {};
 }
 
 function projectedScoring(state, options = {}) {
   const projected = cloneStateForAI(state);
-  materializeAuctions(projected);
+  materializeEstatePlans(projected);
   const income = runIncome(projected);
   if (options.addIncomeGold !== false) {
     for (const [playerId, amount] of Object.entries(income.income || {})) {
@@ -442,8 +458,9 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
       deniedValue += scoreResourceGain(final, targetId, 'office', Math.max(1, Number(theme?.T ?? theme?.origin?.T) || 1));
     } else if (action.payload?.value?.startsWith('minor:') && action.payload?.value?.endsWith(':bishop')) {
       deniedValue += scoreResourceGain(final, targetId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1));
-    } else if (action.payload?.value?.startsWith('theme:')) {
-      deniedValue += scoreResourceGain(final, targetId, 'estate', Math.max(1, Number(theme?.P ?? theme?.origin?.P) || 1));
+    } else if (action.payload?.value?.startsWith('estates:')) {
+      const perEstate = Math.max(1, Number(theme?.P ?? theme?.origin?.P) || 1);
+      deniedValue += scoreResourceGain(final, targetId, 'estate', getRevocableEstateCount(theme, targetId) * perEstate);
     }
     const relationship = scoreRevocationRelationship(state, final, playerId, targetId, leaderId, weights, context);
     if (targetId === leaderId) return deniedValue * weights.leaderDenial + 3 + relationship;
@@ -554,31 +571,27 @@ function summarizeOrders(state, playerId, orders = {}) {
   let idleTroops = 0;
 
   for (const officeKey of orderOfficeKeys(state, playerId)) {
-    const pool = getDeploymentArmyTroopEntry(state, playerId, officeKey);
-    const total = pool.normal + pool.capitalLocked;
+    const total = getDeploymentArmyTroopTotal(state, playerId, officeKey);
     const order = orders.armies?.[officeKey] || {};
     const funded = Math.max(0, Math.min(total, Number(order.funded) || 0));
-    const fundedLocked = Math.min(pool.capitalLocked, funded);
-    const fundedNormal = Math.min(pool.normal, Math.max(0, funded - fundedLocked));
     const destination = order.destination === 'capital' ? 'capital' : 'frontier';
-    capitalTroops += fundedLocked + (destination === 'capital' ? fundedNormal : 0);
-    frontierTroops += destination === 'frontier' ? fundedNormal : 0;
+    capitalTroops += destination === 'capital' ? funded : 0;
+    frontierTroops += destination === 'frontier' ? funded : 0;
     fundedTroops += funded;
     idleTroops += total - funded;
   }
 
-  const mercCount = Math.max(0, Math.min(10, Number(orders.mercenaries?.count) || 0));
+  const mercCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(orders.mercenaries?.count) || 0));
   if (orders.mercenaries?.destination === 'capital') capitalTroops += mercCount;
   else frontierTroops += mercCount;
 
-  const ranking = normalizeCoupRanking(state, playerId, orders.ranking, orders.candidate);
-  const candidateSupport = normalizeCoupSupport(state, orders.candidateSupport);
+  const coupChoices = Object.hasOwn(orders || {}, 'coupChoices')
+    ? normalizeCoupChoices(state, orders.coupChoices)
+    : buildDefaultCoupChoices(state, playerId);
   return {
-    candidate: Number.isInteger(Number(orders.candidate))
-      ? Number(orders.candidate)
-      : getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
-    ranking,
-    candidateSupport,
+    // The claimant it backs besides itself, and how much of its support that is.
+    candidate: getPreferredCoupCandidate(state, playerId, { coupChoices }),
+    coupChoices,
     capitalTroops,
     frontierTroops,
     fundedTroops,
@@ -590,7 +603,7 @@ function summarizeOrders(state, playerId, orders = {}) {
 
 function getMaxMercenariesForBudget(budget) {
   let count = 0;
-  while (count < 10 && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  while (count < BALANCE.MAX_MERCENARIES && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
   return count;
 }
 
@@ -678,16 +691,16 @@ function estimateHighInvasionStrength(invasion) {
 
 function estimateRecoveryCost(state, invasion) {
   if (!Array.isArray(invasion?.route)) return 0;
-  const occupied = new Set(
+  const lost = new Set(
     Object.values(state.themes || {})
-      .filter((theme) => theme?.occupied)
+      .filter((theme) => theme?.lost)
       .map((theme) => theme.id),
   );
   let cost = 0;
   let nextCost = 1;
   for (const themeId of invasion.route.slice().reverse()) {
     if (themeId === 'CPL') continue;
-    if (!occupied.has(themeId)) continue;
+    if (!lost.has(themeId)) continue;
     cost += nextCost;
     nextCost += 1;
   }
@@ -742,10 +755,11 @@ function themeStake(state, playerId, themeId) {
   const theme = state.themes?.[themeId];
   if (!theme) return 0;
   let value = 0;
-  if (theme.owner === playerId) value += 5;
+  for (const holder of getProvinceEstateHolders(theme)) {
+    value += holder.playerId === playerId ? Math.min(12, holder.count * 2.5) : -Math.min(3, holder.count * 0.3);
+  }
   if (theme.strategos === playerId) value += 3;
   if (theme.bishop === playerId) value += 2.5;
-  if (theme.owner != null && theme.owner !== playerId) value -= 0.6;
   if (theme.strategos != null && theme.strategos !== playerId) value -= 0.4;
   if (theme.bishop != null && theme.bishop !== playerId) value -= 0.35;
   return value;
@@ -794,11 +808,9 @@ function existingCapitalVotes(state) {
   const votes = {};
   for (const [playerId, orders] of Object.entries(state.allOrders || {})) {
     const summary = summarizeOrders(state, Number(playerId), orders);
-    summary.ranking.forEach((candidateId, rankIndex) => {
-      if (summary.candidateSupport[candidateId] === false) return;
-      const support = summary.capitalTroops * getCoupRankWeight(state.players.length, rankIndex);
-      votes[candidateId] = (votes[candidateId] || 0) + support;
-    });
+    for (const share of getCoupChoiceShares(summary.coupChoices)) {
+      votes[share.candidateId] = (votes[share.candidateId] || 0) + summary.capitalTroops * share.weight;
+    }
   }
   return votes;
 }
@@ -924,18 +936,18 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
 function scoreCoalitionFit(state, playerId, summary, leaderId, weights, context = {}) {
   const recommendation = context.coalitionContext?.recommendations?.[playerId];
   if (!recommendation || summary.capitalTroops <= 0) return 0;
-  const candidateId = summary.candidate;
-  const relation = Number.isInteger(candidateId)
-    ? relationshipScore(context.memory, playerId, candidateId)
-    : 0;
-  if (candidateId === recommendation.candidateId) {
+  const share = getCoupChoiceShares(summary.coupChoices)
+    .find((entry) => entry.candidateId === recommendation.candidateId);
+  if (share) {
+    const candidateId = share.candidateId;
+    const relation = relationshipScore(context.memory, playerId, candidateId);
     const targetIsLeader = candidateId === leaderId && candidateId !== playerId;
     const leaderPenalty = targetIsLeader ? weights.supportLeaderPenalty * 0.8 : 0;
-    return summary.capitalTroops
+    return (summary.capitalTroops
       * (1.1 + Math.max(0, relation) * 0.06 + Math.max(0, recommendation.supporterScore) * 0.16)
-      - leaderPenalty;
+      - leaderPenalty) * share.weight;
   }
-  const selfException = candidateId === playerId && recommendation.viability === 'weak';
+  const selfException = summary.coupChoices[0] === playerId && recommendation.viability === 'weak';
   if (selfException) return -summary.capitalTroops * 0.35;
   return -summary.capitalTroops * 1.1;
 }
@@ -954,48 +966,45 @@ function scoreSupportRelationship(state, playerId, candidateId, capitalTroops, l
 }
 
 // ── Coup model ─────────────────────────────────────────────────────────
-// A coup is a weighted vote: each dynasty's capital troops support every
-// claimant by rank (first 100%, last 0%, even steps between), the Basileus's
-// fortifications back the Basileus, and the Patriarch's influence follows
-// the Patriarch's ranking. The AI projects every claimant's total for a
+// A coup is a weighted vote: each dynasty's troops in Constantinople give
+// full support to its first choice and half to its second, the Theodosian
+// Walls back the Basileus, and the Patriarch's influence follows the
+// Patriarch's choices. The AI projects every claimant's total for a
 // candidate order, turns totals into win chances, and scores the order by
 // what each possible Basileus would mean for it.
 
-// How a rival is expected to rank claimants: itself first, then by how much
-// it likes each of the others.
-function predictCoupRanking(state, memory, voterId) {
-  const others = (state.players || [])
+// How a rival is expected to choose: itself first, then the dynasty it likes
+// most.
+function predictCoupChoices(state, memory, voterId) {
+  const favourite = (state.players || [])
     .map((player) => player.id)
     .filter((id) => id !== voterId)
     .sort((left, right) => (
       relationshipScore(memory, voterId, right) - relationshipScore(memory, voterId, left)
-    ) || (left - right));
-  return [voterId, ...others];
+    ) || (left - right))[0];
+  return favourite == null ? [voterId] : [voterId, favourite];
 }
 
 export function projectCoupVotes(state, playerId, summary, estimates, memory = null) {
-  const playerCount = (state.players || []).length;
   const votes = Object.fromEntries((state.players || []).map((player) => [player.id, 0]));
-  const addRanked = (ranking, troops, support = null) => {
+  const addChoices = (choices, troops) => {
     if (!(troops > 0)) return;
-    ranking.forEach((candidateId, rankIndex) => {
-      if (support && support[candidateId] === false) return;
-      if (!(candidateId in votes)) return;
-      votes[candidateId] += troops * getCoupRankWeight(playerCount, rankIndex);
-    });
+    for (const share of getCoupChoiceShares(choices)) {
+      if (share.candidateId in votes) votes[share.candidateId] += troops * share.weight;
+    }
   };
-  addRanked(summary.ranking, summary.capitalTroops, summary.candidateSupport);
+  addChoices(summary.coupChoices, summary.capitalTroops);
   for (const player of state.players || []) {
     if (player.id === playerId) continue;
-    addRanked(predictCoupRanking(state, memory, player.id), Number(estimates?.capitalByPlayer?.[player.id]) || 0);
+    addChoices(predictCoupChoices(state, memory, player.id), Number(estimates?.capitalByPlayer?.[player.id]) || 0);
   }
   for (const entry of getCapitalSupportEntries(state)) {
     const holderId = Number(entry.playerId);
     const amount = Number(entry.amount) || 0;
     if (!Number.isInteger(holderId) || !amount || !(holderId in votes)) continue;
     if (entry.titleKey === 'PATRIARCH') {
-      if (holderId === playerId) addRanked(summary.ranking, amount, summary.candidateSupport);
-      else addRanked(predictCoupRanking(state, memory, holderId), amount);
+      if (holderId === playerId) addChoices(summary.coupChoices, amount);
+      else addChoices(predictCoupChoices(state, memory, holderId), amount);
     } else {
       votes[holderId] += amount;
     }
@@ -1032,7 +1041,8 @@ function scoreCoupPlan(state, playerId, summary, estimates, leaderId = currentLe
   for (const [candidateId, chance] of Object.entries(chances)) value += chance * (context.claimantValues[candidateId] || 0);
   // Ambition: some dynasties value holding the throne beyond its projected payoff.
   value += (chances[playerId] || 0) * weights.coupOpportunityWeight * weights.throneBase * 0.25;
-  value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops, leaderId, weights, context) * 0.5;
+  const allyShare = getCoupChoiceShares(summary.coupChoices).find((entry) => entry.candidateId === summary.candidate);
+  value += scoreSupportRelationship(state, playerId, summary.candidate, summary.capitalTroops * (allyShare?.weight || 0), leaderId, weights, context) * 0.5;
   value += scoreCoalitionFit(state, playerId, summary, leaderId, weights, context);
   return value;
 }
@@ -1054,31 +1064,29 @@ function scoreReserveFrontierUrgency(state, summary, estimates, weights) {
   );
 }
 
+// How many estates a purse buys in one Estates phase at the rising price.
+function estatesAffordable(gold) {
+  let count = 0;
+  let spent = 0;
+  while (count < MAX_ESTATES_PER_ROUND) {
+    const price = getNextEstatePrice(count);
+    if (spent + price > gold) break;
+    spent += price;
+    count += 1;
+  }
+  return count;
+}
+
+// Gold kept now buys estates next round: value the extra estates it affords.
 function scoreEstateReserveOpportunity(state, final, playerId, goldGain, weights) {
   const gain = Math.max(0, Number(goldGain) || 0);
-  if (gain <= 0) return 0;
-  const player = getPlayer(state, playerId);
-  const currentGold = Math.max(0, Number(player?.gold) || 0);
-  const futureGold = currentGold + gain;
-  let best = 0;
-
-  for (const theme of getFreeThemes(state)) {
-    const bid = Math.max(0, Number(getMinimumLandBid(state, theme.id)) || 0);
-    const profit = Math.max(0, Number(getThemeOwnerIncome(theme)) || 0);
-    if (bid <= 0 || profit <= 0) continue;
-    const beforeAccess = clamp(currentGold / bid, 0, 1);
-    const afterAccess = clamp(futureGold / bid, 0, 1);
-    const accessGain = afterAccess - beforeAccess;
-    if (accessGain <= 0) continue;
-    const estateScore = scoreResourceGain(final, playerId, 'estate', profit);
-    const strategicValue = estateScore * 0.18
-      + profit * weights.estateProfit * 0.22
-      - bid * weights.estateBidCost * 0.04
-      + (currentGold < bid && futureGold >= bid ? 2.4 : 0);
-    best = Math.max(best, Math.max(0, strategicValue) * accessGain);
-  }
-
-  return best;
+  if (gain <= 0 || roundsOfIncomeLeft(state) <= 1) return 0;
+  const currentGold = Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
+  const extraEstates = estatesAffordable(currentGold + gain) - estatesAffordable(currentGold);
+  if (extraEstates <= 0) return 0;
+  const perEstate = scoreResourceGain(final, playerId, 'estate', 1) * 0.18 + weights.estateProfit * 0.22;
+  // The first extra estate counts fully; later ones less, as prices rise.
+  return Math.max(0, perEstate) * (1 + Math.max(0, extraEstates - 1) * 0.35);
 }
 
 function reserveOpportunityScale(state, playerId, summary, estimates, weights, context = {}) {
@@ -1141,9 +1149,7 @@ function scoreDeploymentTactics(state, playerId, action, context = {}) {
   }
 
   const coupKey = [
-    summary.ranking.join(','),
-    Object.entries(summary.candidateSupport || {}).filter(([, enabled]) => enabled === false).map(([id]) => id).join(','),
-    summary.candidate,
+    summary.coupChoices.join(','),
     summary.capitalTroops,
   ].join(':');
   let coupValue = context.coupScoreCache?.get(coupKey);
@@ -1216,94 +1222,70 @@ export function describeOrderChoice(state, playerId, action, meta = null, option
   };
 }
 
-export function chooseStrategicEstateActions(state, meta, playerId) {
-  void meta;
-  const chosen = [];
-  const chosenThemes = new Set();
-  let planningState = cloneStateForAI(state);
-  for (let step = 0; step < MAX_ESTATE_BIDS_PER_AI; step += 1) {
-    const actions = listLegalEstateActions(planningState, playerId)
-      .filter((action) => !chosenThemes.has(action.payload?.themeId));
-    if (!actions.length) break;
-    const final = projectedScoring(planningState);
-    const weights = getStrategyWeights(meta, playerId);
-    const best = actions
-      .map((action) => ({ action, score: scoreEstateAction(planningState, final, playerId, action, weights) }))
-      .sort((left, right) => compareScoredActions(planningState, playerId, left, right, `estate-${step}`))[0] || null;
-    if (!best || best.score <= weights.estateGainFloor) break;
-    chosen.push(best.action);
-    chosenThemes.add(best.action.payload?.themeId);
-    const result = applyLegalAction(planningState, best.action);
-    if (!result.ok) break;
+// Income phases an estate built now still pays for: every remaining round,
+// plus the final income before scoring.
+function roundsOfIncomeLeft(state) {
+  const round = Number(state?.round) || 0;
+  const maxRounds = Number(state?.maxRounds) || round;
+  return Math.max(1, maxRounds - round + 1);
+}
+
+// Share of the invasions the province stands in the way of: the current one
+// weighs most, the rest of the deck by how often each is drawn.
+const INVASION_DRAW_TOTAL = INVASIONS.reduce((total, invasion) => total + (Number(invasion.drawWeight) || 0), 0) || 1;
+
+function estateRouteExposure(state, themeId) {
+  let exposure = 0;
+  const route = state.currentInvasion?.route || [];
+  const imperialOnRoute = route.filter((id) => id !== 'CPL' && state.themes?.[id] && !state.themes[id].lost);
+  const position = imperialOnRoute.indexOf(themeId);
+  if (position >= 0) exposure += 1 / (1 + position);
+  for (const invasion of INVASIONS) {
+    if (invasion.route.includes(themeId)) exposure += 0.35 * ((Number(invasion.drawWeight) || 0) / INVASION_DRAW_TOTAL);
   }
-  return chosen;
+  return exposure;
 }
 
-function scoreEstateAction(state, final, playerId, action, weights) {
-  const theme = state.themes?.[action.payload?.themeId];
-  if (!theme) return -Infinity;
-  const bid = Math.max(0, Number(action.payload?.amount) || 0);
+function scoreEstateSite(state, final, playerId, theme, alreadyPlannedHere, weights) {
   const profit = Math.max(1, Number(theme.P ?? theme.origin?.P) || 1);
-  const threatened = Array.isArray(state.currentInvasion?.route)
-    && state.currentInvasion.route.includes(theme.id);
-  return scoreResourceGain(final, playerId, 'estate', profit)
-    + profit * weights.estateProfit
-    + scoreEstateBidPremium(state, playerId, theme, bid, weights)
-    - bid * weights.estateBidCost
-    - (threatened ? weights.estateThreatPenalty : 0);
+  const rounds = roundsOfIncomeLeft(state);
+  const concentration = getEstateCount(theme, playerId) + alreadyPlannedHere;
+  // A Basileus does not revoke its own estates, but may lose the throne.
+  const revocationRisk = playerId === state.basileusId ? 0.4 : 1;
+  return scoreResourceGain(final, playerId, 'estate', profit) * 0.35
+    + profit * weights.estateProfit * Math.min(1.6, rounds / 4)
+    - estateRouteExposure(state, theme.id) * weights.estateThreatPenalty
+    - concentration * weights.estateSpread * revocationRisk;
 }
 
-// Bidding above the minimum is worth something only while it raises the
-// chance of winning the auction. Once the bid beats every rival's whole
-// purse the estate is certain, and anything more is wasted gold.
-export function estateBidPressure(weights) {
-  const configured = weights.estateBidPressure == null ? NaN : Number(weights.estateBidPressure);
-  if (Number.isFinite(configured)) return Math.max(0, configured);
-  return Math.max(0, (Number(weights.estateProfit) || 0) * 0.28 - (Number(weights.estateBidCost) || 0) * 0.2);
+// Builds a plan one estate at a time, on the best province, while the next
+// estate is worth its rising price.
+export function chooseStrategicEstatePlan(state, meta, playerId) {
+  const weights = getStrategyWeights(meta, playerId);
+  const final = projectedScoring(state);
+  const gold = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
+  const sites = listEstateSites(state);
+  const plan = {};
+  let spent = 0;
+  for (let step = 0; step < MAX_ESTATES_PER_ROUND && sites.length; step += 1) {
+    const price = getNextEstatePrice(countPlannedEstates(plan));
+    if (spent + price > gold) break;
+    const best = sites
+      .map((theme) => ({ theme, score: scoreEstateSite(state, final, playerId, theme, plan[theme.id] || 0, weights) }))
+      .sort((left, right) => (right.score - left.score)
+        || (neutralTieBreakValue(state, playerId, left.theme.id, `estate-${step}`)
+          - neutralTieBreakValue(state, playerId, right.theme.id, `estate-${step}`)))[0];
+    const net = best.score - price * weights.estatePriceWeight;
+    if (net <= weights.estateGainFloor) break;
+    plan[best.theme.id] = (plan[best.theme.id] || 0) + 1;
+    spent += price;
+  }
+  return plan;
 }
 
-function scoreEstateBidPremium(state, playerId, theme, bid, weights) {
-  const minimum = Math.max(0, Number(getMinimumLandBid(state, theme.id)) || 0);
-  const premium = Math.max(0, bid - minimum);
-  if (premium <= 0) return 0;
-  const maximum = Math.max(minimum, Number(getAvailableLandBidGold(state, playerId, theme.id)) || minimum);
-  if (maximum <= minimum) return 0;
-
-  const rivalPurses = (state.players || [])
-    .filter((player) => player.id !== playerId)
-    .map((player) => Number(getAvailableLandBidGold(state, player.id, theme.id)) || 0)
-    .filter((gold) => gold >= minimum);
-  if (!rivalPurses.length) return 0;
-  const competition = Math.min(1, rivalPurses.length / Math.max(1, (state.players || []).length - 1));
-  const needed = Math.max(1, Math.max(...rivalPurses) - minimum + 1);
-  const useful = Math.min(premium, needed);
-  const rangeShare = Math.min(1, useful / needed);
-  return useful * estateBidPressure(weights) * (0.65 + competition * 0.35) * (1 - rangeShare * 0.08);
-}
-
-export function chooseStrategicRewardChoice(state, meta, reward) {
-  if (!reward) return 'empire';
-  const memory = getAiMemory(state, meta);
-  const weights = getStrategyWeights(meta, reward.defenderId);
-  const actions = listLegalRewardActions(state, reward.defenderId)
-    .filter((action) => action.rewardId === reward.id);
-  const best = chooseScoredAction(state, reward.defenderId, actions, {
-    extraScore: (trial, action) => {
-      const theme = trial.themes?.[reward.themeId];
-      const stakeholders = [theme?.owner, theme?.strategos, theme?.bishop]
-        .map((value) => Number(value))
-        .filter(Number.isInteger);
-      const relationshipValue = [...new Set(stakeholders)]
-        .filter((playerId) => playerId !== reward.defenderId)
-        .reduce((total, playerId) => total + relationshipScore(memory, reward.defenderId, playerId), 0);
-      if (action.choice === 'empire') {
-        return (theme?.owner === reward.defenderId ? 2.5 : 0.8)
-          + clamp(relationshipValue * weights.reciprocityWeight * 0.25, -2.5, 2.5);
-      }
-      return clamp(-relationshipValue * weights.reciprocityWeight * 0.2, -2, 2);
-    },
-  });
-  return best?.action?.choice || 'empire';
+export function chooseStrategicEstateActions(state, meta, playerId) {
+  const plan = chooseStrategicEstatePlan(state, meta, playerId);
+  return [buildEstatePlanAction(playerId, plan)];
 }
 
 export function applyStrategicEstateActions(state, meta, playerId) {

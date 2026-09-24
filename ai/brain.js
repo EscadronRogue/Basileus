@@ -1,7 +1,6 @@
 import {
   applyLegalAction,
 } from './legalActions.js';
-import { getLandAuctionBidEntries } from '../engine/actions.js';
 import { clonePlainData } from '../engine/clone.js';
 import {
   loadOpponentByIdSync,
@@ -15,7 +14,6 @@ import {
   choosePolicyEstateActions,
   choosePolicyCourtAction,
   choosePolicyOrderAction,
-  choosePolicyRewardChoice,
   choosePolicyTitleAssignment,
   describePolicyOrderChoice,
   normalizePolicyConfig,
@@ -206,25 +204,11 @@ function cloneForOrderPlanning(state) {
   return clone;
 }
 
+// Estate plans are secret: the AI plans on a copy that holds only its own.
 function cloneForEstatePlanning(state, playerId) {
   const clone = cloneForOrderPlanning(state);
-  const ownAuctions = {};
-  for (const [themeId, auction] of Object.entries(state.landAuctions || {})) {
-    const ownBid = getLandAuctionBidEntries(auction).find((bid) => bid.bidderId === playerId);
-    if (!ownBid) continue;
-    ownAuctions[themeId] = {
-      themeId,
-      round: auction?.round ?? state.round,
-      bids: {
-        [playerId]: {
-          bidderId: playerId,
-          amount: ownBid.amount,
-          round: ownBid.round ?? state.round,
-        },
-      },
-    };
-  }
-  clone.landAuctions = ownAuctions;
+  const ownPlan = state.estatePlans?.[playerId];
+  clone.estatePlans = ownPlan ? { [playerId]: clonePlainData(ownPlan) } : {};
   return clone;
 }
 
@@ -244,10 +228,6 @@ export function buildSimultaneousAIOrders(state, meta) {
   return plans;
 }
 
-export function chooseAIDefenderRewardChoice(state, meta, reward) {
-  return choosePolicyRewardChoice(state, meta, reward);
-}
-
 export function planMajorTitleAssignment(state, meta, newBasileusId = state?.nextBasileusId) {
   return choosePolicyTitleAssignment(state, meta, newBasileusId);
 }
@@ -261,7 +241,7 @@ export function runAIEstateAutomation(state, meta, playerId) {
     const result = applyLegalAction(state, action);
     if (!result.ok) continue;
     applied.push(action);
-    meta?.decisionLog?.push?.(`estates:${playerId}:${meta.players?.[playerId]?.policyId || 'strategic'}:${action.payload?.themeId || 'bid'}`);
+    meta?.decisionLog?.push?.(`estates:${playerId}:${meta.players?.[playerId]?.policyId || 'strategic'}:${JSON.stringify(action.payload?.plan || {})}`);
   }
   return applied;
 }

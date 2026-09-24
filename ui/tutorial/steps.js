@@ -11,7 +11,7 @@
 // itself once the player has done it; a step without one waits for Next.
 import { getPlayerName } from '../../engine/state.js';
 import { buildFinalScores } from '../../engine/scoring.js';
-import { getPendingDefenderRewards } from '../../engine/turnflow.js';
+import { BALANCE } from '../../data/balance.js';
 
 export const TUTORIAL_SEED = 254;
 export const TUTORIAL_PLAYER_COUNT = 3;
@@ -196,19 +196,20 @@ export const TUTORIAL_STEPS = [
   {
     id: 'estates-bid',
     when: inRound(1, 'estates'),
-    target: () => document.querySelector('.estate-card:not(.disabled) [data-action="bid-estate"]'),
-    title: 'Buy land',
-    body: 'Free provinces are sold by sealed bid. An estate pays its profit (P) to you every round, and profit income is one of the three scores.',
-    task: 'Plan a bid on this estate at the minimum price.',
-    done: () => Boolean(document.querySelector('.estate-card.selected')),
+    target: () => document.querySelector('.estate-row:not(.on-route) [data-estate-add]:not([disabled])')
+      || document.querySelector('[data-estate-add]:not([disabled])'),
+    title: 'Build estates',
+    body: 'Each estate pays you 1 gold every round, and estate income is one of the three scores. Your first estate this round costs 1 gold, the next 2, then 3: spread them or stack them as you like.',
+    task: 'Press + to plan an estate in this province.',
+    done: () => Boolean(document.querySelector('.estate-row.planned')),
   },
   {
     id: 'estates-lock',
     when: inRound(1, 'estates'),
     target: '[data-action="confirm-estates"]',
-    title: 'Lock your bids',
-    body: 'Rivals bid in secret too. The highest bid wins when Deployment opens; a tie goes to one of the tied bidders at random.',
-    task: 'Click Lock Bids.',
+    title: 'Lock your estates',
+    body: 'Rivals plan in secret too. Every plan is paid and built when Deployment opens. If invaders take a province, its estates stop paying until it is reconquered.',
+    task: 'Click Lock Estates.',
     done: ({ state }) => state.phase !== 'estates' || Boolean(state.estatesReady?.[ME]),
   },
   {
@@ -240,12 +241,12 @@ export const TUTORIAL_STEPS = [
     task: 'Drag each slider to the right to fund every troop, then press Next.',
   },
   {
-    id: 'deploy-rank',
+    id: 'deploy-coup',
     when: inRound(1, 'deployment'),
-    target: () => document.querySelector('[data-candidate-rank]')?.parentElement || null,
-    title: 'Rank the claimants',
-    body: 'Every dynasty ranks all claimants to the throne, itself included. Capital troops support that ranking: full support to first place, none to last. As Patriarch you also bring 1 passive capital support, which follows your ranking even with no troops in the capital.',
-    task: 'Keep yourself first and press Next.',
+    target: () => document.querySelector('[data-coup-section]') || null,
+    title: 'Back a claimant',
+    body: `Choose who your troops in Constantinople back for the throne: your first choice gets all their support, your second gets half. As Patriarch, your influence (${BALANCE.PATRIARCH_INFLUENCE}) follows the same choices, even with no troops there.`,
+    task: 'Keep yourself as first choice and press Next.',
   },
   {
     id: 'deploy-lock',
@@ -254,7 +255,7 @@ export const TUTORIAL_STEPS = [
     title: 'Commit',
     body: 'Orders stay secret until everyone has locked.',
     task: () => (document.querySelector('.army-card.unresolved')
-      ? 'This army has no destination yet: choose Frontier or Capital, then click Lock Deployment.'
+      ? 'This army has no destination yet: choose Frontier or Constantinople, then click Lock Deployment.'
       : 'Click Lock Deployment.'),
     done: ({ state }) => state.phase !== 'deployment' || Boolean(state.allOrders?.[ME]),
   },
@@ -273,15 +274,6 @@ export const TUTORIAL_STEPS = [
     title: 'The war',
     body: ({ state }) => warText(state),
     task: 'Look at the map: occupied provinces pay nothing to their owners until they are reconquered.',
-  },
-  {
-    id: 'defender-reward',
-    when: ({ state }) => inRound(1, 'resolution')({ state }) && getPendingDefenderRewards(state, ME).length > 0,
-    target: '[data-defender-reward-choice][data-choice="empire"]',
-    title: 'The best defender chooses',
-    body: 'You led the defence. For each province the war recovers, you choose: restore it to the empire as free land, or take gold and leave it occupied.',
-    task: 'Pick one of the two rewards.',
-    done: ({ state }) => getPendingDefenderRewards(state, ME).length === 0,
   },
   {
     id: 'resolution-continue',

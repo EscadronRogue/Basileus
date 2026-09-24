@@ -1,4 +1,4 @@
-import { readTroopEntry } from './cascade.js';
+import { readTroopCount } from './cascade.js';
 import { getOfficeDisplayName, getOfficeHolder } from './state.js';
 
 export const STRATEGOS_DEPLOYMENT_ARMY_KEY = 'STRAT_ALL';
@@ -46,18 +46,9 @@ export function getDeploymentArmySourceKeys(state, playerId, armyKey) {
   return [armyKey];
 }
 
-export function getDeploymentArmyTroopEntry(state, playerId, armyKey) {
-  return getDeploymentArmySourceKeys(state, playerId, armyKey).reduce((total, sourceKey) => {
-    const entry = readTroopEntry(state?.currentTroops?.[sourceKey]);
-    total.normal += entry.normal;
-    total.capitalLocked += entry.capitalLocked;
-    return total;
-  }, { normal: 0, capitalLocked: 0 });
-}
-
 export function getDeploymentArmyTroopTotal(state, playerId, armyKey) {
-  const entry = getDeploymentArmyTroopEntry(state, playerId, armyKey);
-  return entry.normal + entry.capitalLocked;
+  return getDeploymentArmySourceKeys(state, playerId, armyKey)
+    .reduce((total, sourceKey) => total + readTroopCount(state?.currentTroops?.[sourceKey]), 0);
 }
 
 export function getDeploymentArmyDisplayName(state, playerId, armyKey) {

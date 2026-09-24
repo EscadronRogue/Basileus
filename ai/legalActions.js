@@ -6,19 +6,21 @@ import {
   submitHumanOrders,
 } from '../engine/commands.js';
 import {
-  canRevokeTheme,
+  canRevokeEstates,
   getAvailableCourtPowers,
-  getLandBidAmountOptions,
+  getEstateRevocationValue,
   suggestMajorTitleAssignments,
   validateMajorTitleAssignments,
 } from '../engine/actions.js';
+import { canBuildEstatesIn, getProvinceEstateHolders } from '../engine/estates.js';
 import { getSpendableGold } from '../engine/deals.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
-import { applyDefenderRewardChoice, getPendingDefenderRewards } from '../engine/turnflow.js';
-import { getFreeThemes, getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
+import { getPlayer, hasAppointmentTargetLock } from '../engine/state.js';
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
+import { getPreferredCoupCandidate } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { BALANCE } from '../data/balance.js';
 import { clonePlainData } from '../engine/clone.js';
 import { getPlayerMemory, getRelationship, relationshipScore } from './memory.js';
 
@@ -38,8 +40,7 @@ function cloneForValidation(state) {
     activeDealObligations: cloneValueForValidation(state.activeDealObligations || []),
     reservedGold: cloneValueForValidation(state.reservedGold || {}),
     dealThreads: cloneValueForValidation(state.dealThreads || []),
-    pendingDefenderRewards: cloneValueForValidation(state.pendingDefenderRewards || []),
-    landAuctions: cloneValueForValidation(state.landAuctions || {}),
+    estatePlans: cloneValueForValidation(state.estatePlans || {}),
     estatesReady: cloneValueForValidation(state.estatesReady || {}),
     currentTroops: cloneValueForValidation(state.currentTroops || {}),
     allOrders: cloneValueForValidation(state.allOrders || {}),
@@ -107,7 +108,7 @@ function pushConfirmation(actions, state, playerId) {
 function openStrategosThemes(state, region) {
   return Object.values(state.themes || {}).filter((theme) => (
     theme.id !== 'CPL'
-    && !theme.occupied
+    && !theme.lost
     && theme.strategos == null
     && theme.region === region
   ));
@@ -162,7 +163,7 @@ function appendRevocationActions(actions, state, playerId) {
         : theme.region === MAJOR_TITLES.ADMIRAL.region
           ? 'ADMIRAL'
           : null;
-    if (theme.strategos != null && (
+    if (theme.strategos != null && !theme.lost && (
       playerId === state.basileusId
       || (requiredStrategosTitle && player.majorTitles.includes(requiredStrategosTitle))
     )) {
@@ -171,14 +172,11 @@ function appendRevocationActions(actions, state, playerId) {
     if (theme.bishop != null && player.majorTitles.includes('PATRIARCH')) {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `minor:${theme.id}:bishop` }, 'revoke bishop');
     }
-    if (
-      playerId === state.basileusId
-      && Number.isInteger(theme.owner)
-      && !theme.occupied
-      && theme.id !== 'CPL'
-      && canRevokeTheme(state, theme.id, playerId).ok
-    ) {
-      pushCourt(actions, state, playerId, { action: 'revoke', value: `theme:${theme.id}` }, 'revoke estate');
+    if (playerId === state.basileusId && !theme.lost && theme.id !== 'CPL') {
+      for (const holder of getProvinceEstateHolders(theme)) {
+        if (!canRevokeEstates(state, theme.id, holder.playerId, playerId).ok) continue;
+        pushCourt(actions, state, playerId, { action: 'revoke', value: getEstateRevocationValue(theme.id, holder.playerId) }, 'revoke estates');
+      }
     }
   }
 }
@@ -201,20 +199,22 @@ export function listLegalCourtActions(state, playerId) {
   return uniqueActions(actions);
 }
 
-function buildEstateBidAmounts(state, playerId, theme) {
-  return getLandBidAmountOptions(state, playerId, theme.id);
+// Provinces where the dynasty may build estates this round.
+export function listEstateSites(state) {
+  return Object.values(state?.themes || {}).filter(canBuildEstatesIn);
 }
 
+export function buildEstatePlanAction(playerId, plan = {}) {
+  const payload = { action: 'plan', plan };
+  return { id: actionId('estate', payload), kind: 'estate', phase: 'estates', playerId, label: 'plan estates', payload };
+}
+
+// One action per site: a plan of a single estate there. The strategic AI
+// builds its real plan greedily in ai/strategy.js; this list serves the
+// random policy and tests.
 export function listLegalEstateActions(state, playerId) {
   if (!state || state.phase !== 'estates') return [];
-  const actions = [];
-  for (const theme of getFreeThemes(state)) {
-    for (const amount of buildEstateBidAmounts(state, playerId, theme)) {
-      const payload = { action: 'buy', themeId: theme.id, amount };
-      actions.push({ id: actionId('estate', payload), kind: 'estate', phase: 'estates', playerId, label: 'bid on estate', payload });
-    }
-  }
-  return actions;
+  return listEstateSites(state).map((theme) => buildEstatePlanAction(playerId, { [theme.id]: 1 }));
 }
 
 function fullFundingArmies(state, playerId, destination = 'frontier') {
@@ -276,7 +276,7 @@ function getUnfundedGoldFromArmies(state, playerId, armies) {
 
 function getMaxMercenariesForBudget(budget) {
   let count = 0;
-  while (count < 10 && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  while (count < BALANCE.MAX_MERCENARIES && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
   return count;
 }
 
@@ -323,6 +323,8 @@ function leastLikedSupportBlockCount(state) {
   return playerCount === 3 ? 1 : 2;
 }
 
+// Which other dynasties the AI is willing to back at all: it leaves out the
+// ones it likes least and a Basileus that has wronged it.
 export function buildAiCoupSupport(state, playerId, memory = null) {
   const support = Object.fromEntries((state?.players || []).map((player) => [player.id, true]));
   const blockCount = leastLikedSupportBlockCount(state);
@@ -380,20 +382,12 @@ export function buildAiCoupSupport(state, playerId, memory = null) {
   return support;
 }
 
-// Coup rankings an AI considers with a given ally: claim the throne itself
-// with the ally second, or back the ally with itself second. Everyone else is
-// ordered by how much the AI likes them, so its worst rival ranks last and
-// receives none of its capital support.
-export function buildAiCoupRankings(state, playerId, allyId, memory = null) {
-  const rest = (state?.players || [])
-    .map((player) => player.id)
-    .filter((id) => id !== playerId && id !== allyId)
-    .sort((left, right) => (
-      relationshipScore(memory, playerId, right) - relationshipScore(memory, playerId, left)
-    ) || (left - right));
+// Coup choices an AI considers with a given ally: claim the throne itself
+// with the ally second, or back the ally with itself second.
+export function buildAiCoupChoiceSets(state, playerId, allyId) {
   return [
-    [playerId, allyId, ...rest],
-    [allyId, playerId, ...rest],
+    [playerId, allyId],
+    [allyId, playerId],
   ];
 }
 
@@ -403,38 +397,23 @@ export function listLegalOrderActions(state, playerId, options = {}) {
   const actions = [];
   const seen = new Set();
   const armyPlans = buildArmyPlans(state, playerId);
-  const candidateSupport = buildAiCoupSupport(state, playerId, options.memory || null);
-  const candidateIds = state.players
+  const allySupport = buildAiCoupSupport(state, playerId, options.memory || null);
+  const allyIds = state.players
     .map((player) => player.id)
-    .filter((candidateId) => candidateId !== playerId && candidateSupport[candidateId] !== false);
+    .filter((candidateId) => candidateId !== playerId && allySupport[candidateId] !== false);
+  const choiceSets = [[playerId], ...allyIds.flatMap((allyId) => buildAiCoupChoiceSets(state, playerId, allyId))];
   for (const armies of armyPlans) {
     for (const mercenaries of buildMercenaryPlans(state, playerId, armies)) {
-      for (const candidate of candidateIds) {
-        for (const ranking of buildAiCoupRankings(state, playerId, candidate, options.memory || null)) {
-          const orders = { armies, mercenaries, candidate, ranking, candidateSupport };
-          const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
-          if (!normalized.ok) continue;
-          const key = stablePayload(normalized.orders);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
-          if (actions.length >= MAX_ORDER_ACTIONS) return actions;
-        }
+      for (const coupChoices of choiceSets) {
+        const orders = { armies, mercenaries, coupChoices };
+        const normalized = normalizeHumanOrders(state, playerId, orders, { resolveImpossibleLocks: true });
+        if (!normalized.ok) continue;
+        const key = stablePayload(normalized.orders);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        actions.push({ id: actionId('orders', normalized.orders), kind: 'orders', phase: 'deployment', playerId, label: 'submit orders', orders: normalized.orders });
+        if (actions.length >= MAX_ORDER_ACTIONS) return actions;
       }
-    }
-  }
-  return actions;
-}
-
-export function listLegalRewardActions(state, playerId) {
-  if (!state || state.phase !== 'resolution') return [];
-  const actions = [];
-  for (const reward of getPendingDefenderRewards(state, playerId)) {
-    for (const choice of ['empire', 'gold']) {
-      const trial = cloneForValidation(state);
-      const result = applyDefenderRewardChoice(trial, reward.id, playerId, choice);
-      if (!result.ok) continue;
-      actions.push({ id: actionId('reward', { rewardId: reward.id, choice }), kind: 'reward', phase: 'resolution', playerId, label: `defender reward ${choice}`, rewardId: reward.id, choice });
     }
   }
   return actions;
@@ -483,7 +462,6 @@ export function listLegalActions(state, playerId, options = {}) {
   if (state?.phase === 'court') return listLegalCourtActions(state, playerId);
   if (state?.phase === 'estates') return listLegalEstateActions(state, playerId);
   if (state?.phase === 'deployment') return listLegalOrderActions(state, playerId, options);
-  if (state?.phase === 'resolution') return listLegalRewardActions(state, playerId);
   return [];
 }
 
@@ -493,7 +471,6 @@ export function applyLegalAction(state, action) {
   if (action.kind === 'court-confirm') return confirmCourt(state, action.playerId);
   if (action.kind === 'estate') return applyEstateAction(state, action.playerId, action.payload);
   if (action.kind === 'orders') return submitHumanOrders(state, action.playerId, action.orders);
-  if (action.kind === 'reward') return applyDefenderRewardChoice(state, action.rewardId, action.playerId, action.choice);
   if (action.kind === 'title-assignment') {
     return applyManualTitleReassignment(state, action.newBasileusId, action.assignments);
   }
@@ -503,15 +480,16 @@ export function applyLegalAction(state, action) {
 export function getActionTargetPlayerId(state, action) {
   const payload = action?.payload || {};
   if (Number.isInteger(payload.appointeeId)) return payload.appointeeId;
-  if (Number.isInteger(action?.orders?.candidate)) return action.orders.candidate;
-  if (action?.kind === 'reward') return action.playerId;
+  if (Array.isArray(action?.orders?.coupChoices)) {
+    return getPreferredCoupCandidate(state, action.playerId, action.orders);
+  }
   if (payload.value) {
     const [kind, id, titleType] = String(payload.value).split(':');
     if (kind === 'minor') {
       const theme = state.themes?.[id];
       return titleType === 'strategos' ? theme?.strategos ?? null : theme?.bishop ?? null;
     }
-    if (kind === 'theme') return state.themes?.[id]?.owner ?? null;
+    if (kind === 'estates') return Number.isInteger(Number(titleType)) ? Number(titleType) : null;
     if (kind === 'court') return null;
   }
   return null;
@@ -522,7 +500,7 @@ export function getActionThemeId(action) {
   if (payload.themeId) return payload.themeId;
   if (payload.value) {
     const [kind, id] = String(payload.value).split(':');
-    if (kind === 'minor' || kind === 'theme') return id;
+    if (kind === 'minor' || kind === 'estates') return id;
   }
   return null;
 }

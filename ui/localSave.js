@@ -1,6 +1,21 @@
 // ui/localSave.js - one autosave slot for single-player and hotseat games,
 // kept in this browser's localStorage so a refresh or closed tab can resume.
-import { hydrateAiMeta, hydrateGameState, serializeAiMeta, serializeGameState } from '../game/save.js';
+import {
+  OUTDATED_SAVE_MESSAGE,
+  hydrateAiMeta,
+  hydrateGameState,
+  isSaveStateCurrent,
+  serializeAiMeta,
+  serializeGameState,
+} from '../game/save.js';
+
+export { OUTDATED_SAVE_MESSAGE };
+
+// A save made under older rules is still listed, so the player learns why it
+// cannot be continued, but only Discard is offered.
+export function isLocalSaveOutdated(save) {
+  return !isSaveStateCurrent(save?.gameState);
+}
 
 export const LOCAL_SAVE_KEY = 'basileus.localGame';
 export const LOCAL_SAVE_SCHEMA = 'basileus.local.save';

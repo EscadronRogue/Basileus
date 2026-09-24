@@ -283,8 +283,6 @@
           "leaderDenial": 1.4013,
           "rivalDenial": 0.35,
           "estateProfit": 3.0759,
-          "estateBidCost": 1.15,
-          "estateBidPressure": 1.1646,
           "estateThreatPenalty": 2.0792,
           "invasionShortfallPenalty": 3.6,
           "invasionSafetyValue": 0.55,
@@ -318,7 +316,9 @@
           "regimeTreatmentWeight": 0.7066,
           "regimeUrgencyWeight": 1,
           "allyDefenseReliance": 1,
-          "kingmakerPenalty": 0.25
+          "kingmakerPenalty": 0.25,
+          "estatePriceWeight": 1.15,
+          "estateSpread": 1.1646
         }
       },
       "strategyWeights": {
@@ -327,8 +327,6 @@
         "leaderDenial": 1.4013,
         "rivalDenial": 0.35,
         "estateProfit": 3.0759,
-        "estateBidCost": 1.15,
-        "estateBidPressure": 1.1646,
         "estateThreatPenalty": 2.0792,
         "invasionShortfallPenalty": 3.6,
         "invasionSafetyValue": 0.55,
@@ -362,7 +360,9 @@
         "regimeTreatmentWeight": 0.7066,
         "regimeUrgencyWeight": 1,
         "allyDefenseReliance": 1,
-        "kingmakerPenalty": 0.25
+        "kingmakerPenalty": 0.25,
+        "estatePriceWeight": 1.15,
+        "estateSpread": 1.1646
       },
       "metrics": {
         "games": 160,
@@ -412,8 +412,6 @@
           "leaderDenial": 1.2,
           "rivalDenial": 0.6684,
           "estateProfit": 5.8,
-          "estateBidCost": 0.9,
-          "estateBidPressure": 0.9869,
           "estateThreatPenalty": 2.6062,
           "invasionShortfallPenalty": 1.4954,
           "invasionSafetyValue": 0.2,
@@ -447,7 +445,9 @@
           "regimeTreatmentWeight": 1.0993,
           "regimeUrgencyWeight": 0.8793,
           "allyDefenseReliance": 0.9898,
-          "kingmakerPenalty": 0.2781
+          "kingmakerPenalty": 0.2781,
+          "estatePriceWeight": 0.9,
+          "estateSpread": 0.9869
         }
       },
       "strategyWeights": {
@@ -456,8 +456,6 @@
         "leaderDenial": 1.2,
         "rivalDenial": 0.6684,
         "estateProfit": 5.8,
-        "estateBidCost": 0.9,
-        "estateBidPressure": 0.9869,
         "estateThreatPenalty": 2.6062,
         "invasionShortfallPenalty": 1.4954,
         "invasionSafetyValue": 0.2,
@@ -491,7 +489,9 @@
         "regimeTreatmentWeight": 1.0993,
         "regimeUrgencyWeight": 0.8793,
         "allyDefenseReliance": 0.9898,
-        "kingmakerPenalty": 0.2781
+        "kingmakerPenalty": 0.2781,
+        "estatePriceWeight": 0.9,
+        "estateSpread": 0.9869
       },
       "metrics": {
         "games": 160,
@@ -541,8 +541,6 @@
           "leaderDenial": 0.9879,
           "rivalDenial": 0.5216,
           "estateProfit": 8.1052,
-          "estateBidCost": 0.8117,
-          "estateBidPressure": 0.8682,
           "estateThreatPenalty": 0.777,
           "invasionShortfallPenalty": 1,
           "invasionSafetyValue": 0.1025,
@@ -576,7 +574,9 @@
           "regimeTreatmentWeight": 1,
           "regimeUrgencyWeight": 2.243,
           "allyDefenseReliance": 1,
-          "kingmakerPenalty": 0.25
+          "kingmakerPenalty": 0.25,
+          "estatePriceWeight": 0.8117,
+          "estateSpread": 0.8682
         }
       },
       "strategyWeights": {
@@ -585,8 +585,6 @@
         "leaderDenial": 0.9879,
         "rivalDenial": 0.5216,
         "estateProfit": 8.1052,
-        "estateBidCost": 0.8117,
-        "estateBidPressure": 0.8682,
         "estateThreatPenalty": 0.777,
         "invasionShortfallPenalty": 1,
         "invasionSafetyValue": 0.1025,
@@ -620,7 +618,9 @@
         "regimeTreatmentWeight": 1,
         "regimeUrgencyWeight": 2.243,
         "allyDefenseReliance": 1,
-        "kingmakerPenalty": 0.25
+        "kingmakerPenalty": 0.25,
+        "estatePriceWeight": 0.8117,
+        "estateSpread": 0.8682
       },
       "metrics": {
         "games": 160,
@@ -670,8 +670,6 @@
           "leaderDenial": 1.2,
           "rivalDenial": 0.35,
           "estateProfit": 4,
-          "estateBidCost": 1.15,
-          "estateBidPressure": 1.1734,
           "estateThreatPenalty": 1.4788,
           "invasionShortfallPenalty": 8.135,
           "invasionSafetyValue": 1.7018,
@@ -705,7 +703,9 @@
           "regimeTreatmentWeight": 1.55,
           "regimeUrgencyWeight": 1.35,
           "allyDefenseReliance": 0.8092,
-          "kingmakerPenalty": 0.75
+          "kingmakerPenalty": 0.75,
+          "estatePriceWeight": 1.15,
+          "estateSpread": 1.1734
         }
       },
       "strategyWeights": {
@@ -714,8 +714,6 @@
         "leaderDenial": 1.2,
         "rivalDenial": 0.35,
         "estateProfit": 4,
-        "estateBidCost": 1.15,
-        "estateBidPressure": 1.1734,
         "estateThreatPenalty": 1.4788,
         "invasionShortfallPenalty": 8.135,
         "invasionSafetyValue": 1.7018,
@@ -749,7 +747,9 @@
         "regimeTreatmentWeight": 1.55,
         "regimeUrgencyWeight": 1.35,
         "allyDefenseReliance": 0.8092,
-        "kingmakerPenalty": 0.75
+        "kingmakerPenalty": 0.75,
+        "estatePriceWeight": 1.15,
+        "estateSpread": 1.1734
       },
       "metrics": {
         "games": 160,
@@ -799,8 +799,6 @@
           "leaderDenial": 2.1492,
           "rivalDenial": 1.0236,
           "estateProfit": 7.2734,
-          "estateBidCost": 1.1274,
-          "estateBidPressure": 0,
           "estateThreatPenalty": 1.0285,
           "invasionShortfallPenalty": 1,
           "invasionSafetyValue": 1.3075,
@@ -834,7 +832,9 @@
           "regimeTreatmentWeight": 1.2626,
           "regimeUrgencyWeight": 0.5643,
           "allyDefenseReliance": 1,
-          "kingmakerPenalty": 0
+          "kingmakerPenalty": 0,
+          "estatePriceWeight": 1.1274,
+          "estateSpread": 0.3
         }
       },
       "strategyWeights": {
@@ -843,8 +843,6 @@
         "leaderDenial": 2.1492,
         "rivalDenial": 1.0236,
         "estateProfit": 7.2734,
-        "estateBidCost": 1.1274,
-        "estateBidPressure": 0,
         "estateThreatPenalty": 1.0285,
         "invasionShortfallPenalty": 1,
         "invasionSafetyValue": 1.3075,
@@ -878,7 +876,9 @@
         "regimeTreatmentWeight": 1.2626,
         "regimeUrgencyWeight": 0.5643,
         "allyDefenseReliance": 1,
-        "kingmakerPenalty": 0
+        "kingmakerPenalty": 0,
+        "estatePriceWeight": 1.1274,
+        "estateSpread": 0.3
       },
       "metrics": {
         "games": 160,
@@ -928,8 +928,6 @@
           "leaderDenial": 1.2797,
           "rivalDenial": 0.22,
           "estateProfit": 3.343,
-          "estateBidCost": 1.15,
-          "estateBidPressure": 1.1735,
           "estateThreatPenalty": 1.5,
           "invasionShortfallPenalty": 5.2,
           "invasionSafetyValue": 1.1,
@@ -963,7 +961,9 @@
           "regimeTreatmentWeight": 1.35,
           "regimeUrgencyWeight": 0.8206,
           "allyDefenseReliance": 1,
-          "kingmakerPenalty": 0.3452
+          "kingmakerPenalty": 0.3452,
+          "estatePriceWeight": 1.15,
+          "estateSpread": 1.1735
         }
       },
       "strategyWeights": {
@@ -972,8 +972,6 @@
         "leaderDenial": 1.2797,
         "rivalDenial": 0.22,
         "estateProfit": 3.343,
-        "estateBidCost": 1.15,
-        "estateBidPressure": 1.1735,
         "estateThreatPenalty": 1.5,
         "invasionShortfallPenalty": 5.2,
         "invasionSafetyValue": 1.1,
@@ -1007,7 +1005,9 @@
         "regimeTreatmentWeight": 1.35,
         "regimeUrgencyWeight": 0.8206,
         "allyDefenseReliance": 1,
-        "kingmakerPenalty": 0.3452
+        "kingmakerPenalty": 0.3452,
+        "estatePriceWeight": 1.15,
+        "estateSpread": 1.1735
       },
       "metrics": {
         "games": 160,
@@ -1057,8 +1057,6 @@
           "leaderDenial": 0.6575,
           "rivalDenial": 0.5347,
           "estateProfit": 6.6417,
-          "estateBidCost": 1.15,
-          "estateBidPressure": 1.2506,
           "estateThreatPenalty": 0.865,
           "invasionShortfallPenalty": 9.7821,
           "invasionSafetyValue": 0.8036,
@@ -1092,7 +1090,9 @@
           "regimeTreatmentWeight": 1.6546,
           "regimeUrgencyWeight": 1.3961,
           "allyDefenseReliance": 1,
-          "kingmakerPenalty": 0
+          "kingmakerPenalty": 0,
+          "estatePriceWeight": 1.15,
+          "estateSpread": 1.2506
         }
       },
       "strategyWeights": {
@@ -1101,8 +1101,6 @@
         "leaderDenial": 0.6575,
         "rivalDenial": 0.5347,
         "estateProfit": 6.6417,
-        "estateBidCost": 1.15,
-        "estateBidPressure": 1.2506,
         "estateThreatPenalty": 0.865,
         "invasionShortfallPenalty": 9.7821,
         "invasionSafetyValue": 0.8036,
@@ -1136,7 +1134,9 @@
         "regimeTreatmentWeight": 1.6546,
         "regimeUrgencyWeight": 1.3961,
         "allyDefenseReliance": 1,
-        "kingmakerPenalty": 0
+        "kingmakerPenalty": 0,
+        "estatePriceWeight": 1.15,
+        "estateSpread": 1.2506
       },
       "metrics": {
         "games": 160,

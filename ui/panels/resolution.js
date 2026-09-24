@@ -1,10 +1,11 @@
-// ui/panels/resolution.js - Resolution panel: revealed orders, war and coup results, defender rewards.
+// ui/panels/resolution.js - Resolution panel: revealed orders, the war and the coup.
 
 import { getPlayer } from '../../engine/state.js';
-import { formatGoldHtml, formatMercenariesHtml, formatTroopsHtml, renderValue } from '../icons.js';
+import { formatGoldHtml, formatMercenariesHtml, formatSupportHtml, formatTroopsHtml } from '../icons.js';
 import { escapeHtml } from '../html.js';
-import { renderPlayerChip, renderPlayerRoleName, renderProvinceBadge } from '../labels.js';
-import { renderArmyOfficeBadge, renderPickerStep } from './shared.js';
+import { renderWarLedger } from './invasion.js';
+import { renderPlayerChip, renderPlayerRoleName } from '../labels.js';
+import { renderArmyOfficeBadge } from './shared.js';
 
 export function renderResolutionPanel(container, state, options = {}) {
   return renderResolutionPanelDetailed(container, state, options);
@@ -18,7 +19,32 @@ function getCurrentOrderRevealEvents(state) {
 }
 
 function destinationLabel(value) {
-  return value === 'capital' ? 'Capital' : 'Frontier';
+  return value === 'capital' ? 'Constantinople' : 'Frontier';
+}
+
+function renderPlayerRef(state, playerId) {
+  return renderPlayerChip(state, getPlayer(state, Number(playerId)), `Player ${Number(playerId) + 1}`, { variant: 'light' });
+}
+
+function renderCoupChoiceList(state, coupChoices = []) {
+  if (!coupChoices.length) return 'backs nobody';
+  return coupChoices
+    .map((candidateId, index) => `${index === 0 ? '1st' : '2nd'} ${renderPlayerRef(state, candidateId)}`)
+    .join(', ');
+}
+
+// One line of a claimant's coup support: who gave it and why.
+function describeCoupContribution(state, entry) {
+  const value = Number(entry.votes ?? entry.troops) || 0;
+  const choice = Number(entry.choice) === 1 ? '1st' : Number(entry.choice) === 2 ? '2nd, half' : '';
+  const choiceTag = choice ? ` <span class="vote-choice">(${choice})</span>` : '';
+  if (entry.source === 'patriarch') {
+    return `${escapeHtml(entry.supportLabel || "Patriarch's influence")} of ${renderPlayerRef(state, entry.playerId)}${choiceTag} ${formatSupportHtml(value)}`;
+  }
+  if (entry.passive) {
+    return `${escapeHtml(entry.supportLabel || 'Support')} ${formatSupportHtml(value, { signed: true })}`;
+  }
+  return `${renderPlayerRef(state, entry.playerId)}'s troops${choiceTag} ${formatSupportHtml(value)}`;
 }
 
 function renderDeploymentOfficeRevealRows(state, playerId, offices) {
@@ -34,8 +60,8 @@ function renderDeploymentOfficeRevealRows(state, playerId, offices) {
         return `
           <div class="deployment-reveal-office-row">
             <span class="deployment-reveal-office-name">${renderArmyOfficeBadge(state, office.officeKey, playerId)}</span>
-            <span>${formatTroopsHtml(fundedTroops)} funded of ${formatTroopsHtml(totalTroops)}</span>
-            <span>${formatTroopsHtml(unfundedTroops)} stayed home</span>
+            <span>${formatTroopsHtml(fundedTroops)} fielded of ${formatTroopsHtml(totalTroops)}</span>
+            <span>${formatTroopsHtml(unfundedTroops)} dismissed</span>
             <span>${destinationLabel(office.destination)}: ${formatTroopsHtml(office.destination === 'capital' ? capitalTroops : frontierTroops)}</span>
           </div>
         `;
@@ -51,12 +77,12 @@ function renderDeploymentRevealSection(state) {
     <details class="deployment-reveal-details">
       <summary class="deployment-reveal-summary">
         <span>Deployment Details</span>
-        <span>funding, mercenaries, and destinations</span>
+        <span>troops, mercenaries, destinations and coup choices</span>
       </summary>
       <article class="result-card deployment-reveal-card">
       <header class="result-card-head">
-        <span class="result-card-kicker">Deployment Reveal</span>
-        <span class="result-card-against">funded troops, troops kept home, mercenaries, and destinations</span>
+        <span class="result-card-kicker">Deployment</span>
+        <span class="result-card-against">what each dynasty did</span>
       </header>
       <div class="deployment-reveal-list">
         ${events.map((event) => {
@@ -68,7 +94,7 @@ function renderDeploymentRevealSection(state) {
           const unfundedTroops = offices.reduce((total, office) => total + Math.max(0, Number(office.unfundedTroops) || 0), 0);
           const capitalTroops = Math.max(0, Number(details.capitalTroops) || 0);
           const frontierTroops = Math.max(0, Number(details.frontierTroops) || 0);
-          const passiveCapitalSupport = Math.max(0, Number(details.passiveCapitalSupport) || 0);
+          const coupChoices = Array.isArray(details.coupChoices) ? details.coupChoices.map(Number) : [];
           const mercenaries = details.mercenaries || {};
           const mercenaryCount = Math.max(0, Number(mercenaries.count) || 0);
           const mercenaryDestination = mercenaryCount > 0 ? destinationLabel(mercenaries.destination) : 'None';
@@ -76,13 +102,13 @@ function renderDeploymentRevealSection(state) {
             <section class="deployment-reveal-player">
               <header class="deployment-reveal-player-head">
                 ${player ? renderPlayerRoleName(state, player) : escapeHtml(event.actorName || `Player ${playerId + 1}`)}
-                <span>${formatTroopsHtml(capitalTroops)} Capital · ${formatTroopsHtml(frontierTroops)} Frontier</span>
+                <span>${formatTroopsHtml(frontierTroops)} Frontier · ${formatTroopsHtml(capitalTroops)} Constantinople</span>
               </header>
               <div class="deployment-reveal-pills">
-                <span>Funded ${formatTroopsHtml(fundedTroops)}</span>
-                <span>Stayed home ${formatTroopsHtml(unfundedTroops)}</span>
+                <span>Fielded ${formatTroopsHtml(fundedTroops)}</span>
+                <span>Dismissed ${formatTroopsHtml(unfundedTroops)}</span>
                 <span>Mercenaries ${formatMercenariesHtml(mercenaryCount)} ${mercenaryCount ? `to ${mercenaryDestination}` : ''}</span>
-                <span>Passive capital support ${renderValue('troop', passiveCapitalSupport, { displayValue: Math.round(passiveCapitalSupport * 100) / 100 })}</span>
+                <span>Coup ${renderCoupChoiceList(state, coupChoices)}</span>
               </div>
               ${renderDeploymentOfficeRevealRows(state, playerId, offices)}
             </section>
@@ -96,7 +122,6 @@ function renderDeploymentRevealSection(state) {
 
 export function renderResolutionPanelDetailed(container, state, options = {}) {
   if (!container || !state) return;
-  const rewards = Array.isArray(state.pendingDefenderRewards) ? state.pendingDefenderRewards.filter((reward) => !reward.resolved) : [];
   const war = state.lastWarResult;
   const coup = state.lastCoupResult;
   const empireFell = Boolean(war?.reachedCPL) || state.gameOver?.type === 'fall';
@@ -105,7 +130,6 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
   const deploymentRevealSection = renderDeploymentRevealSection(state);
   const warSection = war ? renderWarResultCard(state, war, invasionName, empireFell) : '';
   const coupSection = coup ? renderCoupResultCard(state, coup) : '';
-  const rewardsSection = rewards.length ? renderDefenderRewardSection(state, rewards) : '';
   const empireFallenBanner = empireFell
     ? `<div class="empire-fall-banner">
         <span class="empire-fall-kicker">Empire Fallen</span>
@@ -115,12 +139,11 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
 
   container.innerHTML = `
     <section class="phase-card resolution-panel">
-      <h3>Resolve Turn</h3>
+      <h3>Resolution</h3>
       ${empireFallenBanner}
       ${warSection}
       ${coupSection}
       ${deploymentRevealSection}
-      ${rewardsSection}
       <div class="panel-actions action-priority">
         <button type="button" class="btn-primary btn-commit" data-action="continue">Continue</button>
       </div>
@@ -133,8 +156,6 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
   const outcomeLabel = empireFell ? 'Empire falls' : outcome.toUpperCase();
   const empireTroops = Math.max(0, Number(war.frontierTroops) || 0);
   const invaderStrength = Math.max(0, Number(war.invaderStrength) || 0);
-  const themesLost = Array.isArray(war.themesLost) ? war.themesLost : [];
-  const themesRecovered = Array.isArray(war.themesRecovered) ? war.themesRecovered : [];
   const frontierBreakdown = renderFrontierContributionBreakdown(state, war.contributions);
   const reconquestReward = war.reconquestReward || null;
 
@@ -157,18 +178,7 @@ function renderWarResultCard(state, war, invasionName, empireFell) {
         </div>
       </div>
       ${frontierBreakdown}
-      ${themesLost.length ? `
-        <div class="war-result-row lost">
-          <span class="war-result-row-label">Lost to the invader</span>
-          <div class="war-result-tokens">${themesLost.map((id) => renderProvinceBadge(state, state.themes[id] || { id, name: id }, { compact: true })).join(' ')}</div>
-        </div>
-      ` : ''}
-      ${themesRecovered.length ? `
-        <div class="war-result-row recovered">
-          <span class="war-result-row-label">Reclaimed for the empire</span>
-          <div class="war-result-tokens">${themesRecovered.map((id) => renderProvinceBadge(state, state.themes[id] || { id, name: id }, { compact: true })).join(' ')}</div>
-        </div>
-      ` : ''}
+      ${renderWarLedger(state, war)}
       ${reconquestReward ? renderReconquestRewardRow(state, reconquestReward) : ''}
     </article>
   `;
@@ -195,7 +205,7 @@ function renderReconquestRewardRow(state, reward) {
     Number(reward.rewardProvinceCount ?? reward.totalGold ?? reward.totalCapitalSupport) || 0,
   );
   const repulseNote = rewardProvinceCount > recoveredCount
-    ? `<span class="muted">Repulse value: ${rewardProvinceCount} province win${rewardProvinceCount === 1 ? '' : 's'}.</span>`
+    ? `<span class="muted">The frontier's lead was worth ${rewardProvinceCount} province${rewardProvinceCount === 1 ? '' : 's'} on the ladder, lost or not.</span>`
     : '';
   return `
     <div class="war-result-row recovered reconquest-reward-row">
@@ -206,7 +216,7 @@ function renderReconquestRewardRow(state, reward) {
           return `
             <div class="reward-recipient">
               ${defender ? renderPlayerRoleName(state, defender) : escapeHtml(recipient.defenderName || 'Top defender')}
-              <span class="muted">gains ${formatGoldHtml(recipient.gold || 0)} and ${renderValue('troop', recipient.capitalSupport || 0, { signed: true })} in Constantinople next round.</span>
+              <span class="muted">gains ${formatGoldHtml(recipient.gold || 0)} now and ${formatSupportHtml(recipient.capitalSupport || 0, { signed: true })} support in next round's coup.</span>
             </div>
           `;
         }).join('')}
@@ -252,10 +262,10 @@ function renderCoupTieBreakNote(state, coup) {
   const winnerName = winner ? renderPlayerRoleName(state, winner) : escapeHtml(`Player ${Number(coup.winner) + 1}`);
   const support = Number(tieBreak.patriarchSupport?.[Number(coup.winner)]) || 0;
   const text = tieBreak.method === 'patriarch'
-    ? `${winnerName} wins the tied coup with ${renderValue('troop', support, { displayValue: Math.round(support * 100) / 100 })} of Patriarchal support.`
+    ? `${winnerName} wins the tie with ${formatSupportHtml(support)} from the Patriarch's influence.`
     : tieBreak.method === 'incumbent'
-      ? 'Patriarchal support is still tied, so the sitting Basileus keeps the throne.'
-      : 'Patriarchal support is still tied, so the remaining tie falls to dynasty order.';
+      ? "The Patriarch's influence does not break the tie, so the Basileus keeps the throne."
+      : "The Patriarch's influence does not break the tie, so it goes to the first dynasty in seating order.";
   return `<div class="coup-tie-break">${text}</div>`;
 }
 
@@ -274,7 +284,7 @@ function renderCoupResultCard(state, coup) {
     .filter((ballot) => Math.max(0, Number(ballot.troops) || 0) <= 0)
     .sort((a, b) => Number(a.playerId) - Number(b.playerId));
   const zeroBallotSummary = zeroBallots.length
-    ? `No capital troops from ${zeroBallots.map((ballot) => {
+    ? `No troops in Constantinople from ${zeroBallots.map((ballot) => {
       const voter = getPlayer(state, Number(ballot.playerId));
       return renderPlayerChip(state, voter, `Player ${Number(ballot.playerId) + 1}`, { variant: 'light' });
     }).join(' ')}.`
@@ -303,18 +313,11 @@ function renderCoupResultCard(state, coup) {
                   ${renderPlayerRoleName(state, getPlayer(state, row.candidateId), `Player ${row.candidateId + 1}`)}
                   ${supporters.length ? `
                     <span class="vote-supporters">
-                      ${supporters.map((entry) => {
-                        const supporter = getPlayer(state, Number(entry.playerId));
-                        const value = Number(entry.votes ?? entry.troops) || 0;
-                        const sourceLabel = entry.passive
-                          ? escapeHtml(entry.supportLabel || 'Passive support')
-                          : renderPlayerChip(state, supporter, `Player ${Number(entry.playerId) + 1}`, { variant: 'light' });
-                        return `${sourceLabel} ${renderValue('troop', value, { signed: entry.passive, displayValue: Math.round(value * 100) / 100 })}`;
-                      }).join(' ')}
+                      ${supporters.map((entry) => `<span class="vote-source">${describeCoupContribution(state, entry)}</span>`).join('')}
                     </span>
                   ` : ''}
                 </span>
-                <span class="vote-troops">${renderValue('troop', row.troops, { signed: true, displayValue: Math.round(row.troops * 100) / 100 })}</span>
+                <span class="vote-troops">${formatSupportHtml(row.troops)}</span>
               </div>
             `;
           }).join('')}
@@ -324,48 +327,8 @@ function renderCoupResultCard(state, coup) {
             </div>
           ` : ''}
         </div>
-      ` : `<p class="muted">No capital troops were committed.${zeroBallotSummary ? ` ${zeroBallotSummary}` : ''}</p>`}
+      ` : `<p class="muted">Nobody had support in the coup, so the Basileus keeps the throne.${zeroBallotSummary ? ` ${zeroBallotSummary}` : ''}</p>`}
     </article>
   `;
 }
 
-function renderDefenderRewardSection(state, rewards) {
-  return `
-    <div class="reward-section">
-      ${renderPickerStep('⚑', `${rewards.length} defender reward${rewards.length === 1 ? '' : 's'} to settle`)}
-      <div class="reward-list">
-        ${rewards.map((reward) => renderDefenderRewardCard(state, reward)).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function renderDefenderRewardCard(state, reward) {
-  const theme = state.themes[reward.themeId] || { id: reward.themeId, name: reward.themeName || reward.themeId };
-  const defender = getPlayer(state, reward.defenderId);
-  const gold = Math.max(0, Number(reward.goldValue) || 0);
-  const rank = Number(reward.rank) || 1;
-  const rankSuffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
-  return `
-    <article class="reward-card" data-reward-id="${reward.id}">
-      <header class="reward-card-head">
-        ${renderProvinceBadge(state, theme, { showValues: true })}
-        <span class="reward-card-rank">${rank}${rankSuffix} defender</span>
-      </header>
-      <div class="reward-card-body">
-        ${defender ? renderPlayerRoleName(state, defender) : 'Defender'}
-        <span class="muted">contributed ${formatTroopsHtml(reward.troops || 0)} to the frontier.</span>
-      </div>
-      <div class="reward-card-choice">
-        <button type="button" class="btn-primary reward-choice-restore" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="empire">
-          <span class="reward-choice-kicker">Restore</span>
-          <span class="reward-choice-desc">Return ${renderProvinceBadge(state, theme, { compact: true })} to the empire</span>
-        </button>
-        <button type="button" class="btn-secondary reward-choice-gold" data-defender-reward-choice data-reward-id="${reward.id}" data-choice="gold">
-          <span class="reward-choice-kicker">Take</span>
-          <span class="reward-choice-desc">${formatGoldHtml(gold)} into your reserve (province stays occupied)</span>
-        </button>
-      </div>
-    </article>
-  `;
-}

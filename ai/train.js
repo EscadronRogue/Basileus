@@ -19,8 +19,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 
 import { makeRng } from '../engine/state.js';
-import { createSimulationPool, defaultSimulationWorkers, simulateGame } from './simulate.js';
-import { DEFAULT_STRATEGY_WEIGHTS, estateBidPressure } from './strategy.js';
+import { createSimulationPool, defaultSimulationWorkers, parseAssignment, simulateGame } from './simulate.js';
+import { DEFAULT_STRATEGY_WEIGHTS } from './strategy.js';
 import { POLICY_WEIGHT_PRESETS } from './policies.js';
 import { pickUniqueGreekFirstName, slugifyGreekFirstName } from './greekNames.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
@@ -154,6 +154,8 @@ export function normalizeTrainingOptions(rawOptions = {}) {
     save: rawOptions.save !== false,
     outputPath: rawOptions.outputPath || DEFAULT_OPTIONS.outputPath,
     onProgress: typeof rawOptions.onProgress === 'function' ? rawOptions.onProgress : null,
+    // Balance values replaced for every training game (data/balance.js).
+    balance: rawOptions.balance && Object.keys(rawOptions.balance).length ? { ...rawOptions.balance } : null,
   };
 }
 
@@ -283,7 +285,6 @@ export function personalitySeedWeights(personalityId) {
     ...(POLICY_WEIGHT_PRESETS[personality.basePolicy] || {}),
   };
   // Start from the bidding pressure the preset's valuation implies.
-  weights.estateBidPressure ??= estateBidPressure(weights);
   return clampToPersonality(personality, weights);
 }
 
@@ -372,6 +373,7 @@ function buildSpec(scenario, candidatePolicy, league, options) {
     historyEnabled: false,
     samples: 0,
     maxSteps: options.maxSteps,
+    balance: options.balance,
   };
 }
 
@@ -605,6 +607,7 @@ function buildRosterPayload(result) {
         playerCounts: result.options.playerCounts,
         deckSizes: result.options.deckSizes,
         finalGames: result.options.finalGames,
+        balance: result.options.balance,
       },
     };
   });
@@ -713,7 +716,11 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (!arg.startsWith('--')) continue;
     const key = arg.slice(2);
-    if (key === 'json') options.json = true;
+    if (key === 'set') {
+      const [name, value] = parseAssignment(argv[index + 1]);
+      index += 1;
+      options.balance = { ...(options.balance || {}), [name]: value };
+    } else if (key === 'json') options.json = true;
     else if (key === 'no-save') options.save = false;
     else if (key === 'quiet') options.quiet = true;
     else if (flags[key]) {

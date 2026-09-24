@@ -7,9 +7,9 @@ import {
   DYNASTY_PROFILES,
   INVASION_DIFFICULTIES,
   INVASION_OBJECTIVES,
-  INVASION_STRENGTH_RATIOS,
   INVASIONS,
 } from './invasions.js';
+import { BALANCE } from './balance.js';
 import { MAJOR_TITLE_DISTRIBUTION, MAJOR_TITLES } from './titles.js';
 import { PLAYER_COUNT_MAX, PLAYER_COUNT_MIN } from '../engine/setup.js';
 
@@ -36,7 +36,7 @@ test('provinces have unique ids, known regions, and sane values', () => {
   const capital = PROVINCES.find((province) => province.id === 'CPL');
   assert.ok(capital, 'Constantinople exists');
   assert.equal(capital.region, REGIONS.CPL);
-  assert.equal(capital.startOccupied, undefined, 'the capital cannot start occupied');
+  assert.equal(capital.startLost, undefined, 'the capital cannot start lost');
 });
 
 test('adjacency edges are known, unique, and connect every province to the capital', () => {
@@ -69,7 +69,7 @@ test('invasions have valid weights, difficulties, and routes', () => {
     ids.add(invasion.id);
     assert.ok(invasion.drawWeight > 0, `${invasion.id} can be drawn`);
     assert.ok(Object.values(INVASION_DIFFICULTIES).includes(invasion.difficulty), `${invasion.id} difficulty`);
-    assert.ok(INVASION_STRENGTH_RATIOS[invasion.difficulty], `${invasion.id} strength ratio`);
+    assert.ok(BALANCE.INVASION_STRENGTH_RATIOS[invasion.difficulty], `${invasion.id} strength ratio`);
     assert.ok(Object.values(INVASION_OBJECTIVES).includes(invasion.objective), `${invasion.id} objective`);
     assert.match(invasion.color, /^#[0-9a-f]{6}$/i, `${invasion.id} color`);
 

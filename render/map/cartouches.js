@@ -1,50 +1,34 @@
-// render/map/cartouches.js - province name/value cartouches and their filter markers.
+// render/map/cartouches.js - province name cartouches and their holdings row.
 
 import { PROVINCES } from '../../data/provinces.js';
+import { getProvinceEstateHolders } from '../../engine/estates.js';
 import { formatPlayerLabel } from '../../engine/state.js';
-import { buildSvgValueGroup, measureSvgValueGroupWidth, provinceValueEntries } from '../../ui/icons.js';
 import { resolveProvinceOwnership } from './filters.js';
 import { applyProvinceInteractionState } from './interaction.js';
 import { MAP_FILTER_TO_MARKER_KIND, MAP_WIDTH, SVG_NS, mapRuntime } from './state.js';
 import { applyProvincePalette } from './svgImport.js';
 
-// Map labels are stacked SVG cartouches that mirror the HTML
-// .province-token grammar: outline = darker region color, fill = light region color,
-// gold inner hairline. Two lines per cartouche: name / current values,
-// with an optional marker row below the values.
+// Map labels are stacked SVG cartouches that mirror the HTML .province-token
+// grammar: outline = darker region colour, fill = light region colour, gold
+// inner hairline. Two lines: the province name, then what the province holds:
 //
-// The values line replaces the legacy "P3 T2 C1" text with three icon+number
-// pairs (gold → sword → church). Zero-value entries collapse so church-only
-// land shows only the church glyph.
+//   (3)(1)  one circle per dynasty with estates there, its count inside
+//   [ ]     the Strategos seat, filled with the holder's colour or hollow
+//   /\      the Bishop seat, only in bishoprics, filled or hollow
+//
+// Holdings of a lost province stay drawn, faded and dashed: they come back
+// to their holders when the province is reconquered.
 const MAP_CART_PAD_X = 1.0;
 const MAP_CART_MIN_WIDTH = 7.8;
 const MAP_CART_HEIGHT = 4.7;
 const MAP_CART_INSET = 0.32;
 const MAP_CART_NAME_BASELINE_Y = -0.35;
-const MAP_CART_VALUES_BASELINE_Y = 1.55;
-const MAP_CART_MARKER_EDGE_GAP = 0.24;
-const MAP_CART_MARKER_RADIUS = 0.78;
-const MAP_CART_MARKER_SIZE = 1.56;
-const MAP_CART_MARKERS_Y = (MAP_CART_HEIGHT / 2) + MAP_CART_MARKER_EDGE_GAP + (MAP_CART_MARKER_SIZE / 2);
-
-const MAP_MARKER_VALUE_KIND = Object.freeze({
-  estate: 'gold',
-  strategos: 'troop',
-  bishop: 'church',
-});
-
-const MAP_CART_VALUE_OPTS = Object.freeze({
-  iconSize: 1.5,
-  iconGap: 0.18,
-  pairGap: 0.85,
-  digitWidth: 0.66,
-  baselineY: 0,
-  iconY: -1.18,
-});
-
-function valueEntriesSignature(entries) {
-  return entries.map((entry) => `${entry.kind[0]}${entry.value}`).join('|');
-}
+const MAP_CART_ROW_Y = 1.15;
+const MARKER_RADIUS = 0.72;
+const MARKER_SIZE = 1.3;
+const MARKER_GAP = 0.3;
+const MAX_ESTATE_CIRCLES = 4;
+const PROMOTED_SCALE = 1.25;
 
 // Cartouche text is sized in map units, so on a small or zoomed-out map the
 // names shrink below legibility. Scale each cartouche about its anchor so a
@@ -151,18 +135,11 @@ function buildMapCartouche(province, centroid, theme = province) {
 
   appendCartLine(g, 'map-cart-name', theme.name || province.name);
 
-  // Values line: icon + number pairs replacing the old "P? T? C?" run.
-  const entries = provinceValueEntries(theme);
-  const valuesGroup = buildSvgValueGroup(entries, MAP_CART_VALUE_OPTS);
-  valuesGroup.setAttribute('class', 'map-cart-values');
-  valuesGroup.setAttribute('transform', `translate(0 ${MAP_CART_VALUES_BASELINE_Y})`);
-  valuesGroup.setAttribute('data-values-sig', valueEntriesSignature(entries));
-  g.appendChild(valuesGroup);
-
   const markersGroup = document.createElementNS(SVG_NS, 'g');
   markersGroup.setAttribute('class', 'map-cart-markers');
-  markersGroup.setAttribute('transform', `translate(0 ${MAP_CART_MARKERS_Y})`);
+  markersGroup.setAttribute('transform', `translate(0 ${MAP_CART_ROW_Y})`);
   markersGroup.setAttribute('data-marker-sig', '');
+  markersGroup.dataset.width = '0';
   g.appendChild(markersGroup);
 
   return g;
@@ -182,23 +159,18 @@ function layoutMapCartouche(g) {
   const bg = g.querySelector('.map-cart-bg');
   const inner = g.querySelector('.map-cart-inner');
   const nameText = g.querySelector('.map-cart-name');
-  const valuesGroup = g.querySelector('.map-cart-values');
   const markersGroup = g.querySelector('.map-cart-markers');
   if (!bg || !inner || !nameText) return;
 
   // Use normal alphabetic baselines. Firefox handles SVG baseline keywords
   // differently, so fixed baseline coordinates keep the text stable.
   nameText.setAttribute('y', MAP_CART_NAME_BASELINE_Y);
-
-  const provinceId = g.getAttribute('data-id');
-  const theme = mapRuntime.latestMapState?.themes?.[provinceId];
-  const valuesEntries = theme ? provinceValueEntries(theme).filter((e) => e.value > 0) : [];
-  const valuesWidth = measureSvgValueGroupWidth(valuesEntries, MAP_CART_VALUE_OPTS);
+  const markersWidth = Number(markersGroup?.dataset?.width) || 0;
 
   const width = Math.max(
     MAP_CART_MIN_WIDTH,
     measureMapTextWidth(nameText) + MAP_CART_PAD_X * 2,
-    valuesWidth + MAP_CART_PAD_X * 2,
+    markersWidth + MAP_CART_PAD_X * 2,
   );
   const height = MAP_CART_HEIGHT;
 
@@ -215,14 +187,7 @@ function layoutMapCartouche(g) {
   inner.setAttribute('height', (height - MAP_CART_INSET * 2).toFixed(3));
   inner.setAttribute('rx', '0.25');
 
-  // Re-place the values group on its baseline (group is centered at x=0 by
-  // construction in buildSvgValueGroup).
-  if (valuesGroup) {
-    valuesGroup.setAttribute('transform', `translate(0 ${MAP_CART_VALUES_BASELINE_Y})`);
-  }
-  if (markersGroup) {
-    markersGroup.setAttribute('transform', `translate(0 ${MAP_CART_MARKERS_Y})`);
-  }
+  if (markersGroup) markersGroup.setAttribute('transform', `translate(0 ${MAP_CART_ROW_Y})`);
 }
 
 function measureMapTextWidth(textElement) {
@@ -262,211 +227,177 @@ function estimateTextWidth(text, fontSize) {
 
 export function updateMapCartoucheValues(cart, theme) {
   if (!cart || !theme) return;
-
   const nameText = cart.querySelector('.map-cart-name');
-  const valuesGroup = cart.querySelector('.map-cart-values');
-  let changed = false;
-
   const nextName = theme.name || theme.id || '';
   if (nameText && nameText.textContent !== nextName) {
     nameText.textContent = nextName;
-    changed = true;
+    layoutMapCartouche(cart);
   }
-
-  const entries = provinceValueEntries(theme);
-  const nextSig = valueEntriesSignature(entries);
-  const prevSig = valuesGroup?.getAttribute('data-values-sig');
-  if (valuesGroup && nextSig !== prevSig) {
-    // Rebuild the icon+number group in place (cheap — at most 3 pairs).
-    const rebuilt = buildSvgValueGroup(entries, MAP_CART_VALUE_OPTS);
-    rebuilt.setAttribute('class', 'map-cart-values');
-    rebuilt.setAttribute('transform', `translate(0 ${MAP_CART_VALUES_BASELINE_Y})`);
-    rebuilt.setAttribute('data-values-sig', nextSig);
-    valuesGroup.replaceWith(rebuilt);
-    changed = true;
-  }
-
-  if (changed) layoutMapCartouche(cart);
 }
 
 export function updateMapCartoucheMarkers(cart, state, theme) {
   const markersGroup = cart?.querySelector?.('.map-cart-markers');
   if (!markersGroup || !state || !theme) return;
 
-  const valuePositions = getMapValuePairCenters(cart, provinceValueEntries(theme));
-  const markers = getMapCartoucheMarkers(state, theme, valuePositions);
-  const nextSig = markers.map((marker) => `${marker.kind}:${marker.ownerId}:${marker.color}:${marker.x.toFixed(3)}:${marker.promoted ? 'promoted' : 'normal'}`).join('|');
+  const markers = layoutMarkers(getMapCartoucheMarkers(state, theme));
+  const nextSig = markers
+    .map((marker) => `${marker.kind}:${marker.ownerId ?? '-'}:${marker.count ?? ''}:${marker.color}:${marker.promoted ? 'p' : ''}:${marker.disabled ? 'd' : ''}:${marker.vacant ? 'v' : ''}`)
+    .join('|');
   if (markersGroup.getAttribute('data-marker-sig') === nextSig) return;
 
   markersGroup.replaceChildren();
   markersGroup.setAttribute('data-marker-sig', nextSig);
-
-  markers.forEach((marker) => {
-    markersGroup.appendChild(createMapCartoucheMarker(marker));
-  });
+  markersGroup.dataset.width = String(markers.totalWidth || 0);
+  markers.forEach((marker) => markersGroup.appendChild(createMapCartoucheMarker(marker)));
 
   layoutMapCartouche(cart);
 }
 
-function getRenderedMapValuePairCenters(cart) {
-  const valuesGroup = cart?.querySelector?.('.map-cart-values');
-  const centers = new Map();
-  if (!valuesGroup) return centers;
-
-  for (const kind of Object.values(MAP_MARKER_VALUE_KIND)) {
-    const icon = valuesGroup.querySelector(`.map-cart-glyph-${kind}`);
-    const num = valuesGroup.querySelector(`.map-cart-glyph-num-${kind}`);
-    if (!icon || !num) continue;
-
-    const left = Number(icon.getAttribute('x'));
-    const iconWidth = Number(icon.getAttribute('width'));
-    const numX = Number(num.getAttribute('x'));
-    if (!Number.isFinite(left) || !Number.isFinite(iconWidth) || !Number.isFinite(numX)) continue;
-
-    let numWidth = 0;
-    try {
-      const measured = num.getComputedTextLength?.();
-      if (Number.isFinite(measured) && measured > 0) numWidth = measured;
-    } catch {
-      // Fall back to deterministic sizing below.
-    }
-    if (numWidth <= 0) {
-      try {
-        const bboxWidth = num.getBBox?.().width;
-        if (Number.isFinite(bboxWidth) && bboxWidth > 0) numWidth = bboxWidth;
-      } catch {
-        // Fall back to deterministic sizing below.
-      }
-    }
-    if (numWidth <= 0) {
-      const digits = Math.max(1, String(num.textContent || '').length);
-      numWidth = digits * MAP_CART_VALUE_OPTS.digitWidth;
-    }
-
-    centers.set(kind, (left + Math.max(left + iconWidth, numX + numWidth)) / 2);
-  }
-
-  return centers;
+function playerLabel(state, playerId) {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  return { player, name: formatPlayerLabel(player) || `Player ${Number(playerId) + 1}` };
 }
 
-function estimateMapValuePairCenters(entries) {
-  const iconSize = MAP_CART_VALUE_OPTS.iconSize;
-  const iconGap = MAP_CART_VALUE_OPTS.iconGap;
-  const pairGap = MAP_CART_VALUE_OPTS.pairGap;
-  const digitWidth = MAP_CART_VALUE_OPTS.digitWidth;
-
-  const pairs = entries
-    .filter((entry) => entry && entry.value > 0)
-    .map((entry) => {
-      const digits = Math.max(1, String(entry.value).length);
-      const width = iconSize + iconGap + digits * digitWidth;
-      return { kind: entry.kind, width };
-    });
-
-  const totalWidth = pairs.reduce((sum, pair) => sum + pair.width, 0)
-    + Math.max(0, pairs.length - 1) * pairGap;
-  const centers = new Map();
-  let cursor = -totalWidth / 2;
-
-  for (const pair of pairs) {
-    centers.set(pair.kind, cursor + pair.width / 2);
-    cursor += pair.width + pairGap;
-  }
-
-  return centers;
-}
-
-function getMapValuePairCenters(cart, entries) {
-  const rendered = getRenderedMapValuePairCenters(cart);
-  const estimated = estimateMapValuePairCenters(entries);
-  for (const [kind, x] of estimated) {
-    if (!rendered.has(kind)) rendered.set(kind, x);
-  }
-  return rendered;
-}
-
-function getMapCartoucheMarkers(state, theme, valuePositions) {
+function getMapCartoucheMarkers(state, theme) {
+  if (theme.id === 'CPL') return [];
   const markers = [];
   const promotedKind = MAP_FILTER_TO_MARKER_KIND[mapRuntime.activeMapFilter] || null;
+  const disabled = Boolean(theme.lost);
+  const lostNote = disabled ? ' (lost province: not working until reconquered)' : '';
 
-  if (!theme.occupied && theme.owner !== null && theme.owner !== 'church') {
-    markers.push(createMapCartoucheMarkerData(state, 'estate', theme.owner, 'Private estate', valuePositions, { promoted: promotedKind === 'estate' }));
+  const holders = getProvinceEstateHolders(theme);
+  const shown = holders.length > MAX_ESTATE_CIRCLES ? holders.slice(0, MAX_ESTATE_CIRCLES - 1) : holders;
+  for (const holder of shown) {
+    const { player, name } = playerLabel(state, holder.playerId);
+    markers.push({
+      kind: 'estate',
+      ownerId: holder.playerId,
+      count: holder.count,
+      color: player?.color || '#5a3810',
+      title: `${name}: ${holder.count} estate${holder.count === 1 ? '' : 's'}${lostNote}`,
+      promoted: promotedKind === 'estate',
+      disabled,
+    });
   }
-  if (!theme.occupied && theme.strategos !== null) {
-    markers.push(createMapCartoucheMarkerData(state, 'strategos', theme.strategos, 'Strategos', valuePositions, { promoted: promotedKind === 'strategos' }));
-  }
-  if (theme.bishop !== null) {
-    markers.push(createMapCartoucheMarkerData(state, 'bishop', theme.bishop, 'Bishop', valuePositions, { promoted: promotedKind === 'bishop' }));
+  if (shown.length < holders.length) {
+    const rest = holders.slice(shown.length);
+    const restCount = rest.reduce((total, entry) => total + entry.count, 0);
+    markers.push({
+      kind: 'estate',
+      ownerId: null,
+      count: restCount,
+      color: '#8c7a5c',
+      title: rest.map((entry) => `${playerLabel(state, entry.playerId).name}: ${entry.count}`).join(', '),
+      promoted: promotedKind === 'estate',
+      disabled,
+      overflow: true,
+    });
   }
 
-  return markers.filter(Boolean);
+  const strategos = theme.strategos == null ? null : playerLabel(state, theme.strategos);
+  markers.push({
+    kind: 'strategos',
+    ownerId: theme.strategos ?? null,
+    color: strategos?.player?.color || 'transparent',
+    title: strategos ? `Strategos: ${strategos.name}${lostNote}` : 'Strategos seat: vacant',
+    promoted: promotedKind === 'strategos',
+    disabled: disabled && Boolean(strategos),
+    vacant: !strategos,
+  });
+
+  if ((Number(theme.C) || 0) > 0) {
+    const bishop = theme.bishop == null ? null : playerLabel(state, theme.bishop);
+    markers.push({
+      kind: 'bishop',
+      ownerId: theme.bishop ?? null,
+      color: bishop?.player?.color || 'transparent',
+      title: bishop ? `Bishop: ${bishop.name}` : 'Bishopric: no Bishop',
+      promoted: promotedKind === 'bishop',
+      vacant: !bishop,
+    });
+  }
+  return markers;
 }
 
-function createMapCartoucheMarkerData(state, kind, ownerId, label, valuePositions, options = {}) {
-  const player = state.players.find((candidate) => candidate.id === ownerId);
-  if (!player) return null;
-  const x = valuePositions.get(MAP_MARKER_VALUE_KIND[kind]);
-  if (!Number.isFinite(x)) return null;
-  const ownerName = formatPlayerLabel(player) || `Player ${Number(ownerId) + 1}`;
-  return {
-    kind,
-    ownerId,
-    x,
-    color: player.color || '#5a3810',
-    title: `${label}: ${ownerName}`,
-    promoted: Boolean(options.promoted),
-  };
+function markerWidth(marker) {
+  const scale = marker.promoted ? PROMOTED_SCALE : 1;
+  return (marker.kind === 'estate' ? MARKER_RADIUS * 2 : MARKER_SIZE) * scale;
+}
+
+// Lays the markers out left to right, centred under the name.
+function layoutMarkers(markers) {
+  const widths = markers.map(markerWidth);
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, markers.length - 1) * MARKER_GAP;
+  let cursor = -totalWidth / 2;
+  const laid = markers.map((marker, index) => {
+    const x = cursor + widths[index] / 2;
+    cursor += widths[index] + MARKER_GAP;
+    return { ...marker, x };
+  });
+  laid.totalWidth = totalWidth;
+  return laid;
 }
 
 function createMapCartoucheMarker(marker) {
-  const shape = marker.kind === 'estate'
-    ? createMapCartoucheCircleMarker(marker.x, marker.promoted)
-    : marker.kind === 'strategos'
-      ? createMapCartoucheSquareMarker(marker.x, marker.promoted)
-      : createMapCartoucheTriangleMarker(marker.x, marker.promoted);
+  const scale = marker.promoted ? PROMOTED_SCALE : 1;
+  const group = document.createElementNS(SVG_NS, 'g');
+  const classes = [
+    'map-cart-marker',
+    `map-cart-marker-${marker.kind}`,
+    marker.promoted ? 'promoted' : '',
+    marker.disabled ? 'disabled' : '',
+    marker.vacant ? 'vacant' : '',
+    marker.overflow ? 'overflow' : '',
+  ].filter(Boolean).join(' ');
+  group.setAttribute('class', classes);
+  group.setAttribute('transform', `translate(${marker.x.toFixed(3)} 0)`);
 
-  shape.setAttribute('class', `map-cart-marker map-cart-marker-${marker.kind}${marker.promoted ? ' promoted' : ''}`);
-  shape.style.fill = marker.color;
+  const shape = marker.kind === 'estate'
+    ? createCircle(MARKER_RADIUS * scale)
+    : marker.kind === 'strategos'
+      ? createSquare(MARKER_SIZE * scale)
+      : createTriangle(MARKER_SIZE * scale);
+  shape.setAttribute('class', 'map-cart-marker-shape');
+  if (!marker.vacant) shape.style.fill = marker.color;
+  group.appendChild(shape);
+
+  if (marker.kind === 'estate') {
+    const count = document.createElementNS(SVG_NS, 'text');
+    count.setAttribute('class', 'map-cart-marker-count');
+    count.setAttribute('text-anchor', 'middle');
+    count.setAttribute('x', '0');
+    count.setAttribute('y', (0.36 * scale).toFixed(3));
+    count.textContent = marker.overflow ? `+${marker.count}` : String(marker.count);
+    group.appendChild(count);
+  }
 
   const title = document.createElementNS(SVG_NS, 'title');
   title.textContent = marker.title;
-  shape.appendChild(title);
-  return shape;
+  group.appendChild(title);
+  return group;
 }
 
-function createMapCartoucheCircleMarker(x, promoted = false) {
+function createCircle(radius) {
   const shape = document.createElementNS(SVG_NS, 'circle');
-  shape.setAttribute('cx', x.toFixed(3));
+  shape.setAttribute('cx', '0');
   shape.setAttribute('cy', '0');
-  shape.setAttribute('r', String(promoted ? MAP_CART_MARKER_RADIUS * 1.32 : MAP_CART_MARKER_RADIUS));
+  shape.setAttribute('r', radius.toFixed(3));
   return shape;
 }
 
-function createMapCartoucheSquareMarker(x, promoted = false) {
+function createSquare(size) {
   const shape = document.createElementNS(SVG_NS, 'rect');
-  const size = promoted ? MAP_CART_MARKER_SIZE * 1.32 : MAP_CART_MARKER_SIZE;
-  shape.setAttribute('x', (x - size / 2).toFixed(3));
+  shape.setAttribute('x', (-size / 2).toFixed(3));
   shape.setAttribute('y', (-size / 2).toFixed(3));
-  shape.setAttribute('width', String(size));
-  shape.setAttribute('height', String(size));
-  shape.setAttribute('rx', '0.04');
+  shape.setAttribute('width', size.toFixed(3));
+  shape.setAttribute('height', size.toFixed(3));
+  shape.setAttribute('rx', '0.08');
   return shape;
 }
 
-function createMapCartoucheTriangleMarker(x, promoted = false) {
-  const size = promoted ? MAP_CART_MARKER_SIZE * 1.32 : MAP_CART_MARKER_SIZE;
+function createTriangle(size) {
   const half = size / 2;
-  const top = -half;
-  const bottom = half;
   const path = document.createElementNS(SVG_NS, 'path');
-  path.setAttribute(
-    'd',
-    [
-      `M ${x.toFixed(3)} ${top.toFixed(3)}`,
-      `L ${(x + half).toFixed(3)} ${bottom.toFixed(3)}`,
-      `L ${(x - half).toFixed(3)} ${bottom.toFixed(3)}`,
-      'Z',
-    ].join(' '),
-  );
+  path.setAttribute('d', `M 0 ${(-half).toFixed(3)} L ${half.toFixed(3)} ${half.toFixed(3)} L ${(-half).toFixed(3)} ${half.toFixed(3)} Z`);
   return path;
 }

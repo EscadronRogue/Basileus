@@ -4,7 +4,7 @@ import {
   SCORE_SHARE_STEP_PERCENT,
 } from '../engine/scoring.js';
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
-import { readTroopEntry, runIncome } from '../engine/cascade.js';
+import { readTroopCount, runIncome } from '../engine/cascade.js';
 import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey } from '../engine/state.js';
 import {
   renderCourtPanel,
@@ -20,6 +20,7 @@ import { getPlayerStyleAttr, renderCartouchedText, renderPlayerRoleName } from '
 import { formatGoldHtml, formatTroopsHtml, renderIconSet } from './icons.js';
 import { escapeHtml } from './html.js';
 import { announceGameProgress } from './announcer.js';
+import { getPlayerPhase, getPlayerPhaseName } from '../data/terms.js';
 
 export function createDefaultUiState() {
   return {
@@ -301,53 +302,29 @@ function markRenderedNotificationsRead(uiState, container) {
   });
 }
 
-export const PHASE_NAMES = {
-  setup: 'Setup',
-  invasion: 'Draw Threat',
-  title_redistribution: 'Assign Offices',
-  income: 'Collect Income',
-  court: 'Appoint & Revoke',
-  estates: 'Buy Land',
-  deployment: 'Send Armies',
-  resolution: 'Resolve Turn',
-  cleanup: 'Next Turn',
-  scoring: 'Final Score',
-};
+// One name per phase the player sees (data/terms.js). Automatic steps have no
+// name: the game never stops on them.
+export const PHASE_NAMES = Object.fromEntries(
+  ['setup', 'invasion', 'title_redistribution', 'court', 'income', 'estates', 'deployment', 'resolution', 'cleanup', 'scoring']
+    .map((phase) => [phase, getPlayerPhaseName(phase)]),
+);
 
-export const PHASE_TOOLTIPS = {
-  setup: 'Provinces, titles and starting gold are dealt out.',
-  invasion: 'Reveal the invader and the threatened route for this turn.',
-  title_redistribution: 'A new Basileus assigns the four major offices before appointments begin.',
-  income: 'Provinces pay gold and raise troops automatically.',
-  court: 'Office holders appoint or revoke Strategoi, Bishops, and private estates.',
-  estates: 'Players place hidden bids to buy private land.',
-  deployment: 'Fund armies, hire mercenaries, choose Frontier or Capital, and rank coup candidates.',
-  resolution: 'Reveal deployments, resolve the coup, then resolve the war.',
-  cleanup: 'Clear turn state before the next threat is drawn.',
-  scoring: `Each ${SCORE_SHARE_STEP_PERCENT}% share of gold reserves, profit income, and combined office income scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY} per category.`,
-};
+export const PHASE_TOOLTIPS = Object.fromEntries(
+  Object.keys(PHASE_NAMES).map((phase) => [phase, getPlayerPhase(phase)?.summary || '']),
+);
 
 export const ACTION_PANEL_TITLE_BY_PHASE = {
-  title_redistribution: 'Assign Major Offices',
-  court: 'Appoint & Revoke',
-  estates: 'Buy Land',
-  deployment: 'Send Armies',
-  resolution: 'Resolve Turn',
-  scoring: 'Final Score',
-};
-
-export const ACTION_PANEL_SUBTITLE_BY_PHASE = {
-  title_redistribution: '',
-  court: '',
-  estates: '',
-  deployment: '',
-  resolution: '',
-  scoring: '',
+  title_redistribution: getPlayerPhaseName('title_redistribution'),
+  court: getPlayerPhaseName('court'),
+  estates: getPlayerPhaseName('estates'),
+  deployment: getPlayerPhaseName('deployment'),
+  resolution: getPlayerPhaseName('resolution'),
+  scoring: 'Balance of Power',
 };
 
 function getActionPanelTitle(state) {
-  if (shouldRenderFinalReckoning(state)) return 'Final Score';
-  return ACTION_PANEL_TITLE_BY_PHASE[state?.phase] || 'Action Panel';
+  if (shouldRenderFinalReckoning(state)) return ACTION_PANEL_TITLE_BY_PHASE.scoring;
+  return ACTION_PANEL_TITLE_BY_PHASE[state?.phase] || '';
 }
 
 function shouldRenderFinalReckoning(state) {
@@ -367,9 +344,7 @@ export function renderTopBar(state) {
 
   if (roundEl) {
     roundEl.textContent = `Round ${state.round} / ${state.maxRounds}`;
-    roundEl.title = isEmpireFallen(state)
-      ? 'Constantinople has fallen. No dynasty wins; standings only record the final balance of power.'
-      : `Game ends after ${state.maxRounds} turns, then one final Court and income phase. Major titles are redistributed only after a coup installs a new Basileus. Each ${SCORE_SHARE_STEP_PERCENT}% category share scores 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY}; highest total wins.`;
+    roundEl.title = `Round ${state.round} of ${state.maxRounds}`;
   }
   if (phaseEl) {
     if (isEmpireFallen(state)) {
@@ -377,8 +352,10 @@ export function renderTopBar(state) {
       phaseEl.className = 'phase-badge phase-empire-fallen';
       phaseEl.title = 'Constantinople has fallen. No dynasty wins.';
     } else {
-      phaseEl.textContent = PHASE_NAMES[state.phase] || state.phase;
-      phaseEl.className = `phase-badge phase-${state.phase}`;
+      const playerPhase = getPlayerPhase(state.phase);
+      phaseEl.textContent = PHASE_NAMES[state.phase] || '';
+      phaseEl.hidden = !phaseEl.textContent;
+      phaseEl.className = `phase-badge phase-${playerPhase?.id || state.phase}`;
       phaseEl.title = PHASE_TOOLTIPS[state.phase] || '';
     }
   }
@@ -419,8 +396,7 @@ export function getPlayerTabEconomy(player, administration, state = null) {
   const income = administration?.income?.[player.id] || 0;
   const troops = Object.keys(state?.currentTroops || {}).reduce((total, officeKey) => {
     if (getOfficeHolder(state, officeKey) !== player.id) return total;
-    const entry = readTroopEntry(state.currentTroops?.[officeKey]);
-    return total + entry.normal + entry.capitalLocked;
+    return total + readTroopCount(state.currentTroops?.[officeKey]);
   }, 0);
   return {
     reserve: Number(player.gold) || 0,
@@ -493,7 +469,6 @@ export function renderActionShell(panel, state, uiState) {
         <span class="sidebar-panel-head-copy">
           <span class="sidebar-panel-kicker">Phase Panel</span>
           <span class="sidebar-panel-title">${getActionPanelTitle(state)}</span>
-          ${ACTION_PANEL_SUBTITLE_BY_PHASE[state.phase] ? `<span class="sidebar-panel-subtitle">${ACTION_PANEL_SUBTITLE_BY_PHASE[state.phase]}</span>` : ''}
         </span>
       </button>
       ${isOpen ? '<div class="sidebar-panel-body" data-role="action-panel-body"></div>' : ''}
@@ -504,14 +479,13 @@ export function renderActionShell(panel, state, uiState) {
 
 function getNotificationActionLabel(action) {
   return {
-    open_court: 'Appoint & Revoke',
-    open_deals: 'Deals',
-    open_estates: 'Buy Land',
-    open_orders: 'Send Armies',
-    open_deployment: 'Send Armies',
+    open_court: getPlayerPhaseName('court'),
+    open_estates: getPlayerPhaseName('estates'),
+    open_orders: getPlayerPhaseName('deployment'),
+    open_deployment: getPlayerPhaseName('deployment'),
     open_history: 'History',
-    open_resolution: 'Resolve Turn',
-    open_title_redistribution: 'Offices',
+    open_resolution: getPlayerPhaseName('resolution'),
+    open_title_redistribution: getPlayerPhaseName('title_redistribution'),
   }[action] || 'Notice';
 }
 
@@ -666,7 +640,7 @@ export function renderScoringHtml(state, options = {}) {
 
   return `
     <div class="scoring-panel${empireFallen ? ' empire-fallen-scoring' : ''}">
-      <h3>Final Score</h3>
+      <h3>Balance of Power</h3>
       ${summary}
       <div class="score-list">
         ${scores.map((score) => {
@@ -769,7 +743,6 @@ export function renderGameActionPanel({
 
     case 'estates':
       renderEstatesPanel(shell, state, activePlayerId, {
-        buy: handlers.estates?.buy,
         submitEstatePlan: handlers.estates?.submitEstatePlan,
         confirmEstates: handlers.confirmEstates,
       }, { uiState });
@@ -789,11 +762,6 @@ export function renderGameActionPanel({
         allowManualTitleReassignment: Boolean(resolution.allowManualTitleReassignment),
         activePlayerId,
       });
-      shell.querySelectorAll('[data-defender-reward-choice]').forEach((button) => {
-        button.addEventListener('click', () => {
-          resolution.defenderRewardChoice?.(button.dataset.rewardId, button.dataset.choice);
-        });
-      });
       const continueButton = shell.querySelector('[data-action="continue"]');
       if (!continueButton) break;
 
@@ -811,7 +779,7 @@ export function renderGameActionPanel({
         break;
       }
 
-      continueButton.textContent = resolution.continueText || (state.gameOver?.type === 'fall' ? 'Final Score' : 'Continue');
+      continueButton.textContent = resolution.continueText || (state.gameOver?.type === 'fall' ? 'Balance of Power' : 'Continue');
       continueButton.addEventListener('click', () => {
         resolution.continue?.(shell);
       });
@@ -848,7 +816,7 @@ export function renderGameFrame({
   announceGameProgress(state);
   renderConnectionBadge?.();
   updateMapState(state, uiState?.mapFilter || 'regions');
-  drawInvasionRoute(state.currentInvasion);
+  drawInvasionRoute(state.currentInvasion, state);
   setSelectedProvince(selectedProvinceId);
   renderPlayerDashboard(
     document.getElementById('playerDashboard'),

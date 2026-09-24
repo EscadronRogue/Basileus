@@ -4,17 +4,22 @@ import assert from 'node:assert/strict';
 import {
   DYNASTY_COLORS,
   DYNASTY_PROFILES,
-  EARLY_INVASION_GRACE_ROUNDS,
   INVASIONS,
   INVASION_DIFFICULTIES,
-  INVASION_ESTIMATE_INTERVAL,
-  INVASION_STRENGTH_RATIOS,
   getDynastyColor,
 } from '../data/invasions.js';
+import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
+
+const {
+  EARLY_INVASION_GRACE_ROUNDS,
+  INVASION_ESTIMATE_INTERVAL,
+  INVASION_STRENGTH_RATIOS,
+} = BALANCE;
 import { PROVINCES } from '../data/provinces.js';
 import {
   createGameState,
   createInvasionInstance,
+  makeRng,
   canTriggerInvasion,
   getEmpireProvinceStrength,
   getInvasionStrengthBounds,
@@ -26,10 +31,11 @@ import {
   buildProvinceChurchAttributions,
   buildProvinceEstateAttributions,
   buildProvinceTroopAttributions,
-  readTroopEntry,
+  readTroopCount,
   runIncome,
 } from './cascade.js';
-import { applyInvasionResult, resolveInvasion } from './combat.js';
+import { applyInvasionResult, buildInvasionLadder, buildReconquestLadder, resolveInvasion } from './combat.js';
+import { addEstates, getEstateCount } from './estates.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { serializePublicGameState } from './publicState.js';
 import {
@@ -53,9 +59,11 @@ import {
   phaseInvasion,
   phaseCleanup,
   phaseCourt,
+  phaseEstates,
   phaseResolution,
 } from './turnflow.js';
 import { addTemporaryCapitalSupport, getCapitalSupportByPlayer } from './capitalSupport.js';
+import { normalizeCoupChoices } from './coup.js';
 import {
   getCourtPowerActionCount,
   getCourtPowerAppointmentCount,
@@ -63,6 +71,7 @@ import {
   isCourtPowerExhausted,
   isCourtPowerPassed,
   resolveCoup,
+  revokeMinorTitle,
   suggestMajorTitleAssignments,
 } from './actions.js';
 
@@ -163,8 +172,9 @@ test('invasion templates carry relative difficulty bands', () => {
 
     const [min, max] = getInvasionStrengthBounds(template, state);
     const [minRatio, maxRatio] = INVASION_STRENGTH_RATIOS[expectedDifficulty];
-    assert.equal(min, Math.ceil(empireStrength * minRatio), `${template.id} strength minimum should scale from empire strength`);
-    assert.equal(max, Math.floor(empireStrength * maxRatio), `${template.id} strength maximum should scale from empire strength`);
+    const scaled = empireStrength * BALANCE.INVASION_STRENGTH_PER_PROVINCE;
+    assert.equal(min, Math.ceil(scaled * minRatio), `${template.id} strength minimum should scale from empire strength`);
+    assert.equal(max, Math.floor(scaled * maxRatio), `${template.id} strength maximum should scale from empire strength`);
 
     const invasion = createInvasionInstance(template, () => 0, state);
     assert.equal(invasion.empireStrength, empireStrength);
@@ -172,19 +182,22 @@ test('invasion templates carry relative difficulty bands', () => {
     assert.deepEqual(invasion.strength, [min, Math.min(max, min + INVASION_ESTIMATE_INTERVAL)]);
   }
 
-  state.themes.OPS.occupied = true;
+  state.themes.OPS.lost = true;
   assert.equal(getEmpireProvinceStrength(state), empireStrength - 1);
   const [hardMinRatio, hardMaxRatio] = INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD];
   assert.deepEqual(
     getInvasionStrengthBounds(turksTemplate, state),
-    [Math.ceil((empireStrength - 1) * hardMinRatio), Math.floor((empireStrength - 1) * hardMaxRatio)],
+    [
+      Math.ceil((empireStrength - 1) * BALANCE.INVASION_STRENGTH_PER_PROVINCE * hardMinRatio),
+      Math.floor((empireStrength - 1) * BALANCE.INVASION_STRENGTH_PER_PROVINCE * hardMaxRatio),
+    ],
   );
 
   const drawState = makeState();
   drawState.invasionDeck = [turksTemplate];
   drawState.round = EARLY_INVASION_GRACE_ROUNDS;
   drawState.maxRounds = EARLY_INVASION_GRACE_ROUNDS + 1;
-  drawState.themes.OPS.occupied = true;
+  drawState.themes.OPS.lost = true;
   phaseInvasion(drawState);
   assert.equal(drawState.currentInvasion.empireStrength, empireStrength - 1);
   assert.deepEqual(drawState.currentInvasion.strengthBounds, getInvasionStrengthBounds(turksTemplate, drawState));
@@ -262,94 +275,91 @@ test('province table uses profit, troop, and church values with capital excluded
   }
 });
 
-test('income routes estates, bishops, strategos troops, and occupied bishop value', () => {
+test('income: each office raises its own troops and church gold, nothing is shared out', () => {
   const state = makeState();
-  state.themes.KAP.owner = 2;
+  addEstates(state.themes.KAP, 2, 1, { recent: false });
   state.themes.KAP.strategos = 3;
   state.themes.KAP.bishop = 1;
   state.themes.ANT.bishop = 1;
-  state.themes.ANT.occupied = true;
+  state.themes.ANT.lost = true;
+  const imperial = (region) => Object.values(state.themes)
+    .filter((theme) => theme.region === region && theme.id !== 'CPL' && !theme.lost).length;
+  const imperialBishoprics = Object.values(state.themes)
+    .filter((theme) => theme.id !== 'CPL' && !theme.lost && theme.C > 0).length;
 
   const result = runIncome(state);
 
-  assert.equal(result.income[2], 1);
-  assert.equal(result.incomeBreakdown.church[1] >= 2, true);
-  assert.deepEqual(readTroopEntry(result.troops.STRAT_KAP), { normal: 1, capitalLocked: 0 });
+  assert.equal(result.income[2], 1, 'the estate pays its owner');
+  assert.equal(readTroopCount(result.troops.STRAT_KAP), 1, 'the Strategos raises its province');
+  assert.equal(result.troops.DOM_EAST, imperial('east'), 'the Domestic still raises Kappadokia');
+  assert.equal(result.troops.DOM_EAST, 10);
+  assert.equal(result.troops.DOM_WEST, imperial('west'));
+  assert.equal(result.troops.ADMIRAL, imperial('sea'));
+  assert.equal(result.troops.BASILEUS, 9, '27 imperial provinces give the Basileus 9 troops');
+  assert.equal(result.incomeBreakdown.church[1], 2 + imperialBishoprics, 'Bishop pay does not reduce the Patriarch');
 
   const profitRoute = result.flow.sections.find((section) => section.key === 'profit').routes[0];
-  assert.equal(profitRoute.total, 1);
   assert.deepEqual(profitRoute.recipients, [{ playerId: 2, value: 1 }]);
-
   const troopRoutes = result.flow.sections.find((section) => section.key === 'troop').routes;
-  const strategoiRoute = troopRoutes.find((route) => route.key === 'strategoi');
-  assert.equal(strategoiRoute.total, 1);
-  assert.deepEqual(strategoiRoute.recipients, [{ playerId: 3, value: 1 }]);
-  const eastPool = troopRoutes.find((route) => route.key === 'east_pool');
-  assert.equal(eastPool.total, 9);
-  assert.deepEqual(eastPool.offices.map((office) => [office.officeKey, office.playerId, office.value]), [
-    ['DOM_EAST', 1, 6],
-    ['BASILEUS', 0, 3],
+  assert.deepEqual(troopRoutes.find((route) => route.key === 'strategoi').recipients, [{ playerId: 3, value: 1 }]);
+  assert.deepEqual(troopRoutes.find((route) => route.key === 'east').offices.map((office) => [office.officeKey, office.playerId, office.value]), [
+    ['DOM_EAST', 1, 10],
   ]);
-
-  const bishopRoute = result.flow.sections.find((section) => section.key === 'church').routes.find((route) => route.key === 'bishops');
-  assert.equal(bishopRoute.total, 2);
-  assert.deepEqual(bishopRoute.recipients, [{ playerId: 1, value: 2 }]);
+  assert.deepEqual(troopRoutes.find((route) => route.key === 'basileus').recipients, [{ playerId: 0, value: 9 }]);
+  const churchRoutes = result.flow.sections.find((section) => section.key === 'church').routes;
+  assert.deepEqual(churchRoutes.find((route) => route.key === 'bishops').recipients, [{ playerId: 1, value: 2 }]);
+  assert.equal(churchRoutes.find((route) => route.key === 'patriarch').total, imperialBishoprics);
 });
 
-test('province attributions expose direct and office-routed map filter recipients', () => {
+test('the Basileus raises 1 troop per 3 imperial provinces, rounded down', () => {
   const state = makeState();
-  state.themes.OPS.owner = 2;
+  const startLost = Object.values(state.themes).filter((theme) => theme.lost);
+  assert.equal(runIncome(state).troops.BASILEUS, 9);
+  const [firstFree] = Object.values(state.themes).filter((theme) => theme.id !== 'CPL' && !theme.lost);
+  firstFree.lost = true;
+  assert.equal(runIncome(state).troops.BASILEUS, 8, '26 provinces');
+  firstFree.lost = false;
+  for (const theme of startLost.slice(0, 3)) theme.lost = false;
+  assert.equal(runIncome(state).troops.BASILEUS, 10, '30 provinces');
+});
+
+test('a lost province keeps its Strategos and estate on record but they stop working', () => {
+  const state = makeState();
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
+  state.themes.OPS.strategos = 3;
+  state.themes.OPS.bishop = 2;
+  applyInvasionResult(state, { themesLost: ['OPS'], themesRecovered: [], reachedCPL: false });
+
+  assert.equal(state.themes.OPS.lost, true);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 1);
+  assert.equal(state.themes.OPS.strategos, 3);
+  const whileLost = runIncome(state);
+  assert.equal(whileLost.income[2] ?? 0, 1, 'only the Bishop is paid while the province is lost');
+  assert.equal(whileLost.troops.STRAT_OPS, undefined);
+
+  applyInvasionResult(state, { themesLost: [], themesRecovered: ['OPS'], reachedCPL: false });
+  const restored = runIncome(state);
+  assert.equal(restored.income[2], 2, 'estate and bishopric pay again');
+  assert.equal(restored.troops.STRAT_OPS, 1);
+});
+
+test('map filters show only appointed Strategoi and Bishops', () => {
+  const state = makeState();
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
   state.themes.KAP.strategos = 3;
   state.themes.HEL.bishop = 2;
 
   const estateAttributions = buildProvinceEstateAttributions(state);
-  assert.deepEqual(
-    {
-      playerId: estateAttributions.OPS.playerId,
-      mode: estateAttributions.OPS.mode,
-      direct: estateAttributions.OPS.direct,
-    },
-    { playerId: 2, mode: 'estate', direct: true },
-  );
+  assert.equal(estateAttributions.OPS.playerId, 2);
+  assert.equal(estateAttributions.OPS.mode, 'estate');
 
   const troopAttributions = buildProvinceTroopAttributions(state);
-  assert.deepEqual(
-    {
-      playerId: troopAttributions.KAP.playerId,
-      mode: troopAttributions.KAP.mode,
-      direct: troopAttributions.KAP.direct,
-      officeKey: troopAttributions.KAP.officeKey,
-    },
-    { playerId: 3, mode: 'strategos', direct: true, officeKey: 'STRAT_KAP' },
-  );
-  assert.deepEqual(
-    {
-      playerId: troopAttributions.OPS.playerId,
-      mode: troopAttributions.OPS.mode,
-      direct: troopAttributions.OPS.direct,
-      officeKey: troopAttributions.OPS.officeKey,
-    },
-    { playerId: 1, mode: 'major-office', direct: false, officeKey: 'DOM_EAST' },
-  );
+  assert.deepEqual(Object.keys(troopAttributions), ['KAP']);
+  assert.equal(troopAttributions.KAP.playerId, 3);
 
   const churchAttributions = buildProvinceChurchAttributions(state);
-  assert.deepEqual(
-    {
-      playerId: churchAttributions.HEL.playerId,
-      mode: churchAttributions.HEL.mode,
-      direct: churchAttributions.HEL.direct,
-    },
-    { playerId: 2, mode: 'bishop', direct: true },
-  );
-  assert.deepEqual(
-    {
-      playerId: churchAttributions.OPS.playerId,
-      mode: churchAttributions.OPS.mode,
-      direct: churchAttributions.OPS.direct,
-      officeKey: churchAttributions.OPS.officeKey,
-    },
-    { playerId: 1, mode: 'patriarch', direct: false, officeKey: 'PATRIARCH' },
-  );
+  assert.deepEqual(Object.keys(churchAttributions), ['HEL']);
+  assert.equal(churchAttributions.HEL.playerId, 2);
 });
 
 test('title redistribution opens court before starting income', () => {
@@ -408,7 +418,7 @@ test('coup replacement schedules title redistribution before the next court', ()
 
 test('court actions are role-filtered and appointment-capped per major title', () => {
   const state = makeState();
-  state.themes.SAM.owner = 2;
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
   enterCourt(state);
 
   const badStrategos = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 2 });
@@ -528,8 +538,8 @@ test('basileus court power is revocation-only and allows four revocations', () =
   state.themes.OPS.strategos = 1;
   state.themes.KAP.strategos = 2;
   state.themes.CIL.bishop = 2;
-  state.themes.SAM.owner = 3;
-  state.themes.ITA.owner = 1;
+  addEstates(state.themes.SAM, 3, 2, { recent: false });
+  addEstates(state.themes.ITA, 1, 1, { recent: false });
   enterCourt(state);
 
   const appointment = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 1 });
@@ -549,13 +559,13 @@ test('basileus court power is revocation-only and allows four revocations', () =
   assert.equal(secondRevocation.ok, true);
   assert.equal(state.themes.KAP.strategos, null);
 
-  const thirdRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:SAM' });
+  const thirdRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:SAM:3' });
   assert.equal(thirdRevocation.ok, true);
-  assert.equal(state.themes.SAM.owner, null);
+  assert.equal(getEstateCount(state.themes.SAM, 3), 0, 'one action takes both estates');
 
-  const fourthRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:ITA' });
+  const fourthRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:ITA:1' });
   assert.equal(fourthRevocation.ok, true);
-  assert.equal(state.themes.ITA.owner, null);
+  assert.equal(getEstateCount(state.themes.ITA, 1), 0);
   assert.equal(getCourtPowerActionCount(state, 0, 'BASILEUS'), 4);
   assert.equal(getCourtPowerRevocationCount(state, 0, 'BASILEUS'), 4);
   assert.equal(isCourtPowerExhausted(state, 0, 'BASILEUS'), true);
@@ -591,10 +601,10 @@ test('court powers can pass remaining appointments and revocations without count
   assert.equal(state.courtActions.playerConfirmed.has(1), true);
 });
 
-test('patriarch may appoint bishops in occupied original church provinces', () => {
+test('patriarch may appoint bishops in lost bishoprics', () => {
   const state = makeState();
   enterCourt(state);
-  state.themes.KAP.occupied = true;
+  state.themes.KAP.lost = true;
 
   const result = applyCourtAction(state, 1, { action: 'appoint-bishop', themeId: 'KAP', appointeeId: 2 });
 
@@ -602,65 +612,71 @@ test('patriarch may appoint bishops in occupied original church provinces', () =
   assert.equal(state.themes.KAP.bishop, 2);
 });
 
-test('private estate revocation preserves seated offices and notifies the estate owner', () => {
+test('one revocation takes all of one dynasty\'s estates in a province, and nothing else', () => {
   const state = makeState();
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 3, { recent: false });
+  addEstates(state.themes.OPS, 3, 1, { recent: false });
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
   state.themes.OPS.strategos = 3;
   state.themes.OPS.bishop = 1;
   getPlayer(state, 2).gold = 4;
   enterCourt(state);
 
-  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
 
   assert.equal(result.ok, true);
-  assert.equal(state.themes.OPS.owner, null);
-  assert.equal(state.themes.OPS.privateEstatePurchasedRound, null);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 0);
+  assert.equal(getEstateCount(state.themes.OPS, 3), 1, 'other dynasties keep their estates');
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1, 'estates elsewhere are untouched');
   assert.equal(state.themes.OPS.strategos, 3);
   assert.equal(state.themes.OPS.bishop, 1);
-  assert.equal(getPlayer(state, 2).gold, 5);
-  assert.equal(state.courtActions.revokedThisTurn['theme:OPS'], true);
-  assert.equal(state.courtActions.revokedThisTurn['minor:OPS:strategos'], undefined);
-  assert.equal(state.courtActions.revokedThisTurn['minor:OPS:bishop'], undefined);
-  assert.equal(state.history.find((event) => event.type === 'revoke_theme')?.details?.compensation, 1);
+  assert.equal(getPlayer(state, 2).gold, 4, 'no refund');
+  assert.equal(state.courtActions.revokedThisTurn['estates:OPS:2'], true);
+  assert.equal(state.history.find((event) => event.type === 'revoke_estates')?.details?.count, 3);
 
-  assert.equal(buildPrivateNotifications(state, 2).notifications.some((notice) => notice.kind === 'revocation'), false);
   state.phase = 'income';
   const ownerNotices = buildPrivateNotifications(state, 2).notifications;
-  assert.equal(ownerNotices.some((notice) => notice.kind === 'revocation' && /private ownership/.test(notice.body)), true);
   assert.equal(ownerNotices.find((notice) => notice.kind === 'revocation')?.tone, 'negative');
   assert.equal(buildPrivateNotifications(state, 3).notifications.some((notice) => notice.kind === 'revocation'), false);
-  assert.equal(buildPrivateNotifications(state, 1).notifications.some((notice) => notice.kind === 'revocation'), false);
 });
 
-test('private estates bought last turn cannot be revoked until the next turn', () => {
+test('estates built last round cannot be revoked until the round after', () => {
   const state = makeState();
   state.round = 1;
-  state.phase = 'estates';
+  phaseEstates(state);
   getPlayer(state, 2).gold = 5;
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
 
-  const bid = applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 2 });
-  assert.equal(bid.ok, true);
+  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 2 } }).ok, true);
   for (const player of state.players) confirmEstates(state, player.id);
   assert.equal(state.phase, 'deployment');
-  assert.equal(state.themes.OPS.owner, 2);
-  assert.equal(state.themes.OPS.privateEstatePurchasedRound, 1);
-  assert.equal(getPlayer(state, 2).gold, 3);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 3);
+  assert.equal(getPlayer(state, 2).gold, 2, 'two estates cost 1 + 2');
 
   state.round = 2;
-  state.themes.KAP.strategos = 1;
   enterCourt(state);
-  const blocked = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
-  assert.equal(blocked.ok, false);
-  assert.match(blocked.reason, /bought last turn/);
-  assert.equal(state.themes.OPS.owner, 2);
-  assert.equal(getPlayer(state, 2).gold, 3);
+  const first = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
+  assert.equal(first.ok, true);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 2, 'only the older estate is taken');
 
+  phaseEstates(state);
   state.round = 3;
+  state.players[0].revocationCooldown = {};
   enterCourt(state);
-  const allowed = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
-  assert.equal(allowed.ok, true);
-  assert.equal(state.themes.OPS.owner, null);
-  assert.equal(getPlayer(state, 2).gold, 4);
+  const second = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
+  assert.equal(second.ok, true);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 0);
+});
+
+test('estates that are all protected cannot be revoked', () => {
+  const state = makeState();
+  addEstates(state.themes.OPS, 2, 2, { recent: true });
+  state.themes.KAP.strategos = 3;
+  enterCourt(state);
+  const blocked = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason, /built last round/);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 2);
 });
 
 test('private notifications cover personal toned chronicle news without turn prompts', () => {
@@ -678,159 +694,99 @@ test('private notifications cover personal toned chronicle news without turn pro
   assert.equal(appointmentNotice?.toast, true);
   assert.match(appointmentNotice?.title || '', /appointed strategos/);
 
-  state.history.push({
-    id: 'history-auction-test',
-    round: state.round,
-    phase: 'deployment',
-    type: 'buy_theme',
-    actorId: 1,
-    summary: `${state.players[1].dynasty} wins Opsikion for 4 gold.`,
-    details: {
-      themeId: 'OPS',
-      themeName: 'Opsikion',
-      cost: 4,
-      bids: [
-        { bidderId: 0, amount: 3 },
-        { bidderId: 1, amount: 4 },
-      ],
-    },
-  });
-  const lostBidNotice = buildPrivateNotifications(state, 0).notifications.find((notice) => notice.kind === 'estate_lost');
-  assert.equal(lostBidNotice?.tone, 'negative');
-  assert.equal(lostBidNotice?.toast, true);
-  const wonBidNotice = buildPrivateNotifications(state, 1).notifications.find((notice) => notice.kind === 'estate_won');
-  assert.equal(wonBidNotice?.tone, 'positive');
-  assert.equal(wonBidNotice?.toast, true);
-
   state.phase = 'deployment';
   state.allOrders = {};
   assert.equal(buildPrivateNotifications(state, 0).notifications.some((notice) => notice.kind === 'deployment_orders'), false);
 });
 
-test('same-turn office appointments do not block private estate revocation', () => {
+test('same-turn office appointments do not block estate revocation', () => {
   const state = makeState();
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 1, { recent: false });
   enterCourt(state);
 
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 3 });
   assert.equal(appointment.ok, true);
 
-  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'theme:OPS' });
+  const result = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
 
   assert.equal(result.ok, true);
-  assert.equal(state.themes.OPS.owner, null);
+  assert.equal(getEstateCount(state.themes.OPS, 2), 0);
   assert.equal(state.themes.OPS.strategos, 3);
 });
 
-test('court no longer allows gifting private land', () => {
+test('court no longer allows gifting estates', () => {
   const state = makeState();
   enterCourt(state);
-  state.themes.SAM.owner = 2;
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
 
   const result = applyCourtAction(state, 2, { action: 'gift', themeId: 'SAM' });
 
   assert.equal(result.ok, false);
   assert.match(result.reason, /Unknown court action/);
-  assert.equal(state.themes.SAM.owner, 2);
-  assert.equal(state.themes.SAM.bishop, null);
-  assert.deepEqual(
-    { P: state.themes.SAM.P, T: state.themes.SAM.T, C: state.themes.SAM.C },
-    { P: 1, T: 1, C: 1 },
-  );
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
 });
 
-test('estates phase stores bids and settles them when deployment opens', () => {
+test('estate plans are secret, cost 1, 2, 3... per dynasty and are built when Deployment opens', () => {
   const state = makeState();
-  state.phase = 'estates';
-  getPlayer(state, 2).gold = 5;
+  phaseEstates(state);
+  getPlayer(state, 2).gold = 7;
+  getPlayer(state, 3).gold = 2;
 
-  const bid = applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 2 });
-  assert.equal(bid.ok, true);
-  assert.equal(getPlayer(state, 2).gold, 5);
-  assert.equal(state.landAuctions.OPS.bids[2].amount, 2);
+  const tooMany = applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 4 } });
+  assert.equal(tooMany.ok, false, 'four estates cost 10');
+  const plan = applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 2, SAM: 1 } });
+  assert.equal(plan.ok, true);
+  assert.equal(plan.cost, 6);
+  assert.equal(getPlayer(state, 2).gold, 7, 'nothing is paid before Deployment');
+  assert.equal(applyEstateAction(state, 3, { action: 'plan', plan: { OPS: 1 } }).ok, true);
 
   const ready = confirmEstates(state, 2);
   assert.equal(ready.ok, true);
-  assert.equal(state.phase, 'estates');
   const unready = confirmEstates(state, 2);
   assert.equal(unready.ok, true);
   assert.equal(state.estatesReady[2], undefined);
-  for (const player of state.players) {
-    const result = confirmEstates(state, player.id);
-    assert.equal(result.ok, true);
-  }
-  assert.equal(state.phase, 'deployment');
-  assert.equal(state.themes.OPS.owner, 2);
-  assert.equal(getPlayer(state, 2).gold, 3);
-});
-
-test('sealed estate bids resolve by amount, refund losing commitments, and rotate ties', () => {
-  const state = makeState();
-  state.phase = 'estates';
-  getPlayer(state, 1).gold = 8;
-  getPlayer(state, 2).gold = 8;
-  getPlayer(state, 3).gold = 8;
-
-  assert.equal(applyEstateAction(state, 1, { action: 'buy', themeId: 'OPS', amount: 3 }).ok, true);
-  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  assert.equal(applyEstateAction(state, 3, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  assert.equal(getPlayer(state, 1).gold, 8);
-  assert.equal(getPlayer(state, 2).gold, 8);
-  assert.equal(getPlayer(state, 3).gold, 8);
-
-  for (const player of state.players) confirmEstates(state, player.id);
-
-  const firstWinner = state.themes.OPS.owner;
-  const firstLoser = firstWinner === 2 ? 3 : 2;
-  assert.equal([2, 3].includes(firstWinner), true);
-  assert.equal(getPlayer(state, firstWinner).gold, 4);
-  assert.equal(getPlayer(state, firstLoser).gold, 8);
-  assert.equal(getPlayer(state, 1).gold, 8);
-
-  state.phase = 'estates';
-  state.landAuctions = {};
-  state.estatesReady = {};
-  state.themes.OPS.owner = null;
-  getPlayer(state, 2).gold = 8;
-  getPlayer(state, 3).gold = 8;
-
-  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  assert.equal(applyEstateAction(state, 3, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
-  for (const player of state.players) confirmEstates(state, player.id);
-
-  assert.equal(state.themes.OPS.owner, firstLoser);
-  assert.equal(getPlayer(state, firstLoser).gold, 4);
-  assert.equal(getPlayer(state, firstWinner).gold, 8);
-});
-
-test('public estate snapshots expose only the viewer sealed bid', () => {
-  const state = makeState();
-  state.phase = 'estates';
-  getPlayer(state, 1).gold = 5;
-  getPlayer(state, 2).gold = 5;
-
-  assert.equal(applyEstateAction(state, 1, { action: 'buy', themeId: 'OPS', amount: 2 }).ok, true);
-  assert.equal(applyEstateAction(state, 2, { action: 'buy', themeId: 'OPS', amount: 4 }).ok, true);
 
   const playerOneView = serializePublicGameState(state, 1);
-  const playerThreeView = serializePublicGameState(state, 3);
+  const playerTwoView = serializePublicGameState(state, 2);
+  assert.deepEqual(playerOneView.estatePlans, {}, 'other dynasties cannot see the plan');
+  assert.deepEqual(playerTwoView.estatePlans, { 2: { OPS: 2, SAM: 1 } });
 
-  assert.deepEqual(Object.keys(playerOneView.landAuctions.OPS.bids), ['1']);
-  assert.equal(playerOneView.landAuctions.OPS.bids[1].amount, 2);
-  assert.deepEqual(playerThreeView.landAuctions.OPS.bids, {});
-  assert.equal(playerOneView.players[2].gold, 5);
+  for (const player of state.players) assert.equal(confirmEstates(state, player.id).ok, true);
+  assert.equal(state.phase, 'deployment');
+  assert.equal(getEstateCount(state.themes.OPS, 2), 2);
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
+  assert.equal(getEstateCount(state.themes.OPS, 3), 1, 'several dynasties build in one province');
+  assert.equal(getPlayer(state, 2).gold, 1);
+  assert.equal(getPlayer(state, 3).gold, 1);
+  assert.equal(runIncome(state).incomeBreakdown.estate[2], 3, 'each estate pays 1 gold');
+  assert.match(state.history.find((event) => event.type === 'build_estates')?.summary || '', /Opsikion ×2/);
+});
+
+test('the estate price starts again at 1 each round, and lost provinces take no estates', () => {
+  const state = makeState();
+  phaseEstates(state);
+  getPlayer(state, 2).gold = 20;
+  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 1 } }).ok, true);
+  for (const player of state.players) confirmEstates(state, player.id);
+  assert.equal(getPlayer(state, 2).gold, 19);
+
+  phaseEstates(state);
+  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 1 } }).cost, 1);
+  const lost = applyEstateAction(state, 2, { action: 'plan', plan: { ANT: 1 } });
+  assert.equal(lost.ok, false);
+  assert.match(lost.reason, /lost/);
 });
 
 test('deployment schema funds armies, pays unfunded troops, and stores mercenary orders', () => {
   const state = makeState();
   state.phase = 'deployment';
-  state.currentTroops = { BASILEUS: { normal: 2, capitalLocked: 0 } };
+  state.currentTroops = { BASILEUS: 2 };
   getPlayer(state, 0).gold = 2;
 
   const result = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { funded: 1, destination: 'frontier' } },
     mercenaries: { count: 2, destination: 'capital' },
-    candidate: 0,
+    coupChoices: [0],
   });
 
   assert.equal(result.ok, true);
@@ -842,13 +798,13 @@ test('deployment schema funds armies, pays unfunded troops, and stores mercenary
 test('deployment defaults army funding when only a destination is chosen', () => {
   const state = makeState();
   state.phase = 'deployment';
-  state.currentTroops = { BASILEUS: { normal: 3, capitalLocked: 0 } };
+  state.currentTroops = { BASILEUS: 3 };
   getPlayer(state, 0).gold = 0;
 
   const result = submitHumanOrders(state, 0, {
     armies: { BASILEUS: { destination: 'capital' } },
     mercenaries: { count: 0 },
-    candidate: 0,
+    coupChoices: [0],
   });
 
   assert.equal(result.ok, true);
@@ -862,8 +818,8 @@ test("deployment bundles a player's strategos troops into one army", () => {
   state.themes.OPS.strategos = 1;
   state.themes.KAP.strategos = 1;
   state.currentTroops = {
-    STRAT_OPS: { normal: 1, capitalLocked: 0 },
-    STRAT_KAP: { normal: 2, capitalLocked: 0 },
+    STRAT_OPS: 1,
+    STRAT_KAP: 2,
   };
   getPlayer(state, 1).gold = 0;
 
@@ -872,7 +828,7 @@ test("deployment bundles a player's strategos troops into one army", () => {
       [STRATEGOS_DEPLOYMENT_ARMY_KEY]: { funded: 2, destination: 'frontier' },
     },
     mercenaries: { count: 0 },
-    candidate: 1,
+    coupChoices: [1],
   });
 
   assert.equal(result.ok, true);
@@ -882,160 +838,226 @@ test("deployment bundles a player's strategos troops into one army", () => {
   });
 });
 
-test('coup resolution uses ranked ballots and passive title support', () => {
-  const state = makeState();
-  const result = resolveCoup(state, {
-    0: { candidate: 2 },
-    1: { candidate: 3 },
-  }, {
-    0: 4,
-    1: 0,
-  });
+// Pins the coup numbers so these tests do not move when the balance does.
+function withCoupBalance(fn) {
+  applyBalanceOverrides({ THEODOSIAN_WALLS_SUPPORT: 5, PATRIARCH_INFLUENCE: 4, COUP_CHOICE_WEIGHTS: [1, 0.5] });
+  try {
+    fn();
+  } finally {
+    resetBalance();
+  }
+}
 
-  assert.equal(result.winner, 0);
-  assert.equal(Math.round(result.votes[0] * 1000) / 1000, 6.333);
-  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 2.667);
-  assert.equal(Math.round(result.votes[1] * 1000) / 1000, 2.333);
-  assert.equal(Math.round(result.votes[3] * 1000) / 1000, 0.667);
-  assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
-    [0, 2, 1, 3],
-    [1, 3, 0, 2],
-  ]);
-  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'BASILEUS' && entry.votes === 2), true);
-  assert.equal(result.contributions.some((entry) => entry.passive && entry.titleKey === 'PATRIARCH' && entry.candidateId === 3 && Math.abs(entry.votes - 0.6666666666666667) < 1e-9), true);
+test('coup choices keep at most two different dynasties, first choice first', () => {
+  const state = makeState();
+  assert.deepEqual(normalizeCoupChoices(state, [2, 2, 1, 3]), [2, 1]);
+  assert.deepEqual(normalizeCoupChoices(state, [9, '', null, 3]), [3]);
+  assert.deepEqual(normalizeCoupChoices(state, { coupChoices: [1, 0] }), [1, 0]);
+  assert.deepEqual(normalizeCoupChoices(state, null), []);
+});
+
+test('orders that never mention the coup back the dynasty itself; an empty list backs nobody', () => {
+  const state = makeState();
+  state.phase = 'deployment';
+  state.currentTroops = {};
+  assert.equal(submitHumanOrders(state, 2, { mercenaries: { count: 0 } }).ok, true);
+  assert.deepEqual(state.allOrders[2].coupChoices, [2]);
+  assert.equal(submitHumanOrders(state, 3, { mercenaries: { count: 0 }, coupChoices: [] }).ok, true);
+  assert.deepEqual(state.allOrders[3].coupChoices, []);
+});
+
+test('coup: troops give full support to the first choice and half to the second', () => {
+  withCoupBalance(() => {
+    const state = makeState();
+    const result = resolveCoup(state, {
+      0: { coupChoices: [0, 2] },
+      1: { coupChoices: [3] },
+      2: { coupChoices: [2, 3] },
+    }, {
+      0: 4,
+      1: 2,
+      2: 3,
+    });
+
+    // Player 0: 4 troops + 5 Theodosian Walls. Player 2: 3 own + 2 from player 0's second choice.
+    // Player 3: 2 from player 1, 4 from the Patriarch (player 1), 1.5 from player 2's second choice.
+    assert.equal(result.votes[0], 9);
+    assert.equal(result.votes[2], 5);
+    assert.equal(result.votes[3], 7.5);
+    assert.equal(result.votes[1] || 0, 0);
+    assert.equal(result.winner, 0);
+    assert.deepEqual(result.ballots.map((ballot) => ballot.coupChoices), [[0, 2], [3], [2, 3]]);
+    assert.deepEqual(result.ballots[0].shares.map((share) => [share.candidateId, share.weight, share.votes]), [
+      [0, 1, 4],
+      [2, 0.5, 2],
+    ]);
+  });
+});
+
+test("the Patriarch's influence follows the Patriarch's choices; Walls, Triumph and Unrest apply directly", () => {
+  withCoupBalance(() => {
+    const state = makeState();
+    addTemporaryCapitalSupport(state, {
+      kind: 'reconquest',
+      label: 'Triumph',
+      playerId: 2,
+      amount: 2,
+      activeRound: state.round,
+    });
+    addTemporaryCapitalSupport(state, {
+      kind: 'lost_provinces',
+      label: 'Unrest',
+      playerId: state.basileusId,
+      amount: -1,
+      activeRound: state.round,
+    });
+
+    const result = resolveCoup(state, {
+      1: { coupChoices: [2, 1] },
+      2: { coupChoices: [3] },
+    }, {
+      1: 0,
+      2: 0,
+    });
+
+    assert.equal(result.votes[0], 4);
+    assert.equal(result.votes[2], 6);
+    assert.equal(result.votes[1], 2);
+    assert.equal(result.votes[3] || 0, 0);
+    assert.equal(result.winner, 2);
+    const find = (source, candidateId) => result.contributions.filter((entry) => entry.source === source && entry.candidateId === candidateId);
+    assert.equal(find('walls', 0)[0]?.supportLabel, 'Theodosian Walls');
+    assert.equal(find('walls', 0)[0]?.votes, 5);
+    assert.equal(find('unrest', 0)[0]?.votes, -1);
+    assert.equal(find('patriarch', 2)[0]?.supportLabel, "Patriarch's influence");
+    assert.equal(find('patriarch', 2)[0]?.votes, 4);
+    assert.equal(find('patriarch', 1)[0]?.votes, 2);
+    assert.equal(find('triumph', 2)[0]?.votes, 2);
+    assert.equal(find('triumph', 3).length, 0);
+  });
+});
+
+test('a Patriarch without orders backs themselves with their influence', () => {
+  withCoupBalance(() => {
+    const state = makeState();
+    const result = resolveCoup(state, {}, {});
+    assert.equal(result.votes[1], 4);
+    assert.equal(result.votes[0], 5);
+    assert.equal(result.winner, 0);
+  });
 });
 
 test('coup ties break toward the most Patriarchal support before incumbent support', () => {
-  const state = makeState();
-  addTemporaryCapitalSupport(state, {
-    kind: 'lost_provinces',
-    label: 'Lost-province unrest',
-    playerId: state.basileusId,
-    amount: -1,
-    activeRound: state.round,
+  withCoupBalance(() => {
+    const state = makeState();
+    addTemporaryCapitalSupport(state, {
+      kind: 'lost_provinces',
+      label: 'Unrest',
+      playerId: state.basileusId,
+      amount: -1,
+      activeRound: state.round,
+    });
+
+    const result = resolveCoup(state, {
+      1: { coupChoices: [2] },
+    }, {});
+
+    assert.equal(result.votes[0], 4);
+    assert.equal(result.votes[2], 4);
+    assert.equal(result.winner, 2);
+    assert.equal(result.tieBreak.method, 'patriarch');
+    assert.equal(result.tieBreak.patriarchSupport[2], 4);
   });
-
-  const result = resolveCoup(state, {
-    1: {
-      ranking: [2, 1, 0, 3],
-      candidateSupport: { 0: false, 1: false, 3: false },
-    },
-  }, {});
-
-  assert.equal(result.votes[0], 1);
-  assert.equal(result.votes[2], 1);
-  assert.equal(result.winner, 2);
-  assert.equal(result.tieBreak.method, 'patriarch');
-  assert.equal(result.tieBreak.patriarchSupport[2], 1);
 });
 
-test('ranked coup support can transfer secondary support without reciprocal merging', () => {
+test('nobody backed in the coup leaves the Basileus on the throne', () => {
   const state = makeState();
-  const result = resolveCoup(state, {
-    1: { candidate: 2 },
-    2: { candidate: 1 },
-    3: { candidate: 3 },
-  }, {
-    1: 3,
-    2: 5,
-    3: 2,
-  });
+  state.players[1].majorTitles = ['DOM_EAST'];
+  applyBalanceOverrides({ THEODOSIAN_WALLS_SUPPORT: 0 });
+  try {
+    const result = resolveCoup(state, { 0: { coupChoices: [] }, 1: { coupChoices: [] } }, { 0: 3, 1: 3 });
+    assert.equal(result.winner, 0);
+  } finally {
+    resetBalance();
+  }
+});
 
-  assert.equal(result.winner, 1);
-  assert.equal(result.votes[1], 8);
-  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 7.667);
-  assert.deepEqual(result.ballots.map((ballot) => ballot.ranking), [
-    [1, 2, 0, 3],
-    [2, 1, 0, 3],
-    [3, 0, 1, 2],
+test('the invasion ladder costs 1, 2, 3... per imperial province, crosses lost ones free, and ends at Constantinople', () => {
+  const state = makeState();
+  for (const theme of Object.values(state.themes)) theme.lost = false;
+  state.themes.STR.lost = true;
+  const ladder = buildInvasionLadder(state, ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL']);
+  assert.deepEqual(ladder.map((step) => [step.themeId, step.status, step.cost, step.needed]), [
+    ['CHE', 'imperial', 1, 1],
+    ['PAR', 'imperial', 2, 3],
+    ['BUL', 'imperial', 3, 6],
+    ['THS', 'imperial', 4, 10],
+    ['STR', 'lost', 0, 10],
+    ['MAK', 'imperial', 5, 15],
+    ['THR', 'imperial', 6, 21],
+    ['CPL', 'capital', 7, 28],
   ]);
-  assert.equal(result.contributions.some((entry) => entry.playerId === 2 && entry.candidateId === 1 && Math.abs(entry.votes - 3.333333333333334) < 1e-9), true);
-});
-
-test('ranked coup support allows movable self rank and disabled candidates keep rank weights', () => {
-  const state = createGameState({ playerCount: 5, deckSize: 2, seed: 11 });
-  state.basileusId = 0;
-  state.nextBasileusId = 0;
-  for (const player of state.players) player.majorTitles = [];
-
-  const result = resolveCoup(state, {
-    0: {
-      ranking: [2, 0, 1, 3, 4],
-      candidateSupport: { 3: false, 4: false },
-    },
-  }, {
-    0: 4,
-  });
-
-  assert.deepEqual(result.ballots[0].ranking, [2, 0, 1, 3, 4]);
-  assert.deepEqual(result.ballots[0].weightedVotes.map((entry) => [entry.candidateId, entry.votes, entry.enabled]), [
-    [2, 4, true],
-    [0, 3, true],
-    [1, 2, true],
-    [3, 0, false],
-    [4, 0, false],
+  const back = buildReconquestLadder(state, ['CHE', 'PAR', 'STR', 'MAK', 'CPL'], new Set(['PAR', 'MAK']));
+  assert.deepEqual(back.map((step) => [step.themeId, step.status, step.cost, step.needed]), [
+    ['MAK', 'lost', 1, 1],
+    ['STR', 'imperial', 0, 1],
+    ['PAR', 'lost', 2, 3],
+    ['CHE', 'imperial', 0, 3],
   ]);
 });
 
-test('patriarch influence follows rankings while fortifications and triumph stay direct', () => {
-  const state = makeState();
-  addTemporaryCapitalSupport(state, {
-    kind: 'reconquest',
-    label: 'Triumph',
-    playerId: 2,
-    amount: 2,
-    activeRound: state.round,
-  });
-  addTemporaryCapitalSupport(state, {
-    kind: 'lost_provinces',
-    label: 'Lost-province unrest',
-    playerId: state.basileusId,
-    amount: -1,
-    activeRound: state.round,
-  });
-
-  const result = resolveCoup(state, {
-    1: { ranking: [2, 1, 0, 3], candidateSupport: { 0: false } },
-    2: { ranking: [3, 2, 1, 0] },
-  }, {
-    1: 0,
-    2: 0,
-  });
-
-  assert.equal(result.votes[0], 1);
-  assert.equal(Math.round(result.votes[2] * 1000) / 1000, 3);
-  assert.equal(Math.round(result.votes[1] * 1000) / 1000, 0.667);
-  assert.equal(result.votes[3] || 0, 0);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Basileus fortifications' && entry.candidateId === 0 && entry.votes === 2), true);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Lost-province unrest' && entry.candidateId === 0 && entry.votes === -1), true);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Patriarchal influence' && entry.candidateId === 0), false);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 2 && entry.votes === 2 && !entry.distributed), true);
-  assert.equal(result.contributions.some((entry) => entry.supportLabel === 'Triumph' && entry.candidateId === 3), false);
+test('every war records the strength spent on each province and the strength left over', () => {
+  const route = ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL'];
+  const rng = makeRng(99);
+  for (let trial = 0; trial < 300; trial += 1) {
+    const state = makeState();
+    for (const theme of Object.values(state.themes)) theme.lost = theme.id !== 'CPL' && rng() < 0.35;
+    const frontier = Math.floor(rng() * 30);
+    const strength = Math.floor(rng() * 30);
+    const result = resolveInvasion(state, frontier, strength, { route });
+    const spent = result.steps.reduce((sum, step) => sum + step.spent, 0);
+    assert.equal(result.spent, spent);
+    if (result.outcome === 'stalemate') {
+      assert.equal(result.steps.length, 0);
+      continue;
+    }
+    assert.equal(result.margin, Math.abs(frontier - strength));
+    assert.equal(result.leftover, result.margin - result.spent);
+    assert.ok(result.leftover >= 0);
+    const stopped = result.steps.find((step) => step.outcome === 'held' || step.outcome === 'out_of_reach');
+    if (stopped) assert.ok(stopped.cost > result.leftover, 'the leftover never pays for the next step');
+    const won = result.steps.filter((step) => step.outcome === 'taken' || step.outcome === 'retaken').map((step) => step.themeId);
+    if (result.outcome === 'defeat') {
+      assert.deepEqual(won.filter((id) => id !== 'CPL'), result.themesLost);
+      assert.equal(won.includes('CPL'), result.reachedCPL);
+    } else {
+      assert.deepEqual(won, result.themesRecovered);
+    }
+  }
 });
 
-test('invasion loss suspends owners and reconquest restores them while bishops remain', () => {
+test('invasion loss keeps holders on record and reconquest gives the province back to them', () => {
   const state = makeState();
-  state.themes.SAM.owner = 2;
+  addEstates(state.themes.SAM, 2, 1, { recent: false });
   state.themes.SAM.strategos = 3;
   state.themes.SAM.bishop = 1;
 
   applyInvasionResult(state, { themesLost: ['SAM'], themesRecovered: [], reachedCPL: false });
-  assert.equal(state.themes.SAM.occupied, true);
-  assert.equal(state.themes.SAM.owner, null);
-  assert.equal(state.themes.SAM.suspendedOwner, 2);
-  assert.equal(state.themes.SAM.strategos, null);
+  assert.equal(state.themes.SAM.lost, true);
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
+  assert.equal(state.themes.SAM.strategos, 3);
   assert.equal(state.themes.SAM.bishop, 1);
 
   applyInvasionResult(state, { themesLost: [], themesRecovered: ['SAM'], reachedCPL: false });
-  assert.equal(state.themes.SAM.occupied, false);
-  assert.equal(state.themes.SAM.owner, 2);
-  assert.equal(state.themes.SAM.suspendedOwner, null);
+  assert.equal(state.themes.SAM.lost, false);
+  assert.equal(getEstateCount(state.themes.SAM, 2), 1);
+  assert.equal(state.themes.SAM.strategos, 3);
   assert.equal(state.themes.SAM.bishop, 1);
 });
 
 test('limited invasions take their target route without toppling the empire', () => {
   const state = makeState();
-  state.themes.ITA.owner = 2;
+  addEstates(state.themes.ITA, 2, 1, { recent: false });
 
   const result = resolveInvasion(state, 0, 6, {
     id: 'limited_test',
@@ -1048,8 +1070,8 @@ test('limited invasions take their target route without toppling the empire', ()
 
   assert.equal(result.reachedCPL, false);
   assert.deepEqual(result.themesLost, ['ITA']);
-  assert.equal(state.themes.ITA.occupied, true);
-  assert.equal(state.themes.ITA.suspendedOwner, 2);
+  assert.equal(state.themes.ITA.lost, true);
+  assert.equal(getEstateCount(state.themes.ITA, 2), 1);
   assert.equal(state.gameOver, null);
 });
 
@@ -1075,7 +1097,7 @@ test('limited invasions are skipped when every target province is already lost',
       strength: [1, 1],
     },
   ];
-  state.themes.SAM.occupied = true;
+  state.themes.SAM.lost = true;
 
   phaseInvasion(state);
 
@@ -1104,7 +1126,7 @@ test('skipped invasions are replaced so every non-final turn draws an invasion',
       strength: [1, 1],
     },
   ];
-  state.themes.SAM.occupied = true;
+  state.themes.SAM.lost = true;
 
   phaseInvasion(state);
 
@@ -1141,41 +1163,39 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   state.round = 1;
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
-  state.themes.SAM.occupied = true;
-  state.currentTroops = { DOM_WEST: { normal: 3, capitalLocked: 0 } };
+  state.themes.SAM.lost = true;
+  state.currentTroops = { DOM_WEST: 3 };
   state.allOrders = {
     2: {
       armies: { DOM_WEST: { funded: 3, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 0, 1, 3],
-      candidate: 0,
+      coupChoices: [2, 0],
     },
   };
   getPlayer(state, 2).gold = 0;
 
   phaseResolution(state);
 
-  assert.equal(state.themes.SAM.occupied, false);
+  assert.equal(state.themes.SAM.lost, false);
   assert.equal(getPlayer(state, 2).gold, 1);
   assert.deepEqual(state.lastWarResult.themesRecovered, ['SAM']);
   assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
   assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
-  assert.equal(getCapitalSupportByPlayer(state)[0], 2);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
+  assert.equal(getCapitalSupportByPlayer(state)[0], BALANCE.THEODOSIAN_WALLS_SUPPORT);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], BALANCE.TRIUMPH_PER_PROVINCE);
 });
 
-test('repulsed invasions reward the top defender for province wins even without occupied provinces', () => {
+test('repulsed invasions reward the top defender for province wins even without lost provinces', () => {
   const state = makeState();
   state.round = 1;
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [2, 2] };
-  state.currentTroops = { DOM_WEST: { normal: 5, capitalLocked: 0 } };
+  state.currentTroops = { DOM_WEST: 5 };
   state.allOrders = {
     2: {
       armies: { DOM_WEST: { funded: 5, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 0, 1, 3],
-      candidate: 0,
+      coupChoices: [2, 0],
     },
   };
   getPlayer(state, 2).gold = 0;
@@ -1187,7 +1207,7 @@ test('repulsed invasions reward the top defender for province wins even without 
   assert.equal(state.lastWarResult.reconquestReward.rewardProvinceCount, 2);
   assert.deepEqual(state.lastWarResult.reconquestReward.themeIds, []);
   assert.equal(getPlayer(state, 2).gold, 2);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2 * BALANCE.TRIUMPH_PER_PROVINCE);
 });
 
 test('tied top defenders split reconquest reward with rounded shares', () => {
@@ -1195,25 +1215,23 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   state.round = 1;
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [2, 2] };
-  state.themes.OPS.occupied = true;
-  state.themes.SAM.occupied = true;
-  state.themes.ITA.occupied = true;
+  state.themes.OPS.lost = true;
+  state.themes.SAM.lost = true;
+  state.themes.ITA.lost = true;
   state.currentTroops = {
-    DOM_WEST: { normal: 4, capitalLocked: 0 },
-    ADMIRAL: { normal: 4, capitalLocked: 0 },
+    DOM_WEST: 4,
+    ADMIRAL: 4,
   };
   state.allOrders = {
     2: {
       armies: { DOM_WEST: { funded: 4, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 0, 1, 3],
-      candidate: 0,
+      coupChoices: [2, 0],
     },
     3: {
       armies: { ADMIRAL: { funded: 4, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [3, 0, 1, 2],
-      candidate: 0,
+      coupChoices: [3, 0],
     },
   };
   getPlayer(state, 2).gold = 0;
@@ -1226,9 +1244,11 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   assert.equal(getPlayer(state, 3).gold, 2);
   assert.deepEqual(state.lastWarResult.reconquestReward.defenders.map((entry) => entry.defenderId), [2, 3]);
   assert.equal(state.lastWarResult.reconquestReward.gold, 2);
-  assert.equal(state.lastWarResult.reconquestReward.capitalSupport, 1);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[3], 1);
+  // Three provinces won: gold is split rounding up, Triumph rounding down.
+  const triumphShare = Math.floor((3 * BALANCE.TRIUMPH_PER_PROVINCE) / 2);
+  assert.equal(state.lastWarResult.reconquestReward.capitalSupport, triumphShare);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], triumphShare);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[3], triumphShare);
 });
 
 test('lost provinces reduce the next round Basileus passive support', () => {
@@ -1238,13 +1258,13 @@ test('lost provinces reduce the next round Basileus passive support', () => {
   state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
   state.currentTroops = {};
   state.allOrders = {
-    0: { armies: {}, mercenaries: { count: 0, destination: 'frontier' }, ranking: [0, 1, 2, 3], candidate: 1 },
+    0: { armies: {}, mercenaries: { count: 0, destination: 'frontier' }, coupChoices: [0, 1] },
   };
 
   phaseResolution(state);
 
   assert.deepEqual(state.lastWarResult.themesLost, ['SAM']);
-  assert.equal(getCapitalSupportByPlayer({ ...state, round: 2 })[0], 1);
+  assert.equal(getCapitalSupportByPlayer({ ...state, round: 2 })[0], BALANCE.THEODOSIAN_WALLS_SUPPORT - BALANCE.UNREST_PER_LOST_PROVINCE);
 });
 
 test('lost province unrest follows the basileus who lost provinces through a coup', () => {
@@ -1254,14 +1274,13 @@ test('lost province unrest follows the basileus who lost provinces through a cou
   state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
   state.currentTroops = {};
   state.mercenaryOrders = {
-    2: { count: 3, destination: 'capital' },
+    2: { count: BALANCE.THEODOSIAN_WALLS_SUPPORT + BALANCE.PATRIARCH_INFLUENCE + 1, destination: 'capital' },
   };
   state.allOrders = {
     2: {
       armies: {},
       mercenaries: { count: 0, destination: 'frontier' },
-      ranking: [2, 1, 3, 0],
-      candidate: 2,
+      coupChoices: [2, 1],
     },
   };
 
@@ -1280,8 +1299,8 @@ test('lost province unrest follows the basileus who lost provinces through a cou
 
   assert.equal(state.basileusId, 2);
   const nextRoundSupport = getCapitalSupportByPlayer({ ...state, round: 2 });
-  assert.equal(nextRoundSupport[2], 2);
-  assert.equal(nextRoundSupport[0], -1);
+  assert.equal(nextRoundSupport[2], BALANCE.THEODOSIAN_WALLS_SUPPORT);
+  assert.equal(nextRoundSupport[0], -BALANCE.UNREST_PER_LOST_PROVINCE);
 });
 
 test('final scoring uses last income phase shares without free citizens', () => {
@@ -1293,16 +1312,16 @@ test('final scoring uses last income phase shares without free citizens', () => 
     theme.P = 0;
     theme.T = 0;
     theme.C = 0;
-    theme.owner = null;
+    theme.estates = {};
     theme.bishop = null;
     theme.strategos = null;
-    theme.occupied = false;
+    theme.lost = false;
   }
 
-  state.themes.OPS.P = 3;
-  state.themes.OPS.owner = 0;
+  state.themes.OPS.P = 1;
+  addEstates(state.themes.OPS, 0, 3, { recent: false });
   state.themes.SAM.P = 1;
-  state.themes.SAM.owner = 1;
+  addEstates(state.themes.SAM, 1, 1, { recent: false });
   state.themes.KAP.C = 2;
   state.themes.KAP.bishop = 1;
   state.themes.ANT.C = 6;
@@ -1313,8 +1332,7 @@ test('final scoring uses last income phase shares without free citizens', () => 
   state.themes.ITA.T = 3;
 
   state.lastIncome = runIncome(state);
-  state.themes.OPS.P = 30;
-  state.themes.OPS.owner = 3;
+  addEstates(state.themes.OPS, 3, 30, { recent: false });
 
   const final = buildFinalScores(state);
   const category = (playerId, key) => (
@@ -1324,19 +1342,23 @@ test('final scoring uses last income phase shares without free citizens', () => 
   assert.equal(category(0, 'estate').value, 3);
   assert.equal(category(1, 'estate').value, 1);
   assert.equal(category(0, 'estate').totalValue, 4);
-  assert.equal(category(0, 'office').value, 1);
-  assert.equal(category(1, 'office').value, 6);
+  // Basileus: 40 imperial provinces -> 13 troops. Domestic of the East and
+  // Patriarch: 2 (Bishop of Kappadokia) + 12 (every bishopric). Domestic of
+  // the West: 5 (Strategos of the Aegean) + 6 (Bishop of Antiochia). Admiral:
+  // 5 + 3 from the sea provinces, Strategos or not.
+  assert.equal(category(0, 'office').value, 13);
+  assert.equal(category(1, 'office').value, 14);
   assert.equal(category(2, 'office').value, 11);
-  assert.equal(category(3, 'office').value, 2);
-  assert.equal(category(2, 'office').totalValue, 20);
+  assert.equal(category(3, 'office').value, 8);
+  assert.equal(category(2, 'office').totalValue, 46);
   assert.equal(category(1, 'church'), undefined);
   assert.equal(category(2, 'strategos'), undefined);
 
   const balance = buildBalanceOfPower(state);
   assert.equal(balance.categories.some((entry) => entry.slices.some((slice) => slice.kind === 'free')), false);
-  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 31);
+  assert.equal(balance.categories.find((entry) => entry.key === 'estate').total, 34);
   assert.equal(balance.categories.find((entry) => entry.key === 'estate').slices.find((slice) => slice.playerId === 3).value, 30);
-  assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 20);
+  assert.equal(balance.categories.find((entry) => entry.key === 'office').total, 46);
 });
 
 test('empire fall keeps final rankings but awards no winner', () => {
@@ -1412,4 +1434,20 @@ test('coup replacement triggers major title redistribution before final court an
   assert.equal(state.finalScoringPending, false);
   assert.equal(state.lastIncome.round, state.round);
   assert.ok(state.lastIncome.flow.totals.troop > 0);
+});
+
+test('nothing in a lost province can be revoked, and the Basileus is not offered it', () => {
+  const state = makeState();
+  state.themes.OPS.strategos = 2;
+  addEstates(state.themes.OPS, 3, 1, { recent: false });
+  state.themes.OPS.lost = true;
+  enterCourt(state);
+
+  const revokeStrategos = revokeMinorTitle(state, 'OPS', 'strategos', 1);
+  assert.equal(revokeStrategos.ok, false);
+  assert.match(revokeStrategos.reason, /lost/);
+  const revokeEstate = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:3' });
+  assert.equal(revokeEstate.ok, false);
+  assert.equal(state.themes.OPS.strategos, 2);
+  assert.equal(getEstateCount(state.themes.OPS, 3), 1);
 });

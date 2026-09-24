@@ -4,7 +4,6 @@ import { buildPrivateNotifications } from '../engine/notifications.js';
 import {
   autoResolveUnavailableHumanAppointments,
   handleContinueAfterResolution,
-  handleDefenderRewardChoice,
   handleHumanCourtAction,
   handleHumanCourtConfirmation,
   handleHumanEstateAction,
@@ -30,6 +29,7 @@ import {
   scrollPhasePanelIntoView,
 } from './sharedView.js';
 import { buildLocalSave, clearLocalSave, restoreLocalSaveState, writeLocalSave } from './localSave.js';
+import { addEstateToDraft } from './panels/estates.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 
@@ -133,6 +133,9 @@ export class GameController {
         this.render();
       },
       onProvinceSelect: (provinceId) => {
+        // During Estates a map click also plans an estate there.
+        const canControl = !(this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer));
+        if (canControl) addEstateToDraft(this.uiState, this.state, this.activePlayer, provinceId);
         this.selectProvince(provinceId);
       },
       onProvinceHover: (provinceId) => {
@@ -302,9 +305,6 @@ export class GameController {
     const spectatorMessage = state.phase === 'deployment'
       ? 'Switch back to your dynasty to continue.'
       : 'This dynasty is AI-controlled.';
-    const pendingHumanDefenderReward = state.pendingDefenderRewards?.some((reward) => (
-      !reward.resolved && (!this.aiMeta || this.isHumanPlayer(reward.defenderId))
-    ));
 
     renderGameActionPanel({
       panel: document.getElementById('actionPanel'),
@@ -326,20 +326,6 @@ export class GameController {
       },
       resolution: {
         allowManualTitleReassignment: !this.pendingAiTitleAssignment,
-        disabledText: pendingHumanDefenderReward
-          && this.state.nextBasileusId === this.state.basileusId
-          ? 'Resolve Rewards'
-          : null,
-        defenderRewardChoice: (rewardId, choice) => {
-          const result = handleDefenderRewardChoice(this.state, this.aiMeta, this, this.activePlayer, rewardId, choice);
-          if (!result.ok) {
-            this.setActionError(result.reason);
-            this.render();
-            return;
-          }
-          this.clearActionError();
-          this.render();
-        },
         continue: (shell) => {
           const reassignment = this.tryResolveTitleReassignment(shell);
           if (!reassignment.ok) {
@@ -426,28 +412,10 @@ export class GameController {
   }
 
   createEstateHandlers(playerId) {
-    const submitOne = (themeId, amount) => handleHumanEstateAction(this.state, this.aiMeta, this, playerId, {
-      action: 'buy',
-      themeId,
-      amount,
-    });
     return {
-      buy: (themeId, data = {}) => {
-        const result = submitOne(themeId, data.amount);
-        if (!result.ok) {
-          this.setActionError(result.reason);
-          this.render();
-          return;
-        }
-        this.clearActionError();
-        this.render();
-      },
-      submitEstatePlan: ({ bids = [] } = {}) => {
-        let result = { ok: true };
-        for (const bid of bids) {
-          result = submitOne(bid.themeId, bid.amount);
-          if (!result.ok) break;
-        }
+      // The whole plan is sent once, then the dynasty locks.
+      submitEstatePlan: ({ plan = {} } = {}) => {
+        let result = handleHumanEstateAction(this.state, this.aiMeta, this, playerId, { action: 'plan', plan });
         if (result.ok) result = handleEstatesConfirmation(this.state, this.aiMeta, this, playerId);
         if (!result.ok) {
           this.setActionError(result.reason);

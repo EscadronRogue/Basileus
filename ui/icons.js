@@ -61,6 +61,15 @@ const ICON_PATHS = {
       <circle cx="12" cy="10.5" r="1.15" fill="currentColor" fill-opacity=".12"/>
     </g>
   `,
+  // Coup support: a standard on a pole.
+  support: `
+    <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 20.6 V3.4"/>
+      <path d="M4.8 20.6 H9.2"/>
+      <path d="M7 4.4 H18 L15.2 8.3 L18 12.2 H7 Z" fill="currentColor" fill-opacity=".16"/>
+      <path d="M7 4.4 H18 L15.2 8.3 L18 12.2 H7"/>
+    </g>
+  `,
 };
 
 const LABEL_FORMS = {
@@ -68,6 +77,7 @@ const LABEL_FORMS = {
   gold:   { singular: 'Gold',   plural: 'Gold'   },
   estate: { singular: 'Estate', plural: 'Estates' },
   church: { singular: 'Church', plural: 'Church' },
+  support: { singular: 'Support', plural: 'Support' },
 };
 
 // ── HTML helpers ─────────────────────────────────────────────────────
@@ -146,6 +156,22 @@ export function formatTroopsHtml(value, options = {}) {
 
 export function formatChurchHtml(value, options = {}) {
   return renderValue('church', Math.max(0, normalizeDisplayNumber(value)), options);
+}
+
+// Coup support comes in halves (a second choice gets half): 5.5 reads "5½".
+export function formatHalves(value) {
+  const numeric = Number(value) || 0;
+  const sign = numeric < 0 ? '−' : '';
+  const abs = Math.abs(numeric);
+  const whole = Math.floor(abs + 1e-9);
+  const fraction = abs - whole;
+  if (fraction < 1e-9) return `${sign}${whole}`;
+  if (Math.abs(fraction - 0.5) < 1e-9) return `${sign}${whole || ''}½`;
+  return `${sign}${Math.round(abs * 100) / 100}`;
+}
+
+export function formatSupportHtml(value, options = {}) {
+  return renderValue('support', Number(value) || 0, { ...options, displayValue: formatHalves(value) });
 }
 
 export function formatMercenariesHtml(value, options = {}) {

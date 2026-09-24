@@ -5,6 +5,14 @@ import { createGameState } from '../engine/state.js';
 import { applyCourtAction } from '../engine/commands.js';
 import { buildPrivateDealView } from '../engine/deals.js';
 import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
+import { resolveInvasion } from '../engine/combat.js';
+import { addEstates } from '../engine/estates.js';
+import { phaseEstates } from '../engine/turnflow.js';
+import { addEstateToDraft } from './panels/estates.js';
+import { toggleCoupChoice } from './panels/orders.js';
+import { playerDisplayLabel } from './panels/shared.js';
+import { formatHalves } from './icons.js';
+import { BALANCE } from '../data/balance.js';
 import { hydratePublicState, serializePublicGameState } from '../engine/publicState.js';
 import {
   renderCartouchedText,
@@ -142,7 +150,7 @@ test('title redistribution panel is its own phase panel', () => {
 
   renderTitleRedistributionPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /Assign Major Offices/);
+  assert.match(container.innerHTML, /Major offices/);
   assert.match(container.innerHTML, /data-title-slot="DOM_EAST"/);
   assert.match(container.innerHTML, /title-redist-player-token/);
   assert.match(container.innerHTML, /court-wire-seat-socket/);
@@ -160,7 +168,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 2, { recent: false });
   state.themes.KAP.strategos = 1;
 
   const basileusPanel = makePanelContainer();
@@ -168,7 +176,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   assert.match(basileusPanel.innerHTML, /Basileus/);
   assert.match(basileusPanel.innerHTML, /Choose actions/);
   assert.match(basileusPanel.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
-  assert.match(basileusPanel.innerHTML, /data-revoke-pick="theme:OPS"/);
+  assert.match(basileusPanel.innerHTML, /data-revoke-pick="estates:OPS:2"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /data-action="pass-court-power"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /btn-skip/);
   assert.match(basileusPanel.innerHTML, /btn-secondary btn-reset" data-action="reset-court-plan"/);
@@ -422,7 +430,7 @@ test('court panel keeps mixed actions open but blocks same-turn title reversals'
   assert.doesNotMatch(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"[^>]*disabled[^>]*>/);
 });
 
-test('court estate revocations show owner color without the old separator', () => {
+test('court estate revocations show one row per dynasty with its estate count', () => {
   const state = makeState();
   state.phase = 'court';
   state.courtActions = {
@@ -431,23 +439,22 @@ test('court estate revocations show owner color without the old separator', () =
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.themes.OPS.owner = 2;
+  addEstates(state.themes.OPS, 2, 3, { recent: false });
+  addEstates(state.themes.OPS, 3, 1, { recent: false });
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"/);
+  assert.match(container.innerHTML, /data-revoke-pick="estates:OPS:2"/);
+  assert.match(container.innerHTML, /data-revoke-pick="estates:OPS:3"/);
   assert.match(container.innerHTML, /court-link-connection bound/);
   assert.match(container.innerHTML, /province-office-token-estate/);
-  assert.match(container.innerHTML, /data-link-revoke="theme:OPS"/);
   assert.equal(container.innerHTML.includes(`--office-holder-color: ${state.players[2].color};`), true);
-  assert.match(container.innerHTML, /<span class="province-office-kind">Estate<\/span>/);
+  assert.match(container.innerHTML, /<span class="province-office-kind">Estates ×3<\/span>/);
   assert.match(container.innerHTML, /<span class="province-token-name">Opsikion<\/span>/);
-  assert.equal(container.innerHTML.includes('Estate —'), false);
-  assert.equal(container.innerHTML.includes('Estate â€”'), false);
 });
 
-test('court panel disables recently bought estate revocations', () => {
+test('court panel does not offer estates that were all built last round', () => {
   const state = makeState();
   state.round = 2;
   state.phase = 'court';
@@ -458,14 +465,14 @@ test('court panel disables recently bought estate revocations', () => {
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  state.themes.OPS.owner = 2;
-  state.themes.OPS.privateEstatePurchasedRound = 1;
+  addEstates(state.themes.OPS, 2, 1, { recent: true });
+  state.themes.KAP.strategos = 1;
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /data-revoke-pick="theme:OPS"[^>]*aria-disabled="true"[^>]*>/);
-  assert.match(container.innerHTML, /bought last turn and cannot be revoked until next turn/);
+  assert.doesNotMatch(container.innerHTML, /data-revoke-pick="estates:OPS:2"/);
+  assert.match(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
 });
 
 test('court panel shows passed offices while other offices remain available', () => {
@@ -494,38 +501,47 @@ test('court panel shows passed offices while other offices remain available', ()
   assert.doesNotMatch(container.innerHTML, /data-court-pass-power=/);
 });
 
-test('estates panel lists free land bids before deployment', () => {
+test('estates panel plans estates with + and - and locks the whole plan once', () => {
   const state = makeState();
-  state.phase = 'estates';
+  phaseEstates(state);
   state.players[2].gold = 4;
+  addEstates(state.themes.OPS, 3, 2, { recent: false });
+  const uiState = createDefaultUiState();
   const container = makePanelContainer();
+  const submitted = [];
 
-  renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
+  renderEstatesPanel(container, state, 2, { submitEstatePlan: (payload) => submitted.push(payload) }, { uiState });
 
-  assert.match(container.innerHTML, /Buy Land/);
-  assert.match(container.innerHTML, /data-estate-bid="OPS"/);
-  assert.match(container.innerHTML, /max="4"[^>]*step="1"[^>]*data-estate-bid="OPS"/);
-  assert.match(container.innerHTML, /0\/4 ready/);
-  assert.match(container.innerHTML, /Lock Bids/);
+  assert.match(container.innerHTML, /<h3>Estates<\/h3>/);
+  assert.match(container.innerHTML, /data-estate-add="OPS"/);
+  assert.match(container.innerHTML, /data-estate-remove="OPS"[^>]*disabled/);
+  assert.doesNotMatch(container.innerHTML, /data-estate-add="ANT"/, 'lost provinces take no estates');
+  assert.match(container.innerHTML, /class="estate-chip" style="--chip-color: [^"]+;" title="[^"]*: 2 estates"/);
+  assert.match(container.innerHTML, /0\/4 locked/);
+  assert.match(container.innerHTML, /Lock No Estates/);
+
+  assert.equal(addEstateToDraft(uiState, state, 2, 'OPS'), true);
+  assert.equal(addEstateToDraft(uiState, state, 2, 'OPS'), true);
+  assert.equal(addEstateToDraft(uiState, state, 2, 'SAM'), false, 'a third estate would cost 6 in total');
+  renderEstatesPanel(container, state, 2, { submitEstatePlan: (payload) => submitted.push(payload) }, { uiState });
+  assert.match(container.innerHTML, /estate-row planned/);
+  assert.match(container.innerHTML, /estate-chip planned[^>]*>\+2</);
+  assert.match(container.innerHTML, />Lock Estates</);
 });
 
-test('estates panel marks the active sealed bid', () => {
+test('a locked estate plan is shown read-only until the dynasty changes it', () => {
   const state = makeState();
-  state.phase = 'estates';
+  phaseEstates(state);
   state.players[2].gold = 5;
-  state.landAuctions.OPS = {
-    themeId: 'OPS',
-    round: state.round,
-    sealed: true,
-    bids: { 2: { bidderId: 2, amount: 3, round: state.round } },
-  };
+  state.estatePlans = { 2: { OPS: 1 } };
+  state.estatesReady = { 2: true };
   const container = makePanelContainer();
 
   renderEstatesPanel(container, state, 2, {}, { uiState: createDefaultUiState() });
 
-  assert.match(container.innerHTML, /estate-card selected/);
-  assert.match(container.innerHTML, /Your bid/);
-  assert.match(container.innerHTML, />Update Bid</);
+  assert.match(container.innerHTML, /Your estates are locked/);
+  assert.match(container.innerHTML, />Change Plan</);
+  assert.match(container.innerHTML, /data-estate-add="OPS"[^>]*disabled/);
 });
 
 test('province card sync ignores nested estate bid controls', () => {
@@ -595,7 +611,7 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 1 },
+    BASILEUS: 3,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
@@ -604,26 +620,24 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
       BASILEUS: { funded: 1, destination: 'frontier' },
     },
     mercenaries: { count: 2, destination: 'frontier' },
-    candidate: state.basileusId,
   };
 
   renderOrdersPanel(container, state, state.basileusId, {}, { uiState });
 
-  assert.match(container.innerHTML, /Send Armies/);
-  assert.match(container.innerHTML, /Funding/);
-  assert.match(container.innerHTML, /Mercs/);
-  assert.match(container.innerHTML, /Funding starts in the middle/);
-  assert.match(container.innerHTML, /Capital troops/);
-  assert.match(container.innerHTML, /through ranking/);
-  assert.match(container.innerHTML, /Passive support/);
-  assert.match(container.innerHTML, /Rank claimants for the throne/);
-  assert.match(container.innerHTML, /data-candidate-rank-list role="list"/);
-  assert.match(container.innerHTML, /candidate-drag-handle/);
-  assert.match(container.innerHTML, /Use arrow keys to move this claimant/);
-  assert.match(container.innerHTML, /data-candidate-support=/);
-  assert.doesNotMatch(container.innerHTML, /candidate-rank-row self locked/);
-  assert.match(container.innerHTML, /capital locked/);
+  assert.match(container.innerHTML, /<h3>Deployment<\/h3>/);
+  assert.match(container.innerHTML, /Fielded: 1 of 3/);
   assert.match(container.innerHTML, /Mercenaries/);
+  assert.match(container.innerHTML, /Send each army to the Frontier/);
+  assert.match(container.innerHTML, /deployment-preview-label">Constantinople/);
+  assert.match(container.innerHTML, /deployment-preview-label">Dismissed/);
+  assert.match(container.innerHTML, /Coup: who do you back for the throne\?/);
+  // A new draft backs the dynasty itself first.
+  assert.match(container.innerHTML, /data-coup-choice="0" data-coup-candidate="0" aria-pressed="true"/);
+  assert.match(container.innerHTML, /data-coup-choice="1" data-coup-candidate="1" aria-pressed="false"/);
+  assert.match(container.innerHTML, /Theodosian Walls/);
+  assert.match(container.innerHTML, /Patriarch&#39;s influence/);
+  assert.match(container.innerHTML, /follows the choices of the Patriarch/);
+  assert.doesNotMatch(container.innerHTML, /ranking|Capital|Mercs|Funding/);
   assert.match(container.innerHTML, /Lock Deployment/);
 });
 
@@ -632,7 +646,7 @@ test('fresh deployment panel defaults funding and requires only a destination', 
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 2,
   };
   const container = makePanelContainer();
 
@@ -640,7 +654,7 @@ test('fresh deployment panel defaults funding and requires only a destination', 
 
   assert.match(container.innerHTML, /army-card unresolved/);
   assert.match(container.innerHTML, /data-funded-readout="BASILEUS"[^>]*>1</);
-  assert.match(container.innerHTML, /Funding: 1\/2 funded/);
+  assert.match(container.innerHTML, /Fielded: 1 of 2/);
   assert.doesNotMatch(container.innerHTML, /Move slider/);
   assert.doesNotMatch(container.innerHTML, /class="candidate-row selected/);
   assert.match(container.innerHTML, /Finish Deployment/);
@@ -652,7 +666,7 @@ test('deployment panel can lock after destination without touching funding slide
   state.phase = 'deployment';
   state.players[state.basileusId].gold = 0;
   state.currentTroops = {
-    BASILEUS: { normal: 3, capitalLocked: 0 },
+    BASILEUS: 3,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
@@ -661,7 +675,6 @@ test('deployment panel can lock after destination without touching funding slide
       BASILEUS: { destination: 'capital' },
     },
     mercenaries: { count: 0, destination: null },
-    candidate: state.basileusId,
   };
 
   renderOrdersPanel(container, state, state.basileusId, {}, { uiState });
@@ -671,29 +684,46 @@ test('deployment panel can lock after destination without touching funding slide
   assert.match(container.innerHTML, /btn-primary btn-commit" data-action="lock-orders" >Lock Deployment/);
 });
 
-test('deployment ranking can withhold support from the first dynasty', () => {
+test("the Patriarch sees their influence follow their coup choices", () => {
   const state = makeState();
   state.phase = 'deployment';
-  state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    DOM_EAST: 2,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
-  uiState.drafts[`deployment:${state.round}:${state.basileusId}`] = {
+  uiState.drafts[`deployment:${state.round}:1`] = {
     armies: {
-      BASILEUS: { funded: 1, destination: 'capital' },
+      DOM_EAST: { funded: 2, destination: 'capital' },
     },
     mercenaries: { count: 0, destination: null },
-    ranking: [0, 1, 2, 3],
-    candidateSupport: { 0: false },
+    coupChoices: [2, 1],
   };
 
-  renderOrdersPanel(container, state, state.basileusId, {}, { uiState });
+  renderOrdersPanel(container, state, 1, {}, { uiState });
 
-  assert.match(container.innerHTML, /support-off[\s\S]*data-candidate-rank="0"/);
-  assert.match(container.innerHTML, /data-candidate-support="0"[^>]*aria-pressed="false"/);
-  assert.doesNotMatch(container.innerHTML, /data-candidate-support="0"[^>]*disabled/);
+  const influence = BALANCE.PATRIARCH_INFLUENCE;
+  const name = playerDisplayLabel(state.players[2]);
+  assert.match(container.innerHTML, /follows your choices/);
+  assert.match(container.innerHTML, /data-coup-choice="0" data-coup-candidate="2" aria-pressed="true"/);
+  assert.match(container.innerHTML, /data-coup-choice="1" data-coup-candidate="1" aria-pressed="true"/);
+  assert.equal(
+    container.innerHTML.includes(`You back ${name} with ${formatHalves(2 + influence)} and yourself with ${formatHalves((2 + influence) / 2)}.`),
+    true,
+  );
+});
+
+test('coup choices: first and second are set, swapped and cleared like two radio columns', () => {
+  const state = makeState();
+  const draft = { coupChoices: [0] };
+  const steps = [[2, 1, [0, 2]], [3, 0, [3, 2]], [2, 0, [2, 3]], [3, 1, [2]], [2, 0, []], [1, 1, [1]]];
+  for (const [candidateId, index, expected] of steps) {
+    toggleCoupChoice(state, draft, candidateId, index);
+    assert.deepEqual(draft.coupChoices, expected, `${candidateId} as choice ${index + 1}`);
+  }
+  const locked = { coupChoices: [0, 2] };
+  assert.equal(toggleCoupChoice(state, locked, 2, 1, 2), false);
+  assert.deepEqual(locked.coupChoices, [0, 2]);
 });
 
 test('deployment panel bundles strategos commands and does not require idle mercenary destination', () => {
@@ -702,8 +732,8 @@ test('deployment panel bundles strategos commands and does not require idle merc
   state.themes.OPS.strategos = 1;
   state.themes.KAP.strategos = 1;
   state.currentTroops = {
-    STRAT_OPS: { normal: 1, capitalLocked: 0 },
-    STRAT_KAP: { normal: 2, capitalLocked: 0 },
+    STRAT_OPS: 1,
+    STRAT_KAP: 2,
   };
   const container = makePanelContainer();
   const uiState = createDefaultUiState();
@@ -712,7 +742,6 @@ test('deployment panel bundles strategos commands and does not require idle merc
       [STRATEGOS_DEPLOYMENT_ARMY_KEY]: { funded: 3, destination: 'capital' },
     },
     mercenaries: { count: 0, destination: null },
-    candidate: 1,
   };
 
   renderOrdersPanel(container, state, 1, {}, { uiState });
@@ -731,7 +760,7 @@ test('deployment panel surfaces deal-forced coup support before lock-in', () => 
   state.round = 1;
   state.players[state.basileusId].gold = 1;
   state.currentTroops = {
-    BASILEUS: { normal: 2, capitalLocked: 0 },
+    BASILEUS: 2,
   };
   state.activeDealObligations = [{
     id: 'deal-obligation-test',
@@ -754,11 +783,10 @@ test('deployment panel surfaces deal-forced coup support before lock-in', () => 
   });
 
   assert.match(container.innerHTML, /Deal commitments/);
-  assert.match(container.innerHTML, /Coup rank:/);
+  assert.match(container.innerHTML, /Coup choice:/);
   assert.match(container.innerHTML, /Deal lock/);
-  assert.match(container.innerHTML, /must deploy to Capital/);
-  assert.match(container.innerHTML, /candidate-rank-row deal-locked/);
-  assert.match(container.innerHTML, /data-candidate-rank="2"[\s\S]*draggable="false"/);
+  assert.match(container.innerHTML, /must deploy to Constantinople/);
+  assert.match(container.innerHTML, /data-coup-choice="1" data-coup-candidate="2" aria-pressed="true"[^>]*disabled/);
 });
 
 test('war resolution shows frontier contributor details', () => {
@@ -784,16 +812,53 @@ test('war resolution shows frontier contributor details', () => {
   assert.doesNotMatch(container.innerHTML, /No frontier troops were committed/);
 });
 
-test('coup resolution shows supporters and zero-capital claimant picks', () => {
+test('war resolution lists the strength spent on each province and what was left', () => {
+  const state = makeState();
+  state.phase = 'resolution';
+  for (const theme of Object.values(state.themes)) theme.lost = false;
+  state.lastWarResult = resolveInvasion(state, 2, 7, { route: ['THS', 'STR', 'MAK', 'THR', 'CPL'] });
+  state.lastWarResult.contributions = [];
+  const container = makePanelContainer();
+
+  renderResolutionPanel(container, state);
+
+  assert.match(container.innerHTML, /The invader won by 5/);
+  assert.match(container.innerHTML, /war-ledger-step taken[\s\S]*costs 1[\s\S]*war-ledger-step taken[\s\S]*costs 2[\s\S]*war-ledger-step held[\s\S]*costs 3/);
+  assert.match(container.innerHTML, /The invader spent 3 and had 2 left over\./);
+});
+
+test('estates and deployment show the invasion ladder', () => {
+  const state = makeState();
+  for (const theme of Object.values(state.themes)) theme.lost = false;
+  state.themes.STR.lost = true;
+  state.currentInvasion = { id: 'bulgars', name: 'Bulgars', route: ['THS', 'STR', 'MAK', 'CPL'], strength: [4, 6] };
+  state.phase = 'deployment';
+  state.currentTroops = { BASILEUS: 2 };
+  const container = makePanelContainer();
+
+  renderOrdersPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
+
+  assert.match(container.innerHTML, /data-invasion-card/);
+  assert.match(container.innerHTML, /Strength[\s\S]*4–6/);
+  assert.match(container.innerHTML, /data-ladder-step="THS"[\s\S]*\+1<\/span>[\s\S]*data-ladder-step="STR"[\s\S]*already lost[\s\S]*data-ladder-step="MAK"[\s\S]*\+3<\/span>[\s\S]*data-ladder-step="CPL"[\s\S]*\+6<\/span>/);
+  assert.match(container.innerHTML, /retakes a lost province/);
+});
+
+test('coup resolution shows each claimant\'s support by source', () => {
   const state = makeState();
   state.phase = 'resolution';
   state.lastCoupResult = {
     winner: 2,
-    votes: { 2: 3, 3: 0 },
-    contributions: [{ playerId: 0, candidateId: 2, troops: 3 }],
+    votes: { 0: 4, 2: 5.5 },
+    contributions: [
+      { playerId: 0, candidateId: 2, troops: 3, votes: 3, choice: 1, weight: 1, source: 'troops' },
+      { playerId: 1, candidateId: 2, troops: 2.5, votes: 2.5, choice: 2, weight: 0.5, source: 'patriarch', passive: true, supportLabel: "Patriarch's influence" },
+      { playerId: 0, candidateId: 0, troops: 5, votes: 5, choice: 0, weight: 1, source: 'walls', passive: true, supportLabel: 'Theodosian Walls' },
+      { playerId: 0, candidateId: 0, troops: -1, votes: -1, choice: 0, weight: 1, source: 'unrest', passive: true, supportLabel: 'Unrest' },
+    ],
     ballots: [
-      { playerId: 0, candidateId: 2, troops: 3 },
-      { playerId: 1, candidateId: 3, troops: 0 },
+      { playerId: 0, candidateId: 2, coupChoices: [2], troops: 3 },
+      { playerId: 3, candidateId: 3, coupChoices: [3], troops: 0 },
     ],
   };
   const container = makePanelContainer();
@@ -802,7 +867,12 @@ test('coup resolution shows supporters and zero-capital claimant picks', () => {
 
   assert.match(container.innerHTML, /Coup/);
   assert.match(container.innerHTML, /vote-supporters/);
-  assert.match(container.innerHTML, /No capital troops from/);
+  assert.match(container.innerHTML, /troops <span class="vote-choice">\(1st\)/);
+  assert.match(container.innerHTML, /Patriarch&#39;s influence of[\s\S]*\(2nd, half\)/);
+  assert.match(container.innerHTML, /Theodosian Walls/);
+  assert.match(container.innerHTML, /Unrest/);
+  assert.match(container.innerHTML, /5½/);
+  assert.match(container.innerHTML, /No troops in Constantinople from/);
 });
 
 test('deployment reveal is collapsed under the coup breakdown', () => {
@@ -822,7 +892,7 @@ test('deployment reveal is collapsed under the coup breakdown', () => {
     details: {
       capitalTroops: 3,
       frontierTroops: 0,
-      passiveCapitalSupport: 0,
+      coupChoices: [2, 0],
       mercenaries: { count: 0, destination: null },
       offices: [{ officeKey: 'BASILEUS', totalTroops: 3, fundedTroops: 3, unfundedTroops: 0, capitalTroops: 3, frontierTroops: 0, destination: 'capital' }],
     },
@@ -833,6 +903,8 @@ test('deployment reveal is collapsed under the coup breakdown', () => {
 
   assert.match(container.innerHTML, /<details class="deployment-reveal-details">/);
   assert.equal(container.innerHTML.indexOf('Coup') < container.innerHTML.indexOf('Deployment Details'), true);
+  assert.match(container.innerHTML, /Coup 1st[\s\S]*2nd/);
+  assert.match(container.innerHTML, /Fielded/);
 });
 
 test('empire fall still shows the resolution result before final reckoning', () => {
@@ -869,12 +941,12 @@ test('empire fall still shows the resolution result before final reckoning', () 
   });
 
   const shell = body.children[0];
-  assert.match(panel.innerHTML, /sidebar-panel-title">Resolve Turn/);
-  assert.match(shell.innerHTML, /<h3>Resolve Turn<\/h3>/);
+  assert.match(panel.innerHTML, /sidebar-panel-title">Resolution/);
+  assert.match(shell.innerHTML, /<h3>Resolution<\/h3>/);
   assert.match(shell.innerHTML, /Empire Fallen/);
   assert.match(shell.innerHTML, /Empire falls/);
   assert.doesNotMatch(shell.innerHTML, /Final Reckoning/);
-  assert.equal(shell.continueButton.textContent, 'Final Score');
+  assert.equal(shell.continueButton.textContent, 'Balance of Power');
 });
 
 test('default interface opens the action lane and keeps support panels collapsed', () => {
@@ -957,7 +1029,7 @@ test('notification panel labels deployment actions with updated vocabulary', () 
   renderNotificationsPanel(panel, state, privateData, uiState, 'seat-0');
 
   assert.match(panel.innerHTML, /Private Inbox/);
-  assert.match(panel.innerHTML, /Send Armies/);
+  assert.match(panel.innerHTML, />Deployment</);
   assert.match(panel.innerHTML, /tone-neutral/);
   assert.match(panel.innerHTML, /tone-negative/);
   assert.match(panel.innerHTML, /tone-positive/);
@@ -1019,7 +1091,7 @@ test('final scoring view uses income-share scoring categories', () => {
 
   const html = renderScoringHtml(state);
 
-  assert.match(html, /Final Score/);
+  assert.match(html, /Balance of Power/);
   assert.match(html, /Highest point total wins/);
   assert.match(html, /Each 10% share/);
   assert.match(html, /Profit income/);
@@ -1039,7 +1111,7 @@ test('fallen empire final scoring makes the collective loss explicit', () => {
 
   const html = renderScoringHtml(state);
 
-  assert.match(html, /Final Score/);
+  assert.match(html, /Balance of Power/);
   assert.match(html, /Empire Fallen/);
   assert.match(html, /Everyone lost/);
   assert.match(html, /strongest position/);

@@ -17,7 +17,7 @@
 
 .province-shape.imperial { stroke: none; }
 .province-shape:hover, .province-shape.hovered { filter: brightness(1.04) saturate(0.95); }
-.province-shape.occupied {
+.province-shape.lost {
   fill: var(--province-lost-fill-color, rgba(230,218,190,0.30));
   fill-opacity: 1;
 }
@@ -53,6 +53,10 @@
     drop-shadow(0 0 1.2px rgba(250,230,160,0.82))
     drop-shadow(0 0 2.4px rgba(250,230,160,0.46));
 }
+.province-shape.map-filter-disabled {
+  filter: none;
+  stroke-dasharray: 3 2;
+}
 .province-shape.map-filter-neutral {
   fill: var(--map-filter-neutral-fill, #ffffff);
   filter: none;
@@ -70,7 +74,7 @@
 .province-shape.imperial:hover,
 .province-shape:hover,
 .province-shape.hovered,
-.province-shape.occupied,
+.province-shape.lost,
 .province-shape.church,
 .province-shape.owned,
 .province-shape.capital,
@@ -88,7 +92,7 @@
   pointer-events: none;
   transition: stroke-width 0.18s, stroke-opacity 0.18s, stroke 0.18s;
 }
-.region-stroke.occupied {
+.region-stroke.lost {
   stroke: var(--province-lost-map-outline-color, var(--province-lost-outline-color, var(--province-outline-color, var(--region-border, var(--empire-border)))));
   stroke-opacity: 0.78;
 }
@@ -109,6 +113,15 @@
 .region-stroke.map-filter-neutral {
   stroke-width: 1.55;
   stroke-opacity: 0.38;
+}
+.region-stroke.map-filter-route {
+  stroke-width: 3.4;
+  stroke-opacity: 1;
+}
+.region-stroke.map-filter-lost {
+  stroke-width: 2;
+  stroke-opacity: 0.7;
+  stroke-dasharray: 3 2;
 }
 .region-stroke.hovered  { stroke-width: 3.1; stroke-opacity: 1; }
 .region-stroke.selected,
@@ -143,7 +156,7 @@
   cursor: pointer;
   pointer-events: auto;
 }
-.map-cartouche.occupied {
+.map-cartouche.lost {
   --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, #eee6d2));
   --cart-border: var(--province-lost-outline-color, var(--province-outline-color, var(--empire-border)));
 }
@@ -153,7 +166,7 @@
     --cart-bg: var(--province-cartouche-fill-color, color-mix(in srgb, var(--free-fill) 72%, var(--umber-0) 28%));
   }
 
-  .map-cartouche.occupied {
+  .map-cartouche.lost {
     --cart-bg: var(--province-lost-cartouche-fill-color, var(--province-lost-fill-color, color-mix(in srgb, var(--free-fill) 14%, var(--parch-0) 86%)));
   }
 }
@@ -165,7 +178,7 @@
   stroke-width: 0.55;
   paint-order: stroke fill;
 }
-.map-cartouche.occupied .map-cart-bg { opacity: 1; }
+.map-cartouche.lost .map-cart-bg { opacity: 1; }
 
 .map-cartouche.map-filtered {
   --cart-bg: var(--province-filter-cartouche-fill-color, #ffffff);
@@ -215,21 +228,49 @@
 .map-cart-glyph-gold,
 .map-cart-glyph-troop,
 .map-cart-glyph-church { color: var(--cart-ink, #ffffff); }
-.map-cartouche.occupied .map-cart-glyph { opacity: 1; }
+.map-cartouche.lost .map-cart-glyph { opacity: 1; }
 
 .map-cart-markers { pointer-events: none; }
-.map-cart-marker {
+.map-cart-marker { pointer-events: all; }
+.map-cart-marker-shape {
   stroke: rgba(20,8,0,0.92);
   stroke-width: 0.16;
   filter: drop-shadow(0 0.08px 0 rgba(255,250,220,0.6));
 }
-.map-cart-marker.promoted {
+/* Estate count inside its circle: light digit with a dark halo, readable on any dynasty colour. */
+.map-cart-marker-count {
+  font-family: var(--font-display);
+  font-size: 1.05px;
+  font-weight: 700;
+  fill: #ffffff;
+  stroke: rgba(20,8,0,0.85);
+  stroke-width: 0.22;
+  paint-order: stroke;
+  pointer-events: none;
+}
+/* An empty Strategos seat or Bishop seat: a hollow outline. */
+.map-cart-marker.vacant .map-cart-marker-shape {
+  fill: none;
+  stroke: rgba(46,30,15,0.55);
+  stroke-dasharray: 0.3 0.18;
+  filter: none;
+}
+/* Holdings of a lost province: kept on record, drawn as switched off. */
+.map-cart-marker.disabled .map-cart-marker-shape {
+  fill-opacity: 0.32;
+  stroke-dasharray: 0.22 0.14;
+  filter: grayscale(0.7);
+}
+.map-cart-marker.disabled .map-cart-marker-count { opacity: 0.7; }
+.map-cart-marker.overflow .map-cart-marker-count { font-size: 0.8px; }
+.map-cart-marker.promoted .map-cart-marker-shape {
   stroke: rgba(250,226,150,0.98);
   stroke-width: 0.26;
   filter:
     drop-shadow(0 0 0.42px rgba(20,8,0,0.86))
     drop-shadow(0 0 0.55px rgba(250,226,150,0.78));
 }
+.game-map.map-filter-invasion .map-cart-marker,
 .game-map.map-filter-estates .map-cart-marker:not(.map-cart-marker-estate),
 .game-map.map-filter-strategoi .map-cart-marker:not(.map-cart-marker-strategos),
 .game-map.map-filter-bishops .map-cart-marker:not(.map-cart-marker-bishop) {
@@ -275,6 +316,26 @@
 .invasion-cartouche {
   pointer-events: none;
 }
+
+/* Invasion ladder tags on the route: what the invader must win by. */
+.invasion-ladder-tag-bg {
+  fill: #fffaf0;
+  stroke: var(--invasion-lost-border);
+  stroke-width: 0.35;
+}
+.invasion-ladder-tag.capital .invasion-ladder-tag-bg {
+  fill: var(--invasion-lost-border);
+}
+.invasion-ladder-tag-text {
+  font-family: var(--font-display);
+  font-size: 2.6px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: var(--invasion-lost-border);
+  pointer-events: none;
+}
+.invasion-ladder-tag.capital .invasion-ladder-tag-text { fill: #ffffff; }
 
 .invasion-cartouche-bg {
   fill: var(--invasion-lost-fill);

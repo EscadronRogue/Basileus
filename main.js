@@ -10,7 +10,13 @@ import {
 } from './ai/opponentRoster.js';
 import { getDynastyProfileForSeat } from './data/invasions.js';
 import { dynastySeatStyle, escapeHtml } from './ui/html.js';
-import { clearLocalSave, describeLocalSave, readLocalSave } from './ui/localSave.js';
+import {
+  OUTDATED_SAVE_MESSAGE,
+  clearLocalSave,
+  describeLocalSave,
+  isLocalSaveOutdated,
+  readLocalSave,
+} from './ui/localSave.js';
 import { renderGlossaryHtml, renderRulesHtml } from './ui/rules.js';
 import { installGlossary } from './ui/glossaryTooltips.js';
 import { TutorialGuide } from './ui/tutorial/tutorial.js';
@@ -597,7 +603,9 @@ function renderResumeCard() {
     formatSavedAgo(info.savedAt) ? `saved ${formatSavedAgo(info.savedAt)}` : '',
   ].filter(Boolean);
   resumeGameSummary.textContent = parts.join(' · ');
-  resumeGameError.textContent = '';
+  const outdated = isLocalSaveOutdated(save);
+  btnResumeGame.hidden = outdated;
+  resumeGameError.textContent = outdated ? OUTDATED_SAVE_MESSAGE : '';
 }
 
 btnResumeGame.addEventListener('click', async () => {

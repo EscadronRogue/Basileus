@@ -5,7 +5,9 @@ import {
   buildProvinceEstateAttributions,
   buildProvinceTroopAttributions,
 } from '../../engine/cascade.js';
+import { buildInvasionLadder } from '../../engine/combat.js';
 import { getThreatenedThemeIds } from '../../engine/rules.js';
+import { getProvinceEstateTotal } from '../../engine/estates.js';
 import { applyLabelScale, updateMapCartoucheMarkers, updateMapCartoucheValues } from './cartouches.js';
 import { applyProvinceInteractionState } from './interaction.js';
 import { FILTER_VISUAL_PROPS, MAP_FILTERS, mapRuntime } from './state.js';
@@ -66,7 +68,7 @@ export function updateMapState(state, mapFilter = mapRuntime.activeMapFilter) {
   }
 
   updateThreatOverlay(state);
-  updateBadges(state);
+  updateBadges();
   applyLabelScale();
   applyProvinceInteractionState();
 }
@@ -79,17 +81,67 @@ function applyMapFilterClass(svg, filterId) {
 }
 
 function buildMapFilterAttributions(state, filterId) {
+  if (filterId === MAP_FILTERS.INVASION) return buildInvasionFilterAttributions(state);
   if (filterId === MAP_FILTERS.ESTATES) return buildProvinceEstateAttributions(state);
   if (filterId === MAP_FILTERS.STRATEGOI) return buildProvinceTroopAttributions(state);
   if (filterId === MAP_FILTERS.BISHOPS) return buildProvinceChurchAttributions(state);
   return {};
 }
 
+// Invasion filter: provinces on the route in red, the deepest red for the
+// first ones the invader would take; lost provinces in grey.
+function buildInvasionFilterAttributions(state) {
+  const attributions = {};
+  for (const theme of Object.values(state.themes || {})) {
+    if (theme.lost) attributions[theme.id] = { invasion: 'lost' };
+  }
+  const steps = buildInvasionLadder(state, state.currentInvasion?.route || []).filter((step) => step.status !== 'lost');
+  steps.forEach((step, index) => {
+    attributions[step.themeId] = { invasion: 'route', order: index, count: steps.length };
+  });
+  return attributions;
+}
+
+function resolveInvasionFilterStyle(attribution) {
+  if (attribution?.invasion === 'lost') {
+    return {
+      classes: ['map-filtered', 'map-filter-lost'],
+      fill: '#8d8478',
+      outline: 'rgba(46,30,15,0.5)',
+      cartFill: '#6f675c',
+      cartOutline: 'rgba(46,30,15,0.6)',
+      cartInk: '#ffffff',
+    };
+  }
+  if (attribution?.invasion === 'route') {
+    const share = attribution.count > 1 ? attribution.order / (attribution.count - 1) : 0;
+    const strength = Math.round(85 - share * 50);
+    const color = `color-mix(in srgb, #a03030 ${strength}%, #fff4e8 ${100 - strength}%)`;
+    return {
+      classes: ['map-filtered', 'map-filter-route'],
+      fill: color,
+      outline: '#a03030',
+      cartFill: color,
+      cartOutline: '#a03030',
+      cartInk: strength > 55 ? '#ffffff' : 'var(--umber-1)',
+    };
+  }
+  return {
+    classes: ['map-filtered', 'map-filter-neutral'],
+    fill: '#ffffff',
+    outline: 'rgba(46,30,15,0.22)',
+    cartFill: '#ffffff',
+    cartOutline: 'rgba(46,30,15,0.30)',
+    cartInk: 'var(--umber-1)',
+  };
+}
+
 function resolveProvinceFilterStyle(state, theme, attribution) {
   if (mapRuntime.activeMapFilter === MAP_FILTERS.REGIONS) return null;
+  if (mapRuntime.activeMapFilter === MAP_FILTERS.INVASION) return resolveInvasionFilterStyle(attribution);
   if (!theme || theme.id === 'CPL' || !attribution || attribution.playerId == null) {
     return {
-      classes: ['map-filtered', 'map-filter-neutral'],
+      classes: ['map-filtered', 'map-filter-neutral', attribution?.tied ? 'map-filter-tied' : ''].filter(Boolean),
       fill: '#ffffff',
       outline: 'rgba(46,30,15,0.22)',
       cartFill: '#ffffff',
@@ -111,9 +163,20 @@ function resolveProvinceFilterStyle(state, theme, attribution) {
   }
 
   const color = player.color || '#5a3810';
-  const direct = Boolean(attribution.direct);
+  // A lost province keeps its holder on record: shown in a faded colour.
+  if (attribution.disabled) {
+    const faded = `color-mix(in srgb, ${color} 38%, #d8cfbf 62%)`;
+    return {
+      classes: ['map-filtered', 'map-filter-disabled'],
+      fill: faded,
+      outline: color,
+      cartFill: faded,
+      cartOutline: color,
+      cartInk: 'var(--umber-1)',
+    };
+  }
   return {
-    classes: ['map-filtered', direct ? 'map-filter-direct' : 'map-filter-indirect'],
+    classes: ['map-filtered', 'map-filter-direct'],
     fill: color,
     outline: color,
     cartFill: color,
@@ -137,22 +200,12 @@ function applyProvinceFilterStyle(element, filterStyle) {
 // both the province shape and the map cartouche (and shared with the HTML
 // .province-token via data/style conventions).
 export function resolveProvinceOwnership(provinceId, theme) {
-  const withChurchMarker = (classes) => (
-    (Number(theme.C) || 0) > 0 ? [...classes, 'has-church'] : classes
-  );
-  if (theme.occupied) {
-    return { classes: withChurchMarker(['occupied']) };
-  }
-  if (theme.owner === 'church') {
-    return { classes: withChurchMarker(['imperial', 'church']) };
-  }
-  if (theme.owner !== null) {
-    return { classes: withChurchMarker(['imperial', 'owned']) };
-  }
-  if (provinceId === 'CPL') {
-    return { classes: withChurchMarker(['imperial', 'capital']) };
-  }
-  return { classes: withChurchMarker(['imperial', 'free']) };
+  const classes = [];
+  if (theme.lost) classes.push('lost');
+  else classes.push('imperial', provinceId === 'CPL' ? 'capital' : 'province');
+  if ((Number(theme.C) || 0) > 0) classes.push('has-church');
+  if (getProvinceEstateTotal(theme) > 0) classes.push('has-estates');
+  return { classes };
 }
 
 function updateThreatOverlay(state) {
@@ -160,33 +213,11 @@ function updateThreatOverlay(state) {
   document.querySelectorAll('.province-threat-overlay').forEach((path) => {
     const provinceId = path.getAttribute('data-id');
     const theme = provinceId ? state.themes[provinceId] : null;
-    const active = provinceId && threatenedIds.has(provinceId) && theme && !theme.occupied;
+    const active = provinceId && threatenedIds.has(provinceId) && theme && !theme.lost;
     path.classList.toggle('active', Boolean(active));
   });
 }
 
-function updateBadges(state) {
-  const layer = document.getElementById('layer-badges');
-  if (!layer) return;
-
-  layer.replaceChildren();
-
-  for (const [provinceId, theme] of Object.entries(state.themes)) {
-    const centroid = mapRuntime.provinceCentroids[provinceId];
-    if (!centroid) continue;
-
-    if (theme.occupied && theme.suspendedOwner !== null) {
-      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      const x = centroid.cx;
-      const y = centroid.cy - 3.2;
-      badge.setAttribute('d', `M ${x.toFixed(2)} ${y.toFixed(2)} L ${(x + 1.0).toFixed(2)} ${(y + 1.5).toFixed(2)} L ${(x - 1.0).toFixed(2)} ${(y + 1.5).toFixed(2)} Z`);
-      badge.setAttribute('class', 'officer-badge suspended-owner-chevron');
-      const player = state.players.find((candidate) => candidate.id === theme.suspendedOwner);
-      if (player) badge.style.fill = player.color;
-      badge.style.stroke = '#000';
-      badge.style.strokeWidth = '0.15';
-      layer.appendChild(badge);
-    }
-
-  }
+function updateBadges() {
+  document.getElementById('layer-badges')?.replaceChildren();
 }

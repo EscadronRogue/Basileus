@@ -7,12 +7,9 @@
 
 import {
   advanceToNextInteractivePhase,
-  applyDefenderRewardChoice,
   allOrdersSubmitted,
   completeCourtPhase,
   confirmTitleRedistribution,
-  getPendingDefenderRewards,
-  hasPendingDefenderRewards,
   isCourtComplete,
   phaseCleanup,
   phaseDeployment,
@@ -33,7 +30,6 @@ import { evaluateDealOfferForAi } from '../ai/deals.js';
 import {
   applyPlannedAiTitleAssignment,
   buildSimultaneousAIOrders,
-  chooseAIDefenderRewardChoice,
   invalidateRoundContext,
   isAIPlayer,
   observeCourtAction,
@@ -58,31 +54,6 @@ function writePending(context, result) {
     ensureRuntimeContext(context).pendingAiTitleAssignment = result.pendingAiTitleAssignment;
   }
   return result;
-}
-
-function recordDefenderRewardsForAiMeta(meta, rewards = []) {
-  if (!meta || !Array.isArray(rewards)) return;
-  if (!meta.totals) meta.totals = {};
-  if (!Number.isFinite(meta.totals.defenderRewards)) meta.totals.defenderRewards = 0;
-  if (!Number.isFinite(meta.totals.defenderGoldChoices)) meta.totals.defenderGoldChoices = 0;
-  if (!Number.isFinite(meta.totals.defenderRestoreChoices)) meta.totals.defenderRestoreChoices = 0;
-  if (!Number.isFinite(meta.totals.defenderRewardGold)) meta.totals.defenderRewardGold = 0;
-  for (const reward of rewards) {
-    const playerMeta = meta.players?.[reward.defenderId];
-    if (!playerMeta) continue;
-    if (!playerMeta.stats) playerMeta.stats = {};
-    playerMeta.stats.defenderRewards = (Number(playerMeta.stats.defenderRewards) || 0) + 1;
-    meta.totals.defenderRewards += 1;
-    if (reward.choice === 'gold') {
-      playerMeta.stats.defenderGoldChoices = (Number(playerMeta.stats.defenderGoldChoices) || 0) + 1;
-      playerMeta.stats.defenderRewardGold = (Number(playerMeta.stats.defenderRewardGold) || 0) + (Number(reward.gold) || 0);
-      meta.totals.defenderGoldChoices += 1;
-      meta.totals.defenderRewardGold += Number(reward.gold) || 0;
-    } else if (reward.choice === 'empire') {
-      playerMeta.stats.defenderRestoreChoices = (Number(playerMeta.stats.defenderRestoreChoices) || 0) + 1;
-      meta.totals.defenderRestoreChoices += 1;
-    }
-  }
 }
 
 function hasAIPlayers(state, meta) {
@@ -134,26 +105,6 @@ function autoResolveUnavailableHumanCourtPlayers(state, aiMeta = null) {
     changed = autoConfirmFinishedCourtPlayer(state, playerId) || changed;
   }
   return changed;
-}
-
-function autoResolveAiDefenderRewards(state, meta) {
-  if (!state || !meta) return [];
-  const resolved = [];
-  let safety = 0;
-  while (safety < 20) {
-    safety += 1;
-    const reward = getPendingDefenderRewards(state).find((entry) => isAIPlayer(meta, entry.defenderId));
-    if (!reward) break;
-    const choice = chooseAIDefenderRewardChoice(state, meta, reward);
-    let result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, choice);
-    if (!result.ok && choice !== 'empire') {
-      result = applyDefenderRewardChoice(state, reward.id, reward.defenderId, 'empire');
-    }
-    if (!result.ok) break;
-    resolved.push(result.reward);
-  }
-  recordDefenderRewardsForAiMeta(meta, resolved);
-  return resolved;
 }
 
 export function autoResolveUnavailableHumanAppointments(state, playerId, aiMeta = null, context = null) {
@@ -317,11 +268,6 @@ export function continueAfterResolution(state, aiMeta, pendingAiTitleAssignment 
     return { ok: false, reason: 'Continue is only available during resolution.', pendingAiTitleAssignment };
   }
 
-  autoResolveAiDefenderRewards(state, aiMeta);
-  if (hasPendingDefenderRewards(state)) {
-    return { ok: false, reason: 'Resolve all best-defender rewards before continuing.', pendingAiTitleAssignment };
-  }
-
   phaseCleanup(state);
   advanceToNextInteractivePhase(state);
   if (aiMeta) invalidateRoundContext(aiMeta);
@@ -457,15 +403,6 @@ export function handleManualTitleReassignment(state, aiMeta, context = {}, playe
     }));
   }
   return { ok: true, pendingAiTitleAssignment: null };
-}
-
-export function handleDefenderRewardChoice(state, aiMeta, context = {}, playerId, rewardId, choice) {
-  ensureRuntimeContext(context);
-  if (!state || state.phase !== 'resolution') return fail('Defender rewards are only available during resolution.');
-  const result = applyDefenderRewardChoice(state, String(rewardId || ''), playerId, choice);
-  if (!result.ok) return result;
-  recordDefenderRewardsForAiMeta(aiMeta, [result.reward]);
-  return { ok: true, pendingAiTitleAssignment: context.pendingAiTitleAssignment };
 }
 
 export function resolvePendingTitleReassignment(state, aiMeta, context = {}, assignments = null) {

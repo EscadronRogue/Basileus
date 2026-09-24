@@ -56,7 +56,7 @@ test('multiplayer room follows court, estates, deployment, resolution flow', asy
   for (const player of room.gameState.players) send(room, player.id, { type: 'confirm_court' });
   assert.equal(room.gameState.phase, 'estates');
 
-  send(room, 1, { type: 'estate_action', action: 'buy', themeId: 'OPS', amount: 2 });
+  send(room, 1, { type: 'estate_action', action: 'plan', plan: { OPS: 1 } });
   send(room, 1, { type: 'confirm_estates' });
   assert.equal(room.gameState.phase, 'estates');
   assert.equal(room.gameState.estatesReady[1], true);
@@ -64,7 +64,7 @@ test('multiplayer room follows court, estates, deployment, resolution flow', asy
     if (player.id !== 1) send(room, player.id, { type: 'confirm_estates' });
   }
   assert.equal(room.gameState.phase, 'deployment');
-  assert.equal(room.gameState.themes.OPS.owner, 1);
+  assert.equal(room.gameState.themes.OPS.estates[1].count, 1);
 
   for (const player of room.gameState.players) {
     send(room, player.id, { type: 'submit_orders', orders: capitalOrders(room.gameState, player.id) });
@@ -94,8 +94,8 @@ test('new multiplayer AI seats default to a tuned opponent', () => {
     firstName: 'Tuned Room',
     label: 'Tuned Room',
     source: 'tuned',
-    policy: { policyId: 'tuned', strategyWeights: { estateProfit: 4, estateBidCost: 0.35 } },
-    strategyWeights: { estateProfit: 4, estateBidCost: 0.35 },
+    policy: { policyId: 'tuned', strategyWeights: { estateProfit: 4, estatePriceWeight: 0.35 } },
+    strategyWeights: { estateProfit: 4, estatePriceWeight: 0.35 },
   };
   const room = createRoom({
     existingRoomCodes: new Set(),
@@ -147,12 +147,12 @@ test('multiplayer auto-confirms a human court seat after its last option disappe
   for (const player of state.players) player.majorTitles = [];
   state.players[1].majorTitles = ['DOM_EAST'];
   for (const theme of Object.values(state.themes)) {
-    if (theme.region === 'east' && theme.id !== eastTheme.id) theme.occupied = true;
+    if (theme.region === 'east' && theme.id !== eastTheme.id) theme.lost = true;
     theme.owner = null;
     theme.strategos = null;
     theme.bishop = null;
   }
-  eastTheme.occupied = false;
+  eastTheme.lost = false;
   eastTheme.strategos = 2;
 
   send(room, 1, { type: 'court_action', action: 'revoke', value: `minor:${eastTheme.id}:strategos` });

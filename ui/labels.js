@@ -12,12 +12,13 @@
 
 import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyle } from '../engine/state.js';
+import { getLeadingEstateHolder, getProvinceEstateHolders } from '../engine/estates.js';
 import { renderIcon, provinceValueEntries } from './icons.js';
 import { escapeHtml } from './html.js';
 
 const FREE_FILL = '#6a4a8a';
 const CAPITAL_FILL = '#E49B0F';
-const OCCUPIED_FILL = '#625c52';
+const LOST_FILL = '#625c52';
 const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
 const DARK_OUTLINE_MIX = '#1f1208';
 const CARTOUCHE_FILL_BY_REGION = {
@@ -121,10 +122,12 @@ export function getProvincePaletteStyleAttr(themeOrRegion) {
 
 // ── Province color resolution ─────────────────────────────────────────
 
+// Colour of the dynasty with the most estates in the province, if any.
 export function getProvinceOwnerColor(state, theme) {
   if (!theme) return FREE_FILL;
-  if (theme.occupied) return OCCUPIED_FILL;
-  if (Number.isInteger(theme.owner)) return getPlayer(state, theme.owner)?.color || '#5a3810';
+  if (theme.lost) return LOST_FILL;
+  const leader = getLeadingEstateHolder(theme);
+  if (Number.isInteger(leader)) return getPlayer(state, leader)?.color || '#5a3810';
   if (theme.id === 'CPL') return CAPITAL_FILL;
   return FREE_FILL;
 }
@@ -133,17 +136,10 @@ export function getProvinceStyleAttr(state, theme) {
   return `--province-owner-color: ${getProvinceOwnerColor(state, theme)}; ${getProvincePaletteStyleAttr(theme)}`;
 }
 
-function getProvinceOwnerLabel(state, theme) {
-  if (!theme || theme.owner == null) return '';
-  if (!Number.isInteger(theme.owner)) return '';
-  const player = getPlayer(state, theme.owner);
-  return formatPlayerLabel(player) || `Player ${Number(theme.owner) + 1}`;
-}
-
 const OWNERSHIP_KIND_META = {
   estate: {
-    label: 'Estate',
-    title: 'Private estate',
+    label: 'Estates',
+    title: 'Estates',
   },
   strategos: {
     label: 'Strategos',
@@ -166,11 +162,13 @@ export function getProvinceOwnershipEntries(state, themeOrId) {
   const entries = [];
   const palette = getProvinceRegionPalette(theme);
 
-  if (Number.isInteger(theme.owner)) {
+  for (const holder of getProvinceEstateHolders(theme)) {
     entries.push({
       kind: 'estate',
-      holderId: theme.owner,
-      color: getPlayer(state, theme.owner)?.color || '#5a3810',
+      holderId: holder.playerId,
+      count: holder.count,
+      disabled: Boolean(theme.lost),
+      color: getPlayer(state, holder.playerId)?.color || '#5a3810',
       accent: palette.outline,
     });
   }
@@ -178,6 +176,7 @@ export function getProvinceOwnershipEntries(state, themeOrId) {
     entries.push({
       kind: 'strategos',
       holderId: theme.strategos,
+      disabled: Boolean(theme.lost),
       color: getPlayer(state, theme.strategos)?.color || '#5a3810',
       accent: palette.outline,
     });
@@ -198,12 +197,15 @@ export function renderOwnershipBadge(state, entry, options = {}) {
   if (!entry || !OWNERSHIP_KIND_META[entry.kind]) return '';
   const meta = OWNERSHIP_KIND_META[entry.kind];
   const holder = getOwnershipHolderLabel(state, entry.holderId);
-  const text = options.label || (options.hideHolder ? meta.label : `${meta.label} ${holder}`);
-  const title = options.title || `${meta.title}: ${holder}`;
+  const countText = entry.kind === 'estate' && Number(entry.count) > 0 ? ` ×${entry.count}` : '';
+  const text = options.label || (options.hideHolder ? meta.label : `${meta.label}${countText} ${holder}`);
+  const disabledNote = entry.disabled ? ' (lost province: not working until reconquered)' : '';
+  const title = options.title || `${meta.title}${countText}: ${holder}${disabledNote}`;
   const classes = [
     'ownership-badge',
     `ownership-badge-${entry.kind}`,
     options.compact ? 'compact' : '',
+    entry.disabled ? 'disabled' : '',
   ].filter(Boolean).join(' ');
   return `
     <span class="${classes}" style="--ownership-color: ${entry.color}; --ownership-accent: ${entry.accent || 'rgba(20,8,0,0.75)'};" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
@@ -314,20 +316,22 @@ export function renderProvinceBadge(state, themeOrId, options = {}) {
     variant ? `cartouche-${variant}` : '',
     ownership ? 'has-ownership' : '',
     churchValue > 0 ? 'has-church' : '',
-    theme.occupied ? 'occupied' : '',
+    theme.lost ? 'lost' : '',
   ].filter(Boolean).join(' ');
   // Keep plain-text value codes in the tooltip so screen-readers and text-only
   // summaries still convey the values.
   const valuesText = formatProvinceValuesText(theme);
+  const lostText = theme.lost ? ' · Lost to invaders: its estates and Strategos do not work until it is reconquered' : '';
   const tooltip = valuesText
-    ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}`
-    : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})`;
-  return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}"><span class="province-token-name">${escapeHtml(theme.name)}</span>${values}${ownership}</span>`;
+    ? `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id}) · ${valuesText}${lostText}`
+    : `${theme.name} — ${getRegionLabel(theme.region)} (${theme.id})${lostText}`;
+  const lostTag = theme.lost ? '<span class="province-token-lost">Lost</span>' : '';
+  return `<span class="${classes}" data-province-token="${escapeHtml(theme.id)}" style="${getProvinceStyleAttr(state, theme)}" title="${escapeHtml(tooltip)}"><span class="province-token-name">${escapeHtml(theme.name)}</span>${lostTag}${values}${ownership}</span>`;
 }
 
 function getProvinceOfficeHolderId(theme, kind, explicitHolderId = undefined) {
   if (explicitHolderId !== undefined) return explicitHolderId;
-  if (kind === 'estate') return theme.owner;
+  if (kind === 'estate') return getLeadingEstateHolder(theme);
   if (kind === 'strategos') return theme.strategos;
   if (kind === 'bishop') return theme.bishop;
   return null;
@@ -363,7 +367,7 @@ export function renderProvinceOfficeBadge(state, kind, themeOrId, options = {}) 
     holder ? '' : 'vacant-office',
     ownership ? 'has-ownership' : '',
     Math.max(0, Number(theme.C) || 0) > 0 ? 'has-church' : '',
-    theme.occupied ? 'occupied' : '',
+    theme.lost ? 'lost' : '',
   ].filter(Boolean).join(' ');
   const valuesText = formatProvinceValuesText(theme);
   const holderText = holder ? `: ${formatPlayerLabel(holder)}` : '';
@@ -381,16 +385,29 @@ export function renderProvinceOfficeBadge(state, kind, themeOrId, options = {}) 
   `;
 }
 
-export function renderProvinceOwnerMarker(state, themeOrId, options = {}) {
+// Numbered circles, one per dynasty with estates in the province (most
+// first). `planned` adds this round's not-yet-built estates of one dynasty,
+// drawn as a dashed "+n" circle.
+export function renderEstateStack(state, themeOrId, options = {}) {
   const theme = typeof themeOrId === 'string' ? state.themes[themeOrId] : themeOrId;
-  if (!theme || !Number.isInteger(theme.owner)) return options.fallback || '';
-  const ownerLabel = getProvinceOwnerLabel(state, theme);
-  const markerLabel = `Estate owner: ${ownerLabel}`;
-  const classes = [
-    'province-owner-marker',
-    options.compact ? 'compact' : '',
-  ].filter(Boolean).join(' ');
-  return `<span class="${classes}" style="--province-owner-color: ${getProvinceOwnerColor(state, theme)};" title="${escapeHtml(markerLabel)}" aria-label="${escapeHtml(markerLabel)}"></span>`;
+  if (!theme) return '';
+  const holders = getProvinceEstateHolders(theme);
+  const chips = holders.map((holder) => {
+    const player = getPlayer(state, holder.playerId);
+    const name = formatPlayerLabel(player) || `Player ${Number(holder.playerId) + 1}`;
+    const protectedNote = holder.recent > 0 ? `, ${holder.recent} built last round (cannot be revoked yet)` : '';
+    const lostNote = theme.lost ? ' (lost province: not paying until reconquered)' : '';
+    const title = `${name}: ${holder.count} estate${holder.count === 1 ? '' : 's'}${protectedNote}${lostNote}`;
+    return `<span class="estate-chip${theme.lost ? ' disabled' : ''}" style="--chip-color: ${player?.color || '#5a3810'};" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${holder.count}</span>`;
+  });
+  const planned = Math.max(0, Number(options.planned?.count) || 0);
+  if (planned > 0) {
+    const player = getPlayer(state, options.planned.playerId);
+    const title = `You plan ${planned} more estate${planned === 1 ? '' : 's'} here this round`;
+    chips.push(`<span class="estate-chip planned" style="--chip-color: ${player?.color || '#5a3810'};" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">+${planned}</span>`);
+  }
+  if (!chips.length) return options.fallback || '';
+  return `<span class="estate-stack${options.compact ? ' compact' : ''}">${chips.join('')}</span>`;
 }
 
 export function renderProvinceBadgeList(state, themeIds = []) {

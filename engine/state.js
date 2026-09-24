@@ -1,15 +1,27 @@
 // engine/state.js - game state initialization and shared lookups.
 import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 import {
-  EARLY_INVASION_GRACE_ROUNDS,
   INVASIONS,
   getDynastyProfileForSeat,
   INVASION_OBJECTIVES,
-  INVASION_ESTIMATE_INTERVAL,
   INVASION_DIFFICULTIES,
-  INVASION_STRENGTH_RATIOS,
 } from '../data/invasions.js';
+import { BALANCE } from '../data/balance.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
+
+// Bumped whenever a rule change makes older saves unplayable. A save made
+// under other rules is refused instead of loading into a broken game.
+export const RULES_VERSION = 2;
+
+export function isCurrentRulesVersion(rawState) {
+  return Number(rawState?.rulesVersion) === RULES_VERSION;
+}
+
+// Deals exist in the engine but have no screen yet, so they are off unless a
+// caller (tests, future deal screen) turns them on.
+export function isDealsEnabled(state) {
+  return Boolean(state?.features?.deals);
+}
 
 export function makeRng(seed = Date.now(), initialState = null) {
   let s = initialState == null ? seed >>> 0 : initialState >>> 0;
@@ -93,20 +105,20 @@ const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAS
 export function getEmpireProvinceStrength(state) {
   const themes = Object.values(state?.themes || {});
   const count = themes.length
-    ? themes.filter((theme) => theme?.id !== 'CPL' && !theme?.occupied).length
-    : PROVINCES.filter((province) => province.id !== 'CPL' && !province.startOccupied).length;
+    ? themes.filter((theme) => theme?.id !== 'CPL' && !theme?.lost).length
+    : PROVINCES.filter((province) => province.id !== 'CPL' && !province.startLost).length;
   return Math.max(1, count);
 }
 
 export function getInvasionDifficulty(invasion) {
   const difficulty = String(invasion?.difficulty || INVASION_DIFFICULTIES.MEDIUM).toLowerCase();
-  return Object.hasOwn(INVASION_STRENGTH_RATIOS, difficulty)
+  return Object.hasOwn(BALANCE.INVASION_STRENGTH_RATIOS, difficulty)
     ? difficulty
     : INVASION_DIFFICULTIES.MEDIUM;
 }
 
 export function getInvasionStrengthRatio(invasion) {
-  return INVASION_STRENGTH_RATIOS[getInvasionDifficulty(invasion)].slice();
+  return BALANCE.INVASION_STRENGTH_RATIOS[getInvasionDifficulty(invasion)].slice();
 }
 
 export function getInvasionStrengthBounds(invasion, state) {
@@ -114,14 +126,15 @@ export function getInvasionStrengthBounds(invasion, state) {
     ? Math.floor(Number(invasion.empireStrength))
     : getEmpireProvinceStrength(state);
   const [minRatio, maxRatio] = getInvasionStrengthRatio(invasion);
-  const min = Math.max(1, Math.ceil(empireStrength * minRatio));
-  const max = Math.max(min, Math.floor(empireStrength * maxRatio));
+  const scaledStrength = empireStrength * (Number(BALANCE.INVASION_STRENGTH_PER_PROVINCE) || 1);
+  const min = Math.max(1, Math.ceil(scaledStrength * minRatio));
+  const max = Math.max(min, Math.floor(scaledStrength * maxRatio));
   return [min, max];
 }
 
 function createInvasionStrengthRange(bounds, rng) {
   const [baseMin, baseMax] = bounds;
-  const estimateInterval = Math.min(INVASION_ESTIMATE_INTERVAL, Math.max(0, baseMax - baseMin));
+  const estimateInterval = Math.min(BALANCE.INVASION_ESTIMATE_INTERVAL, Math.max(0, baseMax - baseMin));
   const estimateMin = rollRange(baseMin, baseMax - estimateInterval, rng);
   return [estimateMin, estimateMin + estimateInterval];
 }
@@ -153,7 +166,7 @@ export function createInvasionInstance(template, rng, state = null) {
 
 export function isEarlyInvasionGraceRound(state) {
   const round = Number(state?.round) || 0;
-  return round >= 1 && round <= EARLY_INVASION_GRACE_ROUNDS;
+  return round >= 1 && round <= BALANCE.EARLY_INVASION_GRACE_ROUNDS;
 }
 
 export function prepareInvasionForDraw(state, invasion, rng) {
@@ -176,7 +189,7 @@ export function hasImperialTargetOnInvasionRoute(state, invasion) {
   return route.some((themeId) => {
     if (themeId === 'CPL') return false;
     const theme = state?.themes?.[themeId];
-    return Boolean(theme && !theme.occupied);
+    return Boolean(theme && !theme.lost);
   });
 }
 
@@ -206,16 +219,22 @@ function createThemeState(province) {
     region: province.region,
     cx: province.cx,
     cy: province.cy,
-    owner: null,
-    suspendedOwner: null,
-    privateEstatePurchasedRound: null,
-    occupied: Boolean(province.startOccupied),
+    // { [dynastyId]: { count, recent } } - see engine/estates.js
+    estates: {},
+    lost: Boolean(province.startLost),
     strategos: null,
     bishop: null,
   };
 }
 
-export function createGameState({ playerCount = 5, turnCount: configuredTurnCount = null, deckSize = 9, seed, historyEnabled = false } = {}) {
+export function createGameState({
+  playerCount = 5,
+  turnCount: configuredTurnCount = null,
+  deckSize = 9,
+  seed,
+  historyEnabled = false,
+  features = null,
+} = {}) {
   const rng = makeRng(seed);
   const turnCount = Math.max(1, Math.floor(Number(configuredTurnCount ?? deckSize) || 9));
   const players = [];
@@ -253,6 +272,8 @@ export function createGameState({ playerCount = 5, turnCount: configuredTurnCoun
   ));
 
   return {
+    rulesVersion: RULES_VERSION,
+    features: { deals: Boolean(features?.deals) },
     rng,
     adjacency: buildAdjacency(),
     historyEnabled,
@@ -285,13 +306,11 @@ export function createGameState({ playerCount = 5, turnCount: configuredTurnCoun
     dealParticipantIds: [],
     dealThreadSeq: 0,
     dealObligationSeq: 0,
-    landAuctions: {},
-    landAuctionTieBreakers: {},
+    estatePlans: {},
     estatesReady: {},
 
     lastCoupResult: null,
     lastWarResult: null,
-    pendingDefenderRewards: [],
 
     gameOver: null,
     log: [],
@@ -376,16 +395,8 @@ export function getThemesInRegion(state, region) {
   return Object.values(state.themes).filter((t) => t.region === region && t.id !== 'CPL');
 }
 
-export function getPlayerThemes(state, playerId) {
-  return Object.values(state.themes).filter((t) => t.owner === playerId);
-}
-
-export function getOccupiedThemes(state) {
-  return Object.values(state.themes).filter((t) => t.occupied);
-}
-
-export function getFreeThemes(state) {
-  return Object.values(state.themes).filter((t) => !t.occupied && t.owner === null && t.id !== 'CPL');
+export function getLostThemes(state) {
+  return Object.values(state.themes).filter((t) => t.lost);
 }
 
 export function findTitleHolder(state, titleKey) {
@@ -393,13 +404,13 @@ export function findTitleHolder(state, titleKey) {
 }
 
 export function getStrategosThemes(state, playerId) {
-  return Object.values(state.themes).filter((t) => t.strategos === playerId && !t.occupied);
+  return Object.values(state.themes).filter((t) => t.strategos === playerId && !t.lost);
 }
 
 export function getBishopThemes(state, playerId, options = {}) {
-  const includeOccupied = Boolean(options.includeOccupied);
+  const includeLost = Boolean(options.includeLost);
   return Object.values(state.themes).filter((t) => (
-    t.bishop === playerId && (includeOccupied || !t.occupied)
+    t.bishop === playerId && (includeLost || !t.lost)
   ));
 }
 

@@ -1,6 +1,7 @@
 import { normalizeOrdersWithDealLocks, getSpendableGold } from './deals.js';
 import { getPlayer } from './state.js';
-import { getMercenaryHireCost } from './rules.js';
+import { BALANCE } from '../data/balance.js';
+import { getDismissalGold, getMercenaryHireCost } from './rules.js';
 import {
   getDefaultDeploymentFunding,
   getDeploymentArmyDisplayName,
@@ -9,12 +10,7 @@ import {
   getPlayerDeploymentArmyKeys,
   isStrategosDeploymentArmyKey,
 } from './deployment.js';
-import {
-  getPreferredCoupCandidate,
-  isCompleteCoupRanking,
-  normalizeCoupSupport,
-  normalizeCoupRanking,
-} from './coup.js';
+import { buildDefaultCoupChoices, normalizeCoupChoices } from './coup.js';
 
 function toInt(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -111,10 +107,10 @@ function normalizeArmyOrders(state, playerId, rawOrders = {}) {
 function normalizeMercenaryOrder(rawMercenaries = {}) {
   if (Array.isArray(rawMercenaries)) {
     const count = rawMercenaries.reduce((total, entry) => total + Math.max(0, toInt(entry?.count, 0)), 0);
-    return { count: Math.min(10, count), destination: normalizeDestination(rawMercenaries[0]?.destination) };
+    return { count: Math.min(BALANCE.MAX_MERCENARIES, count), destination: normalizeDestination(rawMercenaries[0]?.destination) };
   }
   return {
-    count: Math.max(0, Math.min(10, toInt(rawMercenaries?.count, 0))),
+    count: Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, toInt(rawMercenaries?.count, 0))),
     destination: normalizeDestination(rawMercenaries?.destination),
   };
 }
@@ -145,7 +141,7 @@ function validateArmyOrders(state, playerId, armies) {
 }
 
 function validateMercenaryOrder(mercenaries) {
-  const count = Math.max(0, Math.min(10, toInt(mercenaries?.count, 0)));
+  const count = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, toInt(mercenaries?.count, 0)));
   const destination = normalizeDestination(mercenaries?.destination);
   if (count > 0 && !destination) return orderFailure('Choose a destination for hired mercenaries.');
   return {
@@ -157,26 +153,21 @@ function validateMercenaryOrder(mercenaries) {
   };
 }
 
-function validateRanking(state, playerId, orders) {
-  const ranking = normalizeCoupRanking(state, playerId, orders?.ranking, orders?.candidate);
-  if (!isCompleteCoupRanking(state, ranking)) {
-    return orderFailure('Rank every Basileus claimant.');
+// Orders that never mention the coup back the dynasty itself; an explicit
+// empty list backs nobody.
+function readCoupChoices(state, playerId, rawOrders = {}) {
+  if (Object.prototype.hasOwnProperty.call(rawOrders || {}, 'coupChoices')) {
+    return normalizeCoupChoices(state, rawOrders.coupChoices);
   }
-  const candidateSupport = normalizeCoupSupport(state, orders?.candidateSupport);
-  return {
-    ok: true,
-    ranking,
-    candidateSupport,
-    candidate: getPreferredCoupCandidate(state, playerId, { ...orders, ranking, candidateSupport }),
-  };
+  return buildDefaultCoupChoices(state, playerId);
 }
 
 function getUnfundedGold(state, playerId, armies) {
-  return Object.entries(armies).reduce((total, [officeKey, order]) => {
+  return getDismissalGold(Object.entries(armies).reduce((total, [officeKey, order]) => {
     const max = getOfficeMaxTroops(state, playerId, officeKey);
     const funded = Number.isInteger(Number(order.funded)) ? Number(order.funded) : getDefaultDeploymentFunding(max);
     return total + Math.max(0, max - funded);
-  }, 0);
+  }, 0));
 }
 
 export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = {}) {
@@ -185,12 +176,8 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
 
   const armies = normalizeArmyOrders(state, playerId, rawOrders);
   const mercenaries = normalizeMercenaryOrder(rawOrders?.mercenaries);
-  const candidate = Object.prototype.hasOwnProperty.call(rawOrders || {}, 'candidate')
-    ? toInt(rawOrders?.candidate, NaN)
-    : null;
-  const ranking = normalizeCoupRanking(state, playerId, rawOrders?.ranking, candidate);
-  const candidateSupport = normalizeCoupSupport(state, rawOrders?.candidateSupport);
-  const rawNormalizedOrders = { armies, mercenaries, candidate, ranking, candidateSupport };
+  const coupChoices = readCoupChoices(state, playerId, rawOrders);
+  const rawNormalizedOrders = { armies, mercenaries, coupChoices };
   if (rawOrders?.debug) rawNormalizedOrders.debug = rawOrders.debug;
 
   const dealLocks = normalizeOrdersWithDealLocks(state, playerId, rawNormalizedOrders, {
@@ -204,16 +191,11 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
   const mercenaryValidation = validateMercenaryOrder(dealLocks.orders.mercenaries);
   if (!mercenaryValidation.ok) return mercenaryValidation;
 
-  const rankingValidation = validateRanking(state, playerId, dealLocks.orders);
-  if (!rankingValidation.ok) return rankingValidation;
-
   const normalizedOrders = {
     ...dealLocks.orders,
     armies: armyValidation.armies,
     mercenaries: mercenaryValidation.mercenaries,
-    ranking: rankingValidation.ranking,
-    candidateSupport: rankingValidation.candidateSupport,
-    candidate: rankingValidation.candidate,
+    coupChoices: normalizeCoupChoices(state, dealLocks.orders.coupChoices),
   };
 
   const unfundedGold = getUnfundedGold(state, playerId, normalizedOrders.armies);
