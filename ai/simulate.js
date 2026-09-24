@@ -57,6 +57,7 @@ function emptyStats(options) {
       throneChanges: 0,
       incumbentHolds: 0,
       selfClaims: 0,
+      selfFirst: 0,
       incumbentBacks: 0,
       otherBacks: 0,
     },
@@ -114,6 +115,7 @@ function createPlayerStats() {
     mercenaries: 0,
     mercenaryCost: 0,
     selfClaims: 0,
+    selfFirst: 0,
     selfClaimWins: 0,
     selfClaimTroops: 0,
     credibleSelfClaims: 0,
@@ -218,21 +220,27 @@ function collectResolution(stats, state) {
     playerStats.mercenaries += order.mercenaryCount;
     playerStats.mercenaryCost += order.mercenaryCost;
 
-    // Self-claims come from the top of the coup ranking. `candidate` never
-    // names the player (it is their best non-self pick), so it only decides
-    // whom they back among the other claimants.
+    // Report metric: who the ranking actually puts first (often the player).
     if (order.topPreference === player.id) {
+      stats.coups.selfFirst += 1;
+      playerStats.selfFirst += 1;
+    }
+
+    // Training inputs (ai/train.js) keep their original single-candidate
+    // definition. `candidate` is the best non-self pick under ranking coups,
+    // so these self-claim counters stay at zero; see docs/roadmap.md before
+    // redefining them, as that changes what training rewards.
+    if (order.candidate === player.id) {
       stats.coups.selfClaims += 1;
       playerStats.selfClaims += 1;
       playerStats.selfClaimTroops += order.capitalTroops;
       if (order.capitalTroops >= 3) playerStats.credibleSelfClaims += 1;
       else playerStats.tokenSelfClaims += 1;
       if (coup?.winner === player.id && order.capitalTroops > 0) playerStats.selfClaimWins += 1;
-    }
-    if (order.candidate === state.basileusId) {
+    } else if (order.candidate === state.basileusId) {
       stats.coups.incumbentBacks += 1;
       playerStats.incumbentBacks += 1;
-    } else if (order.candidate !== player.id) {
+    } else {
       stats.coups.otherBacks += 1;
       playerStats.otherBacks += 1;
     }
@@ -660,7 +668,7 @@ function normalizeStats(stats) {
     },
     coups: {
       throneChangeRate: round(stats.coups.throneChanges / resolutions, 3),
-      selfPreferenceRate: round(stats.coups.selfClaims / orders, 3),
+      selfPreferenceRate: round(stats.coups.selfFirst / orders, 3),
       selfClaimRate: round(stats.coups.selfClaims / orders, 3),
       incumbentBackRate: round(stats.coups.incumbentBacks / orders, 3),
       otherBackRate: round(stats.coups.otherBacks / orders, 3),
