@@ -1,7 +1,7 @@
 // render/map/shell.js - builds the map SVG, its shell, resize handling, and controls.
 
 import { ensureSvgIconSymbols } from '../../ui/icons.js';
-import { addProvinceLabels } from './cartouches.js';
+import { addProvinceLabels, applyLabelScale } from './cartouches.js';
 import { normalizeMapFilter, setActiveMapFilter, updateMapFilterControlState, updateMapState } from './filters.js';
 import { parseInvasionOrigins, parseProvinceLabelAnchors } from './geometry.js';
 import { applyMapTransform, installMapInteractions, resetMapView, zoomMapAtCenter } from './interaction.js';
@@ -156,6 +156,10 @@ function syncMapShellSize(container, shell) {
   const height = width / MAP_ASPECT;
   shell.style.width = `${width.toFixed(2)}px`;
   shell.style.height = `${height.toFixed(2)}px`;
+  if (Math.abs(width - mapRuntime.shellWidthPx) > 0.5) {
+    mapRuntime.shellWidthPx = width;
+    applyLabelScale();
+  }
 }
 
 function readMapMaxWidth(shell) {

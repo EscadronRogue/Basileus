@@ -77,9 +77,9 @@
 
   /* Responsive shell */
   --topbar-height: 52px;
-  --sidebar-width: clamp(500px, 43vw, 760px);
+  --sidebar-width: clamp(500px, 40vw, 720px);
   --map-aspect: 297 / 210;
-  --map-max-width: 1120px;
+  --map-max-width: 2400px;
   --map-reserve-bottom: var(--map-shell-pad);
   --map-shell-pad: clamp(14px, 1.8vw, 24px);
   --sidebar-gap: clamp(12px, 1.3vw, 18px);

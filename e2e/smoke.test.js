@@ -255,6 +255,37 @@ test('map filters, zoom, and province selection respond to input', async (t) => 
   assert.deepEqual(problems, []);
 });
 
+test('desktop map fills its area with readable, non-overlapping labels', async (t) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 2560, height: 1440 }]) {
+    const { page, problems } = await openGame(t, viewport);
+    await startLocalGame(page, { mode: 'single', players: 5, turns: 6, seed: 'smoke-layout' });
+    const layout = await page.evaluate(() => {
+      const shell = document.querySelector('.map-shell').getBoundingClientRect();
+      const area = document.getElementById('mapArea').getBoundingClientRect();
+      const names = [...document.querySelectorAll('#mapContainer .map-cart-name')]
+        .map((text) => text.getBoundingClientRect().height).sort((a, b) => a - b);
+      const boxes = [...document.querySelectorAll('#mapContainer .map-cartouche .map-cart-bg')].map((bg) => bg.getBoundingClientRect());
+      let overlaps = 0;
+      for (let i = 0; i < boxes.length; i += 1) {
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          const width = Math.min(boxes[i].right, boxes[j].right) - Math.max(boxes[i].left, boxes[j].left);
+          const height = Math.min(boxes[i].bottom, boxes[j].bottom) - Math.max(boxes[i].top, boxes[j].top);
+          if (width > 2 && height > 2) overlaps += 1;
+        }
+      }
+      return {
+        fill: (shell.width * shell.height) / (area.width * area.height),
+        medianNamePx: names[Math.floor(names.length / 2)],
+        overlaps,
+      };
+    });
+    assert.ok(layout.fill > 0.6, `map fills its area at ${viewport.width}px: ${layout.fill.toFixed(2)}`);
+    assert.ok(layout.medianNamePx >= 8, `province names are legible: ${layout.medianNamePx}px`);
+    assert.equal(layout.overlaps, 0, 'enlarged labels never overlap');
+    assert.deepEqual(problems, []);
+  }
+});
+
 test('hotseat game lets every dynasty act', async (t) => {
   const { page, problems } = await openGame(t);
   await startLocalGame(page, { mode: 'hotseat', players: 3, turns: 6, seed: 'smoke-hotseat' });
@@ -270,6 +301,9 @@ test('phone layout never scrolls horizontally', async (t) => {
   assert.ok(await overflow() <= 1, 'setup screen fits');
   await startLocalGame(page, { mode: 'single', players: 5, turns: 6, seed: 'smoke-phone' });
   assert.ok(await overflow() <= 1, 'game screen fits');
+  await page.waitForTimeout(200);
+  const mapTop = await page.evaluate(() => document.querySelector('.map-shell').getBoundingClientRect().top);
+  assert.ok(mapTop >= 0 && mapTop < 844, 'the map is on screen right after starting');
   assert.deepEqual(problems, []);
 });
 

@@ -6,7 +6,7 @@ import {
   buildProvinceTroopAttributions,
 } from '../../engine/cascade.js';
 import { getThreatenedThemeIds } from '../../engine/rules.js';
-import { updateMapCartoucheMarkers, updateMapCartoucheValues } from './cartouches.js';
+import { applyLabelScale, updateMapCartoucheMarkers, updateMapCartoucheValues } from './cartouches.js';
 import { applyProvinceInteractionState } from './interaction.js';
 import { FILTER_VISUAL_PROPS, MAP_FILTERS, mapRuntime } from './state.js';
 
@@ -67,6 +67,7 @@ export function updateMapState(state, mapFilter = mapRuntime.activeMapFilter) {
 
   updateThreatOverlay(state);
   updateBadges(state);
+  applyLabelScale();
   applyProvinceInteractionState();
 }
 

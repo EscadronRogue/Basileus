@@ -48,7 +48,9 @@ export function getPhaseRenderKey(state) {
   return `${state.round}:${state.phase}:${gameOverType}`;
 }
 
-export function scrollPhasePanelIntoView() {
+// `initial` marks the first phase shown after starting or resuming a game: on
+// phones the page then stays at the top so the map is seen before the panel.
+export function scrollPhasePanelIntoView({ initial = false } = {}) {
   if (typeof document === 'undefined') return;
   const schedule = typeof requestAnimationFrame === 'function'
     ? requestAnimationFrame
@@ -57,7 +59,8 @@ export function scrollPhasePanelIntoView() {
     const sidebar = document.getElementById('sidebar');
     const actionPanel = document.getElementById('actionPanel');
     if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 980px)').matches) {
-      actionPanel?.scrollIntoView({ block: 'start' });
+      if (initial) window.scrollTo?.(0, 0);
+      else actionPanel?.scrollIntoView({ block: 'start' });
       return;
     }
     if (sidebar) sidebar.scrollTop = 0;

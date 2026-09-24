@@ -226,8 +226,9 @@ export class GameController {
     });
 
     if (phaseChanged) {
+      const initialPhase = this.lastPhaseKey === null;
       this.lastPhaseKey = phaseKey;
-      scrollPhasePanelIntoView();
+      scrollPhasePanelIntoView({ initial: initialPhase });
     }
     this.scheduleAutosave();
   }

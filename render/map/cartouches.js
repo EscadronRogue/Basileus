@@ -5,7 +5,7 @@ import { formatPlayerLabel } from '../../engine/state.js';
 import { buildSvgValueGroup, measureSvgValueGroupWidth, provinceValueEntries } from '../../ui/icons.js';
 import { resolveProvinceOwnership } from './filters.js';
 import { applyProvinceInteractionState } from './interaction.js';
-import { MAP_FILTER_TO_MARKER_KIND, SVG_NS, mapRuntime } from './state.js';
+import { MAP_FILTER_TO_MARKER_KIND, MAP_WIDTH, SVG_NS, mapRuntime } from './state.js';
 import { applyProvincePalette } from './svgImport.js';
 
 // Map labels are stacked SVG cartouches that mirror the HTML
@@ -46,6 +46,70 @@ function valueEntriesSignature(entries) {
   return entries.map((entry) => `${entry.kind[0]}${entry.value}`).join('|');
 }
 
+// Cartouche text is sized in map units, so on a small or zoomed-out map the
+// names shrink below legibility. Scale each cartouche about its anchor so a
+// province name renders near LABEL_TARGET_NAME_PX, capped to limit overlap.
+const LABEL_NAME_FONT_UNITS = 1.45;
+const LABEL_TARGET_NAME_PX = 9;
+const LABEL_MAX_SCALE = 1.7;
+
+function getLabelScale() {
+  const pxPerUnit = (mapRuntime.shellWidthPx / MAP_WIDTH) * (mapRuntime.mapView?.zoom || 1);
+  if (!(pxPerUnit > 0)) return 1;
+  const scale = LABEL_TARGET_NAME_PX / (LABEL_NAME_FONT_UNITS * pxPerUnit);
+  return Math.min(LABEL_MAX_SCALE, Math.max(1, scale));
+}
+
+const LABEL_GAP_UNITS = 0.35;
+
+// Largest common scale at which two cartouches, each scaled about its own
+// anchor, stay apart on at least one axis. Boxes are in local (unscaled) units.
+function maxSeparatedScale(a, b) {
+  const axis = (ac, amin, amax, bc, bmin, bmax) => {
+    if (ac <= bc) {
+      const spread = amax - bmin;
+      return spread > 0 ? (bc - ac - LABEL_GAP_UNITS) / spread : Infinity;
+    }
+    const spread = bmax - amin;
+    return spread > 0 ? (ac - bc - LABEL_GAP_UNITS) / spread : Infinity;
+  };
+  const sx = axis(a.cx, a.box.x, a.box.x + a.box.width, b.cx, b.box.x, b.box.x + b.box.width);
+  const sy = axis(a.cy, a.box.y, a.box.y + a.box.height, b.cy, b.box.y, b.box.y + b.box.height);
+  return Math.max(sx, sy);
+}
+
+// Enlarges every cartouche toward the target scale, but caps each pair at the
+// scale where they would start to touch, so enlarging never adds overlaps.
+export function applyLabelScale() {
+  const root = mapRuntime.viewportLayer;
+  if (!root) return;
+  const target = getLabelScale();
+  const labels = [...root.querySelectorAll('.map-cartouche[data-cx]')].map((g) => ({
+    g,
+    cx: Number(g.dataset.cx),
+    cy: Number(g.dataset.cy),
+    box: typeof g.getBBox === 'function' ? g.getBBox() : null,
+    scale: target,
+  }));
+  if (target > 1.001) {
+    for (let i = 0; i < labels.length; i += 1) {
+      for (let j = i + 1; j < labels.length; j += 1) {
+        const a = labels[i];
+        const b = labels[j];
+        if (!a.box || !b.box) continue;
+        const limit = Math.max(1, maxSeparatedScale(a, b));
+        a.scale = Math.min(a.scale, limit);
+        b.scale = Math.min(b.scale, limit);
+      }
+    }
+  }
+  for (const label of labels) {
+    label.g.setAttribute('transform', label.scale > 1.001
+      ? `translate(${label.cx} ${label.cy}) scale(${label.scale.toFixed(3)})`
+      : `translate(${label.cx} ${label.cy})`);
+  }
+}
+
 export function addProvinceLabels(layer) {
   layer.replaceChildren();
 
@@ -60,6 +124,7 @@ export function addProvinceLabels(layer) {
     if (mapRuntime.latestMapState) updateMapCartoucheMarkers(g, mapRuntime.latestMapState, theme);
   }
 
+  applyLabelScale();
   applyProvinceInteractionState();
 }
 
@@ -70,6 +135,8 @@ function buildMapCartouche(province, centroid, theme = province) {
   const baseClasses = `map-cartouche${isCapital ? ' is-capital' : ''}`;
   g.setAttribute('class', `${baseClasses} ${ownership.classes.join(' ')}`.trim());
   g.setAttribute('data-id', province.id);
+  g.dataset.cx = String(centroid.cx);
+  g.dataset.cy = String(centroid.cy);
   g.setAttribute('transform', `translate(${centroid.cx} ${centroid.cy})`);
 
   applyProvincePalette(g, province.region);

@@ -1,5 +1,6 @@
 // render/map/interaction.js - selection, hover, pan, pinch, zoom, and keyboard control.
 
+import { applyLabelScale } from './cartouches.js';
 import {
   LEGACY_MOUSE_POINTER_ID,
   LEGACY_TOUCH_POINTER_OFFSET,
@@ -542,6 +543,7 @@ export function applyMapTransform() {
     `translate(${mapRuntime.mapView.panX.toFixed(3)} ${mapRuntime.mapView.panY.toFixed(3)}) scale(${mapRuntime.mapView.zoom.toFixed(3)})`,
   );
   mapRuntime.viewportLayer.ownerSVGElement?.classList.toggle('is-map-zoomed', mapRuntime.mapView.zoom > 1.001);
+  applyLabelScale();
 }
 
 function clampMapView() {

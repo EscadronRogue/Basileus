@@ -4,7 +4,7 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 export const MAP_WIDTH = 297;
 export const MAP_HEIGHT = 210;
 export const MAP_ASPECT = MAP_WIDTH / MAP_HEIGHT;
-export const DEFAULT_MAP_MAX_WIDTH_PX = 1120;
+export const DEFAULT_MAP_MAX_WIDTH_PX = 2400;
 export const MAP_MAX_WIDTH_CSS_VAR = '--map-max-width';
 export const LEGACY_ORIGIN_WIDTH = 1150;
 export const LEGACY_ORIGIN_HEIGHT = 560;
@@ -106,6 +106,7 @@ export const mapRuntime = {
   gestureState: createGestureState(),
   mapShellResizeObserver: null,
   mapShellResizeHandler: null,
+  shellWidthPx: 0,
 };
 
 export function createGestureState() {

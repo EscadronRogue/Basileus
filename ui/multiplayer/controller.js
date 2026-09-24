@@ -706,8 +706,9 @@ export class MultiplayerController {
         rerender: () => this.render(),
       });
       if (phaseChanged) {
+        const initialPhase = this.lastPhaseKey === null;
         this.lastPhaseKey = phaseKey;
-        scrollPhasePanelIntoView();
+        scrollPhasePanelIntoView({ initial: initialPhase });
       }
     });
   }
