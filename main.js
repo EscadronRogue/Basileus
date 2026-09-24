@@ -4,6 +4,7 @@ import { launchMultiplayerClient } from './ui/multiplayerController.js';
 import { loadBrowserAiOpponentRoster } from './ai/brain.js';
 import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from './ai/opponentRoster.js';
 import { getDynastyProfileForSeat } from './data/invasions.js';
+import { dynastySeatStyle, escapeHtml } from './ui/html.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 const SETUP_CHOICE_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
@@ -68,19 +69,6 @@ let aiOpponentRosterLoaded = false;
 let aiOpponentRosterError = '';
 const selectedAiOpponentBySeat = new Map();
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function seatCartoucheStyle(seat) {
-  const color = getDynastyProfileForSeat((Math.max(1, Number(seat) || 1) - 1)).color || '#5a3810';
-  return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
-}
-
 function getTrainedAiOpponents() {
   return getTunedAiOpponents(aiOpponentRoster);
 }
@@ -117,7 +105,7 @@ function renderSetupChoiceControl(select) {
   }
   row.innerHTML = [...select.options].map((option) => {
     const seatStyle = select.id === 'setupSeat' && option.value !== SETUP_RANDOM_VALUE
-      ? ` style="${seatCartoucheStyle(option.value)}"`
+      ? ` style="${dynastySeatStyle(Number(option.value) - 1)}"`
       : '';
     return `
     <button type="button"
@@ -308,7 +296,7 @@ function renderAiRoster() {
       </button>
     ` : '';
     return `
-      <div class="setup-ai-seat" style="${seatCartoucheStyle(seat)}" data-seat="${seat}">
+      <div class="setup-ai-seat" style="${dynastySeatStyle(seat - 1)}" data-seat="${seat}">
         <span class="choice-crest">${escapeHtml(dynasty.slice(0, 1))}</span>
         <span class="setup-ai-copy">
           <strong>${escapeHtml(dynasty)}</strong>

@@ -11,6 +11,7 @@ import {
   scrollPhasePanelIntoView,
 } from './sharedView.js';
 import { getDynastyProfileForSeat } from '../data/invasions.js';
+import { dynastySeatStyle, escapeHtml } from './html.js';
 import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from '../ai/opponentRoster.js';
 
 const STORAGE_KEY = 'basileus.multiplayer.sessions.v1';
@@ -29,22 +30,6 @@ function parseTimestampMs(value) {
 
 function maxTimestampMs(...values) {
   return values.reduce((max, value) => Math.max(max, parseTimestampMs(value)), 0);
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
-
-function seatCartoucheStyle(seatOrId) {
-  const seatId = typeof seatOrId === 'object' ? seatOrId?.seatId : seatOrId;
-  const color = (typeof seatOrId === 'object' ? seatOrId?.color : null)
-    || getDynastyProfileForSeat(Math.max(0, Number(seatId) || 0)).color
-    || '#5a3810';
-  return `--player-color: ${color}; --role-color: var(--empire-border); --role-outline-color: var(--empire-border);`;
 }
 
 function dynastyNameForSeat(seatOrId) {
@@ -870,7 +855,7 @@ export class MultiplayerController {
                 ? 'You'
                 : (seat.playerName || (seat.kind === 'ai' ? 'AI dynasty' : (seat.claimed ? 'Human dynasty' : 'Open human dynasty')));
               return `
-                <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}" style="${seatCartoucheStyle(seat)}">
+                <div class="multiplayer-seat ${seat.isViewerSeat ? 'is-you' : ''}" style="${dynastySeatStyle(seat.seatId, seat.color)}">
                   <span class="choice-crest">${escapeHtml(dynasty.slice(0, 1))}</span>
                   <div class="multiplayer-seat-copy">
                     <strong>${escapeHtml(dynasty)}</strong>

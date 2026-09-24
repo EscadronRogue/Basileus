@@ -13,15 +13,7 @@
 import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyle } from '../engine/state.js';
 import { renderIcon, provinceValueEntries } from './icons.js';
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml } from './html.js';
 
 const FREE_FILL = '#6a4a8a';
 const CAPITAL_FILL = '#E49B0F';
@@ -252,7 +244,6 @@ export function renderProvinceValuesHtml(theme) {
     .map((entry) => `<span class="province-token-value">${renderIcon(entry.kind)}<span class="province-token-num">${entry.value}</span></span>`)
     .join('');
 }
-
 
 // ── Cartouche renderers ───────────────────────────────────────────────
 

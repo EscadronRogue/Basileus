@@ -13,6 +13,7 @@ import { buildIncomeFlow } from '../engine/cascade.js';
 import { getPlayerStyleAttr, renderPlayerChip, renderPlayerRoleName, renderTitleBadge } from './labels.js';
 import { formatPlayerLabel, getOfficeDisplayName, getOfficeHolder, getPlayer } from '../engine/state.js';
 import { renderIcon, renderIconSet } from './icons.js';
+import { escapeHtml } from './html.js';
 import { REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 
 const CATEGORY_ICON_KINDS = {
@@ -103,15 +104,6 @@ const INCOME_FLOW_ZOOM_STEP = 1.2;
 const INCOME_FLOW_DRAG_THRESHOLD_PX = 1;
 const INCOME_FLOW_MIN_PINCH_DISTANCE_PX = 8;
 const incomeFlowViews = new WeakMap();
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 // Polar -> cartesian on a unit circle anchored at (0, 0). Angles are taken in
 // turns (0..1) so accumulating fractional shares stays numerically clean.

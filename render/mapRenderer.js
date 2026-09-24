@@ -45,7 +45,6 @@ const INVASION_ORIGIN_IDS = Object.freeze({
 const PROVINCE_LABEL_SUFFIX = 'LAB';
 const THREAT_HATCH_SPACING = 3.6;
 const THREAT_HATCH_PRIMARY_STROKE = 1.4;
-const THREAT_HATCH_SECONDARY_STROKE = 0.7;
 const MIN_THREAT_HATCH_SCALE = 0.001;
 const MIN_MAP_ZOOM = 1;
 const MAX_MAP_ZOOM = 4;
@@ -173,10 +172,10 @@ export async function createMapSVG(containerId, options = {}) {
   const regionStrokeLayer = createGroup(viewportLayer, 'layer-region-stroke');
   const threatLayer = createGroup(viewportLayer, 'layer-threats');
   const hitboxLayer = createGroup(viewportLayer, 'layer-hitboxes');
-  const invasionRouteLayer = createGroup(viewportLayer, 'layer-invasion-route');
+  createGroup(viewportLayer, 'layer-invasion-route');
   const labelLayer = createGroup(viewportLayer, 'layer-labels');
-  const badgeLayer = createGroup(viewportLayer, 'layer-badges');
-  const invasionLayer = createGroup(viewportLayer, 'layer-invasion');
+  createGroup(viewportLayer, 'layer-badges');
+  createGroup(viewportLayer, 'layer-invasion');
 
   const [backgroundSvg, hitzonesSvg, originSvg] = await Promise.all([
     loadSvgAsset(SVG_ASSET_PATHS.background, 'MAP_BACKGROUND_SVG'),
@@ -497,7 +496,6 @@ function updateMapFilterControlState(root = (typeof document !== 'undefined' ? d
   });
 }
 
-
 async function loadSvgAsset(relativePath, fallbackName) {
   if (typeof fetch === 'function') {
     try {
@@ -741,7 +739,6 @@ function getElementLinearScale(element) {
   const averageScale = (xScale + yScale) / 2;
   return Number.isFinite(averageScale) && averageScale > 0 ? averageScale : 1;
 }
-
 
 function parseProvinceLabelAnchors(originSvgText) {
   const sourceSvg = parseSvgRoot(originSvgText);
@@ -1031,23 +1028,6 @@ function reflectPoint(point, around) {
     x: (2 * around.x) - point.x,
     y: (2 * around.y) - point.y,
   };
-}
-
-function computeCentroids(svg) {
-  provinceCentroids = {};
-
-  for (const path of svg.querySelectorAll('.province-shape')) {
-    const provinceId = path.getAttribute('data-id');
-    if (!provinceId) continue;
-
-    const bounds = getPathBounds(path.getAttribute('d'));
-    if (!bounds) continue;
-
-    provinceCentroids[provinceId] = {
-      cx: (bounds.minX + bounds.maxX) / 2,
-      cy: (bounds.minY + bounds.maxY) / 2,
-    };
-  }
 }
 
 function parseFiniteNumber(value) {
@@ -1655,7 +1635,6 @@ export function drawInvasionRoute(invasion) {
   appendInvasionCartouche(cartoucheLayer, invasion, points[0]);
 }
 
-
 function resolveInvasionOrigin(invasion) {
   if (!invasion) return null;
 
@@ -1943,7 +1922,6 @@ function findProvinceAtClientPoint(svg, clientX, clientY) {
 
   return null;
 }
-
 
 function findProvinceFromHitStack(clientX, clientY) {
   if (typeof document.elementsFromPoint !== 'function') return null;
