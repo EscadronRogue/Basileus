@@ -297,7 +297,7 @@ function renderAiRoster() {
     const dynasty = getDynastyProfileForSeat(seat - 1).name;
     const displayName = selectedId === RANDOM_TUNED_OPPONENT_ID
       ? 'Random trained AI'
-      : selectedOpponent?.firstName || selectedOpponent?.id || 'Choose opponent';
+      : opponentChoiceLabel(selectedOpponent) || 'Choose opponent';
     const randomTrainedButton = trainedOpponents.length ? `
       <button type="button"
         class="setup-ai-opponent-btn${selectedId === RANDOM_TUNED_OPPONENT_ID ? ' selected' : ''}"
@@ -316,7 +316,7 @@ function renderAiRoster() {
         <span class="setup-ai-choice-row">
           ${randomTrainedButton}
           ${aiOpponentRoster.map((opponent) => {
-            const label = opponent.firstName || opponent.id;
+            const label = opponentChoiceLabel(opponent);
             const selected = opponent.id === selectedId;
             return `
               <button type="button"
@@ -366,6 +366,13 @@ async function readSelectedMultiplayerSave() {
   } catch {
     throw new Error('Saved match file must be valid JSON.');
   }
+}
+
+// "Leon, Usurper" for a trained AI with a personality, else its name.
+function opponentChoiceLabel(opponent) {
+  if (!opponent) return '';
+  const name = opponent.firstName || opponent.id;
+  return opponent.personality && opponent.label ? `${name}, ${opponent.label}` : name;
 }
 
 function buildAiOpponentSelections(playerCount, humanSeat, rng = Math.random) {

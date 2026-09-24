@@ -13,7 +13,9 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 
 - **Pure browser game.** No bundler, no transpiler, no runtime npm dependencies.
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
-- **Strategic AI dynasties.** AI dynasties can be reserved and named. They use a phase-aware heuristic planner for titles, court powers, estate bids, deployment, and title redistribution while routing every move through the same legal command layer as humans.
+- **Interactive tutorial.** "Play the tutorial" on the setup screen walks you through a full round, pointing at each control, then lets you finish a short game.
+- **Hover glossary.** Key words are bold wherever they appear; hover one for its definition, and keep hovering to lock the tooltip and explore the words inside it.
+- **AI rivals with personalities.** Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron and Strategist, each trained by self-play to win rather than to play safe. Every AI move goes through the same legal command layer as a human's.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -115,7 +117,7 @@ Render notes:
 
 Players are rival noble houses inside the Byzantine Empire. Each round an invasion is drawn, the great offices appoint and revoke at Court, estates and offices pay out, dynasties bid for land, and everyone secretly deploys troops to the frontier or the capital. The coup is settled before the war: the throne can change hands while the empire burns. After the last turn, dynasties score for their share of gold, profit income, and office income, unless Constantinople falls and everyone loses.
 
-The complete rules are in [`docs/rules.md`](docs/rules.md), generated from [`ui/rules.js`](ui/rules.js), which is also what the in-game "How to Play" card and per-phase guides render. Edit the rules there and run `npm run build:rules-doc`.
+The complete rules are in [`docs/rules.md`](docs/rules.md), generated from [`ui/rules.js`](ui/rules.js) and the glossary in [`ui/glossary.js`](ui/glossary.js), which are also what the in-game "How to Play" card and hover tooltips show. Edit them there and run `npm run build:rules-doc`.
 
 ## Development
 
@@ -127,7 +129,8 @@ Useful entry points:
 - `engine/turnflow.js` - round/phase orchestration
 - `game/runtime.js` - drives phases and AI seats for every game mode
 - `ai/brain.js` - strategic AI runtime integration
-- `ui/rules.js` - the rules text, in-game guides, and `docs/rules.md` source
+- `ui/rules.js`, `ui/glossary.js` - the rules text, key-word definitions, and `docs/rules.md` source
+- `ui/tutorial/` - the tutorial game's script (`steps.js`) and guide overlay (`tutorial.js`)
 - `multiplayer/wsServer.js` - handcoded WebSocket framing
 
 `scripts/layering.test.js` enforces the layer boundaries: `engine/` imports only `data/`, `ai/` never imports the UI, and browser code never imports Node built-ins.
@@ -138,17 +141,9 @@ Single-player and hotseat games autosave to the browser's `localStorage` and can
 
 AI dynasties use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 10% scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, and title redistribution.
 
-Simulation and training tools live beside the runtime AI. `ai/simulate.js` can run repeatable all-AI batches with policy mixes such as strategic, random, defender, usurper, profiteer, loyalist, greedy, and copycat. `ai/train.js` runs a lightweight evolutionary search over strategic weights, re-ranks a finalist pool, saves the top tuned champions to `ai/tunedOpponents.json`, and gives each one a Greek first name from `ai/greekNames.js`.
+Each AI opponent has a **personality** (`ai/personalities.js`): Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron or Strategist. A personality fixes the weights that make its temperament; `ai/train.js` tunes the rest by playing thousands of games, and it rewards only winning. A fallen empire counts as a loss for everyone, and nothing rewards prudence for its own sake, so a trained AI will let others defend, or strip the capital to seize the throne, whenever that wins more games. The trained roster lives in `ai/tunedOpponents.json`, one Greek-named AI per personality; the setup screen shows each one's temperament, and in game its name carries it (e.g. "Leon Doukas (Usurper AI)").
 
-Training defaults to the `robust` opponent mix: roughly one third candidate self-play, a saved tuned champion pool when available, mostly strong built-in styles, and only a small random/copycat oddball share. Use `--opponent-mix beginner` to preserve the original easier mix: 25% self-play plus an even split across strategic, defender, usurper, profiteer, random, and copycat.
-
-Training always creates a fresh random seed. By default it trains on 5-player, 9-turn games. Pass comma lists or ranges to train across varied setups in one run, such as `--players 3,4,5 --deck 6,9,12` or `--players 3-5`.
-
-Training uses staged evaluation by default: broad candidate screening uses fewer games, then the strongest distinct finalists are re-tested with the full `--games` budget. The CLI trainer also uses worker threads by default; pass `--workers 1` for serial evaluation. The trainer prints progress while it runs: generation starts, candidate scores, finalist scores, generation winners, final champion leaderboard, and the saved opponents. Use `--quiet` to suppress the progress log, or `--json` for machine-readable output without progress lines.
-
-When trained opponents are available, new single-player games assign AI dynasties from that trained champion pool by default. Built-in strategy styles remain available as a fallback when no tuned opponents have been saved yet.
-
-The named opponent catalog is intentionally lightweight: names identify AI dynasties, while the shared strategic planner makes the decisions.
+`ai/simulate.js` runs repeatable all-AI batches and reports empire falls, war and coup outcomes, deployment habits and win rate per seat.
 
 AI dynasties answer formal deal offers as soon as they receive them (`ai/deals.js`): each clause is valued from the AI's side, conditional clauses are discounted, and the offer must clear a bar that is lower for trusted partners and higher for a runaway leader. They do not propose or counter deals yet.
 

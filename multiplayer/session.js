@@ -45,6 +45,7 @@ import {
   pickRandomTunedOpponent,
 } from '../ai/opponentRoster.js';
 import { getAiDisplayName } from '../ai/names.js';
+import { getPersonality } from '../ai/personalities.js';
 
 export const ROOM_STATUS = {
   LOBBY: 'lobby',
@@ -437,6 +438,8 @@ export class MultiplayerRoom {
       if (aiName) {
         player.firstName = aiName;
         player.isAIControlled = true;
+        const personality = getPersonality(this.aiMeta?.players?.[player.id]?.opponent?.personality);
+        player.aiTemperament = personality?.title || null;
       }
     }
   }
