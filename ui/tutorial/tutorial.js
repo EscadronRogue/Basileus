@@ -34,6 +34,7 @@ export class TutorialGuide {
     this.collapsed = false;
     this.scrolledFor = null;
     this.renderedKey = null;
+    this.shownIndex = null;
     this.frame = null;
     this.poll = null;
     this.root = null;
@@ -164,6 +165,11 @@ export class TutorialGuide {
     this.sync();
     const step = this.step;
     const state = this.controller.state;
+    // A hidden card comes back when there is something new to do.
+    if (this.index !== this.shownIndex) {
+      this.shownIndex = this.index;
+      if (!step?.free) this.collapsed = false;
+    }
     const phaseTip = step?.free ? TUTORIAL_PHASE_TIPS[state.phase] : null;
     const task = phaseTip || text(step?.task, this.context());
     const key = `${this.index}:${this.collapsed}:${state.round}:${state.phase}:${Boolean(state.lastCoupResult)}:${task}`;
