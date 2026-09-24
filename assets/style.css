@@ -5,7 +5,8 @@
    Palette: Parchment ground · Umber darks · Byzantine gold · Imperial purple
    ═══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+/* Self-hosted so the game works offline and under the server's CSP. */
+@import url('fonts/fonts.css');
 
 /* ── Design Tokens ───────────────────────────────────────────────── */
 :root {
