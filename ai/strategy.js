@@ -13,6 +13,7 @@ import {
 } from '../engine/deployment.js';
 import { getCoupRankWeight, getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { BALANCE } from '../data/balance.js';
 import { analyzeMajorTitleAssignments, estimateMajorTitleYield } from './patronage.js';
 import {
   applyLegalAction,
@@ -567,7 +568,7 @@ function summarizeOrders(state, playerId, orders = {}) {
     idleTroops += total - funded;
   }
 
-  const mercCount = Math.max(0, Math.min(10, Number(orders.mercenaries?.count) || 0));
+  const mercCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(orders.mercenaries?.count) || 0));
   if (orders.mercenaries?.destination === 'capital') capitalTroops += mercCount;
   else frontierTroops += mercCount;
 
@@ -590,7 +591,7 @@ function summarizeOrders(state, playerId, orders = {}) {
 
 function getMaxMercenariesForBudget(budget) {
   let count = 0;
-  while (count < 10 && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  while (count < BALANCE.MAX_MERCENARIES && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
   return count;
 }
 

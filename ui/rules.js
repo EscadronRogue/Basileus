@@ -4,17 +4,11 @@
 // by scripts/build-rules-doc.js, together with the glossary (ui/glossary.js). Numbers come
 // from the engine so the text cannot drift from what the game enforces.
 // Strings may use **bold**; everything else is plain text.
-import { EARLY_INVASION_GRACE_ROUNDS } from '../data/invasions.js';
+import { BALANCE } from '../data/balance.js';
 import { MAJOR_TITLES } from '../data/titles.js';
-import {
-  BASILEUS_COURT_REVOCATION_LIMIT,
-  COURT_POWER_ACTION_LIMIT,
-  PRIVATE_ESTATE_REVOCATION_COMPENSATION,
-} from '../engine/actions.js';
-import { BASILEUS_CAPITAL_SUPPORT, PATRIARCH_CAPITAL_SUPPORT } from '../engine/capitalSupport.js';
+import { PRIVATE_ESTATE_REVOCATION_COMPENSATION } from '../engine/actions.js';
 import { SCORE_CATEGORIES, SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PLAYER_COUNT_MAX, PLAYER_COUNT_MIN } from '../engine/setup.js';
-import { STARTING_INCOME_GOLD } from '../engine/turnflow.js';
 import { GLOSSARY_TERMS } from './glossary.js';
 
 const MAJOR_TITLE_COUNT = Object.keys(MAJOR_TITLES).length;
@@ -39,9 +33,9 @@ export const RULE_SECTIONS = [
     blocks: [
       {
         steps: [
-          ['Invasion drawn.', `A new threat appears with a route through the provinces. During the first ${word(EARLY_INVASION_GRACE_ROUNDS)} rounds invasions strike at most at easy strength. Limited invasions only launch while a province on their route is still imperial; skipped invasions can be drawn again later.`],
+          ['Invasion drawn.', `A new threat appears with a route through the provinces. During the first ${word(BALANCE.EARLY_INVASION_GRACE_ROUNDS)} rounds invasions strike at most at easy strength. Limited invasions only launch while a province on their route is still imperial; skipped invasions can be drawn again later.`],
           ['Title redistribution.', `Only after a coup installs a new Basileus: they assign the ${word(MAJOR_TITLE_COUNT)} major titles before Court.`],
-          ['Court.', `Each dynasty may make deals or skip. Major offices may make up to ${word(COURT_POWER_ACTION_LIMIT)} appointments or revocations in any mix; the Basileus may make up to ${word(BASILEUS_COURT_REVOCATION_LIMIT)} revocations.`],
+          ['Offices.', `Major offices may make up to ${word(BALANCE.MAJOR_OFFICE_ACTION_LIMIT)} appointments or revocations in any mix; the Basileus may make up to ${word(BALANCE.BASILEUS_REVOCATION_LIMIT)} revocations.`],
           ['Income.', 'Estates pay gold, bishops collect church value, and offices raise troops automatically after Court.'],
           ['Estates.', 'Dynasties submit sealed bids for free-citizen land. Winning bids are revealed and settled when Deployment opens.'],
           ['Deployment.', 'Each dynasty funds office troops, hires mercenaries, chooses destinations, and ranks the claimants to the throne.'],
@@ -58,7 +52,7 @@ export const RULE_SECTIONS = [
       { paragraph: 'Each province outside Constantinople has three original values: **P** (profit to a private owner), **T** (troops raised by its office), and **C** (church gold). Constantinople has no provincial economy.' },
       {
         items: [
-          ['Starting purse.', `Every dynasty receives ${STARTING_INCOME_GOLD} gold of starting income in the first round.`],
+          ['Starting purse.', `Every dynasty receives ${BALANCE.STARTING_INCOME_GOLD} gold of starting income in the first round.`],
           ['Buying land', 'happens in Estates through sealed bids. The owner collects that profit during Income.'],
           ['Troops', "come from the province's troop value. A province with a Strategos sends its troops to that Strategos; otherwise they flow to the regional Domestic or Admiral, then to the Basileus."],
           ['Church value', 'goes directly to the province Bishop. Unassigned church value flows to the Patriarch.'],
@@ -105,7 +99,7 @@ export const RULE_SECTIONS = [
     blocks: [
       {
         items: [
-          ['Coup.', `Every funded capital troop follows its owner's ranking: first place gets full support, last place gets none, and the ranks between scale evenly. A claimant can be toggled off for 0 support without changing the weights of those ranked above. The Basileus starts with ${BASILEUS_CAPITAL_SUPPORT} passive capital support and the Patriarch with ${PATRIARCH_CAPITAL_SUPPORT}; temporary acclaim or unrest can adjust those totals for one round. Most support wins. Ties go to the tied claimant with the most Patriarchal support, then to the sitting Basileus, then to dynasty order. A new Basileus redistributes all ${word(MAJOR_TITLE_COUNT)} major titles at the start of the next round or the final reckoning.`],
+          ['Coup.', `Every funded capital troop follows its owner's ranking: first place gets full support, last place gets none, and the ranks between scale evenly. A claimant can be toggled off for 0 support without changing the weights of those ranked above. The Basileus starts with ${BALANCE.THEODOSIAN_WALLS_SUPPORT} passive capital support and the Patriarch with ${BALANCE.PATRIARCH_INFLUENCE}; temporary acclaim or unrest can adjust those totals for one round. Most support wins. Ties go to the tied claimant with the most Patriarchal support, then to the sitting Basileus, then to dynasty order. A new Basileus redistributes all ${word(MAJOR_TITLE_COUNT)} major titles at the start of the next round or the final reckoning.`],
           ['War.', 'Frontier troops minus invader strength. Win → reconquer occupied provinces along the route (cost 1, then +1, +1…). Lose → the invader advances along the route capturing provinces at the same rising cost. If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.'],
           ['Best defender.', 'When the empire wins the war, the top frontier contributor gains 1 gold and 1 temporary Triumph support for each province the surplus could reconquer along the route, even if none remain to restore. Tied top contributors share it equally: gold rounds up, Triumph rounds down. Triumph follows their coup ranking and applies only during the next coup.'],
         ],

@@ -10,6 +10,7 @@ import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopEntry, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { getPreferredCoupCandidate, normalizeCoupRanking, normalizeCoupSupport } from '../engine/coup.js';
+import { BALANCE } from '../data/balance.js';
 import { createAIMeta } from './brain.js';
 import { loadTunedOpponentRosterSync } from './nodeOpponentRoster.js';
 
@@ -164,7 +165,7 @@ function summarizeOrders(state, playerId) {
   }
 
   const mercenaries = state.mercenaryOrders?.[playerId] || orders.mercenaries || {};
-  const mercenaryCount = Math.max(0, Math.min(10, Number(mercenaries.count) || 0));
+  const mercenaryCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(mercenaries.count) || 0));
   if (mercenaries.destination === 'capital') capitalTroops += mercenaryCount;
   else frontierTroops += mercenaryCount;
 

@@ -27,7 +27,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
   container.innerHTML = `
     <section class="phase-card estates-panel">
       <header class="estates-head">
-        <h3>Buy Land</h3>
+        <h3>Estates</h3>
         <div class="estates-head-meta">
           <span class="estates-ready-count">${readyCount}/${state.players.length} ready</span>
           <span class="estates-reserve" title="Your unreserved gold">

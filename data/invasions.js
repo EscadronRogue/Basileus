@@ -1,21 +1,12 @@
 // data/invasions.js — Invasion routes and relative difficulty bands.
 
-export const INVASION_ESTIMATE_INTERVAL = 5;
-
-// Invasions drawn in the first rounds strike at most at easy strength, so a
-// game cannot be lost before dynasties have raised any troops. 0 disables it.
-export const EARLY_INVASION_GRACE_ROUNDS = 2;
+// How strong each difficulty is, the width of the range shown to players and
+// the early easy rounds are balance settings: see data/balance.js.
 
 export const INVASION_DIFFICULTIES = Object.freeze({
   EASY: 'easy',
   MEDIUM: 'medium',
   HARD: 'hard',
-});
-
-export const INVASION_STRENGTH_RATIOS = Object.freeze({
-  [INVASION_DIFFICULTIES.EASY]: [0.5, 0.9],
-  [INVASION_DIFFICULTIES.MEDIUM]: [0.6, 1],
-  [INVASION_DIFFICULTIES.HARD]: [0.7, 1.1],
 });
 
 export const INVASION_OBJECTIVES = Object.freeze({

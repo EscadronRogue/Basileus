@@ -19,6 +19,7 @@ import {
 } from './deals.js';
 import { getThemeLandPrice } from './rules.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
+import { BALANCE } from '../data/balance.js';
 import { formatGold } from './presentation.js';
 import { getCapitalSupportEntries } from './capitalSupport.js';
 import { getCoupRankWeight, normalizeCoupRanking, normalizeCoupSupport } from './coup.js';
@@ -29,22 +30,18 @@ const STRATEGOS_TITLE_BY_REGION = {
   sea: 'ADMIRAL',
 };
 
-export const COURT_POWER_APPOINTMENT_LIMIT = 2;
-export const COURT_POWER_REVOCATION_LIMIT = 2;
-export const COURT_POWER_ACTION_LIMIT = COURT_POWER_APPOINTMENT_LIMIT;
-export const BASILEUS_COURT_REVOCATION_LIMIT = 4;
 export const PRIVATE_ESTATE_REVOCATION_COMPENSATION = 1;
 
 export function getCourtPowerAppointmentLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? 0 : COURT_POWER_APPOINTMENT_LIMIT;
+  return powerKey === 'BASILEUS' ? 0 : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
 export function getCourtPowerRevocationLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? BASILEUS_COURT_REVOCATION_LIMIT : COURT_POWER_REVOCATION_LIMIT;
+  return powerKey === 'BASILEUS' ? BALANCE.BASILEUS_REVOCATION_LIMIT : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
 export function getCourtPowerActionLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? BASILEUS_COURT_REVOCATION_LIMIT : COURT_POWER_ACTION_LIMIT;
+  return powerKey === 'BASILEUS' ? BALANCE.BASILEUS_REVOCATION_LIMIT : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
 function themeName(state, themeId) {

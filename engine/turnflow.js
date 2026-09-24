@@ -4,6 +4,7 @@ import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup, settleLandAuctions } from './actions.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
+import { BALANCE } from '../data/balance.js';
 import {
   canTriggerInvasion,
   createInvasionInstance,
@@ -16,7 +17,7 @@ import {
   getPlayerName,
 } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
-import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
+import { getDefenderRewardGold, getDismissalGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
 import { getPreferredCoupCandidate, normalizeCoupRanking } from './coup.js';
 import {
@@ -28,7 +29,6 @@ import {
 } from './deployment.js';
 
 export const PHASES = ['invasion', 'title_redistribution', 'court', 'income', 'estates', 'deployment', 'resolution', 'cleanup'];
-export const STARTING_INCOME_GOLD = 4;
 
 function shouldRedistributeMajorTitles(state) {
   return Boolean(state?.majorTitleRedistributionPending);
@@ -103,7 +103,7 @@ function isStartingIncome(state) {
 }
 
 function buildStartingIncome(state) {
-  return Object.fromEntries(state.players.map((player) => [player.id, STARTING_INCOME_GOLD]));
+  return Object.fromEntries(state.players.map((player) => [player.id, BALANCE.STARTING_INCOME_GOLD]));
 }
 
 function officeName(state, officeKey) {
@@ -357,7 +357,7 @@ export function submitOrders(state, playerId, orders) {
     ...(orders || {}),
     armies: { ...(orders?.armies || {}) },
   };
-  let unfundedGold = 0;
+  let dismissedTroops = 0;
   for (const officeKey of getOrderArmyKeys(state, playerId)) {
     const total = getArmySize(state, playerId, officeKey);
     const order = normalizedOrders.armies?.[officeKey] || {};
@@ -368,16 +368,17 @@ export function submitOrders(state, playerId, orders) {
       funded,
       destination: normalizeDestination(order.destination),
     };
-    unfundedGold += total - funded;
+    dismissedTroops += total - funded;
   }
 
-  const mercCount = Math.max(0, Math.min(10, Number(normalizedOrders.mercenaries?.count) || 0));
+  const mercCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(normalizedOrders.mercenaries?.count) || 0));
   normalizedOrders.mercenaries = {
     ...(normalizedOrders.mercenaries || {}),
     count: mercCount,
     destination: normalizeDestination(normalizedOrders.mercenaries?.destination),
   };
   const mercCost = getMercenaryHireCost(0, mercCount);
+  const unfundedGold = getDismissalGold(dismissedTroops);
   player.gold += unfundedGold;
   player.gold -= mercCost;
   if (mercCount > 0) {

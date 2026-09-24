@@ -1,6 +1,7 @@
 import { normalizeOrdersWithDealLocks, getSpendableGold } from './deals.js';
 import { getPlayer } from './state.js';
-import { getMercenaryHireCost } from './rules.js';
+import { BALANCE } from '../data/balance.js';
+import { getDismissalGold, getMercenaryHireCost } from './rules.js';
 import {
   getDefaultDeploymentFunding,
   getDeploymentArmyDisplayName,
@@ -111,10 +112,10 @@ function normalizeArmyOrders(state, playerId, rawOrders = {}) {
 function normalizeMercenaryOrder(rawMercenaries = {}) {
   if (Array.isArray(rawMercenaries)) {
     const count = rawMercenaries.reduce((total, entry) => total + Math.max(0, toInt(entry?.count, 0)), 0);
-    return { count: Math.min(10, count), destination: normalizeDestination(rawMercenaries[0]?.destination) };
+    return { count: Math.min(BALANCE.MAX_MERCENARIES, count), destination: normalizeDestination(rawMercenaries[0]?.destination) };
   }
   return {
-    count: Math.max(0, Math.min(10, toInt(rawMercenaries?.count, 0))),
+    count: Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, toInt(rawMercenaries?.count, 0))),
     destination: normalizeDestination(rawMercenaries?.destination),
   };
 }
@@ -145,7 +146,7 @@ function validateArmyOrders(state, playerId, armies) {
 }
 
 function validateMercenaryOrder(mercenaries) {
-  const count = Math.max(0, Math.min(10, toInt(mercenaries?.count, 0)));
+  const count = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, toInt(mercenaries?.count, 0)));
   const destination = normalizeDestination(mercenaries?.destination);
   if (count > 0 && !destination) return orderFailure('Choose a destination for hired mercenaries.');
   return {
@@ -172,11 +173,11 @@ function validateRanking(state, playerId, orders) {
 }
 
 function getUnfundedGold(state, playerId, armies) {
-  return Object.entries(armies).reduce((total, [officeKey, order]) => {
+  return getDismissalGold(Object.entries(armies).reduce((total, [officeKey, order]) => {
     const max = getOfficeMaxTroops(state, playerId, officeKey);
     const funded = Number.isInteger(Number(order.funded)) ? Number(order.funded) : getDefaultDeploymentFunding(max);
     return total + Math.max(0, max - funded);
-  }, 0);
+  }, 0));
 }
 
 export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = {}) {

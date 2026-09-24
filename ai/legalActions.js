@@ -19,6 +19,7 @@ import { getFreeThemes, getPlayer, hasAppointmentTargetLock } from '../engine/st
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { BALANCE } from '../data/balance.js';
 import { clonePlainData } from '../engine/clone.js';
 import { getPlayerMemory, getRelationship, relationshipScore } from './memory.js';
 
@@ -276,7 +277,7 @@ function getUnfundedGoldFromArmies(state, playerId, armies) {
 
 function getMaxMercenariesForBudget(budget) {
   let count = 0;
-  while (count < 10 && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  while (count < BALANCE.MAX_MERCENARIES && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
   return count;
 }
 

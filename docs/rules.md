@@ -14,7 +14,7 @@ If invaders sack Constantinople, the empire falls and everyone loses; the final 
 
 1. **Invasion drawn.** A new threat appears with a route through the provinces. During the first two rounds invasions strike at most at easy strength. Limited invasions only launch while a province on their route is still imperial; skipped invasions can be drawn again later.
 2. **Title redistribution.** Only after a coup installs a new Basileus: they assign the four major titles before Court.
-3. **Court.** Each dynasty may make deals or skip. Major offices may make up to two appointments or revocations in any mix; the Basileus may make up to four revocations.
+3. **Offices.** Major offices may make up to two appointments or revocations in any mix; the Basileus may make up to four revocations.
 4. **Income.** Estates pay gold, bishops collect church value, and offices raise troops automatically after Court.
 5. **Estates.** Dynasties submit sealed bids for free-citizen land. Winning bids are revealed and settled when Deployment opens.
 6. **Deployment.** Each dynasty funds office troops, hires mercenaries, chooses destinations, and ranks the claimants to the throne.
@@ -67,8 +67,7 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **Appointment** (court): Giving a Strategos or Bishop seat to a dynasty during Court. No office may appoint the same dynasty twice in a row; appointing someone else unlocks them again.
 - **Revocation** (court): Taking a Strategos or Bishop seat, or a private estate, away during Court. Free, but it uses one of the office's actions. Estates bought last turn cannot be revoked yet; an older estate pays its owner 1 gold when revoked.
 - **Title Redistribution** (phase): Happens only after a coup installs a new Basileus: before Court, they give each major title to a dynasty.
-- **Court** (phase): The political phase. Offices appoint and revoke titles, and dynasties may negotiate deals. Nothing happens until each dynasty confirms its court plan.
-- **Deal** (court): A binding agreement offered in Court: gold, estates, coup support, frontier support, promised appointments or protection from revocation. The game enforces the terms.
+- **Court** (phase): The political phase. Offices appoint and revoke titles. Nothing happens until each dynasty confirms its court plan.
 - **Income** (phase): Runs by itself after Court: estates pay their profit, Bishops collect church gold, and offices raise troops.
 - **Estate** (economy): A province owned by a dynasty. Its owner collects the province's profit (P) every Income. Free provinces are sold by sealed bid in the Estates phase; the Basileus can revoke an estate.
 - **Sealed bid** (economy): A secret offer of gold for a free province. The highest bid wins when Deployment opens. Gold you bid is set aside until then.

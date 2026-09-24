@@ -1,6 +1,6 @@
 // engine/commands.js - shared command layer for UI, AI, and multiplayer.
 import { recordHistoryEvent } from './history.js';
-import { formatPlayerLabel, getPlayer } from './state.js';
+import { formatPlayerLabel, getPlayer, isDealsEnabled } from './state.js';
 import {
   completeCourtPhase,
   confirmTitleRedistribution,
@@ -45,6 +45,7 @@ function playerLabel(state, playerId) {
 export function applyCourtAction(state, playerId, payload = {}) {
   const action = String(payload.action || '').trim();
 
+  if (action.startsWith('deal-') && !isDealsEnabled(state)) return fail('Deals are not available in this game.');
   if (action === 'deal-send') return sendDealOffer(state, playerId, payload);
   if (action === 'deal-counter') return counterDealOffer(state, playerId, payload);
   if (action === 'deal-accept') return acceptDealOffer(state, playerId, payload);

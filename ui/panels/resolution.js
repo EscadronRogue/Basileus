@@ -115,7 +115,7 @@ export function renderResolutionPanelDetailed(container, state, options = {}) {
 
   container.innerHTML = `
     <section class="phase-card resolution-panel">
-      <h3>Resolve Turn</h3>
+      <h3>Resolution</h3>
       ${empireFallenBanner}
       ${warSection}
       ${coupSection}

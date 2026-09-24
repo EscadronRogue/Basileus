@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createGameState } from '../engine/state.js';
+import { RULES_VERSION, createGameState } from '../engine/state.js';
 import { setDealParticipantIds } from '../engine/deals.js';
 import { createAIMeta, observeCourtAction } from '../ai/brain.js';
 import { startInteractiveRuntime } from './runtime.js';
@@ -41,4 +41,12 @@ test('AI metadata restores human seats and what the AI observed', () => {
   assert.equal(restored.players[0].isAI, false);
   assert.deepEqual(restored.publicLog, meta.publicLog);
   assert.equal(hydrateAiMeta(null, state, {}), null);
+});
+
+test('a save made under older rules is refused instead of loading broken', () => {
+  const saved = JSON.parse(JSON.stringify(serializeGameState(startedGame())));
+  delete saved.rulesVersion;
+  assert.throws(() => hydrateGameState(saved), /older rules/);
+  saved.rulesVersion = RULES_VERSION - 1;
+  assert.throws(() => hydrateGameState(saved), /older rules/);
 });

@@ -5,12 +5,8 @@
 // key words, which are marked in turn, so a tooltip can be followed into the
 // next one. Numbers come from the engine so definitions match the rules.
 import { MAJOR_TITLES } from '../data/titles.js';
-import {
-  BASILEUS_COURT_REVOCATION_LIMIT,
-  COURT_POWER_ACTION_LIMIT,
-  PRIVATE_ESTATE_REVOCATION_COMPENSATION,
-} from '../engine/actions.js';
-import { BASILEUS_CAPITAL_SUPPORT, PATRIARCH_CAPITAL_SUPPORT } from '../engine/capitalSupport.js';
+import { BALANCE } from '../data/balance.js';
+import { PRIVATE_ESTATE_REVOCATION_COMPENSATION } from '../engine/actions.js';
 import { SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PERSONALITIES } from '../ai/personalities.js';
 
@@ -24,7 +20,7 @@ export const GLOSSARY_TERMS = [
     term: 'Basileus',
     category: 'Office',
     aliases: ['Basileus', 'emperor'],
-    definition: `The emperor. Starts every coup with ${BASILEUS_CAPITAL_SUPPORT} passive capital support, may make up to ${BASILEUS_COURT_REVOCATION_LIMIT} revocations of Strategoi and estates in Court, and hands out the major titles after taking the throne. Troops that no Strategos, Domestic or Admiral receives flow to the Basileus.`,
+    definition: `The emperor. Starts every coup with ${BALANCE.THEODOSIAN_WALLS_SUPPORT} passive capital support, may make up to ${BALANCE.BASILEUS_REVOCATION_LIMIT} revocations of Strategoi and estates in Court, and hands out the major titles after taking the throne. Troops that no Strategos, Domestic or Admiral receives flow to the Basileus.`,
   },
   {
     id: 'major-titles',
@@ -38,21 +34,21 @@ export const GLOSSARY_TERMS = [
     term: 'Domestic',
     category: 'Office',
     aliases: ['Domestic of the East', 'Domestic of the West', 'Domestics', 'Domestic'],
-    definition: `Commander of the eastern or western provinces. Appoints and revokes Strategoi in that region, up to ${COURT_POWER_ACTION_LIMIT} actions per Court, and raises the troops of its provinces that have no Strategos.`,
+    definition: `Commander of the eastern or western provinces. Appoints and revokes Strategoi in that region, up to ${BALANCE.MAJOR_OFFICE_ACTION_LIMIT} actions per Court, and raises the troops of its provinces that have no Strategos.`,
   },
   {
     id: 'admiral',
     term: 'Admiral',
     category: 'Office',
     aliases: ['Admiral of the Fleet', 'Admiral'],
-    definition: `Commander of the sea provinces. Appoints and revokes Strategoi there, up to ${COURT_POWER_ACTION_LIMIT} actions per Court, and raises the troops of sea provinces that have no Strategos.`,
+    definition: `Commander of the sea provinces. Appoints and revokes Strategoi there, up to ${BALANCE.MAJOR_OFFICE_ACTION_LIMIT} actions per Court, and raises the troops of sea provinces that have no Strategos.`,
   },
   {
     id: 'patriarch',
     term: 'Patriarch',
     category: 'Office',
     aliases: ['Patriarch', 'Patriarchal'],
-    definition: `Head of the Church. Appoints and revokes Bishops, collects the church gold no Bishop claims, and adds ${PATRIARCH_CAPITAL_SUPPORT} passive capital support to the coup, split by the Patriarch's own ranking. Breaks coup ties.`,
+    definition: `Head of the Church. Appoints and revokes Bishops, collects the church gold no Bishop claims, and adds ${BALANCE.PATRIARCH_INFLUENCE} passive capital support to the coup, split by the Patriarch's own ranking. Breaks coup ties.`,
   },
   {
     id: 'strategos',
@@ -94,14 +90,7 @@ export const GLOSSARY_TERMS = [
     term: 'Court',
     category: 'Phase',
     aliases: ['Court'],
-    definition: 'The political phase. Offices appoint and revoke titles, and dynasties may negotiate deals. Nothing happens until each dynasty confirms its court plan.',
-  },
-  {
-    id: 'deal',
-    term: 'Deal',
-    category: 'Court',
-    aliases: ['deals', 'deal'],
-    definition: 'A binding agreement offered in Court: gold, estates, coup support, frontier support, promised appointments or protection from revocation. The game enforces the terms.',
+    definition: 'The political phase. Offices appoint and revoke titles. Nothing happens until each dynasty confirms its court plan.',
   },
   {
     id: 'income',
@@ -192,7 +181,7 @@ export const GLOSSARY_TERMS = [
     term: 'Passive capital support',
     category: 'Throne',
     aliases: ['passive capital support', 'passive support'],
-    definition: `Coup support that never leaves Constantinople: the Basileus's ${BASILEUS_CAPITAL_SUPPORT}, the Patriarch's ${PATRIARCH_CAPITAL_SUPPORT}, plus any Triumph or unrest this round. It cannot be unfunded and never counts for scoring.`,
+    definition: `Coup support that never leaves Constantinople: the Basileus's ${BALANCE.THEODOSIAN_WALLS_SUPPORT}, the Patriarch's ${BALANCE.PATRIARCH_INFLUENCE}, plus any Triumph or unrest this round. It cannot be unfunded and never counts for scoring.`,
   },
   {
     id: 'triumph',

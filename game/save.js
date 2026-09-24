@@ -3,7 +3,13 @@
 //
 // Shared by multiplayer save files and the browser's local autosave.
 import { buildAdjacency } from '../data/provinces.js';
-import { makeRng } from '../engine/state.js';
+import { isCurrentRulesVersion, makeRng } from '../engine/state.js';
+
+export const OUTDATED_SAVE_MESSAGE = "This save uses older rules and can't be continued.";
+
+export function isSaveStateCurrent(rawState) {
+  return isCurrentRulesVersion(rawState);
+}
 import { clonePlain, hydrateCourtActions, serializeCourtActions } from '../engine/publicState.js';
 import { createAIMeta } from '../ai/brain.js';
 
@@ -22,6 +28,7 @@ export function serializeGameState(state) {
 }
 
 export function hydrateGameState(rawState) {
+  if (!isSaveStateCurrent(rawState)) throw new Error(OUTDATED_SAVE_MESSAGE);
   const { rngState, courtActions, adjacency, ...rest } = clonePlain(rawState);
   void adjacency;
   return {

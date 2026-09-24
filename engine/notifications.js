@@ -1,5 +1,5 @@
 import { summarizeDealClause } from './deals.js';
-import { getPlayerLabel } from './state.js';
+import { getPlayerLabel, isDealsEnabled } from './state.js';
 
 const NOTIFICATION_TONES = new Set(['negative', 'positive', 'neutral']);
 
@@ -410,8 +410,10 @@ export function buildPrivateNotifications(state, viewerId, dealView = null) {
     };
   }
 
-  buildDealNotifications(state, viewerId, dealView, notifications);
-  buildObligationNotifications(state, viewerId, dealView, notifications);
+  if (isDealsEnabled(state)) {
+    buildDealNotifications(state, viewerId, dealView, notifications);
+    buildObligationNotifications(state, viewerId, dealView, notifications);
+  }
   buildRevocationNotifications(state, viewerId, notifications);
   buildHistoryEventNotifications(state, viewerId, notifications);
   buildPendingRewardNotifications(state, viewerId, notifications);

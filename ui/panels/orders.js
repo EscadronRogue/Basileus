@@ -1,5 +1,6 @@
 // ui/panels/orders.js - Deployment panel: funding, destinations, mercenaries, and claimant ranking.
 
+import { BALANCE } from '../../data/balance.js';
 import { getMercenaryHireCost } from '../../engine/rules.js';
 import { getPlayer } from '../../engine/state.js';
 import { getPlayerCapitalSupport } from '../../engine/capitalSupport.js';
@@ -300,7 +301,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
   container.innerHTML = `
     <section class="phase-card orders-panel">
       <header class="orders-head">
-        <h3>Send Armies</h3>
+        <h3>Deployment</h3>
         <div class="orders-budget${totals.overBudget ? ' over' : ''}" title="Mercenary cost after idle troop income" data-orders-budget>
           <span class="orders-budget-label">Mercs</span>
           <span data-orders-merc-cost>${formatGoldHtml(totals.mercCost, { signed: false })}</span>
@@ -372,7 +373,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
             </div>
             <label class="army-card-slider">
               <span class="army-slider-label">Hire</span>
-              <input type="range" min="0" max="10" value="${draft.mercenaries.count || 0}" data-mercenary-count>
+              <input type="range" min="0" max="${BALANCE.MAX_MERCENARIES}" value="${draft.mercenaries.count || 0}" data-mercenary-count>
               <span class="army-slider-readout">
                 <span class="army-slider-num" data-mercenary-num>${draft.mercenaries.count || 0}</span>
                 <span class="army-slider-cost" data-mercenary-cost>${formatGoldHtml(-totals.mercCost, { tone: 'upkeep' })}</span>

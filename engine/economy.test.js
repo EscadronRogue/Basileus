@@ -4,13 +4,17 @@ import assert from 'node:assert/strict';
 import {
   DYNASTY_COLORS,
   DYNASTY_PROFILES,
-  EARLY_INVASION_GRACE_ROUNDS,
   INVASIONS,
   INVASION_DIFFICULTIES,
-  INVASION_ESTIMATE_INTERVAL,
-  INVASION_STRENGTH_RATIOS,
   getDynastyColor,
 } from '../data/invasions.js';
+import { BALANCE } from '../data/balance.js';
+
+const {
+  EARLY_INVASION_GRACE_ROUNDS,
+  INVASION_ESTIMATE_INTERVAL,
+  INVASION_STRENGTH_RATIOS,
+} = BALANCE;
 import { PROVINCES } from '../data/provinces.js';
 import {
   createGameState,
