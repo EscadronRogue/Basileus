@@ -70,7 +70,7 @@ export const RULE_SECTIONS = [
       { paragraph: 'Each round has four phases. Before the first, a new invasion is drawn and shown on the map with its route and estimated strength.' },
       {
         steps: [
-          ['Offices.', `If the last coup crowned a new Basileus, they first hand out the ${word(MAJOR_TITLE_COUNT)} major offices. Then the Domestics and the Admiral appoint and revoke Strategoi in their region and the Patriarch appoints and revokes Bishops: up to ${word(BALANCE.MAJOR_OFFICE_ACTION_LIMIT)} actions per major office. The Basileus may make up to ${word(BALANCE.BASILEUS_REVOCATION_LIMIT)} revocations. Each dynasty locks when done; then income is paid.`],
+          ['Offices.', `If the last coup crowned a new Basileus, they first hand out the ${word(MAJOR_TITLE_COUNT)} major offices. Then the Domestics and the Admiral appoint and revoke Strategoi in their region and the Patriarch appoints and revokes Bishops: up to ${word(BALANCE.MAJOR_OFFICE_ACTION_LIMIT)} actions per major office. The Basileus may revoke estates, up to ${word(BALANCE.BASILEUS_REVOCATION_LIMIT)} times. Each dynasty locks when done; then income is paid.`],
           ['Estates.', 'Each dynasty secretly plans the estates it builds this round.'],
           ['Deployment.', 'Each dynasty secretly sends its armies to the frontier or to Constantinople, hires mercenaries and chooses who it backs in the coup.'],
           ['Resolution.', 'All orders are revealed. The coup is decided first, then the war is fought. Then the next round begins.'],
@@ -104,7 +104,7 @@ export const RULE_SECTIONS = [
         items: [
           ['Appointing.', 'A Strategos can only be appointed in an imperial province, a Bishop in any bishopric. A dynasty may hold any number of minor offices, including through its own appointments.'],
           ['No repeats.', 'An office cannot appoint the same dynasty twice in a row: appointing another dynasty unlocks the first again. The same holds for revoking the same target twice in a row.'],
-          ['Revoking', 'takes a Strategos or Bishop away. One revocation by the Basileus takes all of one dynasty\'s estates in one province, except those built last round, with no refund.'],
+          ['Revoking.', 'A Domestic or the Admiral may revoke the Strategoi of their region, the Patriarch any Bishop. Only the Basileus revokes estates, and cannot revoke anything else: one revocation takes all of one dynasty\'s estates in one province, except those built last round, with no refund.'],
           ['Lost provinces.', 'No Strategos can be appointed in a lost province, and its Strategos and estates cannot be revoked: they stay on record and work again when the province is retaken. Its Bishop can still be appointed and revoked.'],
           ['Major offices', 'only change hands when a new Basileus hands them all out.'],
         ],

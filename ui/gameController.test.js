@@ -178,7 +178,8 @@ test('court panel exposes only role-legal appointments and no legacy army buying
   renderCourtPanel(basileusPanel, state, state.basileusId, {}, { uiState: createDefaultUiState() });
   assert.match(basileusPanel.innerHTML, /Basileus/);
   assert.match(basileusPanel.innerHTML, /Choose actions/);
-  assert.match(basileusPanel.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
+  // The Basileus revokes estates only.
+  assert.doesNotMatch(basileusPanel.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
   assert.match(basileusPanel.innerHTML, /data-revoke-pick="estates:OPS:2"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /data-action="pass-court-power"/);
   assert.doesNotMatch(basileusPanel.innerHTML, /btn-skip/);
@@ -469,13 +470,13 @@ test('court panel does not offer estates that were all built last round', () => 
     playerConfirmed: new Set(),
   };
   addEstates(state.themes.OPS, 2, 1, { recent: true });
-  state.themes.KAP.strategos = 1;
+  addEstates(state.themes.KAP, 1, 1, { recent: false });
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
   assert.doesNotMatch(container.innerHTML, /data-revoke-pick="estates:OPS:2"/);
-  assert.match(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"/);
+  assert.match(container.innerHTML, /data-revoke-pick="estates:KAP:1"/);
 });
 
 test('court panel shows passed offices while other offices remain available', () => {

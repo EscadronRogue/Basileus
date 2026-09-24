@@ -533,17 +533,23 @@ test('legacy self-appointment cooldown still blocks self until someone else is a
   assert.match(repeatedSelfAppointment.reason, /appoint yourself twice in a row/);
 });
 
-test('basileus court power is revocation-only and allows four revocations', () => {
+test('the Basileus only revokes estates, up to four times', () => {
   const state = makeState();
   state.themes.OPS.strategos = 1;
-  state.themes.KAP.strategos = 2;
   state.themes.CIL.bishop = 2;
   addEstates(state.themes.SAM, 3, 2, { recent: false });
   addEstates(state.themes.ITA, 1, 1, { recent: false });
+  addEstates(state.themes.KAP, 2, 1, { recent: false });
+  addEstates(state.themes.KAP, 3, 1, { recent: false });
   enterCourt(state);
 
   const appointment = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 1 });
   assert.equal(appointment.ok, false);
+  assert.equal(state.themes.OPS.strategos, 1);
+
+  const strategosRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:OPS:strategos' });
+  assert.equal(strategosRevocation.ok, false);
+  assert.match(strategosRevocation.reason, /Domestic or Admiral/);
   assert.equal(state.themes.OPS.strategos, 1);
 
   const bishopRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:CIL:bishop' });
@@ -551,24 +557,22 @@ test('basileus court power is revocation-only and allows four revocations', () =
   assert.match(bishopRevocation.reason, /Only the Patriarch/);
   assert.equal(state.themes.CIL.bishop, 2);
 
-  const firstRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:OPS:strategos' });
-  assert.equal(firstRevocation.ok, true);
-  assert.equal(state.themes.OPS.strategos, null);
-
-  const secondRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:KAP:strategos' });
-  assert.equal(secondRevocation.ok, true);
-  assert.equal(state.themes.KAP.strategos, null);
-
-  const thirdRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:SAM:3' });
-  assert.equal(thirdRevocation.ok, true);
+  const first = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:SAM:3' });
+  assert.equal(first.ok, true);
   assert.equal(getEstateCount(state.themes.SAM, 3), 0, 'one action takes both estates');
-
-  const fourthRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:ITA:1' });
-  assert.equal(fourthRevocation.ok, true);
-  assert.equal(getEstateCount(state.themes.ITA, 1), 0);
+  assert.equal(applyCourtAction(state, 0, { action: 'revoke', value: 'estates:ITA:1' }).ok, true);
+  assert.equal(applyCourtAction(state, 0, { action: 'revoke', value: 'estates:KAP:2' }).ok, true);
+  assert.equal(applyCourtAction(state, 0, { action: 'revoke', value: 'estates:KAP:3' }).ok, true);
   assert.equal(getCourtPowerActionCount(state, 0, 'BASILEUS'), 4);
   assert.equal(getCourtPowerRevocationCount(state, 0, 'BASILEUS'), 4);
   assert.equal(isCourtPowerExhausted(state, 0, 'BASILEUS'), true);
+  assert.equal(state.courtActions.playerConfirmed.has(0), true);
+});
+
+test('a Basileus with no estates to revoke has nothing to do in the Offices phase', () => {
+  const state = makeState();
+  state.themes.OPS.strategos = 1;
+  enterCourt(state);
   assert.equal(state.courtActions.playerConfirmed.has(0), true);
 });
 
@@ -671,7 +675,7 @@ test('estates built last round cannot be revoked until the round after', () => {
 test('estates that are all protected cannot be revoked', () => {
   const state = makeState();
   addEstates(state.themes.OPS, 2, 2, { recent: true });
-  state.themes.KAP.strategos = 3;
+  addEstates(state.themes.KAP, 3, 1, { recent: false });
   enterCourt(state);
   const blocked = applyCourtAction(state, 0, { action: 'revoke', value: 'estates:OPS:2' });
   assert.equal(blocked.ok, false);

@@ -101,7 +101,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
       if (targetPlayerId != null && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
         return fail(`${playerLabel(state, targetPlayerId)} is protected by an accepted non-revocation deal.`);
       }
-      if (parts[2] === 'strategos' && playerId !== state.basileusId && !canPlayerRevokeStrategos(state, playerId, parts[1])) {
+      if (parts[2] === 'strategos' && !canPlayerRevokeStrategos(state, playerId, parts[1])) {
         return fail('Only the regional Domestic or Admiral can revoke this strategos.');
       }
       if (parts[2] === 'bishop' && !canPlayerRevokeBishop(state, playerId)) {

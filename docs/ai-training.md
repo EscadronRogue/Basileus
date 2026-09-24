@@ -25,10 +25,11 @@ npm run simulate:ai -- --games 200 --players 5 --deck 9
 - `--set NAME=value` replace a value of `data/balance.js` for this run
   (repeatable; values are read as JSON, e.g. `--set COUP_CHOICE_WEIGHTS=[1,0.5]`)
 - `--sweep NAME=a,b,c` run once per value and print one line per value
-- `--probe cautious|gambler` seat one probe per game (rotating seats) among
-  the tuned roster. A probe plays like the trained Strategist except for the
-  weights its preset in `ai/policies.js` changes: `cautious` over-defends and
-  never bids for the throne, `gambler` bids for the throne whenever it can.
+- `--probe cautious|selfish|gambler` seat one probe per game (rotating
+  seats) among the tuned roster. A probe plays like the trained Strategist
+  except for the weights its preset in `ai/policies.js` changes: `cautious`
+  gives everything to the common good, `selfish` gives as little as it can,
+  `gambler` only takes throne risks.
 
 The report covers completion, empire-fall rate, war and coup outcomes,
 deployment habits, estates, scoring, win rate per seat and per AI (against
@@ -48,7 +49,12 @@ npm run train:ai -- --generations 8
 ```
 
 Training produces one AI opponent per **personality** (`ai/personalities.js`):
-Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron and Strategist.
+Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Strategist, and
+five that are selfish in different ways: the Miser (dismisses troops for
+gold), the Hoarder (keeps offices, strips rivals), the Saboteur (lets
+provinces of disliked rivals fall), the Regicide (loses wars on purpose to
+load Unrest on an unwanted Basileus) and the Glory Hunter (wins the
+best-defender reward, then spends it on a coup).
 Every AI uses the same planner (`ai/strategy.js`); a personality fixes the
 ranges of the few strategy weights that make its temperament (an Usurper
 always prizes the throne, an Opportunist always leans on others to hold the

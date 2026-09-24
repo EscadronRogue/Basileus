@@ -553,14 +553,17 @@ test('AI legal court actions exclude estates built last round', () => {
   const state = makeState();
   state.round = 2;
   addEstates(state.themes.OPS, 2, 1, { recent: true });
+  addEstates(state.themes.SAM, 3, 1, { recent: false });
   state.themes.KAP.strategos = 1;
   state.phase = 'income';
   phaseCourt(state);
 
   const actions = listLegalCourtActions(state, state.basileusId);
 
-  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'minor:KAP:strategos'), true);
+  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'estates:SAM:3'), true);
   assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'estates:OPS:2'), false);
+  // The Basileus revokes estates only, never a Strategos.
+  assert.equal(actions.some((action) => action.payload?.value === 'minor:KAP:strategos'), false);
 });
 
 test('AI court planner uses another appointment to unlock future self-appointments', () => {

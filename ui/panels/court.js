@@ -569,7 +569,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     : actionCount > 0 && !exhausted
     ? `${courtPowerCountLabel(remainingActions, 'action')} remains for this office.`
     : !exhausted && powerKey === 'BASILEUS'
-      ? `Up to ${actionLimit} revocations for this office this round.`
+      ? `Up to ${actionLimit} estate revocations this round: one takes all of a dynasty's estates in one province.`
     : !exhausted
       ? `Up to ${actionLimit} appointments or revocations for this office this round.`
       : '';

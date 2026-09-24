@@ -20,7 +20,7 @@ export const GLOSSARY_TERMS = [
     term: 'Basileus',
     category: 'Office',
     aliases: ['Basileus', 'emperor'],
-    definition: `The emperor. Hands out the ${MAJOR_TITLE_COUNT} major offices on taking the throne, may make up to ${BALANCE.BASILEUS_REVOCATION_LIMIT} revocations of Strategoi and estates in each Offices phase, raises 1 troop per ${BALANCE.BASILEUS_PROVINCES_PER_TROOP} imperial provinces, and has the Theodosian Walls in every coup.`,
+    definition: `The emperor. Hands out the ${MAJOR_TITLE_COUNT} major offices on taking the throne, is the only one who can revoke estates (up to ${BALANCE.BASILEUS_REVOCATION_LIMIT} revocations in each Offices phase, and nothing else), raises 1 troop per ${BALANCE.BASILEUS_PROVINCES_PER_TROOP} imperial provinces, and has the Theodosian Walls in every coup.`,
   },
   {
     id: 'major-office',
@@ -90,7 +90,7 @@ export const GLOSSARY_TERMS = [
     term: 'Revocation',
     category: 'Offices',
     aliases: ['revocations', 'revocation', 'revokes', 'revoke'],
-    definition: 'Taking away a Strategos or a Bishop, or (by the Basileus) all of one dynasty\'s estates in one province. Estates built last round, and a Strategos or estates in a lost province, cannot be revoked.',
+    definition: 'Taking away a Strategos (by the Domestic or Admiral of the region) or a Bishop (by the Patriarch), or all of one dynasty\'s estates in one province (by the Basileus only). Estates built last round, and a Strategos or estates in a lost province, cannot be revoked.',
   },
   // Phases
   {
@@ -99,7 +99,7 @@ export const GLOSSARY_TERMS = [
     category: 'Phase',
     aliases: ['Offices phase', 'Offices'],
     caseSensitive: true,
-    definition: 'The first phase of a round. A new Basileus first hands out the major offices; then the major offices appoint and revoke, and the Basileus may revoke. Income is paid when every dynasty has locked.',
+    definition: 'The first phase of a round. A new Basileus first hands out the major offices; then the major offices appoint and revoke, and the Basileus may revoke estates. Income is paid when every dynasty has locked.',
   },
   {
     id: 'income',

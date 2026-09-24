@@ -4,21 +4,24 @@ function titleKeys() {
   return Object.keys(MAJOR_TITLES);
 }
 
+// What a major office brings every income, as engine/cascade.js pays it:
+// the Patriarch 1 church gold per imperial bishopric (Bishop or not), a
+// Domestic or the Admiral 1 troop per imperial province of the region
+// (Strategos or not).
 export function estimateMajorTitleYield(state, titleKey) {
   if (titleKey === 'PATRIARCH') {
     return Object.values(state?.themes || {}).reduce((total, theme) => {
-      if (!theme || theme.id === 'CPL' || theme.bishop != null) return total;
+      if (!theme || theme.id === 'CPL' || theme.lost) return total;
       return total + Math.max(0, Number(theme.C ?? theme.origin?.C) || 0);
     }, 0);
   }
 
   const region = MAJOR_TITLES[titleKey]?.region;
   if (!region) return 0;
-  const pool = Object.values(state?.themes || {}).reduce((total, theme) => {
-    if (!theme || theme.id === 'CPL' || theme.lost || theme.region !== region || theme.strategos != null) return total;
+  return Object.values(state?.themes || {}).reduce((total, theme) => {
+    if (!theme || theme.id === 'CPL' || theme.lost || theme.region !== region) return total;
     return total + Math.max(0, Number(theme.T ?? theme.origin?.T) || 0);
   }, 0);
-  return Math.ceil(pool * 2 / 3);
 }
 
 export function estimateMajorTitleValue(state, titleKey) {

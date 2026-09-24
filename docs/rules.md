@@ -30,7 +30,7 @@ If an invasion takes Constantinople, the empire falls and the game ends at once:
 
 Each round has four phases. Before the first, a new invasion is drawn and shown on the map with its route and estimated strength.
 
-1. **Offices.** If the last coup crowned a new Basileus, they first hand out the four major offices. Then the Domestics and the Admiral appoint and revoke Strategoi in their region and the Patriarch appoints and revokes Bishops: up to two actions per major office. The Basileus may make up to four revocations. Each dynasty locks when done; then income is paid.
+1. **Offices.** If the last coup crowned a new Basileus, they first hand out the four major offices. Then the Domestics and the Admiral appoint and revoke Strategoi in their region and the Patriarch appoints and revokes Bishops: up to two actions per major office. The Basileus may revoke estates, up to four times. Each dynasty locks when done; then income is paid.
 2. **Estates.** Each dynasty secretly plans the estates it builds this round.
 3. **Deployment.** Each dynasty secretly sends its armies to the frontier or to Constantinople, hires mercenaries and chooses who it backs in the coup.
 4. **Resolution.** All orders are revealed. The coup is decided first, then the war is fought. Then the next round begins.
@@ -52,7 +52,7 @@ Troops are used in the Deployment phase of the same round; troops not sent anywh
 
 - **Appointing.** A Strategos can only be appointed in an imperial province, a Bishop in any bishopric. A dynasty may hold any number of minor offices, including through its own appointments.
 - **No repeats.** An office cannot appoint the same dynasty twice in a row: appointing another dynasty unlocks the first again. The same holds for revoking the same target twice in a row.
-- **Revoking** takes a Strategos or Bishop away. One revocation by the Basileus takes all of one dynasty's estates in one province, except those built last round, with no refund.
+- **Revoking.** A Domestic or the Admiral may revoke the Strategoi of their region, the Patriarch any Bishop. Only the Basileus revokes estates, and cannot revoke anything else: one revocation takes all of one dynasty's estates in one province, except those built last round, with no refund.
 - **Lost provinces.** No Strategos can be appointed in a lost province, and its Strategos and estates cannot be revoked: they stay on record and work again when the province is retaken. Its Bishop can still be appointed and revoked.
 - **Major offices** only change hands when a new Basileus hands them all out.
 
@@ -97,7 +97,7 @@ After the last round's Resolution, a final Offices phase is played (after the ma
 
 ## Glossary
 
-- **Basileus** (office): The emperor. Hands out the 4 major offices on taking the throne, may make up to 4 revocations of Strategoi and estates in each Offices phase, raises 1 troop per 3 imperial provinces, and has the Theodosian Walls in every coup.
+- **Basileus** (office): The emperor. Hands out the 4 major offices on taking the throne, is the only one who can revoke estates (up to 4 revocations in each Offices phase, and nothing else), raises 1 troop per 3 imperial provinces, and has the Theodosian Walls in every coup.
 - **Major office** (office): One of the 4 great offices below the throne: Domestic of the East, Domestic of the West, Admiral and Patriarch. Only a new Basileus hands them out again.
 - **Minor office** (office): A Strategos or a Bishop: one of each per province at most, appointed and revoked by a major office in the Offices phase.
 - **Domestic** (office): Commands the eastern or the western provinces: appoints and revokes their Strategoi (up to 2 actions per Offices phase) and raises 1 troop per imperial province of the region.
@@ -107,8 +107,8 @@ After the last round's Resolution, a final Offices phase is played (after the ma
 - **Bishop** (office): Holds one bishopric, appointed by the Patriarch. Receives 1 gold from it every income, even while it is lost.
 - **Bishopric** (map): A province with a church, marked with a triangle on the map. Only bishoprics have Bishops.
 - **Appointment** (offices): Giving a Strategos or Bishop office to a dynasty. An office cannot appoint the same dynasty twice in a row; appointing another dynasty unlocks the first again.
-- **Revocation** (offices): Taking away a Strategos or a Bishop, or (by the Basileus) all of one dynasty's estates in one province. Estates built last round, and a Strategos or estates in a lost province, cannot be revoked.
-- **Offices** (phase): The first phase of a round. A new Basileus first hands out the major offices; then the major offices appoint and revoke, and the Basileus may revoke. Income is paid when every dynasty has locked.
+- **Revocation** (offices): Taking away a Strategos (by the Domestic or Admiral of the region) or a Bishop (by the Patriarch), or all of one dynasty's estates in one province (by the Basileus only). Estates built last round, and a Strategos or estates in a lost province, cannot be revoked.
+- **Offices** (phase): The first phase of a round. A new Basileus first hands out the major offices; then the major offices appoint and revoke, and the Basileus may revoke estates. Income is paid when every dynasty has locked.
 - **Income** (phase): Paid at the end of the Offices phase: troops to Strategoi, Domestics, the Admiral and the Basileus; gold to Bishops, the Patriarch and estate owners. Lost provinces produce no troops and no estate gold.
 - **Estate** (economy): Land a dynasty owns in a province: pays it 1 gold every income while the province is imperial. A province can hold any number of estates of any dynasties. In the Estates phase each dynasty secretly plans new ones: the first costs 1 gold that round, each next one 1 more.
 - **Deployment** (phase): Each dynasty secretly sends its armies to the frontier or to Constantinople, dismisses the troops it does not field, hires mercenaries and makes its coup choices.

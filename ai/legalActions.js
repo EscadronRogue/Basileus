@@ -163,10 +163,7 @@ function appendRevocationActions(actions, state, playerId) {
         : theme.region === MAJOR_TITLES.ADMIRAL.region
           ? 'ADMIRAL'
           : null;
-    if (theme.strategos != null && !theme.lost && (
-      playerId === state.basileusId
-      || (requiredStrategosTitle && player.majorTitles.includes(requiredStrategosTitle))
-    )) {
+    if (theme.strategos != null && !theme.lost && requiredStrategosTitle && player.majorTitles.includes(requiredStrategosTitle)) {
       pushCourt(actions, state, playerId, { action: 'revoke', value: `minor:${theme.id}:strategos` }, 'revoke strategos');
     }
     if (theme.bishop != null && player.majorTitles.includes('PATRIARCH')) {

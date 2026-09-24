@@ -107,7 +107,7 @@ export function getRevocationTargets(state, playerId, powerKey = null) {
   };
   for (const theme of Object.values(state.themes || {})) {
     if (theme.id === 'CPL') continue;
-    if (theme.strategos != null && !theme.lost && (roles.has(regionTitleFor(theme)) || isBasileusPower)) {
+    if (theme.strategos != null && !theme.lost && roles.has(regionTitleFor(theme))) {
       pushTarget({ value: `minor:${theme.id}:strategos`, label: `Strategos of ${theme.name}` });
     }
     if (theme.bishop != null && roles.has('PATRIARCH')) {

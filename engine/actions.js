@@ -372,10 +372,10 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
 }
 
 // Revocations
+// Only the Domestic or Admiral of the region; the Basileus revokes estates only.
 export function canPlayerRevokeStrategos(state, playerId, themeId) {
   const theme = state.themes[themeId];
   if (!theme) return false;
-  if (playerId === state.basileusId) return true;
   const requiredTitle = STRATEGOS_TITLE_BY_REGION[theme.region];
   return Boolean(requiredTitle && getPlayer(state, playerId)?.majorTitles?.includes(requiredTitle));
 }
@@ -384,7 +384,7 @@ export function canPlayerRevokeBishop(state, playerId) {
   return Boolean(getPlayer(state, playerId)?.majorTitles?.includes('PATRIARCH'));
 }
 
-export function revokeMinorTitle(state, themeId, titleType, revokerId = state.basileusId) {
+export function revokeMinorTitle(state, themeId, titleType, revokerId) {
   const theme = state.themes[themeId];
   if (!theme) return fail('Choose a province.');
   if (titleType !== 'strategos' && titleType !== 'bishop') return fail('Choose a Strategos or a Bishop.');
@@ -396,11 +396,7 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   const slotKey = getMinorTitleSlotKey(themeId, titleType);
   const sameTurn = currentTurnTitleBlock(state, slotKey, `The ${titleType} of ${themeName(state, themeId)}`);
   if (!sameTurn.ok) return sameTurn;
-  const powerKey = titleType === 'strategos' && revokerId === state.basileusId
-    ? 'BASILEUS'
-    : titleType === 'strategos'
-      ? STRATEGOS_TITLE_BY_REGION[theme.region]
-      : 'PATRIARCH';
+  const powerKey = titleType === 'strategos' ? STRATEGOS_TITLE_BY_REGION[theme.region] : 'PATRIARCH';
   if (titleType === 'strategos' && !canPlayerRevokeStrategos(state, revokerId, themeId)) {
     return fail('Only the regional Domestic or Admiral can revoke this strategos.');
   }
@@ -492,16 +488,9 @@ function unique(values) {
 function hasBasileusRevocationTarget(state) {
   return Object.values(state.themes || {}).some((theme) => (
     theme.id !== 'CPL'
-    && (
-      (
-        theme.strategos != null
-        && !theme.lost
-        && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
-      )
-      || getProvinceEstateHolders(theme).some((holder) => (
-        canRevokeEstates(state, theme.id, holder.playerId, state.basileusId).ok
-      ))
-    )
+    && getProvinceEstateHolders(theme).some((holder) => (
+      canRevokeEstates(state, theme.id, holder.playerId, state.basileusId).ok
+    ))
   ));
 }
 
