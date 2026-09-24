@@ -40,12 +40,14 @@ import {
   isStrategosDeploymentArmyKey,
 } from '../engine/deployment.js';
 import {
-  formatGoldHtml,
-  formatTroopsHtml,
   formatChurchHtml,
+  formatGoldHtml,
   formatMercenariesHtml,
-} from '../engine/presentation.js';
-import { renderIcon, renderValue } from './icons.js';
+  formatTroopsHtml,
+  renderIcon,
+  renderValue,
+} from './icons.js';
+import { escapeHtml } from './html.js';
 import {
   getPlayerStyleAttr,
   renderCartouchedText,
@@ -57,14 +59,6 @@ import {
   renderThemeOfficeBadge,
   renderTitleBadge,
 } from './labels.js';
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function cloneStateForValidation(state) {
   let clone;
@@ -111,12 +105,6 @@ function getDraftBucket(uiState, state, scope, playerId) {
   const key = `${scope}:${state.round}:${playerId}`;
   if (!uiState.drafts[key]) uiState.drafts[key] = {};
   return uiState.drafts[key];
-}
-
-function getPlayerOptions(state, selectedId = '') {
-  return state.players.map((player) => `
-    <option value="${player.id}" ${Number(selectedId) === player.id ? 'selected' : ''}>${escapeHtml(player.firstName ? `${player.firstName} ${player.dynasty}` : player.dynasty)}</option>
-  `).join('');
 }
 
 function playerDisplayLabel(player) {

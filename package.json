@@ -33,7 +33,7 @@
     "train:ai": "node ai/train.js",
     "build:svg-fallback": "node scripts/build-svg-fallback.js",
     "test": "npm run test:data && npm run test:economy && npm run test:ai && npm run test:ui && npm run test:multiplayer",
-    "test:data": "node --test data/data.test.js render/svgAssets.test.js",
+    "test:data": "node --test data/data.test.js render/svgAssets.test.js scripts/layering.test.js",
     "test:economy": "node engine/economy.test.js",
     "test:ai": "node --test ai/brain.test.js ai/purge.test.js",
     "test:ui": "node ui/gameController.test.js",

@@ -32,7 +32,6 @@ import {
   applyTitleRedistribution,
 } from './actions.js';
 import { normalizeHumanOrders } from './orders.js';
-import { observeCourtAction } from '../ai/brain.js';
 
 function fail(reason) {
   return { ok: false, reason };
@@ -65,14 +64,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
     return { ok: true };
   }
 
-  if (action === 'appoint-court') {
-    return fail('Court titles have been removed.');
-  }
-
-  if (action === 'basileus-appoint') {
-    return fail('The Basileus can no longer appoint minor titles.');
-  }
-
   if (action === 'appoint-strategos') {
     const appointeeId = Number(payload.appointeeId);
     const result = appointStrategos(state, playerId, String(payload.themeId || '').trim(), appointeeId);
@@ -99,7 +90,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
     const value = String(payload.value || '').trim();
     const parts = value.split(':');
     const kind = parts[0];
-    if (kind === 'major') return fail('Major titles are redistributed during Title Redistribution.');
 
     let targetPlayerId = null;
     if (kind === 'minor') {
@@ -118,8 +108,6 @@ export function applyCourtAction(state, playerId, payload = {}) {
       }
       const result = revokeMinorTitle(state, parts[1], parts[2], playerId);
       if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
-    } else if (kind === 'court') {
-      return fail('Court titles have been removed.');
     } else if (kind === 'theme') {
       const theme = state.themes[parts[1]];
       targetPlayerId = theme?.owner ?? null;
@@ -184,7 +172,9 @@ export function submitHumanOrders(state, playerId, orders, options = {}) {
   return { ok: true, orders: normalized.orders, totalCost: normalized.totalCost };
 }
 
-export function applyManualTitleReassignment(state, aiMeta, basileusId, titleAssignments) {
+// Returns one appointment observation per office so AI-aware callers can
+// update their opponent models; the engine itself never talks to the AI.
+export function applyManualTitleReassignment(state, basileusId, titleAssignments) {
   const validation = validateMajorTitleAssignments(state, basileusId, titleAssignments);
   if (!validation?.ok) return validation || fail('Invalid major title assignments.');
   const previousAssignments = {};
@@ -196,18 +186,14 @@ export function applyManualTitleReassignment(state, aiMeta, basileusId, titleAss
     : applyTitleRedistribution(state, basileusId, titleAssignments);
   if (!result.ok) return result;
 
-  if (aiMeta) {
-    for (const [titleKey, appointeeId] of Object.entries(titleAssignments)) {
-      observeCourtAction(state, aiMeta, {
-        type: 'appointment',
-        actorId: basileusId,
-        appointeeId: Number(appointeeId),
-        previousHolderId: previousAssignments[titleKey] ?? null,
-        value: 1.25,
-      });
-    }
-  }
-  return { ok: true };
+  const observations = Object.entries(titleAssignments).map(([titleKey, appointeeId]) => ({
+    type: 'appointment',
+    actorId: basileusId,
+    appointeeId: Number(appointeeId),
+    previousHolderId: previousAssignments[titleKey] ?? null,
+    value: 1.25,
+  }));
+  return { ok: true, observations };
 }
 
 export function advanceFromCourtToEstates(state) {

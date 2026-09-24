@@ -13,6 +13,7 @@ import {
   pickTriggerableInvasionTemplate,
   prepareInvasionForDraw,
   rollInvasionStrength,
+  getPlayerName,
 } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
 import { getDefenderRewardGold, getMercenaryHireCost, getThemeProfitValue } from './rules.js';
@@ -105,11 +106,6 @@ function buildStartingIncome(state) {
   return Object.fromEntries(state.players.map((player) => [player.id, STARTING_INCOME_GOLD]));
 }
 
-function playerName(state, playerId) {
-  const player = getPlayer(state, playerId);
-  return player?.firstName ? `${player.firstName} ${player.dynasty}`.trim() : player?.dynasty || `Player ${Number(playerId) + 1}`;
-}
-
 function officeName(state, officeKey) {
   return getOfficeDisplayName(state, officeKey);
 }
@@ -172,9 +168,9 @@ function buildPlayerResolutionContribution(state, player, orders = {}) {
 
   return {
     playerId: player.id,
-    playerName: playerName(state, player.id),
+    playerName: getPlayerName(state, player.id),
     candidateId: preferredCandidateId,
-    candidateName: playerName(state, preferredCandidateId),
+    candidateName: getPlayerName(state, preferredCandidateId),
     ranking,
     capitalTroops,
     passiveCapitalSupport,
@@ -268,7 +264,7 @@ export function phaseIncome(state) {
     details: {
       income: Object.entries(result.income).map(([playerId, amount]) => ({
         playerId: Number(playerId),
-        playerName: playerName(state, Number(playerId)),
+        playerName: getPlayerName(state, Number(playerId)),
         amount,
       })),
       troops: Object.entries(result.troops).map(([officeKey, entry]) => {
@@ -398,10 +394,10 @@ export function submitOrders(state, playerId, orders) {
     category: 'orders',
     type: 'orders_submitted',
     actorId: playerId,
-    summary: `${playerName(state, playerId)} locks deployment orders.`,
+    summary: `${getPlayerName(state, playerId)} locks deployment orders.`,
     details: {
       candidateId: preferredCandidateId,
-      candidateName: playerName(state, preferredCandidateId),
+      candidateName: getPlayerName(state, preferredCandidateId),
       ranking,
     },
   });
@@ -460,14 +456,14 @@ export function phaseResolution(state) {
     category: 'resolution',
     type: 'coup_result',
     summary: coupResult.winner === state.basileusId
-      ? `${playerName(state, coupResult.winner)} remains Basileus.`
-      : `${playerName(state, coupResult.winner)} wins the coup and claims the throne.`,
+      ? `${getPlayerName(state, coupResult.winner)} remains Basileus.`
+      : `${getPlayerName(state, coupResult.winner)} wins the coup and claims the throne.`,
     details: {
       winnerId: coupResult.winner,
-      winnerName: playerName(state, coupResult.winner),
+      winnerName: getPlayerName(state, coupResult.winner),
       votes: Object.entries(coupResult.votes).map(([candidateId, troops]) => ({
         candidateId: Number(candidateId),
-        candidateName: playerName(state, Number(candidateId)),
+        candidateName: getPlayerName(state, Number(candidateId)),
         troops,
       })),
       passiveSupport: coupResult.passiveSupport,
@@ -543,7 +539,7 @@ function topRankedDefenders(contributions = []) {
 }
 
 function formatPlayerNameList(state, playerIds = []) {
-  const names = playerIds.map((playerId) => playerName(state, playerId));
+  const names = playerIds.map((playerId) => getPlayerName(state, playerId));
   if (names.length <= 2) return names.join(' and ');
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
@@ -642,7 +638,7 @@ function applyBasileusLossPenalty(state, warResult) {
     category: 'resolution',
     type: 'basileus_loss_penalty',
     actorId: penalizedBasileusId,
-    summary: `${playerName(state, penalizedBasileusId)} loses ${formatTroops(lost, 'province')} and suffers ${formatTroops(lost)} less capital support next round.`,
+    summary: `${getPlayerName(state, penalizedBasileusId)} loses ${formatTroops(lost, 'province')} and suffers ${formatTroops(lost)} less capital support next round.`,
     details: {
       basileusId: penalizedBasileusId,
       playerId: penalizedBasileusId,
@@ -785,8 +781,8 @@ export function applyDefenderRewardChoice(state, rewardId, playerId, choice = 'l
     type: 'defender_reward',
     actorId: playerId,
     summary: reward.choice === 'empire'
-      ? `${playerName(state, playerId)} restores ${theme?.name || reward.themeId} to the empire as free-citizen land.`
-      : `${playerName(state, playerId)} takes ${formatGold(reward.gold || 0)} while ${theme?.name || reward.themeId} remains occupied.`,
+      ? `${getPlayerName(state, playerId)} restores ${theme?.name || reward.themeId} to the empire as free-citizen land.`
+      : `${getPlayerName(state, playerId)} takes ${formatGold(reward.gold || 0)} while ${theme?.name || reward.themeId} remains occupied.`,
     details: {
       themeId: reward.themeId,
       themeName: theme?.name || reward.themeId,
@@ -833,7 +829,7 @@ export function phaseCleanup(state) {
     recordHistoryEvent(state, {
       category: 'system',
       type: 'new_basileus',
-      summary: `${playerName(state, state.basileusId)} takes the throne from ${playerName(state, oldBasileus)}.`,
+      summary: `${getPlayerName(state, state.basileusId)} takes the throne from ${getPlayerName(state, oldBasileus)}.`,
       details: { oldBasileusId: oldBasileus, newBasileusId: state.basileusId },
     });
   }

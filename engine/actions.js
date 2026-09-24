@@ -1,13 +1,13 @@
 // engine/actions.js - estates, court actions, title redistribution, and coups.
 import {
   findTitleHolder,
-  formatPlayerLabel,
   getPlayer,
   hasAppointmentTargetLock,
   hasRevocationTargetLock,
   recordAppointmentChoice,
   recordRevocationChoice,
   requireRng,
+  getPlayerLabel,
 } from './state.js';
 import { recordHistoryEvent } from './history.js';
 import { getPlayerFinalScore } from './scoring.js';
@@ -45,11 +45,6 @@ export function getCourtPowerRevocationLimit(powerKey) {
 
 export function getCourtPowerActionLimit(powerKey) {
   return powerKey === 'BASILEUS' ? BASILEUS_COURT_REVOCATION_LIMIT : COURT_POWER_ACTION_LIMIT;
-}
-
-function playerName(state, playerId) {
-  const player = getPlayer(state, playerId);
-  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
 }
 
 function themeName(state, themeId) {
@@ -294,13 +289,13 @@ export function checkRevocationCurrentTurnAppointment(state, revocationValue) {
 
 function checkAppointmentTargetCooldown(state, appointerId, appointeeId) {
   if (!hasAppointmentTargetLock(state, appointerId, appointeeId)) return { ok: true };
-  const targetLabel = appointeeId === appointerId ? 'yourself' : playerName(state, appointeeId);
+  const targetLabel = appointeeId === appointerId ? 'yourself' : getPlayerLabel(state, appointeeId);
   return fail(`You cannot appoint ${targetLabel} twice in a row. Appoint someone else first.`);
 }
 
 function checkRevocationTargetCooldown(state, revokerId, targetPlayerId) {
   if (!hasRevocationTargetLock(state, revokerId, targetPlayerId)) return { ok: true };
-  return fail(`${playerName(state, revokerId)} cannot revoke ${playerName(state, targetPlayerId)} twice in a row. Revoke someone else first.`);
+  return fail(`${getPlayerLabel(state, revokerId)} cannot revoke ${getPlayerLabel(state, targetPlayerId)} twice in a row. Revoke someone else first.`);
 }
 
 function canAppointWithPromise(state, appointerId, appointeeId) {
@@ -536,8 +531,8 @@ export function settleLandAuctions(state) {
       type: 'buy_theme',
       actorId: winner.id,
       summary: result.tieBreak
-        ? `${playerName(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)} after a tied sealed bid.`
-        : `${playerName(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)}.`,
+        ? `${getPlayerLabel(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)} after a tied sealed bid.`
+        : `${getPlayerLabel(state, winner.id)} wins ${themeName(state, themeId)} for ${formatGold(winningBid)}.`,
       details: {
         themeId,
         themeName: themeName(state, themeId),
@@ -576,8 +571,8 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
     category: 'court',
     type: 'appoint_strategos',
     actorId: appointerId,
-    summary: `${playerName(state, appointerId)} appoints ${playerName(state, appointeeId)} as strategos of ${themeName(state, themeId)}.`,
-    details: { appointeeId, appointeeName: playerName(state, appointeeId), themeId, themeName: themeName(state, themeId) },
+    summary: `${getPlayerLabel(state, appointerId)} appoints ${getPlayerLabel(state, appointeeId)} as strategos of ${themeName(state, themeId)}.`,
+    details: { appointeeId, appointeeName: getPlayerLabel(state, appointeeId), themeId, themeName: themeName(state, themeId) },
   });
   return { ok: true };
 }
@@ -604,8 +599,8 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
     category: 'court',
     type: 'appoint_bishop',
     actorId: appointerId,
-    summary: `${playerName(state, appointerId)} appoints ${playerName(state, appointeeId)} as bishop of ${themeName(state, themeId)}.`,
-    details: { appointeeId, appointeeName: playerName(state, appointeeId), themeId, themeName: themeName(state, themeId) },
+    summary: `${getPlayerLabel(state, appointerId)} appoints ${getPlayerLabel(state, appointeeId)} as bishop of ${themeName(state, themeId)}.`,
+    details: { appointeeId, appointeeName: getPlayerLabel(state, appointeeId), themeId, themeName: themeName(state, themeId) },
   });
   return { ok: true };
 }
@@ -621,10 +616,6 @@ export function canPlayerRevokeStrategos(state, playerId, themeId) {
 
 export function canPlayerRevokeBishop(state, playerId) {
   return Boolean(getPlayer(state, playerId)?.majorTitles?.includes('PATRIARCH'));
-}
-
-export function revokeMajorTitle() {
-  return fail('Major titles are redistributed in the Title Redistribution phase.');
 }
 
 export function revokeMinorTitle(state, themeId, titleType, revokerId = state.basileusId) {
@@ -661,14 +652,14 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
     category: 'court',
     type: 'revoke_minor_title',
     actorId: revokerId,
-    summary: `${playerName(state, revokerId)} revokes the ${titleType} of ${themeName(state, themeId)}.`,
+    summary: `${getPlayerLabel(state, revokerId)} revokes the ${titleType} of ${themeName(state, themeId)}.`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
       titleType,
       revokedPlayerId: targetPlayerId,
       revokedPlayerIds: [targetPlayerId],
-      revokedPlayerName: playerName(state, targetPlayerId),
+      revokedPlayerName: getPlayerLabel(state, targetPlayerId),
     },
   });
   return { ok: true };
@@ -690,13 +681,13 @@ export function revokeTheme(state, themeId, revokerId = state.basileusId) {
     category: 'court',
     type: 'revoke_theme',
     actorId: revokerId,
-    summary: `${playerName(state, revokerId)} strips ${themeName(state, themeId)} from private ownership and pays ${playerName(state, targetPlayerId)} ${formatGold(compensation)}.`,
+    summary: `${getPlayerLabel(state, revokerId)} strips ${themeName(state, themeId)} from private ownership and pays ${getPlayerLabel(state, targetPlayerId)} ${formatGold(compensation)}.`,
     details: {
       themeId,
       themeName: themeName(state, themeId),
       revokedPlayerId: targetPlayerId,
       revokedPlayerIds: [targetPlayerId],
-      revokedPlayerName: playerName(state, targetPlayerId),
+      revokedPlayerName: getPlayerLabel(state, targetPlayerId),
       compensation,
     },
   });
@@ -1129,11 +1120,11 @@ export function applyTitleRedistribution(state, basileusId = state.basileusId, t
     category: 'system',
     type: 'title_redistribution',
     actorId: basileusId,
-    summary: `${playerName(state, basileusId)} redistributes the major offices.`,
+    summary: `${getPlayerLabel(state, basileusId)} redistributes the major offices.`,
     details: {
       assignments: Object.fromEntries(Object.entries(titleAssignments).map(([titleKey, playerId]) => [
         titleKey,
-        { playerId: Number(playerId), playerName: playerName(state, Number(playerId)), titleName: MAJOR_TITLES[titleKey]?.name || titleKey },
+        { playerId: Number(playerId), playerName: getPlayerLabel(state, Number(playerId)), titleName: MAJOR_TITLES[titleKey]?.name || titleKey },
       ])),
     },
   });

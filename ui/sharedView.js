@@ -6,7 +6,6 @@ import {
 import { drawInvasionRoute, setSelectedProvince, updateMapState } from '../render/mapRenderer.js';
 import { readTroopEntry, runIncome } from '../engine/cascade.js';
 import { getOfficeDisplayName, getOfficeHolder, getPlayer, getPlayerPrimaryRoleKey } from '../engine/state.js';
-import { formatGoldHtml, formatTroopsHtml } from '../engine/presentation.js';
 import {
   renderCourtPanel,
   renderEstatesPanel,
@@ -18,7 +17,8 @@ import {
 } from './panels.js';
 import { renderBalancePanel } from './balancePanel.js';
 import { getPlayerStyleAttr, renderCartouchedText, renderPlayerRoleName } from './labels.js';
-import { renderIconSet } from './icons.js';
+import { formatGoldHtml, formatTroopsHtml, renderIconSet } from './icons.js';
+import { escapeHtml } from './html.js';
 
 export function createDefaultUiState() {
   return {
@@ -697,21 +697,12 @@ export function renderScoringHtml(state, options = {}) {
   `;
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 export function renderHiddenGameOverOverlay() {
   const overlay = document.getElementById('gameOverOverlay');
   if (!overlay) return;
   overlay.innerHTML = '';
   overlay.style.display = 'none';
 }
-
 
 export function collectTitleAssignments(container) {
   const assignments = {};
@@ -830,7 +821,6 @@ export function renderGameActionPanel({
 
   return body;
 }
-
 
 export function renderGameFrame({
   state,

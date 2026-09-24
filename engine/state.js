@@ -338,6 +338,12 @@ export function formatPlayerLabel(player) {
   return player.isAIControlled ? `${label} (AI)`.trim() : label;
 }
 
+// Name without the "(AI)" marker, for narrative history text.
+export function getPlayerName(state, playerId) {
+  const player = getPlayer(state, playerId);
+  return player?.firstName ? `${player.firstName} ${player.dynasty}`.trim() : player?.dynasty || `Player ${Number(playerId) + 1}`;
+}
+
 export function getPlayerLabel(state, playerId, fallback = null) {
   const player = getPlayer(state, playerId);
   if (!player) return fallback ?? `Player ${Number(playerId) + 1}`;

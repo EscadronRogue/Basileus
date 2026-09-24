@@ -13,7 +13,7 @@ import {
   resolvePendingTitleReassignment,
   startInteractiveRuntime,
   handleManualTitleReassignment,
-} from '../engine/runtime.js';
+} from '../game/runtime.js';
 import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta, hydrateAiOpponent } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { createMapSVG, focusProvince, setHoveredProvince } from '../render/mapRenderer.js';

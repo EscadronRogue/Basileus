@@ -353,7 +353,7 @@ export function choosePolicyEstateActions(state, meta, playerId) {
 export function applyPolicyEstateActions(state, meta, playerId) {
   const applied = [];
   for (const action of choosePolicyEstateActions(state, meta, playerId)) {
-    const result = applyLegalAction(state, action, meta);
+    const result = applyLegalAction(state, action);
     if (!result.ok) continue;
     applied.push(action);
   }

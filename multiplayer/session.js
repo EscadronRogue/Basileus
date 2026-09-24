@@ -15,6 +15,8 @@ function assert(condition, message) {
   if (!condition) throw new ValidationError(message || 'Validation failed.');
 }
 
+import { randomUUID } from 'node:crypto';
+
 import { createGameState, getPlayer, formatPlayerLabel, makeRng } from '../engine/state.js';
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
 import { buildPrivateNotifications } from '../engine/notifications.js';
@@ -29,7 +31,7 @@ import {
   handleManualTitleReassignment,
   settleAutomaticProgress,
   startInteractiveRuntime,
-} from '../engine/runtime.js';
+} from '../game/runtime.js';
 import {
   clonePlain,
   hydrateCourtActions,
@@ -264,7 +266,7 @@ export class MultiplayerRoom {
     const session = this.ensureSession(sessionId, playerName);
     seat.playerName = session.playerName;
     seat.sessionId = sessionId;
-    seat.seatToken = seat.seatToken || crypto.randomUUID();
+    seat.seatToken = seat.seatToken || randomUUID();
     seat.connected = this.connections.has(sessionId);
     this.touch();
     return { seatId: seat.seatId, seatToken: seat.seatToken };
@@ -283,7 +285,7 @@ export class MultiplayerRoom {
     const session = this.ensureSession(sessionId, playerName);
     seat.playerName = session.playerName;
     seat.sessionId = sessionId;
-    seat.seatToken = crypto.randomUUID();
+    seat.seatToken = randomUUID();
     seat.connected = this.connections.has(sessionId);
     const player = getPlayer(this.gameState, seat.seatId);
     if (player) player.firstName = session.playerName;

@@ -1,7 +1,7 @@
 import { recordHistoryEvent } from './history.js';
 import {
-  formatPlayerLabel,
   getPlayer,
+  getPlayerLabel,
 } from './state.js';
 import {
   getDeploymentArmyDisplayName,
@@ -55,11 +55,6 @@ function toInt(value, fallback = null) {
 
 function fail(reason, extra = {}) {
   return { ok: false, reason, ...extra };
-}
-
-function playerName(state, playerId) {
-  const player = getPlayer(state, playerId);
-  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
 }
 
 function themeName(state, themeId) {
@@ -116,7 +111,7 @@ function buildThreadHistoryEntry(state, type, actorId, revision, offer = null, e
   return {
     type,
     actorId,
-    actorName: playerName(state, actorId),
+    actorName: getPlayerLabel(state, actorId),
     revision,
     round: state.round,
     phase: state.phase,
@@ -304,7 +299,7 @@ function buildTroopCommitmentPlan(state, playerId, capitalRequired, frontierRequ
   }
 
   if (!best) {
-    return fail(`${playerName(state, playerId)} cannot cover ${requiredCapital} capital troop${requiredCapital === 1 ? '' : 's'} and ${requiredFrontier} frontier troop${requiredFrontier === 1 ? '' : 's'} with the current office layout.`);
+    return fail(`${getPlayerLabel(state, playerId)} cannot cover ${requiredCapital} capital troop${requiredCapital === 1 ? '' : 's'} and ${requiredFrontier} frontier troop${requiredFrontier === 1 ? '' : 's'} with the current office layout.`);
   }
 
   return {
@@ -344,7 +339,7 @@ function summarizeLocks(state, playerId, candidateId, capitalRequired, frontierR
     ok: true,
     playerId,
     candidateId,
-    candidateName: candidateId == null ? null : playerName(state, candidateId),
+    candidateName: candidateId == null ? null : getPlayerLabel(state, candidateId),
     capitalRequired,
     frontierRequired,
     capitalCommitted: plan.capitalCommitted,
@@ -366,7 +361,7 @@ function buildDueTroopRequirements(state, playerId, extraClauses = []) {
     if (entry.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT) {
       const nextCandidateId = Number(entry.payload.candidateId);
       if (candidateId != null && candidateId !== nextCandidateId) {
-        return fail(`${playerName(state, playerId)} already owes coup support to another claimant in the same trigger window.`);
+        return fail(`${getPlayerLabel(state, playerId)} already owes coup support to another claimant in the same trigger window.`);
       }
       candidateId = nextCandidateId;
       capitalRequired += Number(entry.payload.troopCount) || 0;
@@ -431,7 +426,7 @@ function collectTroopCommitmentGroups(state, incomingClauses = []) {
     if (entry.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT) {
       const candidateId = Number(entry.payload.candidateId);
       if (group.candidateId != null && group.candidateId !== candidateId) {
-        group.error = `${playerName(state, entry.giverId)} cannot promise coup support to multiple claimants inside the same trigger window.`;
+        group.error = `${getPlayerLabel(state, entry.giverId)} cannot promise coup support to multiple claimants inside the same trigger window.`;
         return;
       }
       group.candidateId = candidateId;
@@ -525,7 +520,7 @@ function normalizeDealClause(state, actorId, counterpartyId, rawClause = {}) {
     }
     const theme = state.themes[themeId];
     if (theme.owner !== direction.giverId) {
-      return fail(`${playerName(state, direction.giverId)} does not currently own ${themeName(state, themeId)}.`);
+      return fail(`${getPlayerLabel(state, direction.giverId)} does not currently own ${themeName(state, themeId)}.`);
     }
     if (theme.owner == null) {
       return fail('Only private estates can be traded.');
@@ -556,7 +551,7 @@ function normalizeDealClause(state, actorId, counterpartyId, rawClause = {}) {
     }
     const maxCapitalTroops = getPlayerOrderChunks(state, direction.giverId).reduce((total, chunk) => total + chunk.troops, 0);
     if (troopResult.value > maxCapitalTroops) {
-      return fail(`${playerName(state, direction.giverId)} cannot currently promise ${troopResult.value} capital troop${troopResult.value === 1 ? '' : 's'}.`);
+      return fail(`${getPlayerLabel(state, direction.giverId)} cannot currently promise ${troopResult.value} capital troop${troopResult.value === 1 ? '' : 's'}.`);
     }
     return {
       ok: true,
@@ -583,7 +578,7 @@ function normalizeDealClause(state, actorId, counterpartyId, rawClause = {}) {
       .filter((chunk) => !chunk.capitalOnly)
       .reduce((total, chunk) => total + chunk.troops, 0);
     if (troopResult.value > maxFrontierTroops) {
-      return fail(`${playerName(state, direction.giverId)} cannot currently promise ${troopResult.value} frontier troop${troopResult.value === 1 ? '' : 's'}.`);
+      return fail(`${getPlayerLabel(state, direction.giverId)} cannot currently promise ${troopResult.value} frontier troop${troopResult.value === 1 ? '' : 's'}.`);
     }
     return {
       ok: true,
@@ -691,16 +686,16 @@ function validateDealClausesAgainstState(state, clauses, pairKey, options = {}) 
       reservedThemes.add(themeId);
       const theme = state.themes?.[themeId];
       if (!theme || theme.owner !== clause.giverId) {
-        return fail(`${playerName(state, clause.giverId)} no longer owns ${themeName(state, themeId)}.`);
+        return fail(`${getPlayerLabel(state, clause.giverId)} no longer owns ${themeName(state, themeId)}.`);
       }
     }
 
     if (clause.kind === DEAL_CLAUSE_KINDS.APPOINTMENT_PROMISE) {
       if (promisedAppointmentGivers.has(clause.giverId)) {
-        return fail(`${playerName(state, clause.giverId)} cannot promise multiple overlapping appointment streams in the same deal.`);
+        return fail(`${getPlayerLabel(state, clause.giverId)} cannot promise multiple overlapping appointment streams in the same deal.`);
       }
       if (hasActiveAppointmentPromise(state, clause.giverId)) {
-        return fail(`${playerName(state, clause.giverId)} already owes promised appointments under another active deal.`);
+        return fail(`${getPlayerLabel(state, clause.giverId)} already owes promised appointments under another active deal.`);
       }
       promisedAppointmentGivers.add(clause.giverId);
     }
@@ -708,10 +703,10 @@ function validateDealClausesAgainstState(state, clauses, pairKey, options = {}) 
     if (clause.kind === DEAL_CLAUSE_KINDS.NON_REVOCATION) {
       const protectionKey = `${clause.giverId}:${clause.receiverId}`;
       if (promisedProtectionPairs.has(protectionKey)) {
-        return fail(`${playerName(state, clause.giverId)} cannot promise the same title protection twice in one deal.`);
+        return fail(`${getPlayerLabel(state, clause.giverId)} cannot promise the same title protection twice in one deal.`);
       }
       if (hasActiveNonRevocationPromise(state, clause.giverId, clause.receiverId)) {
-        return fail(`${playerName(state, clause.giverId)} already owes title protection to ${playerName(state, clause.receiverId)}.`);
+        return fail(`${getPlayerLabel(state, clause.giverId)} already owes title protection to ${getPlayerLabel(state, clause.receiverId)}.`);
       }
       promisedProtectionPairs.add(protectionKey);
     }
@@ -719,7 +714,7 @@ function validateDealClausesAgainstState(state, clauses, pairKey, options = {}) 
 
   for (const [playerId, requiredGold] of extraGoldReserved.entries()) {
     if (getSpendableGold(state, playerId) < requiredGold) {
-      return fail(`${playerName(state, playerId)} does not currently have enough unreserved gold to guarantee this offer.`);
+      return fail(`${getPlayerLabel(state, playerId)} does not currently have enough unreserved gold to guarantee this offer.`);
     }
   }
 
@@ -742,9 +737,9 @@ function validateDealClausesAgainstState(state, clauses, pairKey, options = {}) 
 function createThreadOffer(state, proposerId, counterpartyId, revision, clauses) {
   return {
     proposerId,
-    proposerName: playerName(state, proposerId),
+    proposerName: getPlayerLabel(state, proposerId),
     counterpartyId,
-    counterpartyName: playerName(state, counterpartyId),
+    counterpartyName: getPlayerLabel(state, counterpartyId),
     revision,
     round: state.round,
     clauses: clonePlain(clauses),
@@ -805,12 +800,12 @@ function recordPublicGoldTransfer(state, giverId, receiverId, amount) {
     category: 'court',
     type: 'deal_gold_transfer',
     actorId: giverId,
-    summary: `${playerName(state, giverId)} transfers ${amount} gold to ${playerName(state, receiverId)}.`,
+    summary: `${getPlayerLabel(state, giverId)} transfers ${amount} gold to ${getPlayerLabel(state, receiverId)}.`,
     details: {
       giverId,
-      giverName: playerName(state, giverId),
+      giverName: getPlayerLabel(state, giverId),
       receiverId,
-      receiverName: playerName(state, receiverId),
+      receiverName: getPlayerLabel(state, receiverId),
       amount,
     },
   });
@@ -821,12 +816,12 @@ function recordPublicEstateTransfer(state, giverId, receiverId, themeId) {
     category: 'court',
     type: 'deal_estate_transfer',
     actorId: giverId,
-    summary: `${playerName(state, giverId)} transfers ${themeName(state, themeId)} to ${playerName(state, receiverId)}.`,
+    summary: `${getPlayerLabel(state, giverId)} transfers ${themeName(state, themeId)} to ${getPlayerLabel(state, receiverId)}.`,
     details: {
       giverId,
-      giverName: playerName(state, giverId),
+      giverName: getPlayerLabel(state, giverId),
       receiverId,
-      receiverName: playerName(state, receiverId),
+      receiverName: getPlayerLabel(state, receiverId),
       themeId,
       themeName: themeName(state, themeId),
     },
@@ -838,14 +833,14 @@ function recordPublicObligationFailure(state, obligation, reason) {
     category: 'court',
     type: 'deal_obligation_failed',
     actorId: obligation.giverId,
-    summary: `${playerName(state, obligation.giverId)} can no longer fulfill a deal obligation to ${playerName(state, obligation.receiverId)}.`,
+    summary: `${getPlayerLabel(state, obligation.giverId)} can no longer fulfill a deal obligation to ${getPlayerLabel(state, obligation.receiverId)}.`,
     details: {
       obligationId: obligation.id,
       threadId: obligation.threadId,
       giverId: obligation.giverId,
-      giverName: playerName(state, obligation.giverId),
+      giverName: getPlayerLabel(state, obligation.giverId),
       receiverId: obligation.receiverId,
-      receiverName: playerName(state, obligation.receiverId),
+      receiverName: getPlayerLabel(state, obligation.receiverId),
       kind: obligation.kind,
       reason,
     },
@@ -865,7 +860,7 @@ function transferDealGold(state, giverId, receiverId, amount) {
 function transferDealEstate(state, giverId, receiverId, themeId) {
   const theme = state.themes?.[themeId];
   if (!theme || theme.owner !== giverId) {
-    return fail(`${playerName(state, giverId)} no longer controls ${themeName(state, themeId)}.`);
+    return fail(`${getPlayerLabel(state, giverId)} no longer controls ${themeName(state, themeId)}.`);
   }
   theme.owner = receiverId;
   recordPublicEstateTransfer(state, giverId, receiverId, themeId);
@@ -1080,7 +1075,7 @@ export function validateAppointmentPromiseChoice(state, appointerId, appointeeId
   if (!obligation) return { ok: true };
 
   if (Number(appointeeId) !== Number(obligation.receiverId)) {
-    return fail(`${playerName(state, appointerId)} owes the next legal appointment to ${playerName(state, obligation.receiverId)} under an accepted deal.`);
+    return fail(`${getPlayerLabel(state, appointerId)} owes the next legal appointment to ${getPlayerLabel(state, obligation.receiverId)} under an accepted deal.`);
   }
   return { ok: true };
 }
@@ -1285,7 +1280,7 @@ export function previewDealOffer(state, actorId, payload = {}, options = {}) {
     if (!participantCheck.ok) return participantCheck;
   }
   if (isPlayerConfirmedForDeals(state, counterpartyId)) {
-    return fail(`${playerName(state, counterpartyId)} already confirmed court actions and cannot receive a new deal this round.`);
+    return fail(`${getPlayerLabel(state, counterpartyId)} already confirmed court actions and cannot receive a new deal this round.`);
   }
 
   const clauseResult = normalizeDealClauses(state, actorId, counterpartyId, payload.clauses);
@@ -1317,7 +1312,7 @@ export function sendDealOffer(state, actorId, payload = {}) {
   const participantCheck = validateDealParticipants(state, actorId, counterpartyId);
   if (!participantCheck.ok) return participantCheck;
   if (isPlayerConfirmedForDeals(state, counterpartyId)) {
-    return fail(`${playerName(state, counterpartyId)} already confirmed court actions and cannot receive a new deal this round.`);
+    return fail(`${getPlayerLabel(state, counterpartyId)} already confirmed court actions and cannot receive a new deal this round.`);
   }
 
   const clauseResult = normalizeDealClauses(state, actorId, counterpartyId, payload.clauses);
@@ -1360,7 +1355,7 @@ export function counterDealOffer(state, actorId, payload = {}) {
   const participantCheck = validateDealParticipants(state, actorId, counterpartyId);
   if (!participantCheck.ok) return participantCheck;
   if (isPlayerConfirmedForDeals(state, counterpartyId)) {
-    return fail(`${playerName(state, counterpartyId)} already confirmed court actions and cannot receive a counteroffer this round.`);
+    return fail(`${getPlayerLabel(state, counterpartyId)} already confirmed court actions and cannot receive a counteroffer this round.`);
   }
 
   const clauseResult = normalizeDealClauses(state, actorId, counterpartyId, payload.clauses);
@@ -1423,10 +1418,10 @@ export function refuseDealOffer(state, actorId, payload = {}) {
 export function summarizeDealClause(state, clause, viewerId = null) {
   const youGive = viewerId != null && clause.giverId === viewerId;
   const youReceive = viewerId != null && clause.receiverId === viewerId;
-  const actorText = youGive ? 'You give' : youReceive ? 'You receive' : `${playerName(state, clause.giverId)} gives`;
-  const targetText = youGive ? playerName(state, clause.receiverId) : youReceive ? playerName(state, clause.giverId) : playerName(state, clause.receiverId);
+  const actorText = youGive ? 'You give' : youReceive ? 'You receive' : `${getPlayerLabel(state, clause.giverId)} gives`;
+  const targetText = youGive ? getPlayerLabel(state, clause.receiverId) : youReceive ? getPlayerLabel(state, clause.giverId) : getPlayerLabel(state, clause.receiverId);
   const triggerText = clause.startTrigger?.type === DEAL_TRIGGER_TYPES.WHEN_PLAYER_IS_BASILEUS
-    ? ` when ${playerName(state, clause.startTrigger.playerId)} becomes Basileus`
+    ? ` when ${getPlayerLabel(state, clause.startTrigger.playerId)} becomes Basileus`
     : '';
 
   if (clause.kind === DEAL_CLAUSE_KINDS.GOLD) {
@@ -1441,7 +1436,7 @@ export function summarizeDealClause(state, clause, viewerId = null) {
   }
   if (clause.kind === DEAL_CLAUSE_KINDS.COUP_SUPPORT) {
     const turns = Number(clause.durationTurns) || 1;
-    return `${actorText} ${clause.payload.troopCount} coup troop${clause.payload.troopCount === 1 ? '' : 's'} for ${playerName(state, clause.payload.candidateId)} for ${turns} turn${turns === 1 ? '' : 's'}${triggerText}.`;
+    return `${actorText} ${clause.payload.troopCount} coup troop${clause.payload.troopCount === 1 ? '' : 's'} for ${getPlayerLabel(state, clause.payload.candidateId)} for ${turns} turn${turns === 1 ? '' : 's'}${triggerText}.`;
   }
   if (clause.kind === DEAL_CLAUSE_KINDS.FRONTIER_SUPPORT) {
     const turns = Number(clause.durationTurns) || 1;
@@ -1452,7 +1447,7 @@ export function summarizeDealClause(state, clause, viewerId = null) {
   }
   if (clause.kind === DEAL_CLAUSE_KINDS.NON_REVOCATION) {
     const turns = Number(clause.durationTurns) || 1;
-    return `${playerName(state, clause.giverId)} promises not to revoke ${playerName(state, clause.receiverId)}'s posts or estates for ${turns} turn${turns === 1 ? '' : 's'}${triggerText}.`;
+    return `${getPlayerLabel(state, clause.giverId)} promises not to revoke ${getPlayerLabel(state, clause.receiverId)}'s posts or estates for ${turns} turn${turns === 1 ? '' : 's'}${triggerText}.`;
   }
   return clause.kind;
 }

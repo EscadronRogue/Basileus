@@ -500,9 +500,9 @@ test('basileus court power is revocation-only and allows four revocations', () =
   state.themes.ITA.owner = 1;
   enterCourt(state);
 
-  const appointment = applyCourtAction(state, 0, { action: 'basileus-appoint', titleType: 'STRATEGOS', appointeeId: 1 });
+  const appointment = applyCourtAction(state, 0, { action: 'appoint-strategos', themeId: 'OPS', appointeeId: 1 });
   assert.equal(appointment.ok, false);
-  assert.match(appointment.reason, /can no longer appoint minor titles/);
+  assert.equal(state.themes.OPS.strategos, 1);
 
   const bishopRevocation = applyCourtAction(state, 0, { action: 'revoke', value: 'minor:CIL:bishop' });
   assert.equal(bishopRevocation.ok, false);

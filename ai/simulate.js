@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { setDealParticipantIds } from '../engine/deals.js';
 import { createGameState } from '../engine/state.js';
-import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../engine/runtime.js';
+import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../game/runtime.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopEntry, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';

@@ -127,11 +127,32 @@ export function renderValue(kind, value, opts = {}) {
   return `<span class="value ${kind}${toneClass}${extraClass}">${labelHtml}${renderIcon(kind)}${numHtml}</span>`;
 }
 
-// Convenience wrappers — the names match the existing engine/presentation.js
-// API so callsites read naturally.
-export const renderGoldValue   = (value, opts) => renderValue('gold',   value, opts);
-export const renderTroopValue  = (value, opts) => renderValue('troop',  value, opts);
-export const renderChurchValue = (value, opts) => renderValue('church', value, opts);
+// HTML counterparts of the plain-text formatters in engine/presentation.js:
+// an inline value fragment with the matching icon. Pass {label: true} to
+// include the spelled-out noun next to the glyph when there's room.
+
+function normalizeDisplayNumber(value) {
+  const numeric = Number(value) || 0;
+  return Number.isInteger(numeric) ? numeric : Math.round(numeric * 100) / 100;
+}
+
+export function formatGoldHtml(value, options = {}) {
+  return renderValue('gold', normalizeDisplayNumber(value), options);
+}
+
+export function formatTroopsHtml(value, options = {}) {
+  return renderValue('troop', Math.max(0, normalizeDisplayNumber(value)), options);
+}
+
+export function formatChurchHtml(value, options = {}) {
+  return renderValue('church', Math.max(0, normalizeDisplayNumber(value)), options);
+}
+
+export function formatMercenariesHtml(value, options = {}) {
+  // Mercenaries are still troops; the icon is the sword. We just label them.
+  const opts = { ...options, label: options.label === true ? 'Mercenaries' : options.label };
+  return renderValue('troop', Math.max(0, normalizeDisplayNumber(value)), opts);
+}
 
 // ── SVG helpers (for the map renderer) ──────────────────────────────
 //

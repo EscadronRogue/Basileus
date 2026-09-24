@@ -479,7 +479,7 @@ export function listLegalActions(state, playerId, options = {}) {
   return [];
 }
 
-export function applyLegalAction(state, action, aiMeta = null) {
+export function applyLegalAction(state, action) {
   if (!action) return { ok: false, reason: 'No action selected.' };
   if (action.kind === 'court') return applyCourtAction(state, action.playerId, action.payload);
   if (action.kind === 'court-confirm') return confirmCourt(state, action.playerId);
@@ -487,7 +487,7 @@ export function applyLegalAction(state, action, aiMeta = null) {
   if (action.kind === 'orders') return submitHumanOrders(state, action.playerId, action.orders);
   if (action.kind === 'reward') return applyDefenderRewardChoice(state, action.rewardId, action.playerId, action.choice);
   if (action.kind === 'title-assignment') {
-    return applyManualTitleReassignment(state, aiMeta, action.newBasileusId, action.assignments);
+    return applyManualTitleReassignment(state, action.newBasileusId, action.assignments);
   }
   return { ok: false, reason: `Unknown legal action kind: ${action.kind}` };
 }

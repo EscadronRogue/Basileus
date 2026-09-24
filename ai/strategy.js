@@ -465,7 +465,7 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
 
 function scoreAppliedAction(state, playerId, action, options = {}) {
   const trial = cloneStateForAI(state);
-  const result = applyLegalAction(trial, action, null);
+  const result = applyLegalAction(trial, action);
   if (!result.ok) return null;
   let score = scoreStrategicPosition(trial, playerId);
   if (options.includeCourtIntent) {
@@ -1237,7 +1237,7 @@ export function chooseStrategicEstateActions(state, meta, playerId) {
     if (!best || best.score <= weights.estateGainFloor) break;
     chosen.push(best.action);
     chosenThemes.add(best.action.payload?.themeId);
-    const result = applyLegalAction(planningState, best.action, null);
+    const result = applyLegalAction(planningState, best.action);
     if (!result.ok) break;
   }
   return chosen;
@@ -1307,7 +1307,7 @@ export function chooseStrategicRewardChoice(state, meta, reward) {
 export function applyStrategicEstateActions(state, meta, playerId) {
   const applied = [];
   for (const action of chooseStrategicEstateActions(state, meta, playerId)) {
-    const result = applyLegalAction(state, action, meta);
+    const result = applyLegalAction(state, action);
     if (!result.ok) continue;
     applied.push(action);
   }

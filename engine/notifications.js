@@ -1,12 +1,7 @@
 import { summarizeDealClause } from './deals.js';
-import { formatPlayerLabel, getPlayer } from './state.js';
+import { getPlayerLabel } from './state.js';
 
 const NOTIFICATION_TONES = new Set(['negative', 'positive', 'neutral']);
-
-function playerName(state, playerId) {
-  const player = getPlayer(state, playerId);
-  return player ? formatPlayerLabel(player) : `Player ${Number(playerId) + 1}`;
-}
 
 function normalizeNotificationTone(tone) {
   return NOTIFICATION_TONES.has(tone) ? tone : 'neutral';
@@ -45,7 +40,7 @@ function buildDealNotifications(state, viewerId, dealView, notifications) {
   const threads = Array.isArray(dealView?.dealThreads) ? dealView.dealThreads : [];
   for (const thread of threads) {
     const counterpartyId = getThreadCounterparty(thread, viewerId);
-    const counterpartyName = playerName(state, counterpartyId);
+    const counterpartyName = getPlayerLabel(state, counterpartyId);
     const latest = Array.isArray(thread.history) ? thread.history.at(-1) : null;
     const offerRevision = Number(thread.revision) || 0;
 
@@ -68,7 +63,7 @@ function buildDealNotifications(state, viewerId, dealView, notifications) {
     for (const event of thread.history || []) {
       if (!['offer_countered', 'offer_accepted', 'offer_refused', 'auto_refused'].includes(event.type)) continue;
       if (event.type === 'offer_countered' && Number(thread.awaitingPlayerId) === Number(viewerId)) continue;
-      const actorName = playerName(state, event.actorId);
+      const actorName = getPlayerLabel(state, event.actorId);
       const titleByType = {
         offer_countered: `${actorName} sent a counteroffer`,
         offer_accepted: `${actorName} accepted a deal`,
