@@ -624,8 +624,11 @@ test('AI simulation runner uses saved tuned opponents by default', () => {
     samples: 0,
   });
 
+  const savedIds = new Set(normalizeTunedOpponentRoster(
+    JSON.parse(readFileSync(new URL('./tunedOpponents.json', import.meta.url), 'utf8')),
+  ).map((entry) => entry.id));
   assert.deepEqual([...new Set(Object.values(game.policyIds))], ['tuned']);
-  assert.equal(Object.values(game.opponentIds).every((id) => String(id || '').startsWith('tuned-')), true);
+  assert.equal(Object.values(game.opponentIds).every((id) => savedIds.has(id)), true);
 });
 
 test('AI simulation runner rejects untuned policies outside training', () => {
@@ -719,6 +722,17 @@ test('training evolves every personality and saves one Greek-named champion each
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the saved roster has one AI per personality, each inside its temperament', () => {
+  const payload = JSON.parse(readFileSync(new URL('./tunedOpponents.json', import.meta.url), 'utf8'));
+  const roster = normalizeTunedOpponentRoster(payload);
+  assert.deepEqual(roster.map((entry) => entry.personality).sort(), PERSONALITIES.map((entry) => entry.id).sort());
+  for (const entry of roster) {
+    const personality = getPersonality(entry.personality);
+    assert.equal(entry.label, personality.title);
+    assert.equal(isWithinPersonality(personality, entry.strategyWeights), true, entry.id);
   }
 });
 
