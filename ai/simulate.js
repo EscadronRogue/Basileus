@@ -574,11 +574,15 @@ export function defaultSimulationWorkers() {
 
 function simulateRangeInWorker(options, start, end) {
   return new Promise((resolveRange, rejectRange) => {
-    const worker = new Worker(new URL(import.meta.url), {
-      workerData: { kind: 'simulate-games', options, start, end },
-      // --input-type is only valid for the main entry, never for file workers.
-      execArgv: process.execArgv.filter((arg) => !arg.startsWith('--input-type')),
-    });
+    const workerOptions = { workerData: { kind: 'simulate-games', options, start, end } };
+    // Workers inherit the parent's flags by default. Only override them to drop
+    // --input-type, which is invalid for file workers; passing execArgv
+    // explicitly makes Node validate every flag, and some runners (Node 24's
+    // test runner) add flags a worker refuses.
+    if (process.execArgv.some((arg) => arg.startsWith('--input-type'))) {
+      workerOptions.execArgv = process.execArgv.filter((arg) => !arg.startsWith('--input-type'));
+    }
+    const worker = new Worker(new URL(import.meta.url), workerOptions);
     worker.once('message', (message) => {
       if (message?.ok) resolveRange(message.games);
       else rejectRange(new Error(message?.error || 'Simulation worker failed.'));
