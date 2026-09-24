@@ -56,7 +56,6 @@ function emptyStats(options) {
     coups: {
       throneChanges: 0,
       incumbentHolds: 0,
-      selfClaims: 0,
       selfFirst: 0,
       incumbentBacks: 0,
       otherBacks: 0,
@@ -114,12 +113,7 @@ function createPlayerStats() {
     fundedTroops: 0,
     mercenaries: 0,
     mercenaryCost: 0,
-    selfClaims: 0,
     selfFirst: 0,
-    selfClaimWins: 0,
-    selfClaimTroops: 0,
-    credibleSelfClaims: 0,
-    tokenSelfClaims: 0,
     incumbentBacks: 0,
     otherBacks: 0,
     // Behaviour descriptors used to tell AI personalities apart.
@@ -247,21 +241,11 @@ function collectResolution(stats, state) {
       playerStats.selfFirst += 1;
     }
 
-    // Training inputs (ai/train.js) keep their original single-candidate
-    // definition. `candidate` is the best non-self pick under ranking coups,
-    // so these self-claim counters stay at zero; see docs/roadmap.md before
-    // redefining them, as that changes what training rewards.
-    if (order.candidate === player.id) {
-      stats.coups.selfClaims += 1;
-      playerStats.selfClaims += 1;
-      playerStats.selfClaimTroops += order.capitalTroops;
-      if (order.capitalTroops >= 3) playerStats.credibleSelfClaims += 1;
-      else playerStats.tokenSelfClaims += 1;
-      if (coup?.winner === player.id && order.capitalTroops > 0) playerStats.selfClaimWins += 1;
-    } else if (order.candidate === state.basileusId) {
+    // `candidate` is the claimant the dynasty backs besides itself.
+    if (order.candidate === state.basileusId) {
       stats.coups.incumbentBacks += 1;
       playerStats.incumbentBacks += 1;
-    } else {
+    } else if (order.candidate !== player.id) {
       stats.coups.otherBacks += 1;
       playerStats.otherBacks += 1;
     }
@@ -797,7 +781,6 @@ function normalizeStats(stats) {
     coups: {
       throneChangeRate: round(stats.coups.throneChanges / resolutions, 3),
       selfPreferenceRate: round(stats.coups.selfFirst / orders, 3),
-      selfClaimRate: round(stats.coups.selfClaims / orders, 3),
       incumbentBackRate: round(stats.coups.incumbentBacks / orders, 3),
       otherBackRate: round(stats.coups.otherBacks / orders, 3),
     },
