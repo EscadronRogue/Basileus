@@ -141,6 +141,20 @@ export function getTunedAiOpponents(roster = []) {
   ));
 }
 
+// The opponents a player picks from: the trained roster when there is one,
+// otherwise the built-in styles.
+export function getSelectableAiOpponents(roster = []) {
+  const tuned = getTunedAiOpponents(roster);
+  return tuned.length ? tuned : (Array.isArray(roster) ? roster : []);
+}
+
+// "Leon, Usurper" for a trained AI with a personality, else its name.
+export function describeAiOpponentChoice(opponent) {
+  if (!opponent) return '';
+  const name = opponent.firstName || opponent.id;
+  return opponent.personality && opponent.label ? `${name}, ${opponent.label}` : name;
+}
+
 export function pickRandomTunedOpponent(roster = [], rng = Math.random) {
   const tuned = getTunedAiOpponents(roster);
   if (!tuned.length) return null;

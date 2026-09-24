@@ -2,7 +2,12 @@ import { makeChoiceRng, pickRandom, resolveConfiguredSeed } from './engine/setup
 import { GameController } from './ui/gameController.js';
 import { launchMultiplayerClient } from './ui/multiplayerController.js';
 import { loadBrowserAiOpponentRoster } from './ai/brain.js';
-import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from './ai/opponentRoster.js';
+import {
+  RANDOM_TUNED_OPPONENT_ID,
+  describeAiOpponentChoice,
+  getSelectableAiOpponents,
+  getTunedAiOpponents,
+} from './ai/opponentRoster.js';
 import { getDynastyProfileForSeat } from './data/invasions.js';
 import { dynastySeatStyle, escapeHtml } from './ui/html.js';
 import { clearLocalSave, describeLocalSave, readLocalSave } from './ui/localSave.js';
@@ -297,7 +302,7 @@ function renderAiRoster() {
     const dynasty = getDynastyProfileForSeat(seat - 1).name;
     const displayName = selectedId === RANDOM_TUNED_OPPONENT_ID
       ? 'Random trained AI'
-      : opponentChoiceLabel(selectedOpponent) || 'Choose opponent';
+      : describeAiOpponentChoice(selectedOpponent) || 'Choose opponent';
     const randomTrainedButton = trainedOpponents.length ? `
       <button type="button"
         class="setup-ai-opponent-btn${selectedId === RANDOM_TUNED_OPPONENT_ID ? ' selected' : ''}"
@@ -315,8 +320,8 @@ function renderAiRoster() {
         </span>
         <span class="setup-ai-choice-row">
           ${randomTrainedButton}
-          ${aiOpponentRoster.map((opponent) => {
-            const label = opponentChoiceLabel(opponent);
+          ${getSelectableAiOpponents(aiOpponentRoster).map((opponent) => {
+            const label = describeAiOpponentChoice(opponent);
             const selected = opponent.id === selectedId;
             return `
               <button type="button"
@@ -366,13 +371,6 @@ async function readSelectedMultiplayerSave() {
   } catch {
     throw new Error('Saved match file must be valid JSON.');
   }
-}
-
-// "Leon, Usurper" for a trained AI with a personality, else its name.
-function opponentChoiceLabel(opponent) {
-  if (!opponent) return '';
-  const name = opponent.firstName || opponent.id;
-  return opponent.personality && opponent.label ? `${name}, ${opponent.label}` : name;
 }
 
 function buildAiOpponentSelections(playerCount, humanSeat, rng = Math.random) {
