@@ -19,18 +19,14 @@ import { getFreeThemes, getPlayer, hasAppointmentTargetLock } from '../engine/st
 import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders.js';
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { MAJOR_TITLES } from '../data/titles.js';
+import { clonePlainData } from '../engine/clone.js';
 import { getPlayerMemory, getRelationship, relationshipScore } from './memory.js';
 
 export const AI_DEALS_ENABLED = false;
 const MAX_ORDER_ACTIONS = 1200;
 
 function cloneValueForValidation(value) {
-  if (value == null) return value;
-  try {
-    return structuredClone(value);
-  } catch {
-    return JSON.parse(JSON.stringify(value));
-  }
+  return value == null ? value : clonePlainData(value);
 }
 
 function cloneForValidation(state) {

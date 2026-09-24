@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { createGameState } from '../engine/state.js';
+import { createGameState, makeRng } from '../engine/state.js';
 import { phaseCourt } from '../engine/turnflow.js';
 import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
 import { getLandBidAmountOptions, validateMajorTitleAssignments } from '../engine/actions.js';
@@ -27,7 +27,19 @@ import { getAiMemory, getRelationship } from './memory.js';
 import { normalizeTunedOpponentRoster } from './opponentRoster.js';
 import { simulateGame, simulateGames } from './simulate.js';
 import { chooseStrategicEstateActions } from './strategy.js';
-import { scoreAggregateTrainingShape, trainStrategyWeights } from './train.js';
+import {
+  PLACEMENT_WEIGHT,
+  mutatePersonalityWeights,
+  personalitySeedWeights,
+  scoreSeatOutcome,
+  trainPersonalities,
+} from './train.js';
+import {
+  PERSONALITIES,
+  STRATEGY_WEIGHT_BOUNDS,
+  getPersonality,
+  isWithinPersonality,
+} from './personalities.js';
 import { GREEK_FIRST_NAMES, pickUniqueGreekFirstName } from './greekNames.js';
 
 function makeState() {
@@ -95,30 +107,23 @@ test('browser AI roster defaults to bundled opponents without probing API', asyn
   }
 });
 
-test('legacy tuned AI roster migrates to reserve-aware deployment weights', () => {
+test('trained AI roster keeps saved weights and personality as written', () => {
   const roster = normalizeTunedOpponentRoster({
     opponents: [{
-      id: 'tuned-legacy',
-      firstName: 'Legacy',
-      policy: {
-        policyId: 'tuned',
-        strategyWeights: {
-          invasionShortfallPenalty: 1.2,
-          capitalRiskPenalty: 40,
-          reserveValue: 0.1,
-          mercenaryCostPenalty: 0.5,
-        },
-      },
-      training: { objectiveVersion: 6 },
+      id: 'usurper-leon',
+      firstName: 'Leon',
+      personality: 'usurper',
+      label: 'Usurper',
+      policy: { policyId: 'tuned', strategyWeights: { throneBase: 61, capitalRiskPenalty: 40 } },
+      strayField: true,
     }],
   });
 
-  const weights = roster[0].policy.strategyWeights;
-
-  assert.equal(weights.invasionShortfallPenalty >= 4.2, true);
-  assert.equal(weights.capitalRiskPenalty >= 120, true);
-  assert.equal(weights.reserveValue >= 0.35, true);
-  assert.equal(weights.mercenaryCostPenalty <= 0.32, true);
+  assert.equal(roster.length, 1);
+  assert.equal(roster[0].personality, 'usurper');
+  assert.equal(roster[0].label, 'Usurper');
+  assert.deepEqual(roster[0].policy.strategyWeights, { throneBase: 61, capitalRiskPenalty: 40 });
+  assert.equal(roster[0].strayField, undefined);
 });
 
 test('strategic court automation only controls AI players', () => {
@@ -633,156 +638,85 @@ test('AI simulation runner rejects untuned policies outside training', () => {
   }), /not a saved tuned AI/);
 });
 
-test('AI training harness evaluates strategy weight profiles', () => {
-  const result = trainStrategyWeights({
-    generations: 1,
-    population: 2,
-    elite: 1,
-    games: 2,
-    playerCounts: '3-5',
-    deckSizes: '1,2',
-    seed: 133,
-    save: false,
-  });
-  const second = trainStrategyWeights({
-    generations: 1,
-    population: 2,
-    elite: 1,
-    games: 1,
-    playerCounts: [3],
-    deckSizes: [1],
-    seed: 133,
-    save: false,
-  });
+test('training scores only the result: a fallen empire is a loss for everyone', () => {
+  const finished = {
+    reason: 'complete',
+    fall: false,
+    winnerIds: [2],
+    finalScores: [
+      { playerId: 0, points: 3 },
+      { playerId: 1, points: 5 },
+      { playerId: 2, points: 9 },
+      { playerId: 3, points: 5 },
+    ],
+  };
+  assert.deepEqual(scoreSeatOutcome(finished, 2), { win: 1, placement: 1, value: 1 + PLACEMENT_WEIGHT, fall: false });
+  assert.equal(scoreSeatOutcome(finished, 0).value, 0);
+  // Tied for second of four: halfway between second and third place.
+  assert.equal(scoreSeatOutcome(finished, 1).placement, 0.5);
+  assert.equal(scoreSeatOutcome(finished, 1).win, 0);
 
-  assert.equal(result.generations.length, 1);
-  assert.equal(result.options.opponentMix, 'robust');
-  assert.equal(result.options.selfPlayEvery, 3);
-  assert.deepEqual(result.options.playerCounts, [3, 4, 5]);
-  assert.deepEqual(result.options.deckSizes, [1, 2]);
-  assert.notEqual(result.options.seed, second.options.seed);
-  assert.equal(Number.isFinite(result.best.metrics.objective), true);
-  assert.equal(typeof result.best.weights.invasionShortfallPenalty, 'number');
-  assert.equal(typeof result.best.weights.appointmentUnlockBonus, 'number');
-  assert.equal(typeof result.best.metrics.appointmentUnlockRate, 'number');
-  assert.equal(typeof result.best.metrics.frontierTroopsPerOrder, 'number');
-  assert.equal(typeof result.best.metrics.invasionDefeatRate, 'number');
-  assert.equal(result.saved, undefined);
+  const tie = { ...finished, winnerIds: [1, 3] };
+  assert.equal(scoreSeatOutcome(tie, 1).win, 0.5);
+
+  const fallen = { ...finished, fall: true };
+  for (const seat of [0, 1, 2, 3]) assert.equal(scoreSeatOutcome(fallen, seat).value, 0);
+  assert.equal(scoreSeatOutcome({ ...finished, reason: 'stuck' }, 2).value, 0);
 });
 
-test('AI training fall pressure is centered around 50 percent', () => {
-  const options = { fallPenalty: 220 };
-  const baseMetrics = {
-    selfClaimRate: 0.16,
-    credibleSelfClaimRate: 0.16,
-    averageWarMargin: 4,
-    fundedTroopsPerOrder: 4,
-  };
-  const scoreAt = (fallRate) => scoreAggregateTrainingShape({ ...baseMetrics, fallRate }, options);
-
-  assert.equal(scoreAt(0.5) > scoreAt(0.25), true);
-  assert.equal(scoreAt(0.5) > scoreAt(0.75), true);
-  assert.equal(scoreAt(0.5) - scoreAt(0.25) > 100, true);
-  assert.equal(scoreAt(0.25) > scoreAt(0.1), true);
-  assert.equal(scoreAt(0.75) > scoreAt(0.9), true);
+test('personality seeds and mutations stay inside their temperament', () => {
+  const rng = makeRng(5);
+  for (const personality of PERSONALITIES) {
+    let weights = personalitySeedWeights(personality.id);
+    assert.equal(isWithinPersonality(personality, weights), true, personality.id);
+    for (let step = 0; step < 25; step += 1) {
+      weights = mutatePersonalityWeights(personality.id, weights, rng, 0.45, 0.6);
+      assert.equal(isWithinPersonality(personality, weights), true, personality.id);
+    }
+    for (const [key, [min, max]] of Object.entries(personality.traits)) {
+      const [globalMin, globalMax] = STRATEGY_WEIGHT_BOUNDS[key];
+      assert.equal(min >= globalMin && max <= globalMax && min < max, true, `${personality.id}.${key}`);
+    }
+  }
 });
 
-test('AI training fall pressure sanctions directional behavior', () => {
-  const options = { fallPenalty: 220 };
-  const balanced = {
-    averageWarMargin: 3,
-    invasionDefeatRate: 0.25,
-    frontierTroopsPerOrder: 2.4,
-    capitalTroopsPerOrder: 0.8,
-    idleTroopsPerOrder: 1,
-    fundedTroopsPerOrder: 4,
-    selfClaimRate: 0.16,
-    credibleSelfClaimRate: 0.16,
-  };
-  const prudent = {
-    ...balanced,
-    averageWarMargin: 8,
-    invasionDefeatRate: 0.05,
-    frontierTroopsPerOrder: 5,
-    capitalTroopsPerOrder: 0.1,
-    idleTroopsPerOrder: 0.1,
-    fundedTroopsPerOrder: 6,
-    selfClaimRate: 0.12,
-    credibleSelfClaimRate: 0.13,
-  };
-  const fearless = {
-    ...balanced,
-    averageWarMargin: -2,
-    invasionDefeatRate: 0.6,
-    frontierTroopsPerOrder: 0.4,
-    capitalTroopsPerOrder: 2.2,
-    idleTroopsPerOrder: 3,
-    fundedTroopsPerOrder: 2.4,
-    selfClaimRate: 0.32,
-    credibleSelfClaimRate: 0.3,
-  };
-  const score = (fallRate, metrics) => scoreAggregateTrainingShape({ ...metrics, fallRate }, options);
-
-  assert.equal(score(0.3, prudent) < score(0.3, balanced), true);
-  assert.equal(score(0.3, fearless) > score(0.3, balanced), true);
-  assert.equal(score(0.7, fearless) < score(0.7, balanced), true);
-  assert.equal(score(0.7, prudent) > score(0.7, balanced), true);
-});
-
-test('AI training beginner mix includes the built-in curriculum with low noise', () => {
-  const result = trainStrategyWeights({
-    opponentMix: 'beginner',
-    generations: 1,
-    population: 2,
-    elite: 1,
-    games: 1,
-    playerCounts: [3],
-    deckSizes: [1],
-    save: false,
-  });
-
-  assert.equal(result.options.selfPlayEvery, 4);
-  assert.equal(result.options.opponentSummary.exposure.selfPlay, 0.25);
-  assert.equal(result.options.opponentSummary.exposure.patron > 0, true);
-  assert.equal(result.options.opponentSummary.exposure.tyrant > 0, true);
-  assert.equal(result.options.opponentSummary.exposure.kingmaker > 0, true);
-  assert.equal(result.options.opponentSummary.exposure.freeRider > 0, true);
-  assert.equal(result.options.opponentSummary.exposure.overDefender > 0, true);
-  assert.equal(result.options.opponentSummary.exposure.estateShark > 0, true);
-  assert.equal(result.options.opponentSummary.exposure.antiLeader > 0, true);
-  assert.equal(result.options.opponentSummary.exposure.random < result.options.opponentSummary.exposure.defender, true);
-  assert.equal(result.options.opponentSummary.exposure.copycat < result.options.opponentSummary.exposure.usurper, true);
-});
-
-test('AI training can save Greek-named tuned champions', () => {
+test('training evolves every personality and saves one Greek-named champion each', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'basileus-ai-'));
   const outputPath = join(dir, 'tunedOpponents.json');
   try {
-    const result = trainStrategyWeights({
+    const events = [];
+    const result = await trainPersonalities({
+      personalities: 'usurper,opportunist',
       generations: 1,
-      population: 2,
-      elite: 1,
-      games: 1,
-      playerCounts: [5],
+      offspring: 1,
+      finalists: 1,
+      screeningGames: 1,
+      confirmGames: 1,
+      finalGames: 1,
+      benchmarkGames: 1,
+      playerCounts: [3],
       deckSizes: [1],
-      seed: 144,
+      seed: 133,
+      workers: 1,
       outputPath,
+      onProgress: (event) => events.push(event.type),
     });
     const payload = JSON.parse(readFileSync(outputPath, 'utf8'));
+    const roster = normalizeTunedOpponentRoster(payload);
 
-    assert.equal(result.saved.path, outputPath);
-    assert.equal(payload.opponents.length, 2);
-    assert.equal(result.saved.opponents.length, 2);
-    assert.equal(result.champions.length, 2);
-    assert.equal(GREEK_FIRST_NAMES.includes(payload.opponents[0].firstName), true);
-    assert.equal(payload.opponents[0].policy.policyId, 'tuned');
-    assert.equal(typeof payload.opponents[0].strategyWeights.invasionShortfallPenalty, 'number');
-    assert.equal(typeof payload.opponents[0].training.appointmentUnlockRate, 'number');
-    assert.equal(typeof payload.opponents[0].training.screeningGamesPerCandidate, 'number');
-    assert.equal(payload.opponents[0].training.championRank, 1);
-    assert.equal(payload.opponents[1].training.championRank, 2);
-    assert.deepEqual(payload.opponents[0].training.playerCounts, [5]);
-    assert.deepEqual(payload.opponents[0].training.deckSizes, [1]);
+    assert.equal(result.generations.length, 1);
+    assert.deepEqual(Object.keys(result.finals).sort(), ['opportunist', 'usurper']);
+    assert.deepEqual(events, ['training-start', 'generation-end', 'finals-end', 'saved']);
+    assert.equal(typeof result.benchmark.strategic.byPersonality.usurper.winRate, 'number');
+    assert.equal(roster.length, 2);
+    for (const entry of roster) {
+      const personality = getPersonality(entry.personality);
+      assert.equal(GREEK_FIRST_NAMES.includes(entry.firstName), true);
+      assert.equal(entry.label, personality.title);
+      assert.equal(entry.policy.policyId, 'tuned');
+      assert.equal(isWithinPersonality(personality, entry.strategyWeights), true);
+      assert.equal(typeof entry.metrics.capitalBidRate, 'number');
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

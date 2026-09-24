@@ -300,6 +300,7 @@ function collectBehaviorByPlayer(state) {
     estateGold: 0,
     revocations: 0,
     appointmentsToOthers: 0,
+    appointmentsToSelf: 0,
   }]));
   for (const event of state.log || []) {
     if (event.type === 'buy' && byPlayer[event.player]) {
@@ -308,7 +309,8 @@ function collectBehaviorByPlayer(state) {
     } else if ((event.type === 'revoke_minor' || event.type === 'revoke_theme') && byPlayer[event.revokerId]) {
       byPlayer[event.revokerId].revocations += 1;
     } else if ((event.type === 'appoint_strategos' || event.type === 'appoint_bishop') && byPlayer[event.appointer]) {
-      if (event.appointee !== event.appointer) byPlayer[event.appointer].appointmentsToOthers += 1;
+      if (event.appointee === event.appointer) byPlayer[event.appointer].appointmentsToSelf += 1;
+      else byPlayer[event.appointer].appointmentsToOthers += 1;
     }
   }
   return byPlayer;
@@ -619,17 +621,21 @@ function simulateRangeInWorker(options, start, end) {
   return runWorker({ kind: 'simulate-games', options, start, end });
 }
 
+function workerOptions(workerData) {
+  const options = { workerData };
+  // Workers inherit the parent's flags by default. Only override them to drop
+  // --input-type, which is invalid for file workers; passing execArgv
+  // explicitly makes Node validate every flag, and some runners (Node 24's
+  // test runner) add flags a worker refuses.
+  if (process.execArgv.some((arg) => arg.startsWith('--input-type'))) {
+    options.execArgv = process.execArgv.filter((arg) => !arg.startsWith('--input-type'));
+  }
+  return options;
+}
+
 function runWorker(workerData) {
   return new Promise((resolveRun, rejectRun) => {
-    const workerOptions = { workerData };
-    // Workers inherit the parent's flags by default. Only override them to drop
-    // --input-type, which is invalid for file workers; passing execArgv
-    // explicitly makes Node validate every flag, and some runners (Node 24's
-    // test runner) add flags a worker refuses.
-    if (process.execArgv.some((arg) => arg.startsWith('--input-type'))) {
-      workerOptions.execArgv = process.execArgv.filter((arg) => !arg.startsWith('--input-type'));
-    }
-    const worker = new Worker(new URL(import.meta.url), workerOptions);
+    const worker = new Worker(new URL(import.meta.url), workerOptions(workerData));
     worker.once('message', (message) => {
       if (message?.ok) resolveRun(message.games);
       else rejectRun(new Error(message?.error || 'Simulation worker failed.'));
@@ -641,17 +647,75 @@ function runWorker(workerData) {
   });
 }
 
+// A set of long-lived simulation workers fed from one queue, so a slow game
+// never leaves the other workers idle. `run(specs)` plays one game per spec
+// (a full simulateGame options object) and resolves with results in spec
+// order. Call `close()` when done.
+export function createSimulationPool({ workers = defaultSimulationWorkers() } = {}) {
+  const size = Math.max(1, toInt(workers, defaultSimulationWorkers()));
+  const idle = [];
+  const queue = [];
+  const pool = [];
+  let failure = null;
+
+  function dispatch() {
+    while (idle.length && queue.length) {
+      const worker = idle.pop();
+      const job = queue.shift();
+      worker.job = job;
+      worker.postMessage({ kind: 'simulate-spec', spec: job.spec });
+    }
+  }
+
+  for (let index = 0; index < size; index += 1) {
+    const worker = new Worker(new URL(import.meta.url), workerOptions({ kind: 'simulate-pool' }));
+    worker.on('message', (message) => {
+      const job = worker.job;
+      worker.job = null;
+      idle.push(worker);
+      if (job) {
+        if (message?.ok) job.resolve(message.game);
+        else job.reject(new Error(message?.error || 'Simulation worker failed.'));
+      }
+      dispatch();
+    });
+    worker.on('error', (error) => {
+      failure = error;
+      worker.job?.reject(error);
+      for (const job of queue.splice(0)) job.reject(error);
+    });
+    idle.push(worker);
+    pool.push(worker);
+  }
+
+  return {
+    size,
+    run(specs = []) {
+      if (failure) return Promise.reject(failure);
+      const jobs = (Array.isArray(specs) ? specs : []).map((spec) => new Promise((resolveJob, rejectJob) => {
+        queue.push({ spec, resolve: resolveJob, reject: rejectJob });
+      }));
+      dispatch();
+      return Promise.all(jobs);
+    },
+    async close() {
+      await Promise.all(pool.map((worker) => worker.terminate()));
+    },
+  };
+}
+
 // Runs one game per spec (each spec is a full simulateGame options object with
 // its own seed, table size, and seat policies) and returns results in order.
 export async function simulateGameSpecsParallel(specs = [], { workers = defaultSimulationWorkers() } = {}) {
   const list = Array.isArray(specs) ? specs : [];
   const lanes = Math.max(1, Math.min(list.length, toInt(workers, defaultSimulationWorkers())));
   if (lanes <= 1) return list.map((spec) => simulateGame(spec, 0));
-  const chunk = Math.ceil(list.length / lanes);
-  const batches = [];
-  for (let start = 0; start < list.length; start += chunk) batches.push(list.slice(start, start + chunk));
-  const results = await Promise.all(batches.map((batch) => runWorker({ kind: 'simulate-specs', specs: batch })));
-  return results.flat();
+  const pool = createSimulationPool({ workers: lanes });
+  try {
+    return await pool.run(list);
+  } finally {
+    await pool.close();
+  }
 }
 
 // Same results as simulateGames (games are seeded by index and merged in
@@ -869,15 +933,19 @@ function formatReport(result) {
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-if (!isMainThread && (workerData?.kind === 'simulate-games' || workerData?.kind === 'simulate-specs')) {
+if (!isMainThread && workerData?.kind === 'simulate-pool') {
+  parentPort.on('message', (message) => {
+    try {
+      parentPort.postMessage({ ok: true, game: simulateGame(message.spec, 0) });
+    } catch (error) {
+      parentPort.postMessage({ ok: false, error: error?.message || String(error) });
+    }
+  });
+} else if (!isMainThread && workerData?.kind === 'simulate-games') {
   try {
     const games = [];
-    if (workerData.kind === 'simulate-specs') {
-      for (const spec of workerData.specs) games.push(simulateGame(spec, 0));
-    } else {
-      for (let gameIndex = workerData.start; gameIndex < workerData.end; gameIndex += 1) {
-        games.push(simulateGame(workerData.options, gameIndex));
-      }
+    for (let gameIndex = workerData.start; gameIndex < workerData.end; gameIndex += 1) {
+      games.push(simulateGame(workerData.options, gameIndex));
     }
     parentPort.postMessage({ ok: true, games });
   } catch (error) {
