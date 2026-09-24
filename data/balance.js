@@ -26,15 +26,15 @@ export const BALANCE = {
 
   // Coup: how much of a dynasty's support its first and second choice get.
   COUP_CHOICE_WEIGHTS: [1, 0.5],
-  THEODOSIAN_WALLS_SUPPORT: 2,
-  PATRIARCH_INFLUENCE: 1,
-  TRIUMPH_PER_PROVINCE: 1,
+  THEODOSIAN_WALLS_SUPPORT: 5,
+  PATRIARCH_INFLUENCE: 4,
+  TRIUMPH_PER_PROVINCE: 2,
   BEST_DEFENDER_GOLD_PER_PROVINCE: 1,
-  UNREST_PER_LOST_PROVINCE: 1,
+  UNREST_PER_LOST_PROVINCE: 2,
 
   // Invasions: strength is drawn from a share of the empire's size, measured
   // as provinces x INVASION_STRENGTH_PER_PROVINCE.
-  INVASION_STRENGTH_PER_PROVINCE: 1,
+  INVASION_STRENGTH_PER_PROVINCE: 1.7,
   INVASION_STRENGTH_RATIOS: {
     easy: [0.5, 0.9],
     medium: [0.6, 1],

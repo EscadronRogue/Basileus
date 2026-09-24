@@ -10,7 +10,7 @@ import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopTotal, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { getPreferredCoupCandidate, normalizeCoupChoices } from '../engine/coup.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
 import { createAIMeta } from './brain.js';
 import { loadTunedOpponentRosterSync } from './nodeOpponentRoster.js';
 
@@ -24,6 +24,11 @@ const DEFAULT_OPTIONS = {
   historyEnabled: true,
   policies: null,
   allowUntunedPolicies: false,
+  // Balance values replaced for this run: { NAME: value } (see data/balance.js).
+  balance: null,
+  // A built-in preset (such as 'cautious' or 'gambler') seated once per game,
+  // rotating through the seats, among the tuned roster.
+  probe: null,
 };
 
 const FALL_RATE_ACCEPTABLE_MIN = 0.25;
@@ -90,6 +95,9 @@ function emptyStats(options) {
       categories: {},
     },
     winners: {},
+    probe: { games: 0, wins: 0, placement: 0 },
+    byOpponent: {},
+    goldByRound: {},
     fallRounds: {},
     fallInvasions: {},
     players: {},
@@ -186,6 +194,12 @@ function summarizeOrders(state, playerId) {
 
 function collectResolution(stats, state) {
   stats.resolutions += 1;
+  const players = state.players || [];
+  if (players.length) {
+    const bucket = stats.goldByRound[state.round] || (stats.goldByRound[state.round] = { gold: 0, count: 0 });
+    bucket.gold += players.reduce((total, player) => total + (Number(player.gold) || 0), 0) / players.length;
+    bucket.count += 1;
+  }
 
   const war = state.lastWarResult;
   if (war) {
@@ -429,7 +443,15 @@ function getExplicitSeatPolicy(options, seatId) {
   return policies;
 }
 
+export function getProbeSeat(options, seed) {
+  if (!options.probe) return null;
+  return Math.max(0, Number(seed) || 0) % Math.max(1, options.playerCount);
+}
+
 function resolveSeatAiPlayer(options, seatId, seed, tunedRoster) {
+  if (options.probe && seatId === getProbeSeat(options, seed)) {
+    return { policy: options.probe, seatLabel: `probe:${options.probe}` };
+  }
   const explicitPolicy = getExplicitSeatPolicy(options, seatId);
   if (explicitPolicy) {
     if (typeof explicitPolicy === 'string') {
@@ -462,13 +484,28 @@ function createAllAiGame(options, seed) {
   );
   const meta = createAIMeta(state, { humanPlayerIds: [], aiPlayers });
   const context = {};
-  return { state, meta, context };
+  // Who sits where, for the per-AI win rates.
+  const seatLabels = Object.fromEntries(Object.entries(aiPlayers).map(([seat, entry]) => [
+    seat,
+    entry.seatLabel || entry.opponentId || (typeof entry.policy === 'string' ? entry.policy : entry.policy?.policyId) || 'unknown',
+  ]));
+  return { state, meta, context, seatLabels };
 }
 
 export function simulateGame(rawOptions = {}, gameIndex = 0) {
   const options = { ...DEFAULT_OPTIONS, ...rawOptions };
+  if (!options.balance) return playGame(options, gameIndex);
+  applyBalanceOverrides(options.balance);
+  try {
+    return playGame(options, gameIndex);
+  } finally {
+    resetBalance();
+  }
+}
+
+function playGame(options, gameIndex) {
   const seed = toInt(options.seed, DEFAULT_OPTIONS.seed) + gameIndex;
-  const { state, meta, context } = createAllAiGame(options, seed);
+  const { state, meta, context, seatLabels } = createAllAiGame(options, seed);
   const localStats = emptyStats({ ...options, games: 1, seed });
   let reason = 'complete';
 
@@ -519,6 +556,8 @@ export function simulateGame(rawOptions = {}, gameIndex = 0) {
       projectedIncome: entry.projectedIncome,
     })),
     winnerIds: final.winners.map((entry) => entry.playerId),
+    probeSeat: getProbeSeat(options, seed),
+    seatLabels,
     topScore: final.topScore,
     appointmentStatsByPlayer,
     behaviorByPlayer: collectBehaviorByPlayer(state),
@@ -551,6 +590,21 @@ function mergeStats(target, source) {
     target.scoring.categories[key].count += bucket.count;
   }
   for (const [playerId, wins] of Object.entries(source.stats.winners)) addCount(target.winners, playerId, wins);
+  for (const [roundNumber, bucket] of Object.entries(source.stats.goldByRound)) {
+    const into = target.goldByRound[roundNumber] || (target.goldByRound[roundNumber] = { gold: 0, count: 0 });
+    into.gold += bucket.gold;
+    into.count += bucket.count;
+  }
+  const winnerShare = (seat) => (source.winnerIds.includes(seat) ? 1 / source.winnerIds.length : 0);
+  for (const [seat, key] of Object.entries(source.seatLabels || {})) {
+    const entry = target.byOpponent[key] || (target.byOpponent[key] = { games: 0, wins: 0 });
+    entry.games += 1;
+    entry.wins += winnerShare(Number(seat));
+  }
+  if (source.probeSeat != null) {
+    target.probe.games += 1;
+    target.probe.wins += winnerShare(source.probeSeat);
+  }
   if (source.fall) {
     addCount(target.fallRounds, String(source.rounds));
     addCount(target.fallInvasions, source.fallInvasion || 'unknown');
@@ -571,6 +625,8 @@ function normalizeSimulationOptions(rawOptions = {}) {
     historyEnabled: rawOptions.historyEnabled !== false,
     policies: rawOptions.policies || null,
     allowUntunedPolicies: Boolean(rawOptions.allowUntunedPolicies),
+    balance: rawOptions.balance && Object.keys(rawOptions.balance).length ? { ...rawOptions.balance } : null,
+    probe: rawOptions.probe || null,
   };
 }
 
@@ -804,6 +860,21 @@ function normalizeStats(stats) {
       categories,
     },
     winners: stats.winners,
+    fairShare: round(1 / Math.max(1, stats.options.playerCount), 3),
+    probe: stats.options.probe
+      ? { policy: stats.options.probe, games: stats.probe.games, winRate: round(stats.probe.wins / Math.max(1, stats.probe.games), 3) }
+      : null,
+    opponentWinRates: Object.fromEntries(
+      Object.entries(stats.byOpponent)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([id, entry]) => [id, { games: entry.games, winRate: round(entry.wins / Math.max(1, entry.games), 3) }]),
+    ),
+    // Average gold a dynasty holds when each round is resolved.
+    goldByRound: Object.fromEntries(
+      Object.entries(stats.goldByRound)
+        .sort(([left], [right]) => Number(left) - Number(right))
+        .map(([roundNumber, bucket]) => [roundNumber, round(bucket.gold / Math.max(1, bucket.count), 1)]),
+    ),
     seatWinRates: Object.fromEntries(
       Array.from({ length: stats.options.playerCount }, (_, seat) => [seat, round((stats.winners[seat] || 0) / games, 3)]),
     ),
@@ -850,6 +921,27 @@ function buildDiagnostics(stats, games, resolutions, orders) {
   return diagnostics;
 }
 
+function parseBalanceValue(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+// "NAME=value" (or "NAME=a,b,c" with { list: true }); values are read as JSON
+// when they parse, so numbers and arrays work: --set COUP_CHOICE_WEIGHTS=[1,0.5].
+export function parseAssignment(text, { list = false } = {}) {
+  const raw = String(text || '');
+  const at = raw.indexOf('=');
+  if (at <= 0) throw new Error(`Expected NAME=value, got "${raw}".`);
+  const name = raw.slice(0, at).trim();
+  const valueText = raw.slice(at + 1).trim();
+  if (!list) return [name, parseBalanceValue(valueText)];
+  const values = valueText.startsWith('[') ? parseBalanceValue(valueText) : valueText.split(',').map((entry) => parseBalanceValue(entry.trim()));
+  return [name, Array.isArray(values) ? values : [values]];
+}
+
 function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -868,6 +960,18 @@ function parseArgs(argv) {
       options.historyEnabled = false;
       continue;
     }
+    if (key === 'set') {
+      const [name, value] = parseAssignment(argv[index + 1]);
+      index += 1;
+      options.balance = { ...(options.balance || {}), [name]: value };
+      continue;
+    }
+    if (key === 'sweep') {
+      const [name, value] = parseAssignment(argv[index + 1], { list: true });
+      index += 1;
+      options.sweep = { name, values: value };
+      continue;
+    }
     const value = argv[index + 1];
     index += 1;
     if (key === 'games') options.games = toInt(value, DEFAULT_OPTIONS.games);
@@ -878,6 +982,7 @@ function parseArgs(argv) {
     else if (key === 'max-steps') options.maxSteps = toInt(value, DEFAULT_OPTIONS.maxSteps);
     else if (key === 'policies') options.policies = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
     else if (key === 'workers') options.workers = toInt(value, defaultSimulationWorkers());
+    else if (key === 'probe') options.probe = String(value || '').trim() || null;
   }
   return options;
 }
@@ -885,6 +990,7 @@ function parseArgs(argv) {
 function formatReport(result) {
   const lines = [
     `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} turns, seed ${result.options.seed}`,
+    result.options.balance ? `Balance: ${Object.entries(result.options.balance).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(', ')}` : null,
     result.options.policies ? null : 'Opponents: saved tuned AI roster',
     `Completion: ${result.completed}/${result.games} complete, stuck ${result.stuck}, fall rate ${Math.round(result.fallRate * 100)}% (${result.fallPressure.band}), avg rounds ${result.averageRounds}`,
     `War: victory ${Math.round(result.wars.victoryRate * 100)}%, stalemate ${Math.round(result.wars.stalemateRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, avg margin ${result.wars.averageMargin}`,
@@ -893,6 +999,9 @@ function formatReport(result) {
     `Estates/game: built ${result.estates.builtPerGame}, revoked ${result.estates.revokedPerGame}, gold spent ${result.estates.goldSpentPerGame}; per plan ${result.estates.estatesPerPlan} estates over ${result.estates.provincesPerPlan} provinces`,
     `Scoring: winner ${result.scoring.winnerScore}, average ${result.scoring.averageScore}, gap ${result.scoring.pointGap}`,
     `Seat win rates: ${Object.entries(result.seatWinRates).map(([seat, rate]) => `seat ${Number(seat) + 1} ${Math.round(rate * 100)}%`).join(', ')}`,
+    `Win rate by AI (fair share ${Math.round(result.fairShare * 100)}%): ${Object.entries(result.opponentWinRates).map(([id, entry]) => `${id} ${Math.round(entry.winRate * 100)}%`).join(', ')}`,
+    result.probe ? `Probe ${result.probe.policy}: win ${Math.round(result.probe.winRate * 100)}% over ${result.probe.games} games (${round(result.probe.winRate / Math.max(0.001, result.fairShare), 2)}x fair share)` : null,
+    `Gold per dynasty by round: ${Object.entries(result.goldByRound).map(([roundNumber, gold]) => `r${roundNumber} ${gold}`).join(', ')}`,
     `Falls by invader: ${Object.entries(result.fallInvasionRates).map(([invasionId, rate]) => `${invasionId} ${Math.round(rate * 100)}%`).join(', ') || 'none'}`,
     `Falls by round: ${Object.entries(result.fallRoundRates).map(([roundNumber, rate]) => `r${roundNumber} ${Math.round(rate * 100)}%`).join(', ') || 'none'} (by round 3: ${Math.round(result.earlyFallRate * 100)}%)`,
     'Diagnostics:',
@@ -910,6 +1019,12 @@ function formatReport(result) {
     }
   }
   return lines.join('\n');
+}
+
+function formatSweepRow(name, value, result) {
+  const probe = result.probe ? `, ${result.probe.policy} ${Math.round(result.probe.winRate * 100)}%` : '';
+  const gold = Object.values(result.goldByRound);
+  return `${name}=${JSON.stringify(value)}: fall ${Math.round(result.fallRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}${probe}, gold r1 ${gold[0] ?? '-'} → last ${gold[gold.length - 1] ?? '-'}`;
 }
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -934,7 +1049,17 @@ if (!isMainThread && workerData?.kind === 'simulate-pool') {
   }
 } else if (isCli) {
   const options = parseArgs(process.argv.slice(2));
-  const result = await simulateGamesParallel(options);
-  if (options.json) console.log(JSON.stringify(result, null, 2));
-  else console.log(formatReport(result));
+  if (options.sweep) {
+    const rows = [];
+    for (const value of options.sweep.values) {
+      const result = await simulateGamesParallel({ ...options, balance: { ...(options.balance || {}), [options.sweep.name]: value } });
+      rows.push({ value, result });
+      if (!options.json) console.log(formatSweepRow(options.sweep.name, value, result));
+    }
+    if (options.json) console.log(JSON.stringify(rows.map(({ value, result }) => ({ value, ...result })), null, 2));
+  } else {
+    const result = await simulateGamesParallel(options);
+    if (options.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(formatReport(result));
+  }
 }

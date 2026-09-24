@@ -172,8 +172,9 @@ test('invasion templates carry relative difficulty bands', () => {
 
     const [min, max] = getInvasionStrengthBounds(template, state);
     const [minRatio, maxRatio] = INVASION_STRENGTH_RATIOS[expectedDifficulty];
-    assert.equal(min, Math.ceil(empireStrength * minRatio), `${template.id} strength minimum should scale from empire strength`);
-    assert.equal(max, Math.floor(empireStrength * maxRatio), `${template.id} strength maximum should scale from empire strength`);
+    const scaled = empireStrength * BALANCE.INVASION_STRENGTH_PER_PROVINCE;
+    assert.equal(min, Math.ceil(scaled * minRatio), `${template.id} strength minimum should scale from empire strength`);
+    assert.equal(max, Math.floor(scaled * maxRatio), `${template.id} strength maximum should scale from empire strength`);
 
     const invasion = createInvasionInstance(template, () => 0, state);
     assert.equal(invasion.empireStrength, empireStrength);
@@ -186,7 +187,10 @@ test('invasion templates carry relative difficulty bands', () => {
   const [hardMinRatio, hardMaxRatio] = INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD];
   assert.deepEqual(
     getInvasionStrengthBounds(turksTemplate, state),
-    [Math.ceil((empireStrength - 1) * hardMinRatio), Math.floor((empireStrength - 1) * hardMaxRatio)],
+    [
+      Math.ceil((empireStrength - 1) * BALANCE.INVASION_STRENGTH_PER_PROVINCE * hardMinRatio),
+      Math.floor((empireStrength - 1) * BALANCE.INVASION_STRENGTH_PER_PROVINCE * hardMaxRatio),
+    ],
   );
 
   const drawState = makeState();
@@ -1178,7 +1182,7 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
   assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
   assert.equal(getCapitalSupportByPlayer(state)[0], BALANCE.THEODOSIAN_WALLS_SUPPORT);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], BALANCE.TRIUMPH_PER_PROVINCE);
 });
 
 test('repulsed invasions reward the top defender for province wins even without lost provinces', () => {
@@ -1203,7 +1207,7 @@ test('repulsed invasions reward the top defender for province wins even without 
   assert.equal(state.lastWarResult.reconquestReward.rewardProvinceCount, 2);
   assert.deepEqual(state.lastWarResult.reconquestReward.themeIds, []);
   assert.equal(getPlayer(state, 2).gold, 2);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2 * BALANCE.TRIUMPH_PER_PROVINCE);
 });
 
 test('tied top defenders split reconquest reward with rounded shares', () => {
@@ -1240,9 +1244,11 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   assert.equal(getPlayer(state, 3).gold, 2);
   assert.deepEqual(state.lastWarResult.reconquestReward.defenders.map((entry) => entry.defenderId), [2, 3]);
   assert.equal(state.lastWarResult.reconquestReward.gold, 2);
-  assert.equal(state.lastWarResult.reconquestReward.capitalSupport, 1);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 1);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[3], 1);
+  // Three provinces won: gold is split rounding up, Triumph rounding down.
+  const triumphShare = Math.floor((3 * BALANCE.TRIUMPH_PER_PROVINCE) / 2);
+  assert.equal(state.lastWarResult.reconquestReward.capitalSupport, triumphShare);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], triumphShare);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[3], triumphShare);
 });
 
 test('lost provinces reduce the next round Basileus passive support', () => {
