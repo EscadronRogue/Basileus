@@ -7,6 +7,7 @@ import {
   hasRevocationTargetLock,
   recordAppointmentChoice,
   recordRevocationChoice,
+  requireRng,
 } from './state.js';
 import { recordHistoryEvent } from './history.js';
 import { getPlayerFinalScore } from './scoring.js';
@@ -472,7 +473,7 @@ function resolveLandAuctionTie(state, tiedBids) {
   const storedIndex = Number(tieBreakers[tieKey]);
   const winnerIndex = Number.isInteger(storedIndex)
     ? ((storedIndex % tied.length) + tied.length) % tied.length
-    : Math.floor((typeof state.rng === 'function' ? state.rng() : Math.random()) * tied.length);
+    : Math.floor(requireRng(state)() * tied.length);
   tieBreakers[tieKey] = (winnerIndex + 1) % tied.length;
 
   return {

@@ -20,6 +20,15 @@ export function makeRng(seed = Date.now(), initialState = null) {
   return rng;
 }
 
+// Every gameplay roll must come from the seeded game RNG so matches replay
+// identically. Fail loudly rather than silently falling back to Math.random.
+export function requireRng(state) {
+  if (typeof state?.rng !== 'function') {
+    throw new Error('Game state is missing its seeded rng; gameplay randomness must use state.rng.');
+  }
+  return state.rng;
+}
+
 export function shuffle(arr, rng) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {

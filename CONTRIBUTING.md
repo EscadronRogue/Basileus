@@ -37,9 +37,9 @@ later; `fixfix` or `hope` is not.
   uses Node built-ins only. Add dependencies only with a strong reason and
   bump the lockfile.
 - Engine modules under `engine/` must stay deterministic. Use `state.rng`,
-  never `Math.random()`, for any value that affects gameplay. The
-  `engine/actions.js` bishop-displacement path will throw if `state.rng` is
-  missing — preserve that guarantee in new code.
+  never `Math.random()`, for any value that affects gameplay. Read it through
+  `requireRng(state)` from `engine/state.js`, which throws when the seeded
+  RNG is missing instead of silently falling back to `Math.random()`.
 
 ## Tests
 
