@@ -467,7 +467,7 @@ export function renderActionShell(panel, state, uiState) {
     <div class="sidebar-panel action-shell${isOpen ? '' : ' is-collapsed'}">
       <button class="sidebar-panel-head" type="button" data-ui-panel-toggle="action" aria-expanded="${isOpen}">
         <span class="sidebar-panel-head-copy">
-          <span class="sidebar-panel-kicker">Phase Panel</span>
+          <span class="sidebar-panel-kicker">Your move</span>
           <span class="sidebar-panel-title">${getActionPanelTitle(state)}</span>
         </span>
       </button>
@@ -636,7 +636,7 @@ export function renderScoringHtml(state, options = {}) {
         <strong>Empire Fallen</strong>
         <span>Constantinople was sacked. Everyone lost; points only record who held the strongest position when the empire collapsed.</span>
       </div>`
-    : `<p class="section-hint">Highest point total wins. Each ${SCORE_SHARE_STEP_PERCENT}% share of Gold reserves, Profit income, and Office income is worth 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY} per category.</p>`;
+    : `<p class="section-hint">Highest point total wins. Each ${SCORE_SHARE_STEP_PERCENT}% share of gold, estate income and office income is worth 1 point, up to ${SCORE_MAX_POINTS_PER_CATEGORY} per category.</p>`;
 
   return `
     <div class="scoring-panel${empireFallen ? ' empire-fallen-scoring' : ''}">

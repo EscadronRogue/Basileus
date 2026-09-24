@@ -150,7 +150,7 @@ export function processAiFlow(state, aiMeta, options = {}) {
         const planned = planMajorTitleAssignment(state, aiMeta, state.basileusId);
         const assignments = planned?.assignments || planned;
         const result = confirmTitleRedistribution(state, state.basileusId, assignments);
-        if (!result.ok) throw new Error(result.reason || `AI player ${state.basileusId} could not redistribute titles.`);
+        if (!result.ok) throw new Error(result.reason || `AI player ${state.basileusId} could not hand out the major offices.`);
         invalidateRoundContext(aiMeta);
         continue;
       }
@@ -309,8 +309,8 @@ export function resolveAiDealResponses(state, aiMeta) {
 
 export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, payload = {}, options = {}) {
   ensureRuntimeContext(context);
-  if (!state || state.phase !== 'court') return fail('Court actions are not available right now.');
-  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already confirmed court actions this round.');
+  if (!state || state.phase !== 'court') return fail('Appointments and revocations are only possible in the Offices phase.');
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already locked your offices this round.');
 
   autoResolveUnavailableHumanAppointments(state, playerId, aiMeta, context);
   const result = applyCourtAction(state, playerId, payload);
@@ -387,8 +387,8 @@ export function handleHumanOrders(state, aiMeta, context = {}, playerId, orders 
 
 export function handleManualTitleReassignment(state, aiMeta, context = {}, playerId, assignments = {}) {
   ensureRuntimeContext(context);
-  if (!state || state.phase !== 'title_redistribution') return fail('Major title redistribution is only allowed during Title Redistribution.');
-  if (playerId !== state.basileusId) return fail('Only the Basileus may assign major titles.');
+  if (!state || state.phase !== 'title_redistribution') return fail('The major offices can only be handed out when a new Basileus takes the throne.');
+  if (playerId !== state.basileusId) return fail('Only the Basileus hands out the major offices.');
   const result = applyManualTitleReassignment(state, playerId, assignments);
   if (!result.ok) return result;
   if (aiMeta) {

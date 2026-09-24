@@ -268,6 +268,28 @@
 .rules-card-body ol { margin: 0 0 6px; padding-left: 18px; }
 .rules-card-body li { margin: 2px 0; }
 .rules-card-body strong { color: var(--umber-0); }
+.rules-card-body .rules-legend { list-style: none; padding-left: 0; }
+.rules-legend .icon,
+.rules-marker {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+.rules-marker {
+  display: inline-block;
+  box-sizing: border-box;
+  border: 2px solid var(--umber-1);
+  background: var(--gold-1);
+}
+.rules-marker.marker-estate { border-radius: 50%; background: #3a6ea5; }
+.rules-marker.marker-strategos { border-radius: 2px; background: #a03030; }
+.rules-marker.marker-bishop {
+  border: 0;
+  background: var(--umber-1);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.rules-marker.marker-lost { border-radius: 50%; background: #a8a39a; border-style: dashed; opacity: 0.8; }
 
 .setup-select-source,
 .room-config-source {

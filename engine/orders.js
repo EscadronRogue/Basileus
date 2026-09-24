@@ -201,7 +201,7 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
   const unfundedGold = getUnfundedGold(state, playerId, normalizedOrders.armies);
   const mercenaryCost = getMercenaryHireCost(0, normalizedOrders.mercenaries.count);
   if (getSpendableGold(state, playerId) + unfundedGold < mercenaryCost) {
-    return orderFailure(`Not enough gold for those mercenaries after unfunded troops are paid out.`);
+    return orderFailure('Not enough gold for those mercenaries, even counting the gold from dismissed troops.');
   }
 
   return {

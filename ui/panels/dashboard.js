@@ -6,9 +6,8 @@ import {
   getOfficeHolder,
   getPlayer,
   getPlayerPrimaryRoleKey,
-  getBishopThemes,
 } from '../../engine/state.js';
-import { formatChurchHtml, formatGoldHtml, formatTroopsHtml, renderIcon } from '../icons.js';
+import { formatGoldHtml, formatTroopsHtml, renderIcon } from '../icons.js';
 import { escapeHtml } from '../html.js';
 import { getPlayerStyleAttr, renderOwnershipBadge, renderProvinceBadge, renderTitleBadge } from '../labels.js';
 import { countDynastyEstates, getDynastyEstates } from '../../engine/estates.js';
@@ -16,9 +15,8 @@ import { playerInitial } from './shared.js';
 
 function getDashboardEconomy(state, playerId) {
   const player = getPlayer(state, playerId);
-  if (!player) return { reserve: 0, income: 0, churchYield: 0, troops: 0 };
+  if (!player) return { reserve: 0, income: 0, estates: 0, troops: 0 };
   let income = 0;
-  let churchYield = 0;
   let troops = 0;
   try {
     const admin = runIncome(state);
@@ -26,10 +24,7 @@ function getDashboardEconomy(state, playerId) {
   } catch (err) {
     income = 0;
   }
-  try {
-    const bishopThemes = getBishopThemes(state, playerId);
-    churchYield = bishopThemes.reduce((sum, theme) => sum + Math.max(0, Number(theme?.C) || 0), 0);
-  } catch (err) { churchYield = 0; }
+  const estates = countDynastyEstates(state, playerId);
   for (const officeKey of Object.keys(state.currentTroops || {})) {
     if (getOfficeHolder(state, officeKey) !== playerId) continue;
     troops += readTroopCount(state.currentTroops[officeKey]);
@@ -37,7 +32,7 @@ function getDashboardEconomy(state, playerId) {
   return {
     reserve: Math.max(0, Number(player.gold) || 0),
     income,
-    churchYield,
+    estates,
     troops,
   };
 }
@@ -138,7 +133,7 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
         ${economy ? `
           <div class="finance-grid" aria-label="Next-round projection">
             <div class="finance-card">
-              <span class="finance-label">${renderIcon('gold')}Reserve</span>
+              <span class="finance-label">${renderIcon('gold')}Gold</span>
               <span class="finance-value">${formatGoldHtml(economy.reserve)}</span>
             </div>
             <div class="finance-card ${economy.income < 0 ? 'upkeep' : 'income'}">
@@ -150,8 +145,8 @@ export function renderPlayerDashboard(container, state, playerId, selectedProvin
               <span class="finance-value">${formatTroopsHtml(economy.troops)}</span>
             </div>
             <div class="finance-card">
-              <span class="finance-label">${renderIcon('church')}Church Yield</span>
-              <span class="finance-value">${formatChurchHtml(economy.churchYield)}</span>
+              <span class="finance-label">${renderIcon('estate')}Estates</span>
+              <span class="finance-value">${escapeHtml(String(economy.estates))}</span>
             </div>
           </div>
         ` : ''}

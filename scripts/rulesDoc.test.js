@@ -27,17 +27,25 @@ test('the in-game page and README point at the single rules source', () => {
 
 test('the glossary lists every key word and finds them in running text', () => {
   const html = renderGlossaryHtml();
-  for (const entry of GLOSSARY_TERMS) assert.ok(html.includes(`<dt>${entry.term}</dt>`), entry.term);
+  for (const entry of GLOSSARY_TERMS) {
+    // AI temperaments are explained on the AI's name, not in the rules.
+    assert.equal(html.includes(`<dt>${entry.term}</dt>`), !entry.hiddenFromIndex, entry.term);
+  }
   const ids = new Set(GLOSSARY_TERMS.map((entry) => entry.id));
   assert.equal(ids.size, GLOSSARY_TERMS.length, 'term ids are unique');
 
-  const matches = findGlossaryMatches('The Domestic of the East appoints a strategos; capital-locked troops ignore the Frontier.');
+  const matches = findGlossaryMatches('The Domestic of the East appoints a strategos; troops in Constantinople ignore the Frontier.');
   assert.deepEqual(matches.map((match) => [match.id, match.text]), [
     ['domestic', 'Domestic of the East'],
     ['appointment', 'appoints'],
     ['strategos', 'strategos'],
+    ['troop', 'troops'],
+    ['capital', 'Constantinople'],
     ['frontier', 'Frontier'],
   ]);
+  // The phase name only matches with its capital letter.
+  assert.deepEqual(findGlossaryMatches('your offices').map((match) => match.id), []);
+  assert.deepEqual(findGlossaryMatches('the Offices phase').map((match) => match.id), ['offices']);
   // Personality names only match with their capital letter.
   assert.deepEqual(findGlossaryMatches('a patron of the arts').map((match) => match.id), []);
   assert.deepEqual(findGlossaryMatches('Leo the Patron').map((match) => match.id), ['personality-patron']);

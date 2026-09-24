@@ -13,13 +13,13 @@
 import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyle } from '../engine/state.js';
 import { getLeadingEstateHolder, getProvinceEstateHolders } from '../engine/estates.js';
-import { renderIcon, provinceValueEntries } from './icons.js';
+import { renderIcon } from './icons.js';
 import { escapeHtml } from './html.js';
 
 const FREE_FILL = '#6a4a8a';
 const CAPITAL_FILL = '#E49B0F';
 const LOST_FILL = '#625c52';
-const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Capital' };
+const REGION_LABELS = { east: 'East', west: 'West', sea: 'Sea', cpl: 'Constantinople' };
 const DARK_OUTLINE_MIX = '#1f1208';
 const CARTOUCHE_FILL_BY_REGION = {
   cpl: '#E49B0F',
@@ -225,26 +225,16 @@ export function renderProvinceOwnershipBadges(state, themeOrId, options = {}) {
   return `<span class="${classes}">${entries.map((entry) => renderOwnershipBadge(state, entry, options)).join('')}</span>`;
 }
 
-// Plain-text value codes stay available for history summaries, ARIA labels,
-// tooltips, and tests even though visible DOM uses icon cartouches.
+// Every province raises 1 troop and pays 1 gold per estate, so the only
+// value that tells provinces apart is whether it is a bishopric.
 export function formatProvinceValuesText(theme) {
   if (theme?.id === 'CPL') return '';
-  const profit = Math.max(0, Number(theme?.P) || 0);
-  const troops = Math.max(0, Number(theme?.T) || 0);
-  const church = Math.max(0, Number(theme?.C) || 0);
-  return `P${profit} T${troops} C${church}`;
+  return (Number(theme?.C) || 0) > 0 ? 'Bishopric' : '';
 }
 
-// HTML variant — three icon+number chips, with zero-value entries collapsed.
-// Use this anywhere the values render in a DOM (province token, dashboards,
-// tooltips). The map renderer has its own SVG version in icons.js.
 export function renderProvinceValuesHtml(theme) {
-  if (theme?.id === 'CPL') return '';
-  const entries = provinceValueEntries(theme).filter((entry) => entry.value > 0);
-  if (!entries.length) return '';
-  return entries
-    .map((entry) => `<span class="province-token-value">${renderIcon(entry.kind)}<span class="province-token-num">${entry.value}</span></span>`)
-    .join('');
+  if (theme?.id === 'CPL' || !((Number(theme?.C) || 0) > 0)) return '';
+  return `<span class="province-token-value" title="Bishopric">${renderIcon('church')}</span>`;
 }
 
 // ── Cartouche renderers ───────────────────────────────────────────────

@@ -457,7 +457,7 @@ test('court powers can mix appointments and revocations while preserving same-ti
 
   const sameTitleRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:OPS:strategos' });
   assert.equal(sameTitleRevocation.ok, false);
-  assert.match(sameTitleRevocation.reason, /was appointed this turn and cannot be revoked/);
+  assert.match(sameTitleRevocation.reason, /was appointed this round and cannot be revoked/);
 
   const otherRevocation = applyCourtAction(state, 1, { action: 'revoke', value: 'minor:KAP:strategos' });
   assert.equal(otherRevocation.ok, true);
@@ -465,7 +465,7 @@ test('court powers can mix appointments and revocations while preserving same-ti
 
   const thirdAction = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
   assert.equal(thirdAction.ok, false);
-  assert.match(thirdAction.reason, /already completed its 2 court actions/);
+  assert.match(thirdAction.reason, /already used its 2 actions this round/);
 });
 
 test('court powers may spend both actions on revocations', () => {
@@ -484,7 +484,7 @@ test('court powers may spend both actions on revocations', () => {
 
   const appointment = applyCourtAction(state, 1, { action: 'appoint-strategos', themeId: 'OPT', appointeeId: 3 });
   assert.equal(appointment.ok, false);
-  assert.match(appointment.reason, /already completed its 2 court actions/);
+  assert.match(appointment.reason, /already used its 2 actions this round/);
 });
 
 test('revocation cooldown unlocks as soon as another target is revoked', () => {
@@ -722,7 +722,7 @@ test('court no longer allows gifting estates', () => {
   const result = applyCourtAction(state, 2, { action: 'gift', themeId: 'SAM' });
 
   assert.equal(result.ok, false);
-  assert.match(result.reason, /Unknown court action/);
+  assert.match(result.reason, /Unknown office action/);
   assert.equal(getEstateCount(state.themes.SAM, 2), 1);
 });
 

@@ -108,16 +108,19 @@ function withFakeDocument(callback) {
   }
 }
 
-test('province badges render the updated P/T/C economy and hide capital values', () => {
+test('province badges only mark bishoprics, never Constantinople', () => {
   const state = makeState();
-  const provinceHtml = renderProvinceBadge(state, 'OPS', { showValues: true });
+  const bishopric = Object.values(state.themes).find((theme) => theme.id !== 'CPL' && theme.C > 0);
+  const plain = Object.values(state.themes).find((theme) => theme.id !== 'CPL' && !(theme.C > 0));
 
-  assert.equal(formatProvinceValuesText(state.themes.OPS), 'P1 T1 C1');
+  assert.equal(formatProvinceValuesText(bishopric), 'Bishopric');
+  assert.equal(formatProvinceValuesText(plain), '');
   assert.equal(formatProvinceValuesText(state.themes.CPL), '');
-  assert.match(provinceHtml, /province-token-values/);
-  assert.match(provinceHtml, /icon-gold/);
-  assert.match(provinceHtml, /icon-troop/);
-  assert.match(provinceHtml, /icon-church/);
+  const bishopricHtml = renderProvinceBadge(state, bishopric.id, { showValues: true });
+  assert.match(bishopricHtml, /province-token-values/);
+  assert.match(bishopricHtml, /icon-church/);
+  assert.doesNotMatch(bishopricHtml, /icon-gold|icon-troop/);
+  assert.doesNotMatch(renderProvinceBadge(state, plain.id, { showValues: true }), /province-token-values/);
   assert.doesNotMatch(renderProvinceBadge(state, 'CPL', { showValues: true }), /province-token-values/);
 });
 
@@ -426,7 +429,7 @@ test('court panel keeps mixed actions open but blocks same-turn title reversals'
   assert.match(container.innerHTML, /<strong>1<\/strong> left of 2/);
   assert.match(container.innerHTML, /1 action remains for this office/);
   assert.match(container.innerHTML, /data-revoke-pick="minor:OPS:strategos"[^>]*aria-disabled="true"[^>]*>/);
-  assert.match(container.innerHTML, /was appointed this turn and cannot be revoked until next turn/);
+  assert.match(container.innerHTML, /was appointed this round and cannot be revoked until the next one/);
   assert.doesNotMatch(container.innerHTML, /data-revoke-pick="minor:KAP:strategos"[^>]*disabled[^>]*>/);
 });
 
@@ -1094,8 +1097,8 @@ test('final scoring view uses income-share scoring categories', () => {
   assert.match(html, /Balance of Power/);
   assert.match(html, /Highest point total wins/);
   assert.match(html, /Each 10% share/);
-  assert.match(html, /Profit income/);
-  assert.match(html, /Office income/);
+  assert.match(html, /estate income/);
+  assert.match(html, /office income/i);
   assert.match(html, /icon-church/);
   assert.match(html, /icon-troop/);
   assert.doesNotMatch(html, /Church income/);
