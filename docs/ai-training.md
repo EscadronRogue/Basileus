@@ -1,10 +1,40 @@
-No code changes. Current `train:ai` parameters are:
+# AI Simulation & Training
 
-```powershell
-npm.cmd run train:ai -- --generations 3 --population 10 --elite 3 --games 24
+Two offline tools live beside the runtime AI: `ai/simulate.js` measures how
+all-AI games play out, and `ai/train.js` evolves the strategy weights of the
+named AI opponents saved in `ai/tunedOpponents.json`. Both run whole games
+through the same runtime as real play.
+
+On Windows PowerShell, use `npm.cmd` in place of `npm`.
+
+## Simulation
+
+```sh
+npm run simulate:ai -- --games 200 --players 5 --deck 9
 ```
 
-**Core Training**
+- `--games N` number of games (default `100`)
+- `--players N` dynasties per game, `3`-`5` (default `5`)
+- `--deck N` game length in turns (default `9`)
+- `--seed N` first game seed; game *i* uses seed + *i* (default `1`)
+- `--workers N` worker threads (default up to `4`); results are identical to `--workers 1`
+- `--policies a,b,c` built-in policy per seat instead of the saved tuned roster
+- `--samples N` sample games listed in the report (default `5`)
+- `--no-history` skip history recording for speed
+- `--json` machine-readable output
+
+The report covers completion, empire-fall rate against the 40-50% ideal band,
+war and coup outcomes, deployment habits, estates, scoring, win rate per seat,
+and when and to which invader the empire falls.
+
+## Training
+
+```sh
+npm run train:ai -- --generations 3 --population 10 --elite 3 --games 24
+```
+
+### Core training
+
 - `--generations N`  
   Number of evolutionary rounds. More generations means more refinement.
   Default: `3`
@@ -18,9 +48,9 @@ npm.cmd run train:ai -- --generations 3 --population 10 --elite 3 --games 24
   Default: `3`
 
 - `--games N`  
-  Number of games used for finalist re-evaluation. The trainer now screens every
-  candidate on fewer games first, then re-tests the best finalists on this many
-  games.
+  Number of games used for finalist re-evaluation. Every candidate is
+  screened on fewer games first, then the best finalists are re-tested on this
+  many games.
   Default: `24`
 
 Total rough workload:
@@ -29,8 +59,7 @@ Total rough workload:
 generations x population x screening-games + finalists x finalist-games
 ```
 
-So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
-720-game full evaluation.
+So the defaults run `3 x 10 x 8 + 5 x 24 = 360` simulated games.
 
 - `--screening-games N`
   Number of quick games used for every candidate in every generation.
@@ -48,20 +77,20 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   Parallel worker threads used by the CLI trainer.
   Default: up to `4`, based on available CPU cores.
 
-**Game Setup**
+### Game setup
+
 - `--players N`  
-  Number of players per simulated game. Clamped between `3` and `5`.
-  Default: `4`
+  Players per simulated game, `3`-`5`. Accepts lists or ranges such as `3,4,5` or `3-5`.
+  Default: `5`
 
 - `--deck N`  
-  Game length in turns.
+  Game length in turns. Accepts lists such as `6,9,12`.
   Default: `9`
 
-- `--seed N`  
-  Deterministic seed for reproducible training.
-  Default: `1000`
+Every training run uses a fresh random seed, printed in the report.
 
-**Learning Behavior**
+### Learning behaviour
+
 - `--mutation X`  
   How aggressively new candidates vary from elite parents. Higher means more exploration, lower means more refinement.
   Default: `0.35`
@@ -95,7 +124,8 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
   Number of newly trained champions exported to the output roster.
   Default: `5`
 
-**Opponent League**
+### Opponent league
+
 - `--league a,b,c`  
   Custom non-champion opponent pool used during training. In `beginner` mode it is the full non-self-play league. In `robust` mode it replaces the built-in non-champion bucket while saved champions still participate.
   Current useful values include:
@@ -103,11 +133,12 @@ So the default `3 x 10 x 8 + 5 x 24 = 360` simulated games, instead of the old
 
 Example:
 
-```powershell
-npm.cmd run train:ai -- --league strategic,defender,random,copycat
+```sh
+npm run train:ai -- --league strategic,defender,random,copycat
 ```
 
-**Saving / Output**
+### Saving and output
+
 - `--no-save`  
   Runs training but does not save the trained champions.
 
@@ -120,20 +151,20 @@ npm.cmd run train:ai -- --league strategic,defender,random,copycat
 - `--json`  
   Outputs machine-readable JSON and disables progress lines.
 
-A good serious run would be:
+A serious run:
 
-```powershell
-npm.cmd run train:ai -- --generations 8 --population 16 --elite 4 --games 40 --fall-penalty 220
+```sh
+npm run train:ai -- --generations 8 --population 16 --elite 4 --games 40 --fall-penalty 220
 ```
 
 A beginner-friendly run without saved champion opponents:
 
-```powershell
-npm.cmd run train:ai -- --opponent-mix beginner
+```sh
+npm run train:ai -- --opponent-mix beginner
 ```
 
-A quick test run:
+A quick smoke run:
 
-```powershell
-npm.cmd run train:ai -- --generations 1 --population 4 --games 6 --no-save
+```sh
+npm run train:ai -- --generations 1 --population 4 --games 6 --no-save
 ```
