@@ -206,6 +206,26 @@ test('an interrupted single-player game resumes exactly where it stopped', { tim
   assert.deepEqual(problems, []);
 });
 
+test('rules card and first-time phase guides come from ui/rules.js', async (t) => {
+  const { page, problems } = await openGame(t);
+  assert.equal(await page.locator('#rulesCardBody h3').count() >= 5, true, 'rules are rendered on the setup screen');
+
+  await startLocalGame(page, { mode: 'single', players: 3, turns: 6, seed: 'smoke-guide' });
+  const guide = page.locator('.phase-guide');
+  assert.equal(await guide.evaluate((card) => card.open), true, 'the guide opens the first time');
+  await page.click('[data-phase-guide="dismiss"]');
+  assert.equal(await guide.evaluate((card) => card.open), false);
+
+  // Seen guides stay collapsed in later games but can still be opened.
+  await page.evaluate(() => window.localStorage.removeItem('basileus.localGame'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await startLocalGame(page, { mode: 'single', players: 3, turns: 6, seed: 'smoke-guide' });
+  assert.equal(await page.locator('.phase-guide').evaluate((card) => card.open), false);
+  await page.click('.phase-guide > summary');
+  assert.equal(await page.locator('.phase-guide').evaluate((card) => card.open), true);
+  assert.deepEqual(problems, []);
+});
+
 test('screen readers hear new phases and turn results', async (t) => {
   const { page, problems } = await openGame(t);
   await startLocalGame(page, { mode: 'single', players: 3, turns: 6, seed: 'smoke-a11y' });
