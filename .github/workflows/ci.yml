@@ -36,3 +36,27 @@ jobs:
 
       - name: Test suite
         run: npm test
+
+  browser:
+    # Drives the real game in headless Chromium: setup, a full single-player
+    # game, hotseat, phone layout, and a two-browser multiplayer lobby.
+    name: Browser smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        run: npm run test:browser

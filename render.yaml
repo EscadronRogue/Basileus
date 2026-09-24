@@ -3,7 +3,7 @@ services:
     name: basileus-multiplayer
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci --omit=dev
     startCommand: npm run serve:multiplayer
     healthCheckPath: /healthz
     envVars:
