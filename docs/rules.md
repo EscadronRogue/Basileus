@@ -12,7 +12,7 @@ If invaders sack Constantinople, the empire falls and everyone loses; the final 
 
 ## A Round, Step By Step
 
-1. **Invasion drawn.** A new threat appears with a route through the provinces. Limited invasions only launch while a province on their route is still imperial; skipped invasions can be drawn again later.
+1. **Invasion drawn.** A new threat appears with a route through the provinces. During the first two rounds invasions strike at most at easy strength. Limited invasions only launch while a province on their route is still imperial; skipped invasions can be drawn again later.
 2. **Title redistribution.** Only after a coup installs a new Basileus: they assign the four major titles before Court.
 3. **Court.** Each dynasty may make deals or skip. Major offices may make up to two appointments or revocations in any mix; the Basileus may make up to four revocations.
 4. **Income.** Estates pay gold, bishops collect church value, and offices raise troops automatically after Court.

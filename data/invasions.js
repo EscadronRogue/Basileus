@@ -2,6 +2,10 @@
 
 export const INVASION_ESTIMATE_INTERVAL = 5;
 
+// Invasions drawn in the first rounds strike at most at easy strength, so a
+// game cannot be lost before dynasties have raised any troops. 0 disables it.
+export const EARLY_INVASION_GRACE_ROUNDS = 2;
+
 export const INVASION_DIFFICULTIES = Object.freeze({
   EASY: 'easy',
   MEDIUM: 'medium',

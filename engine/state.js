@@ -1,6 +1,7 @@
 // engine/state.js - game state initialization and shared lookups.
 import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
 import {
+  EARLY_INVASION_GRACE_ROUNDS,
   INVASIONS,
   getDynastyProfileForSeat,
   INVASION_OBJECTIVES,
@@ -150,8 +151,19 @@ export function createInvasionInstance(template, rng, state = null) {
   };
 }
 
+export function isEarlyInvasionGraceRound(state) {
+  const round = Number(state?.round) || 0;
+  return round >= 1 && round <= EARLY_INVASION_GRACE_ROUNDS;
+}
+
 export function prepareInvasionForDraw(state, invasion, rng) {
-  return createInvasionInstance(invasion, rng, state);
+  const graced = isEarlyInvasionGraceRound(state)
+    && invasion?.difficulty != null
+    && getInvasionDifficulty(invasion) !== INVASION_DIFFICULTIES.EASY;
+  const template = graced
+    ? { ...invasion, difficulty: INVASION_DIFFICULTIES.EASY, earlyGrace: true }
+    : invasion;
+  return createInvasionInstance(template, rng, state);
 }
 
 function invasionRequiresImperialTarget(invasion) {

@@ -4,6 +4,7 @@
 // and exported to docs/rules.md by scripts/build-rules-doc.js. Numbers come
 // from the engine so the text cannot drift from what the game enforces.
 // Strings may use **bold**; everything else is plain text.
+import { EARLY_INVASION_GRACE_ROUNDS } from '../data/invasions.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import {
   BASILEUS_COURT_REVOCATION_LIMIT,
@@ -37,7 +38,7 @@ export const RULE_SECTIONS = [
     blocks: [
       {
         steps: [
-          ['Invasion drawn.', 'A new threat appears with a route through the provinces. Limited invasions only launch while a province on their route is still imperial; skipped invasions can be drawn again later.'],
+          ['Invasion drawn.', `A new threat appears with a route through the provinces. During the first ${word(EARLY_INVASION_GRACE_ROUNDS)} rounds invasions strike at most at easy strength. Limited invasions only launch while a province on their route is still imperial; skipped invasions can be drawn again later.`],
           ['Title redistribution.', `Only after a coup installs a new Basileus: they assign the ${word(MAJOR_TITLE_COUNT)} major titles before Court.`],
           ['Court.', `Each dynasty may make deals or skip. Major offices may make up to ${word(COURT_POWER_ACTION_LIMIT)} appointments or revocations in any mix; the Basileus may make up to ${word(BASILEUS_COURT_REVOCATION_LIMIT)} revocations.`],
           ['Income.', 'Estates pay gold, bishops collect church value, and offices raise troops automatically after Court.'],
