@@ -6,6 +6,7 @@ import { RANDOM_TUNED_OPPONENT_ID, getTunedAiOpponents } from './ai/opponentRost
 import { getDynastyProfileForSeat } from './data/invasions.js';
 import { dynastySeatStyle, escapeHtml } from './ui/html.js';
 import { clearLocalSave, describeLocalSave, readLocalSave } from './ui/localSave.js';
+import { renderRulesHtml } from './ui/rules.js';
 
 const SETUP_RANDOM_VALUE = 'random';
 const SETUP_CHOICE_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
@@ -616,6 +617,7 @@ btnDiscardSave.addEventListener('click', () => {
 // Leaving the page flushes the pending autosave so the latest move is kept.
 window.addEventListener('pagehide', () => window.__basileus?.saveNow?.());
 
+document.getElementById('rulesCardBody').innerHTML = renderRulesHtml();
 refreshSeatOptions();
 renderSetupChoiceControls();
 refreshModeVisibility();
