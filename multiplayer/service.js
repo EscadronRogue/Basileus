@@ -1,7 +1,23 @@
 import { randomUUID } from 'node:crypto';
 
-import { createRoom, createRoomFromSave } from './session.js';
+import { createRoom, createRoomFromSave, ROOM_STATUS } from './session.js';
 import { attachWebSocketServer } from './wsServer.js';
+
+// Saves of long 5-player games serialize to a few hundred KB, so 2 MB leaves
+// ample headroom without letting one request pin a lot of memory.
+export const MAX_REQUEST_BODY_BYTES = 2_000_000;
+
+// Rooms live in memory. A room with no open sockets is dropped once it has
+// been idle this long, so abandoned lobbies and games do not accumulate.
+export const DEFAULT_ROOM_IDLE_TTL_MS = 12 * 60 * 60 * 1000;
+export const DEFAULT_FINISHED_ROOM_TTL_MS = 60 * 60 * 1000;
+export const DEFAULT_MAX_ROOMS = 500;
+
+// Room creation and joining are cheap for players but allocate server state,
+// so each client address gets a small burst plus a slow refill.
+const API_RATE_BUCKET_SIZE = 10;
+const API_RATE_REFILL_PER_MS = 10 / 60_000;
+const API_RATE_KEY_LIMIT = 10_000;
 
 export function createMultiplayerError(statusCode, message) {
   const error = new Error(message);
@@ -11,16 +27,19 @@ export function createMultiplayerError(statusCode, message) {
 
 export function parseMultiplayerRequestJson(req) {
   return new Promise((resolveBody, rejectBody) => {
-    let body = '';
-    req.setEncoding('utf8');
+    const chunks = [];
+    let byteLength = 0;
     req.on('data', (chunk) => {
-      body += chunk;
-      if (body.length > 5_000_000) {
+      byteLength += chunk.length;
+      if (byteLength > MAX_REQUEST_BODY_BYTES) {
         rejectBody(createMultiplayerError(413, 'Request body is too large.'));
         req.destroy();
+        return;
       }
+      chunks.push(chunk);
     });
     req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
       if (!body.trim()) {
         resolveBody({});
         return;
@@ -40,18 +59,82 @@ function normalizePlayerName(rawName) {
   return text || 'Guest';
 }
 
+function positiveNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+export function createKeyedRateLimiter({
+  capacity = API_RATE_BUCKET_SIZE,
+  refillPerMs = API_RATE_REFILL_PER_MS,
+  maxKeys = API_RATE_KEY_LIMIT,
+  now = Date.now,
+} = {}) {
+  const buckets = new Map();
+  return function consume(key) {
+    const timestamp = now();
+    const bucketKey = String(key || 'unknown');
+    let bucket = buckets.get(bucketKey);
+    if (!bucket) {
+      if (buckets.size >= maxKeys) {
+        // Drop buckets that have fully refilled; they carry no state.
+        for (const [storedKey, stored] of buckets) {
+          if (stored.tokens + (timestamp - stored.lastRefill) * refillPerMs >= capacity) buckets.delete(storedKey);
+        }
+        if (buckets.size >= maxKeys) buckets.delete(buckets.keys().next().value);
+      }
+      bucket = { tokens: capacity, lastRefill: timestamp };
+      buckets.set(bucketKey, bucket);
+    }
+    bucket.tokens = Math.min(capacity, bucket.tokens + (timestamp - bucket.lastRefill) * refillPerMs);
+    bucket.lastRefill = timestamp;
+    if (bucket.tokens < 1) return false;
+    bucket.tokens -= 1;
+    return true;
+  };
+}
+
+export function getClientAddress(req) {
+  const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req?.socket?.remoteAddress || 'unknown';
+}
+
 export class MultiplayerRoomManager {
   constructor(options = {}) {
     this.rooms = new Map();
     this.loadAiOpponentById = typeof options.loadAiOpponentById === 'function' ? options.loadAiOpponentById : undefined;
     this.loadAiOpponentRoster = typeof options.loadAiOpponentRoster === 'function' ? options.loadAiOpponentRoster : undefined;
+    this.now = typeof options.now === 'function' ? options.now : Date.now;
+    this.idleRoomTtlMs = positiveNumber(options.idleRoomTtlMs, DEFAULT_ROOM_IDLE_TTL_MS);
+    this.finishedRoomTtlMs = positiveNumber(options.finishedRoomTtlMs, DEFAULT_FINISHED_ROOM_TTL_MS);
+    this.maxRooms = Math.floor(positiveNumber(options.maxRooms, DEFAULT_MAX_ROOMS));
+    this.consumeApiToken = createKeyedRateLimiter({ now: this.now });
   }
 
   createSessionToken() {
     return randomUUID();
   }
 
+  // Removes rooms nobody is connected to once they have been idle past their
+  // TTL. Returns the removed room codes.
+  pruneIdleRooms(now = this.now()) {
+    const removed = [];
+    for (const [roomCode, room] of this.rooms) {
+      if (room.connections.size > 0) continue;
+      const lastActivity = Date.parse(room.updatedAt) || 0;
+      const ttl = room.status === ROOM_STATUS.FINISHED ? this.finishedRoomTtlMs : this.idleRoomTtlMs;
+      if (now - lastActivity < ttl) continue;
+      this.rooms.delete(roomCode);
+      removed.push(roomCode);
+    }
+    return removed;
+  }
+
   createRoom({ playerName, config, saveGame = null }) {
+    if (this.rooms.size >= this.maxRooms) this.pruneIdleRooms();
+    if (this.rooms.size >= this.maxRooms) {
+      throw createMultiplayerError(503, 'The server is hosting too many rooms right now. Try again later.');
+    }
     const sessionToken = this.createSessionToken();
     const room = saveGame
       ? createRoomFromSave({
@@ -108,6 +191,10 @@ export class MultiplayerRoomManager {
 }
 
 export async function handleMultiplayerApiRequest(manager, req, url) {
+  if (req.method === 'POST' && !manager.consumeApiToken(getClientAddress(req))) {
+    throw createMultiplayerError(429, 'Too many room requests. Wait a minute and try again.');
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/rooms') {
     const body = await parseMultiplayerRequestJson(req);
     const result = manager.createRoom({
