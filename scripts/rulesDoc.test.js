@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { RULES_DOC_PATH } from './build-rules-doc.js';
-import { PHASE_GUIDES, RULE_SECTIONS, renderRulesHtml, renderRulesMarkdown } from '../ui/rules.js';
+import { RULE_SECTIONS, renderGlossaryHtml, renderRulesHtml, renderRulesMarkdown } from '../ui/rules.js';
+import { GLOSSARY_TERMS, findGlossaryMatches } from '../ui/glossary.js';
 
 const root = new URL('../', import.meta.url);
 
@@ -24,8 +25,22 @@ test('the in-game page and README point at the single rules source', () => {
   assert.match(readFileSync(new URL('README.md', root), 'utf8'), /docs\/rules\.md/);
 });
 
-test('every interactive phase has a guide', () => {
-  for (const phase of ['title_redistribution', 'court', 'estates', 'deployment', 'resolution']) {
-    assert.ok(PHASE_GUIDES[phase]?.steps?.length >= 2, phase);
-  }
+test('the glossary lists every key word and finds them in running text', () => {
+  const html = renderGlossaryHtml();
+  for (const entry of GLOSSARY_TERMS) assert.ok(html.includes(`<dt>${entry.term}</dt>`), entry.term);
+  const ids = new Set(GLOSSARY_TERMS.map((entry) => entry.id));
+  assert.equal(ids.size, GLOSSARY_TERMS.length, 'term ids are unique');
+
+  const matches = findGlossaryMatches('The Domestic of the East appoints a strategos; capital-locked troops ignore the Frontier.');
+  assert.deepEqual(matches.map((match) => [match.id, match.text]), [
+    ['domestic', 'Domestic of the East'],
+    ['appointment', 'appoints'],
+    ['strategos', 'strategos'],
+    ['frontier', 'Frontier'],
+  ]);
+  // Personality names only match with their capital letter.
+  assert.deepEqual(findGlossaryMatches('a patron of the arts').map((match) => match.id), []);
+  assert.deepEqual(findGlossaryMatches('Leo the Patron').map((match) => match.id), ['personality-patron']);
+  // A tooltip does not mark the word it explains.
+  assert.deepEqual(findGlossaryMatches('the Basileus', { skipIds: new Set(['basileus']) }), []);
 });

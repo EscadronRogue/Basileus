@@ -1,0 +1,127 @@
+/* assets/css/glossary.css - Bold key words and their nested tooltips. */
+
+.glossary-term {
+  font-weight: 700;
+  color: inherit;
+  cursor: help;
+  text-decoration: underline dotted rgba(124, 84, 22, 0.55);
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+.glossary-term:hover,
+.glossary-term.is-open {
+  color: var(--gold-2);
+  text-decoration-color: var(--gold-1);
+}
+
+.glossary-tooltip-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.glossary-tooltip {
+  position: fixed;
+  max-width: min(340px, calc(100vw - 24px));
+  padding: var(--sp-2) var(--sp-3) calc(var(--sp-2) + 3px);
+  background: var(--parch-0);
+  color: var(--umber-0);
+  border: 1px solid var(--parch-3);
+  border-top: 3px solid var(--gold-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-panel), 0 0 0 1px rgba(46, 30, 15, 0.05);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 90ms ease, transform 90ms ease;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.glossary-tooltip.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* A locked tooltip can be entered, so its own key words can be hovered. */
+.glossary-tooltip.is-locked {
+  pointer-events: auto;
+  border-top-color: var(--purple-1);
+}
+
+.glossary-tooltip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-1);
+}
+
+.glossary-tooltip-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--umber-0);
+  order: -1;
+}
+
+.glossary-tooltip-category {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--umber-3);
+  white-space: nowrap;
+}
+
+.glossary-tooltip-body {
+  margin: 0;
+}
+
+/* Fills while the pointer rests on the word; the tooltip locks when full. */
+.glossary-tooltip-lock {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: linear-gradient(90deg, var(--gold-1), var(--purple-1));
+}
+
+.glossary-tooltip.is-visible .glossary-tooltip-lock {
+  width: 100%;
+  transition: width var(--glossary-lock-ms, 900ms) linear;
+}
+
+.glossary-tooltip.is-locked .glossary-tooltip-lock {
+  width: 100%;
+  background: var(--purple-1);
+  transition: none;
+}
+
+.glossary-index {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.glossary-index dt {
+  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+
+.glossary-index dd {
+  margin: 0 0 var(--sp-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glossary-tooltip,
+  .glossary-tooltip.is-visible .glossary-tooltip-lock {
+    transition: none;
+  }
+}

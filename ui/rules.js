@@ -1,7 +1,7 @@
 // ui/rules.js - the one written copy of the rules.
 //
-// Rendered into the in-game "How to Play" card, used for the per-phase guides,
-// and exported to docs/rules.md by scripts/build-rules-doc.js. Numbers come
+// Rendered into the in-game "How to Play" card and exported to docs/rules.md
+// by scripts/build-rules-doc.js, together with the glossary (ui/glossary.js). Numbers come
 // from the engine so the text cannot drift from what the game enforces.
 // Strings may use **bold**; everything else is plain text.
 import { EARLY_INVASION_GRACE_ROUNDS } from '../data/invasions.js';
@@ -15,6 +15,7 @@ import { BASILEUS_CAPITAL_SUPPORT, PATRIARCH_CAPITAL_SUPPORT } from '../engine/c
 import { SCORE_CATEGORIES, SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PLAYER_COUNT_MAX, PLAYER_COUNT_MIN } from '../engine/setup.js';
 import { STARTING_INCOME_GOLD } from '../engine/turnflow.js';
+import { GLOSSARY_TERMS } from './glossary.js';
 
 const MAJOR_TITLE_COUNT = Object.keys(MAJOR_TITLES).length;
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
@@ -113,50 +114,6 @@ export const RULE_SECTIONS = [
   },
 ];
 
-// Short, practical guides shown the first time a player reaches each phase.
-export const PHASE_GUIDES = {
-  title_redistribution: {
-    title: 'Assign the offices',
-    steps: [
-      `As the new Basileus, give each of the ${word(MAJOR_TITLE_COUNT)} major offices to a dynasty.`,
-      'Click an office circle, guide the rope to a dynasty, and click that dynasty to tie them together.',
-      'Offices decide who appoints strategoi and bishops and where troops and church gold flow. Lock the offices when every rope is tied.',
-    ],
-  },
-  court: {
-    title: 'Court: appoint and revoke',
-    steps: [
-      `Each office you hold can make up to ${word(COURT_POWER_ACTION_LIMIT)} appointments or revocations; the Basileus can make up to ${word(BASILEUS_COURT_REVOCATION_LIMIT)} revocations.`,
-      'To appoint, click a seat circle on the left, guide the rope, and click a dynasty on the right. Click a tied rope to cut it, which revokes that title.',
-      'Planned actions only happen when you confirm the court plan. You can also open a deal with another dynasty, or skip Court entirely.',
-    ],
-  },
-  estates: {
-    title: 'Estates: bid for land',
-    steps: [
-      'Free provinces are sold in sealed bids. Choose an amount on any estate you want; rivals cannot see it.',
-      'The highest bid wins when Deployment opens, and the owner collects that province\'s profit (P) each income phase.',
-      'Gold you bid is committed until the bids settle, so keep enough for troops and mercenaries.',
-    ],
-  },
-  deployment: {
-    title: 'Deployment: send armies',
-    steps: [
-      'For each office army, choose how many troops to fund and send them to the frontier or the capital. Unfunded troops stay home and refund 1 gold each.',
-      'Frontier troops fight the invasion; capital troops back your ranking of claimants in the coup.',
-      'Rank the claimants to the throne (yourself included), optionally hire mercenaries, then lock your deployment.',
-    ],
-  },
-  resolution: {
-    title: 'Resolution',
-    steps: [
-      'The coup is decided first: capital troops follow each dynasty\'s ranking. Then frontier troops fight the invader.',
-      'If you were the best defender, choose between restoring a province to the empire or taking gold.',
-      'Press Continue when you have read the results.',
-    ],
-  },
-};
-
 function escapeText(text) {
   return String(text)
     .replace(/&/g, '&amp;')
@@ -185,10 +142,12 @@ export function renderRulesHtml() {
   }).join('');
 }
 
-export function renderPhaseGuideHtml(phase) {
-  const guide = PHASE_GUIDES[phase];
-  if (!guide) return '';
-  return `<ol>${guide.steps.map((step) => `<li>${inlineHtml(step)}</li>`).join('')}</ol>`;
+// Every key word the game explains on hover, as a list.
+export function renderGlossaryHtml() {
+  const entries = GLOSSARY_TERMS
+    .map((entry) => `<dt>${escapeText(entry.term)}</dt><dd>${escapeText(entry.definition)}</dd>`)
+    .join('');
+  return `<h3>Glossary</h3><dl class="glossary-index">${entries}</dl>`;
 }
 
 export function renderRulesMarkdown() {
@@ -214,11 +173,7 @@ export function renderRulesMarkdown() {
       }
     }
   }
-  lines.push('## Phase Guides', '');
-  for (const guide of Object.values(PHASE_GUIDES)) {
-    lines.push(`### ${guide.title}`, '');
-    guide.steps.forEach((step, index) => lines.push(`${index + 1}. ${step}`));
-    lines.push('');
-  }
+  lines.push('## Glossary', '');
+  for (const entry of GLOSSARY_TERMS) lines.push(`- **${entry.term}** (${entry.category.toLowerCase()}): ${entry.definition}`);
   return `${lines.join('\n').trimEnd()}\n`;
 }

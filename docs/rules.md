@@ -55,34 +55,47 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **War.** Frontier troops minus invader strength. Win → reconquer occupied provinces along the route (cost 1, then +1, +1…). Lose → the invader advances along the route capturing provinces at the same rising cost. If a capital invasion reaches Constantinople, the empire falls; limited invasions stop after taking their target route.
 - **Best defender.** When the empire wins the war, the top frontier contributor gains 1 gold and 1 temporary Triumph support for each province the surplus could reconquer along the route, even if none remain to restore. Tied top contributors share it equally: gold rounds up, Triumph rounds down. Triumph follows their coup ranking and applies only during the next coup.
 
-## Phase Guides
+## Glossary
 
-### Assign the offices
-
-1. As the new Basileus, give each of the four major offices to a dynasty.
-2. Click an office circle, guide the rope to a dynasty, and click that dynasty to tie them together.
-3. Offices decide who appoints strategoi and bishops and where troops and church gold flow. Lock the offices when every rope is tied.
-
-### Court: appoint and revoke
-
-1. Each office you hold can make up to two appointments or revocations; the Basileus can make up to four revocations.
-2. To appoint, click a seat circle on the left, guide the rope, and click a dynasty on the right. Click a tied rope to cut it, which revokes that title.
-3. Planned actions only happen when you confirm the court plan. You can also open a deal with another dynasty, or skip Court entirely.
-
-### Estates: bid for land
-
-1. Free provinces are sold in sealed bids. Choose an amount on any estate you want; rivals cannot see it.
-2. The highest bid wins when Deployment opens, and the owner collects that province's profit (P) each income phase.
-3. Gold you bid is committed until the bids settle, so keep enough for troops and mercenaries.
-
-### Deployment: send armies
-
-1. For each office army, choose how many troops to fund and send them to the frontier or the capital. Unfunded troops stay home and refund 1 gold each.
-2. Frontier troops fight the invasion; capital troops back your ranking of claimants in the coup.
-3. Rank the claimants to the throne (yourself included), optionally hire mercenaries, then lock your deployment.
-
-### Resolution
-
-1. The coup is decided first: capital troops follow each dynasty's ranking. Then frontier troops fight the invader.
-2. If you were the best defender, choose between restoring a province to the empire or taking gold.
-3. Press Continue when you have read the results.
+- **Basileus** (office): The emperor. Starts every coup with 2 passive capital support, may make up to 4 revocations of Strategoi and estates in Court, and hands out the major titles after taking the throne. Troops that no Strategos, Domestic or Admiral receives flow to the Basileus.
+- **Major titles** (office): The 4 great offices: Domestic of the East, Domestic of the West, Admiral and Patriarch. They never change in Court; only a new Basileus reassigns them, in Title Redistribution.
+- **Domestic** (office): Commander of the eastern or western provinces. Appoints and revokes Strategoi in that region, up to 2 actions per Court, and raises the troops of its provinces that have no Strategos.
+- **Admiral** (office): Commander of the sea provinces. Appoints and revokes Strategoi there, up to 2 actions per Court, and raises the troops of sea provinces that have no Strategos.
+- **Patriarch** (office): Head of the Church. Appoints and revokes Bishops, collects the church gold no Bishop claims, and adds 1 passive capital support to the coup, split by the Patriarch's own ranking. Breaks coup ties.
+- **Strategos** (office): Military governor of one province, appointed by the Domestic or Admiral of its region. Receives the troops that province raises (its T value). All of a dynasty's Strategos troops march as one Strategoi army.
+- **Bishop** (office): Church office over one province, appointed by the Patriarch. Collects that province's church gold (its C value), even while the province is occupied.
+- **Appointment** (court): Giving a Strategos or Bishop seat to a dynasty during Court. No office may appoint the same dynasty twice in a row; appointing someone else unlocks them again.
+- **Revocation** (court): Taking a Strategos or Bishop seat, or a private estate, away during Court. Free, but it uses one of the office's actions. Estates bought last turn cannot be revoked yet; an older estate pays its owner 1 gold when revoked.
+- **Title Redistribution** (phase): Happens only after a coup installs a new Basileus: before Court, they give each major title to a dynasty.
+- **Court** (phase): The political phase. Offices appoint and revoke titles, and dynasties may negotiate deals. Nothing happens until each dynasty confirms its court plan.
+- **Deal** (court): A binding agreement offered in Court: gold, estates, coup support, frontier support, promised appointments or protection from revocation. The game enforces the terms.
+- **Income** (phase): Runs by itself after Court: estates pay their profit, Bishops collect church gold, and offices raise troops.
+- **Estate** (economy): A province owned by a dynasty. Its owner collects the province's profit (P) every Income. Free provinces are sold by sealed bid in the Estates phase; the Basileus can revoke an estate.
+- **Sealed bid** (economy): A secret offer of gold for a free province. The highest bid wins when Deployment opens. Gold you bid is set aside until then.
+- **Profit (P)** (economy): The gold a province pays its private owner every Income.
+- **Church (C)** (economy): The gold a province gives its Bishop every Income. Church value with no Bishop goes to the Patriarch.
+- **Deployment** (phase): Each dynasty secretly funds its office troops, hires mercenaries, sends them to the frontier or the capital, and ranks the claimants to the throne.
+- **Funding** (army): Office troops only march when you pay for them. Unfunded troops stay home and pay 1 gold each to their controller instead.
+- **Mercenaries** (army): Troops hired with gold in Deployment. Each costs one more than the last (1, then 2, then 3...), and all of them go to the same destination.
+- **Frontier** (army): Where the war is fought. Every dynasty's frontier troops add up against this round's invasion; sending none leaves the defence to the others.
+- **Constantinople** (army): The seat of the throne. Troops sent to the capital vote in the coup instead of fighting. If an invasion reaches Constantinople, the empire falls.
+- **Coup** (throne): The contest for the throne, decided every Resolution before the war. Capital troops support the claimants in their owner's ranking: full support to first place, none to last, scaled in between. Most support wins; ties go to the most Patriarchal support, then to the sitting Basileus.
+- **Ranking** (throne): In Deployment every dynasty ranks all claimants to the throne, itself included. Its capital troops follow that ranking in the coup. A claimant can also be switched off to give it no support at all.
+- **Passive capital support** (throne): Coup support that never leaves Constantinople: the Basileus's 2, the Patriarch's 1, plus any Triumph or unrest this round. It cannot be unfunded and never counts for scoring.
+- **Triumph** (throne): Temporary coup support earned by the best defender: 1 for each province the war surplus could reconquer. It follows that dynasty's ranking in the next coup only.
+- **Unrest** (throne): When the empire loses provinces, the Basileus has 1 less passive capital support per lost province in the next coup.
+- **Invasion** (war): This round's threat: an enemy with a strength range and a route of provinces. A capital invasion that breaks through can reach Constantinople; a limited invasion stops once it has taken its route.
+- **Resolution** (phase): Orders are revealed. The coup is decided first, then frontier troops fight the invasion.
+- **Occupied** (war): A province taken by invaders. Its owner and Strategos are suspended and its Bishop keeps only the original church value until the empire reconquers it.
+- **Reconquest** (war): When the empire wins a war, the surplus frontier troops recover occupied provinces along the route: the first costs 1 troop, the next 2, and so on.
+- **Best defender** (war): The dynasty that sent the most troops to the frontier in a won war. It gains gold and Triumph, and chooses for each recovered province whether to restore it to the empire or take gold instead.
+- **Fall of the empire** (war): If invaders sack Constantinople the game ends at once and every dynasty loses.
+- **Balance of Power** (scoring): How the game is won. Each dynasty scores 1 point per 10% share it holds of gold reserves, profit income and office income, up to 10 points each. Highest total after the final reckoning wins.
+- **Final reckoning** (phase): After the last turn, a last Court and Income phase run, then the Balance of Power is scored.
+- **Usurper** (ai temperament): Wants the purple for itself. Pulls troops back to the capital whenever the frontier looks safe enough and gambles on seizing the throne.
+- **Opportunist** (ai temperament): Lets the others bleed at the frontier. Keeps its troops and gold for its own schemes and only fights when the empire is truly about to fall.
+- **Landlord** (ai temperament): Buys every estate it can afford and lives off the rents. Cares little who wears the crown as long as its lands stay safe.
+- **Kingmaker** (ai temperament): Rarely claims the throne itself. Backs whichever claimant will pay best in offices, and remembers who kept their word.
+- **Tyrant** (ai temperament): Takes power and uses it. Keeps offices for itself, strips titles from rivals, and never forgets a slight.
+- **Patron** (ai temperament): Rules through favours. Hands offices to allies and backers, builds a coalition, and expects loyalty in return.
+- **Strategist** (ai temperament): No fixed temperament. Weighs every move by how much it raises its own chance to win, and adapts to the table.

@@ -206,23 +206,38 @@ test('an interrupted single-player game resumes exactly where it stopped', { tim
   assert.deepEqual(problems, []);
 });
 
-test('rules card and first-time phase guides come from ui/rules.js', async (t) => {
+test('key words are bold and explain themselves in nested tooltips', async (t) => {
   const { page, problems } = await openGame(t);
   assert.equal(await page.locator('#rulesCardBody h3').count() >= 5, true, 'rules are rendered on the setup screen');
+  assert.equal(await page.locator('#rulesCardBody .glossary-index dt').count() > 20, true, 'the glossary is listed with the rules');
 
-  await startLocalGame(page, { mode: 'single', players: 3, turns: 6, seed: 'smoke-guide' });
-  const guide = page.locator('.phase-guide');
-  assert.equal(await guide.evaluate((card) => card.open), true, 'the guide opens the first time');
-  await page.click('[data-phase-guide="dismiss"]');
-  assert.equal(await guide.evaluate((card) => card.open), false);
+  await startLocalGame(page, { mode: 'single', players: 3, turns: 6, seed: 'smoke-glossary' });
+  assert.equal(await page.locator('.phase-guide').count(), 0, 'normal games have no tutorial cards');
+  await page.waitForFunction(() => document.querySelectorAll('#sidebar .glossary-term').length > 0);
 
-  // Seen guides stay collapsed in later games but can still be opened.
-  await page.evaluate(() => window.localStorage.removeItem('basileus.localGame'));
-  await page.reload({ waitUntil: 'networkidle' });
-  await startLocalGame(page, { mode: 'single', players: 3, turns: 6, seed: 'smoke-guide' });
-  assert.equal(await page.locator('.phase-guide').evaluate((card) => card.open), false);
-  await page.click('.phase-guide > summary');
-  assert.equal(await page.locator('.phase-guide').evaluate((card) => card.open), true);
+  // Hovering shows the definition; resting on the word locks the tooltip.
+  const term = page.locator('#sidebar .glossary-term').first();
+  const termId = await term.getAttribute('data-glossary-id');
+  await term.hover();
+  const tooltip = page.locator('.glossary-tooltip').first();
+  await tooltip.waitFor({ state: 'visible' });
+  await page.waitForSelector('.glossary-tooltip.is-locked');
+
+  // A key word inside a locked tooltip opens a second tooltip beside it.
+  const nested = tooltip.locator('.glossary-term').first();
+  assert.notEqual(await nested.getAttribute('data-glossary-id'), termId, 'a tooltip does not mark its own word');
+  await nested.hover();
+  await page.waitForFunction(() => document.querySelectorAll('.glossary-tooltip.is-visible').length === 2);
+
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.glossary-tooltip').count(), 0);
+
+  // Clicking a word locks its tooltip at once; clicking elsewhere closes it.
+  await term.click();
+  await page.waitForSelector('.glossary-tooltip.is-locked');
+  await page.mouse.click(5, 5);
+  assert.equal(await page.locator('.glossary-tooltip').count(), 0);
   assert.deepEqual(problems, []);
 });
 
