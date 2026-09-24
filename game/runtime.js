@@ -28,6 +28,8 @@ import {
   submitHumanOrders,
 } from '../engine/commands.js';
 import { autoConfirmFinishedCourtPlayer } from '../engine/actions.js';
+import { acceptDealOffer, refuseDealOffer } from '../engine/deals.js';
+import { evaluateDealOfferForAi } from '../ai/deals.js';
 import {
   applyPlannedAiTitleAssignment,
   buildSimultaneousAIOrders,
@@ -340,6 +342,25 @@ export function runAiRuntime(state, aiMeta, context = {}, options = {}) {
   }));
 }
 
+// AI dynasties answer offers addressed to them as soon as they arrive, instead
+// of letting them lapse when the AI confirms Court.
+export function resolveAiDealResponses(state, aiMeta) {
+  if (!state || !aiMeta || state.phase !== 'court') return [];
+  const responses = [];
+  for (const thread of state.dealThreads || []) {
+    const aiPlayerId = thread.awaitingPlayerId;
+    if (thread.status !== 'open' || !isAIPlayer(aiMeta, aiPlayerId)) continue;
+    const evaluation = evaluateDealOfferForAi(state, aiMeta, aiPlayerId, thread);
+    const payload = { threadId: thread.id, expectedRevision: thread.revision };
+    let accepted = false;
+    if (evaluation.accept) accepted = acceptDealOffer(state, aiPlayerId, payload).ok;
+    // Negotiations are private; the sender sees the answer on the thread itself.
+    if (!accepted) refuseDealOffer(state, aiPlayerId, { ...payload, reason: evaluation.accept ? 'cannot_honor' : 'terms_too_costly' });
+    responses.push({ threadId: thread.id, aiPlayerId, accepted, ...evaluation });
+  }
+  return responses;
+}
+
 export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, payload = {}, options = {}) {
   ensureRuntimeContext(context);
   if (!state || state.phase !== 'court') return fail('Court actions are not available right now.');
@@ -348,6 +369,7 @@ export function handleHumanCourtAction(state, aiMeta, context = {}, playerId, pa
   autoResolveUnavailableHumanAppointments(state, playerId, aiMeta, context);
   const result = applyCourtAction(state, playerId, payload);
   if (!result.ok) return result;
+  if (payload.action === 'deal-send' || payload.action === 'deal-counter') resolveAiDealResponses(state, aiMeta);
   const playerFinished = Boolean(state.courtActions?.playerConfirmed?.has(playerId));
 
   writePending(context, processPostHumanAction(state, aiMeta, {
