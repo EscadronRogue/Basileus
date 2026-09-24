@@ -299,7 +299,7 @@ function getMapCartoucheMarkers(state, theme) {
     kind: 'strategos',
     ownerId: theme.strategos ?? null,
     color: strategos?.player?.color || 'transparent',
-    title: strategos ? `Strategos: ${strategos.name}${lostNote}` : 'Strategos seat: vacant',
+    title: strategos ? `Strategos: ${strategos.name}${lostNote}` : 'No Strategos',
     promoted: promotedKind === 'strategos',
     disabled: disabled && Boolean(strategos),
     vacant: !strategos,

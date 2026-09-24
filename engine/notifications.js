@@ -170,7 +170,7 @@ function buildRevocationNotifications(state, viewerId, notifications) {
       id: `history:${event.id}:revoked:${viewerId}`,
       kind: 'revocation',
       title: 'Something you held was revoked',
-      body: event.summary || 'A title or estate was revoked.',
+      body: event.summary || 'An office or estate of yours was revoked.',
       urgent: true,
       toast: true,
       tone: 'negative',
@@ -278,7 +278,7 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
       if (penalizedId === normalizedViewerId) {
         pushHistoryNotification(notifications, event, viewerId, {
           kind: 'basileus_loss_penalty',
-          title: 'Your capital support fell',
+          title: 'Unrest: your support in the next coup fell',
           urgent: true,
           tone: 'negative',
           action: 'open_resolution',

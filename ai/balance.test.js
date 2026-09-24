@@ -23,6 +23,15 @@ test('seeded all-AI games complete with plausible balance', { timeout: 300_000 }
     assert.ok(shareOfWins < 0.5, `seat ${Number(seat) + 1} wins ${Math.round(shareOfWins * 100)}% of surviving games`);
   }
   assert.ok(Number.isFinite(result.scoring.pointGap) && result.scoring.pointGap >= 0);
+  // No AI temperament runs away with the game.
+  for (const [id, entry] of Object.entries(result.opponentWinRates)) {
+    assert.ok(entry.winRate < result.fairShare * 2.5, `${id} wins ${Math.round(entry.winRate * 100)}% of its games`);
+  }
+});
+
+test('playing it safe everywhere does not pay', { timeout: 300_000 }, async () => {
+  const result = await simulateGamesParallel({ ...OPTIONS, games: 20, probe: 'cautious', workers: 4 });
+  assert.ok(result.probe.winRate < result.fairShare, `cautious probe wins ${Math.round(result.probe.winRate * 100)}%`);
 });
 
 test('parallel simulation reproduces the serial result exactly', { timeout: 300_000 }, async () => {

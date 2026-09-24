@@ -31,7 +31,7 @@ export function cloneStateForValidation(state) {
 }
 
 export function validateCourtPayload(state, playerId, payload) {
-  if (!payload) return { ok: false, reason: 'Choose a legal court action.' };
+  if (!payload) return { ok: false, reason: 'Choose an appointment or revocation.' };
   try {
     const result = applyCourtAction(cloneStateForValidation(state), playerId, payload);
     return result?.ok ? { ok: true } : { ok: false, reason: result?.reason || 'Not legal right now.' };

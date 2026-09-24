@@ -29,7 +29,7 @@ const FLOW_ICON_KIND = {
 };
 
 const FLOW_SOURCE_LABEL = {
-  profit: 'Profit',
+  profit: 'Estates',
   troop: 'Troops',
   church: 'Church',
 };
@@ -801,7 +801,7 @@ function renderIncomeFlowDiagram(state, flow) {
       <header class="income-flow-head">
         <span class="income-flow-title">Imperial Flow</span>
         <span class="income-flow-totals">
-          ${renderFlowValue('profit', flow.totals?.profit || 0, 'Profit')}
+          ${renderFlowValue('profit', flow.totals?.profit || 0, 'Estates')}
           ${renderFlowValue('troop', flow.totals?.troop || 0, 'Troops')}
           ${renderFlowValue('church', flow.totals?.church || 0, 'Church')}
         </span>
@@ -1136,8 +1136,8 @@ export function renderBalancePanel(container, state, options = {}) {
   const hint = balance.empireFallen
     ? 'The empire has fallen. These standings rank the final balance of power, but no dynasty wins.'
     : usesLiveProjection
-      ? 'Gold is current; Profit and Office shares project from the board as it stands now.'
-      : 'Gold reserves score alongside Profit and combined Office income shares.';
+      ? 'Gold is what each dynasty holds now; the two incomes are what the board would pay as it stands.'
+      : 'Shares of gold, estate income and office income, 1 point per 10%.';
 
   container.classList.toggle('panel-collapsed', !isOpen);
   container.innerHTML = `

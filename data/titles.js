@@ -3,7 +3,7 @@
 export const MAJOR_TITLES = {
   DOM_EAST:   { id: 'DOM_EAST',  name: 'Domestic of the East',  region: 'east', type: 'major' },
   DOM_WEST:   { id: 'DOM_WEST',  name: 'Domestic of the West',  region: 'west', type: 'major' },
-  ADMIRAL:    { id: 'ADMIRAL',   name: 'Admiral of the Fleet',  region: 'sea',  type: 'major' },
+  ADMIRAL:    { id: 'ADMIRAL',   name: 'Admiral',  region: 'sea',  type: 'major' },
   PATRIARCH:  { id: 'PATRIARCH', name: 'Patriarch',              region: null,   type: 'major' },
 };
 

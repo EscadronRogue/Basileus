@@ -266,7 +266,7 @@ function renderAiRoster() {
 
   if (!aiOpponentRosterLoaded) {
     setupAiRoster.innerHTML = '<div class="setup-ai-seat setup-ai-seat-empty"><strong>Loading AI opponents...</strong><span>Preparing named dynasties</span></div>';
-    setupAiRosterHint.textContent = 'AI dynasties use the strategic planner during play.';
+    setupAiRosterHint.textContent = 'Choose a temperament for each AI dynasty, or leave it random.';
     updateStartAvailability();
     return;
   }
@@ -307,14 +307,14 @@ function renderAiRoster() {
     const selectedOpponent = aiOpponentRoster.find((opponent) => opponent.id === selectedId);
     const dynasty = getDynastyProfileForSeat(seat - 1).name;
     const displayName = selectedId === RANDOM_TUNED_OPPONENT_ID
-      ? 'Random trained AI'
+      ? 'Random temperament'
       : describeAiOpponentChoice(selectedOpponent) || 'Choose opponent';
     const randomTrainedButton = trainedOpponents.length ? `
       <button type="button"
         class="setup-ai-opponent-btn${selectedId === RANDOM_TUNED_OPPONENT_ID ? ' selected' : ''}"
         data-seat="${seat}"
         data-ai-opponent="${RANDOM_TUNED_OPPONENT_ID}">
-        Random trained
+        Random
       </button>
     ` : '';
     return `
@@ -333,7 +333,8 @@ function renderAiRoster() {
               <button type="button"
                 class="setup-ai-opponent-btn${selected ? ' selected' : ''}"
                 data-seat="${seat}"
-                data-ai-opponent="${escapeHtml(opponent.id)}">
+                data-ai-opponent="${escapeHtml(opponent.id)}"
+                ${opponent.description ? `title="${escapeHtml(opponent.description)}"` : ''}>
                 ${escapeHtml(label)}
               </button>
             `;
@@ -351,9 +352,7 @@ function renderAiRoster() {
     });
   });
 
-  setupAiRosterHint.textContent = getTrainedAiOpponents().length
-    ? 'AI dynasties use random trained opponents by default.'
-    : 'No trained opponents found yet; built-in strategies will be used.';
+  setupAiRosterHint.textContent = 'Choose a temperament for each AI dynasty, or leave it random. Hover a temperament to read how it plays.';
   updateStartAvailability();
 }
 

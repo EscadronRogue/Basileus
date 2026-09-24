@@ -103,10 +103,10 @@ function renderCourtPowerBadge(state, playerId, powerKey) {
 }
 
 function courtSeatLabel(kind) {
-  if (kind === 'strategos') return 'Strategos seat';
-  if (kind === 'bishop') return 'Bishop seat';
+  if (kind === 'strategos') return 'Strategos';
+  if (kind === 'bishop') return 'Bishop';
   if (kind === 'estate') return 'Estates';
-  return 'Seat';
+  return 'Office';
 }
 
 function courtSeatHolder(state, holderId) {
@@ -454,10 +454,10 @@ function renderCourtConnectionsForPower(state, playerId, draft, powerKey) {
     <section class="court-link-section court-wire-section">
       <header class="court-link-section-head">
         <span class="appointment-section-title">Links</span>
-        <span class="court-link-section-note">${boundCount} tied, ${openCount} open${cutCount ? `, ${cutCount} cut` : ''}. Click a seat circle, guide the rope, then click a dynasty circle. Click a tied rope to cut it.</span>
+        <span class="court-link-section-note">${boundCount} tied, ${openCount} open${cutCount ? `, ${cutCount} cut` : ''}. Click an office circle, guide the rope, then click a dynasty circle. Click a tied rope to cut it.</span>
       </header>
       <div class="court-wire-board${wireKey ? ' tying' : ''}${boundCount > 8 ? ' many-bound' : ''}" style="--wire-rows: ${rows}; --wire-step: ${wireStep}px;" data-court-wire-board data-court-power-key="${escapeHtml(powerKey || '')}">
-        <div class="court-wire-col-head seats">Seats</div>
+        <div class="court-wire-col-head seats">Offices</div>
         <div class="court-wire-col-head players">Dynasties</div>
         <div class="court-wire-seats">
           ${entries

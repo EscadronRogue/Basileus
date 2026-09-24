@@ -51,8 +51,8 @@ export function applyCourtAction(state, playerId, payload = {}) {
   if (action === 'deal-accept') return acceptDealOffer(state, playerId, payload);
   if (action === 'deal-refuse') return refuseDealOffer(state, playerId, payload);
 
-  if (state.phase !== 'court') return fail('Court actions are not available right now.');
-  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  if (state.phase !== 'court') return fail('Appointments and revocations are only possible in the Offices phase.');
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already locked your offices this round.');
 
   if (action === 'skip') {
     return confirmCourt(state, playerId);
@@ -60,7 +60,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
 
   if (action === 'pass-court-power' || action === 'pass') {
     const result = passCourtPower(state, playerId, payload.powerKey);
-    if (!result?.ok) return fail(result?.reason || 'Could not pass that court office.');
+    if (!result?.ok) return fail(result?.reason || 'Could not pass for that office.');
     autoConfirmFinishedCourtPlayer(state, playerId);
     return { ok: true };
   }
@@ -108,7 +108,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
         return fail('Only the Patriarch can revoke bishops.');
       }
       const result = revokeMinorTitle(state, parts[1], parts[2], playerId);
-      if (!result?.ok) return fail(result?.reason || 'Could not revoke that minor title.');
+      if (!result?.ok) return fail(result?.reason || 'Could not revoke that office.');
     } else if (kind === 'estates') {
       targetPlayerId = Number(parts[2]);
       if (Number.isInteger(targetPlayerId) && isPlayerProtectedFromRevocation(state, playerId, targetPlayerId)) {
@@ -123,7 +123,7 @@ export function applyCourtAction(state, playerId, payload = {}) {
     return { ok: true, observation: { type: 'revocation', actorId: playerId, targetPlayerId } };
   }
 
-  return fail('Unknown court action.');
+  return fail('Unknown office action.');
 }
 
 // Estates phase: the whole plan is sent at once ({ themeId: count }); it
@@ -141,8 +141,8 @@ export function applyEstateAction(state, playerId, payload = {}) {
 }
 
 export function confirmCourt(state, playerId) {
-  if (state.phase !== 'court') return fail('Court confirmation is not available right now.');
-  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  if (state.phase !== 'court') return fail('Offices can only be locked in the Offices phase.');
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already locked your offices this round.');
   if (!hasCourtActionUsed(state, playerId)) markCourtActionUsed(state, playerId);
   state.courtActions.playerConfirmed.add(playerId);
   autoRefuseAwaitingDeals(state, playerId);
@@ -151,7 +151,7 @@ export function confirmCourt(state, playerId) {
     type: 'court_confirmed',
     actorId: playerId,
     actorAi: false,
-    summary: `${playerLabel(state, playerId)} ends court business for the round.`,
+    summary: `${playerLabel(state, playerId)} locks their offices for the round.`,
   });
   return { ok: true };
 }
@@ -163,7 +163,7 @@ export function confirmEstates(state, playerId) {
 
 export function submitHumanOrders(state, playerId, orders, options = {}) {
   if (state.phase !== 'deployment') return fail('Deployment orders cannot be submitted right now.');
-  if (state.allOrders?.[playerId]) return fail('Orders are already locked for this seat.');
+  if (state.allOrders?.[playerId]) return fail('Your deployment is already locked.');
   const normalized = normalizeHumanOrders(state, playerId, orders, {
     ...options,
     resolveImpossibleLocks: options.resolveImpossibleLocks !== false,
@@ -178,7 +178,7 @@ export function submitHumanOrders(state, playerId, orders, options = {}) {
 // update their opponent models; the engine itself never talks to the AI.
 export function applyManualTitleReassignment(state, basileusId, titleAssignments) {
   const validation = validateMajorTitleAssignments(state, basileusId, titleAssignments);
-  if (!validation?.ok) return validation || fail('Invalid major title assignments.');
+  if (!validation?.ok) return validation || fail('Hand out every major office.');
   const previousAssignments = {};
   for (const player of state.players) {
     for (const titleKey of player.majorTitles) previousAssignments[titleKey] = player.id;
@@ -199,7 +199,7 @@ export function applyManualTitleReassignment(state, basileusId, titleAssignments
 }
 
 export function advanceFromCourtToEstates(state) {
-  if (state.phase !== 'court') return fail('Court is not active.');
+  if (state.phase !== 'court') return fail('The Offices phase is not active.');
   completeCourtPhase(state);
   return { ok: true };
 }

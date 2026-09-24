@@ -211,10 +211,10 @@ export function markCourtPowerPassed(state, playerId, powerKey) {
 }
 
 function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
-  if (state.phase !== 'court') return fail('Court actions are only available during Court.');
-  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  if (state.phase !== 'court') return fail('Appointments and revocations are only possible in the Offices phase.');
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already locked your offices this round.');
   if (isCourtPowerPassed(state, playerId, powerKey)) {
-    return fail(`${courtPowerName(powerKey)} already passed for this turn.`);
+    return fail(`${courtPowerName(powerKey)} already passed this round.`);
   }
 
   const appointments = getCourtPowerAppointmentCount(state, playerId, powerKey);
@@ -223,20 +223,20 @@ function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
   if (actionKind === 'appoint') {
     const appointmentLimit = getCourtPowerAppointmentLimit(powerKey);
     if (appointmentLimit <= 0) {
-      return fail(`${courtPowerName(powerKey)} cannot appoint minor titles.`);
+      return fail(`${courtPowerName(powerKey)} cannot appoint.`);
     }
     if (appointments >= appointmentLimit) {
-      return fail(`${courtPowerName(powerKey)} already used ${appointmentLimit} appointments this turn and cannot appoint again until next turn.`);
+      return fail(`${courtPowerName(powerKey)} already used ${appointmentLimit} appointments this round and cannot appoint again until the next one.`);
     }
   } else if (actionKind === 'revoke') {
     const revocationLimit = getCourtPowerRevocationLimit(powerKey);
     if (revocations >= revocationLimit) {
-      return fail(`${courtPowerName(powerKey)} already used ${revocationLimit} revocations this turn and cannot revoke again until next turn.`);
+      return fail(`${courtPowerName(powerKey)} already used ${revocationLimit} revocations this round and cannot revoke again until the next one.`);
     }
   }
   const actionLimit = getCourtPowerActionLimit(powerKey);
   if (totalActions >= actionLimit) {
-    return fail(`${courtPowerName(powerKey)} already completed its ${actionLimit} court actions this turn.`);
+    return fail(`${courtPowerName(powerKey)} already used its ${actionLimit} actions this round.`);
   }
   return { ok: true };
 }
@@ -261,15 +261,15 @@ function markTitleRevokedThisTurn(state, slotKey) {
   ensureCourtActionState(state).revokedThisTurn[slotKey] = true;
 }
 
-function currentTurnTitleBlock(state, slotKey, label = 'That title') {
+function currentTurnTitleBlock(state, slotKey, label = 'That office') {
   return isTitleAppointedThisTurn(state, slotKey)
-    ? fail(`${label} was appointed this turn and cannot be revoked until next turn.`)
+    ? fail(`${label} was appointed this round and cannot be revoked until the next one.`)
     : { ok: true };
 }
 
-function currentTurnRevokedBlock(state, slotKey, label = 'That title') {
+function currentTurnRevokedBlock(state, slotKey, label = 'That office') {
   return isTitleRevokedThisTurn(state, slotKey)
-    ? fail(`${label} was revoked this turn and cannot be appointed until next turn.`)
+    ? fail(`${label} was revoked this round and cannot be filled again until the next one.`)
     : { ok: true };
 }
 
@@ -314,9 +314,10 @@ function recordRevocation(state, revokerId, targetPlayerId, slotKeys, powerKey) 
 // Appointments
 export function appointStrategos(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
-  if (!theme || theme.lost || theme.id === 'CPL') return fail('Invalid theme.');
-  if (!isValidPlayerId(state, appointeeId)) return fail('Choose an appointee.');
-  if (theme.strategos !== null) return fail('This strategos title is already appointed.');
+  if (!theme || theme.id === 'CPL') return fail('Choose a province.');
+  if (theme.lost) return fail(`${theme.name} is lost: no Strategos can be appointed there until it is retaken.`);
+  if (!isValidPlayerId(state, appointeeId)) return fail('Choose a dynasty to appoint.');
+  if (theme.strategos !== null) return fail(`${theme.name} already has a Strategos.`);
   const requiredTitle = STRATEGOS_TITLE_BY_REGION[theme.region];
   if (!requiredTitle || !getPlayer(state, appointerId)?.majorTitles.includes(requiredTitle)) {
     return fail('Only the regional Domestic or Admiral can appoint this strategos.');
@@ -344,10 +345,10 @@ export function appointStrategos(state, appointerId, themeId, appointeeId) {
 
 export function appointBishop(state, appointerId, themeId, appointeeId) {
   const theme = state.themes[themeId];
-  if (!theme || theme.id === 'CPL') return fail('Invalid theme.');
-  if (!isValidPlayerId(state, appointeeId)) return fail('Choose an appointee.');
-  if (theme.bishop !== null) return fail('This bishop title is already appointed.');
-  if ((Number(theme.origin?.C) || 0) < 1) return fail('A bishop can only be appointed in a province with original church value.');
+  if (!theme || theme.id === 'CPL') return fail('Choose a bishopric.');
+  if (!isValidPlayerId(state, appointeeId)) return fail('Choose a dynasty to appoint.');
+  if (theme.bishop !== null) return fail(`${theme.name} already has a Bishop.`);
+  if ((Number(theme.origin?.C) || 0) < 1) return fail(`${theme.name} is not a bishopric.`);
   if (!getPlayer(state, appointerId)?.majorTitles.includes('PATRIARCH')) return fail('Only the Patriarch can appoint bishops.');
   const actionCheck = checkCourtActionAvailable(state, appointerId, 'PATRIARCH', 'appoint');
   if (!actionCheck.ok) return actionCheck;
@@ -385,10 +386,10 @@ export function canPlayerRevokeBishop(state, playerId) {
 
 export function revokeMinorTitle(state, themeId, titleType, revokerId = state.basileusId) {
   const theme = state.themes[themeId];
-  if (!theme) return fail('Theme not found.');
-  if (titleType !== 'strategos' && titleType !== 'bishop') return fail('Invalid minor title.');
-  if (titleType === 'strategos' && theme.strategos == null) return fail('That strategos title is already vacant.');
-  if (titleType === 'bishop' && theme.bishop == null) return fail('That bishop title is already vacant.');
+  if (!theme) return fail('Choose a province.');
+  if (titleType !== 'strategos' && titleType !== 'bishop') return fail('Choose a Strategos or a Bishop.');
+  if (titleType === 'strategos' && theme.strategos == null) return fail(`${theme.name} has no Strategos.`);
+  if (titleType === 'bishop' && theme.bishop == null) return fail(`${theme.name} has no Bishop.`);
   if (titleType === 'strategos' && theme.lost) {
     return fail(`${themeName(state, themeId)} is lost; its Strategos cannot be revoked until it is reconquered.`);
   }
@@ -564,16 +565,16 @@ function canPlayerUseCourtPower(state, playerId, powerKey) {
 
 export function passCourtPower(state, playerId, powerKey) {
   const normalizedPowerKey = String(powerKey || '').trim();
-  if (state.phase !== 'court') return fail('Court actions are only available during Court.');
-  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('Court actions already confirmed.');
+  if (state.phase !== 'court') return fail('Appointments and revocations are only possible in the Offices phase.');
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return fail('You already locked your offices this round.');
   if (!normalizedPowerKey || !canPlayerUseCourtPower(state, playerId, normalizedPowerKey)) {
-    return fail('Choose a valid court office to pass.');
+    return fail('Choose one of your major offices to pass.');
   }
   if (isCourtPowerPassed(state, playerId, normalizedPowerKey)) {
-    return fail(`${courtPowerName(normalizedPowerKey)} already passed for this turn.`);
+    return fail(`${courtPowerName(normalizedPowerKey)} already passed this round.`);
   }
   if (isCourtPowerExhausted(state, playerId, normalizedPowerKey)) {
-    return fail(`${courtPowerName(normalizedPowerKey)} already completed its ${getCourtPowerActionLimit(normalizedPowerKey)} court actions this turn.`);
+    return fail(`${courtPowerName(normalizedPowerKey)} already used its ${getCourtPowerActionLimit(normalizedPowerKey)} actions this round.`);
   }
   markCourtPowerPassed(state, playerId, normalizedPowerKey);
   return { ok: true };
@@ -818,7 +819,7 @@ export function validateMajorTitleAssignments(state, basileusId, titleAssignment
     if (!Number.isInteger(assignedPlayerId) || !playerIdSet.has(assignedPlayerId)) {
       return fail(`Choose a holder for ${MAJOR_TITLES[titleKey].name}.`);
     }
-    if (assignedPlayerId === basileusId) return fail('The Basileus cannot keep a major title.');
+    if (assignedPlayerId === basileusId) return fail('The Basileus cannot hold a major office.');
   }
 
   const assignedCounts = {};
@@ -831,7 +832,7 @@ export function validateMajorTitleAssignments(state, basileusId, titleAssignment
   const distributionMatches = expectedDistribution.length === actualDistribution.length
     && expectedDistribution.every((count, index) => count === actualDistribution[index]);
   if (!distributionMatches) {
-    return fail(`Major titles must be distributed as ${expectedDistribution.join('-')} among the non-Basileus players.`);
+    return fail(`Hand out the major offices ${expectedDistribution.join('-')} among the other dynasties.`);
   }
   return { ok: true, assignedCounts };
 }

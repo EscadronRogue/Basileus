@@ -215,8 +215,8 @@ export function phaseTitleRedistribution(state) {
 }
 
 export function confirmTitleRedistribution(state, playerId, assignments) {
-  if (state.phase !== 'title_redistribution') return { ok: false, reason: 'Title redistribution is not available right now.' };
-  if (playerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus may redistribute major titles.' };
+  if (state.phase !== 'title_redistribution') return { ok: false, reason: 'The major offices can only be handed out when a new Basileus takes the throne.' };
+  if (playerId !== state.basileusId) return { ok: false, reason: 'Only the Basileus hands out the major offices.' };
   const result = applyTitleRedistribution(state, state.basileusId, assignments);
   if (!result.ok) return result;
   state.majorTitleRedistributionPending = false;
@@ -275,7 +275,7 @@ export function phaseIncome(state) {
 export function phaseCourt(state) {
   state.phase = 'court';
   const dealRound = startCourtDealRound(state);
-  if (!dealRound.ok) throw new Error(dealRound.reason || 'Failed to prepare the court deal state.');
+  if (!dealRound.ok) throw new Error(dealRound.reason || 'Failed to prepare deals for the Offices phase.');
   state.courtActions = {
     actionUsed: {},
     powerUsed: {},
@@ -344,7 +344,7 @@ export function toggleEstatesReady(state, playerId) {
 export function submitOrders(state, playerId, orders) {
   const player = getPlayer(state, playerId);
   if (!player) return { ok: false, reason: 'Player not found.' };
-  if (state.allOrders?.[playerId]) return { ok: false, reason: 'Orders are already locked for this seat.' };
+  if (state.allOrders?.[playerId]) return { ok: false, reason: 'Your deployment is already locked.' };
 
   const normalizedOrders = {
     ...(orders || {}),

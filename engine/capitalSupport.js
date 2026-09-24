@@ -43,7 +43,7 @@ export function addTemporaryCapitalSupport(state, entry = {}) {
   const normalized = {
     id: entry.id || `${kind}:${state.round}:${support.length}`,
     kind,
-    label: entry.label || 'Capital support',
+    label: entry.label || 'Support',
     playerId,
     titleKey,
     amount,
@@ -125,6 +125,6 @@ export function describeCapitalSupportEntry(state, entry) {
     : entry?.titleKey === 'PATRIARCH'
       ? 'the Patriarch'
       : getPlayerName(state, entry?.playerId);
-  const label = entry?.label || 'Capital support';
+  const label = entry?.label || 'Support';
   return `${label}: ${amount > 0 ? '+' : ''}${amount} for ${subject}`;
 }

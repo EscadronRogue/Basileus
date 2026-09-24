@@ -4,20 +4,20 @@ import { getPlayer } from './state.js';
 export const SCORE_CATEGORIES = [
   {
     key: 'gold',
-    label: 'Gold Reserves',
-    description: 'Gold currently held in the treasury.',
+    label: 'Gold',
+    description: 'Gold the dynasty holds.',
     iconKinds: ['gold'],
   },
   {
     key: 'estate',
-    label: 'Profit Income',
-    description: 'Profit income received during the last income phase.',
+    label: 'Estate Income',
+    description: 'Gold its estates paid in the last income.',
     iconKinds: ['estate'],
   },
   {
     key: 'office',
     label: 'Office Income',
-    description: 'Combined church and troop income received during the last income phase.',
+    description: 'Troops and church gold its offices received in the last income.',
     iconKinds: ['church', 'troop'],
   },
 ];

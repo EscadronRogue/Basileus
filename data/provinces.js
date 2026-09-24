@@ -48,7 +48,7 @@ export const PROVINCES = [
   { id: 'BUL', name: 'Boulgaria',     P: 1, T: 1, C: 1, region: REGIONS.WEST, cx: 420, cy: 200, startLost: true },
   { id: 'PAR', name: 'Paradounavon',  P: 1, T: 1, C: 0, region: REGIONS.WEST, cx: 490, cy: 170, startLost: true },
 
-  // SEA - Admiral of the Fleet
+  // SEA - Admiral
   { id: 'AEG', name: 'Aigaion Pelagos', P: 1, T: 1, C: 0, region: REGIONS.SEA, cx: 510, cy: 370 },
   { id: 'SAM', name: 'Samos',           P: 1, T: 1, C: 1, region: REGIONS.SEA, cx: 570, cy: 390 },
   { id: 'KIB', name: 'Kibyrrhaiotai',   P: 1, T: 1, C: 0, region: REGIONS.SEA, cx: 630, cy: 420 },
@@ -62,7 +62,7 @@ export const PROVINCES = [
   { id: 'SIC', name: 'Sikelia',         P: 1, T: 1, C: 1, region: REGIONS.SEA, cx: 170, cy: 360, startLost: true },
   { id: 'ITA', name: 'Italias',         P: 1, T: 1, C: 1, region: REGIONS.SEA, cx: 190, cy: 280 },
 
-  { id: 'CPL', name: 'Konstantinopolis', region: REGIONS.CPL, cx: 565, cy: 265 },
+  { id: 'CPL', name: 'Constantinople', region: REGIONS.CPL, cx: 565, cy: 265 },
 ];
 
 // Adjacency graph - bidirectional (define each edge once, engine builds both directions).
