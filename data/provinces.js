@@ -99,7 +99,7 @@ export const ADJACENCY_EDGES = [
   ['KEP','SIC'], ['KEP','KRE'], ['KEP','ITA'],
   ['KRE','KYP'],
   ['CHE','PAR'],
-  ['PEL','NIK'], ['PEL','HEL'],
+  ['PEL','NIK'],
   ['DYR','ITA'], ['DYR','KEP'],
   ['SIC','ITA'],
 ];

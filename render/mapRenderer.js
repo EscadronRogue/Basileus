@@ -14,7 +14,6 @@ import {
   provinceValueEntries,
 } from '../ui/icons.js';
 import { getThreatenedThemeIds } from '../engine/rules.js';
-import { HITZONES_SVG, MAP_BACKGROUND_SVG, ORIGIN_SVG } from './svgAssets.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MAP_WIDTH = 297;
@@ -180,9 +179,9 @@ export async function createMapSVG(containerId, options = {}) {
   const invasionLayer = createGroup(viewportLayer, 'layer-invasion');
 
   const [backgroundSvg, hitzonesSvg, originSvg] = await Promise.all([
-    loadSvgAsset(SVG_ASSET_PATHS.background, MAP_BACKGROUND_SVG),
-    loadSvgAsset(SVG_ASSET_PATHS.hitzones, HITZONES_SVG),
-    loadSvgAsset(SVG_ASSET_PATHS.origin, ORIGIN_SVG),
+    loadSvgAsset(SVG_ASSET_PATHS.background, 'MAP_BACKGROUND_SVG'),
+    loadSvgAsset(SVG_ASSET_PATHS.hitzones, 'HITZONES_SVG'),
+    loadSvgAsset(SVG_ASSET_PATHS.origin, 'ORIGIN_SVG'),
   ]);
 
   importBackgroundMap(svg, bgLayer, backgroundSvg);
@@ -499,17 +498,20 @@ function updateMapFilterControlState(root = (typeof document !== 'undefined' ? d
 }
 
 
-async function loadSvgAsset(relativePath, fallbackText) {
-  if (typeof fetch !== 'function') return fallbackText;
-
-  try {
-    const response = await fetch(new URL(relativePath, import.meta.url));
-    if (response.ok) return await response.text();
-  } catch {
-    // Local file previews can block fetch; embedded SVG keeps the map usable.
+async function loadSvgAsset(relativePath, fallbackName) {
+  if (typeof fetch === 'function') {
+    try {
+      const response = await fetch(new URL(relativePath, import.meta.url));
+      if (response.ok) return await response.text();
+    } catch {
+      // Fall through to the embedded copy below.
+    }
   }
 
-  return fallbackText;
+  // The embedded copies are large, so only download them when the real
+  // asset could not be fetched.
+  const fallback = await import('./svgAssets.js');
+  return fallback[fallbackName];
 }
 
 function importBackgroundMap(rootSvg, layer, svgText) {
