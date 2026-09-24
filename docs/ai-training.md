@@ -115,3 +115,25 @@ npm run train:ai -- --generations 1 --offspring 2 --screening-games 4 --confirm-
 The roster file replaces the previous one. Each entry keeps its personality,
 trait-bounded weights, final metrics and training settings; the file also
 records the benchmark.
+
+### Current roster
+
+Trained with `--generations 8 --seed 20260924` (about 27,000 games). Final
+measurements on 160 fresh tables per personality:
+
+| Personality | Win | Holds back | Throne bids | Seizures/game | Empire falls |
+| --- | --- | --- | --- | --- | --- |
+| Usurper | 25% | 47% | 65% | 1.24 | 16% |
+| Opportunist | 22% | 37% | 14% | 0.62 | 16% |
+| Landlord | 27% | 34% | 15% | 0.72 | 12% |
+| Kingmaker | 28% | 0% | 0% | 0.60 | 6% |
+| Tyrant | 14% | 71% | 74% | 1.33 | 19% |
+| Patron | 28% | 6% | 15% | 0.79 | 6% |
+| Strategist | 21% | 22% | 40% | 1.07 | 7% |
+
+Benchmarks against the roster it replaced (4- and 5-player tables, 9 turns):
+a new AI seated with four old ones wins about 28% of its games against the old
+AIs' 12%; an old AI seated with four new ones wins 11% against about 20% for
+the new ones. Alone against four default planners, the new AIs win 24-87%
+(the Usurper 87%), where the old trained AIs managed about 11%. Tables of new
+AIs only lose the empire in about 17% of games.

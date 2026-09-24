@@ -297,7 +297,7 @@ export const TUTORIAL_STEPS = [
     when: ({ state }) => state.round >= 2 && !state.gameOver && state.phase !== 'scoring',
     title: 'Your turn',
     body: 'Finish the game on your own: this is the last guided step. A short tip for each phase stays in this card; collapse it whenever you like.',
-    task: 'Watch your rivals. The Usurper wants the throne and will pull troops back to the capital when it can; the Landlord outbids you for land and defends its rents.',
+    task: 'Watch your rivals. The Usurper wants the throne and will pull troops back to the capital when it can; the Landlord outbids you for land and often leaves the fighting to others.',
     free: true,
   },
   {

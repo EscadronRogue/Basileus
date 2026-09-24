@@ -90,7 +90,7 @@ export const PERSONALITIES = Object.freeze([
   {
     id: 'landlord',
     title: 'Landlord',
-    summary: 'Buys every estate it can afford and lives off the rents. Cares little who wears the crown as long as its lands stay safe.',
+    summary: 'Buys land, outbids rivals for it, and lives off the rents. Often leaves the frontier to others and cares little who wears the crown.',
     basePolicy: 'profiteer',
     traits: {
       estateProfit: [5.5, 9],
@@ -104,7 +104,7 @@ export const PERSONALITIES = Object.freeze([
   {
     id: 'kingmaker',
     title: 'Kingmaker',
-    summary: 'Rarely claims the throne itself. Backs whichever claimant will pay best in offices, and remembers who kept their word.',
+    summary: 'Never claims the throne itself and always does its part at the frontier. Backs whichever claimant will pay best in offices, and remembers who kept their word.',
     basePolicy: 'kingmaker',
     traits: {
       throneBase: [0, 20],
@@ -118,7 +118,7 @@ export const PERSONALITIES = Object.freeze([
   {
     id: 'tyrant',
     title: 'Tyrant',
-    summary: 'Takes power and uses it. Keeps offices for itself, strips titles from rivals, and never forgets a slight.',
+    summary: 'Takes power and uses it. Will strip the frontier bare to seize the capital, keeps offices for itself, strips titles from rivals, and never forgets a slight.',
     basePolicy: 'tyrant',
     traits: {
       ownRecipientBonus: [5, 8],
@@ -147,7 +147,7 @@ export const PERSONALITIES = Object.freeze([
   {
     id: 'strategist',
     title: 'Strategist',
-    summary: 'No fixed temperament. Weighs every move by how much it raises its own chance to win, and adapts to the table.',
+    summary: 'No fixed temperament. Weighs every move by how much it raises its own chance to win: it defends when it must and makes a bid for the throne when the odds are good.',
     basePolicy: 'strategic',
     traits: {},
   },

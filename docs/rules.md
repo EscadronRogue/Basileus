@@ -94,8 +94,8 @@ Each province outside Constantinople has three original values: **P** (profit to
 - **Final reckoning** (phase): After the last turn, a last Court and Income phase run, then the Balance of Power is scored.
 - **Usurper** (ai temperament): Wants the purple for itself. Pulls troops back to the capital whenever the frontier looks safe enough and gambles on seizing the throne.
 - **Opportunist** (ai temperament): Lets the others bleed at the frontier. Keeps its troops and gold for its own schemes and only fights when the empire is truly about to fall.
-- **Landlord** (ai temperament): Buys every estate it can afford and lives off the rents. Cares little who wears the crown as long as its lands stay safe.
-- **Kingmaker** (ai temperament): Rarely claims the throne itself. Backs whichever claimant will pay best in offices, and remembers who kept their word.
-- **Tyrant** (ai temperament): Takes power and uses it. Keeps offices for itself, strips titles from rivals, and never forgets a slight.
+- **Landlord** (ai temperament): Buys land, outbids rivals for it, and lives off the rents. Often leaves the frontier to others and cares little who wears the crown.
+- **Kingmaker** (ai temperament): Never claims the throne itself and always does its part at the frontier. Backs whichever claimant will pay best in offices, and remembers who kept their word.
+- **Tyrant** (ai temperament): Takes power and uses it. Will strip the frontier bare to seize the capital, keeps offices for itself, strips titles from rivals, and never forgets a slight.
 - **Patron** (ai temperament): Rules through favours. Hands offices to allies and backers, builds a coalition, and expects loyalty in return.
-- **Strategist** (ai temperament): No fixed temperament. Weighs every move by how much it raises its own chance to win, and adapts to the table.
+- **Strategist** (ai temperament): No fixed temperament. Weighs every move by how much it raises its own chance to win: it defends when it must and makes a bid for the throne when the odds are good.
