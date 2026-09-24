@@ -32,11 +32,14 @@ const NODE_ONLY = new Set(['ai/nodeOpponentRoster.js', ...AI_TOOLS]);
 
 function listSources() {
   const files = [];
-  for (const layer of Object.keys(ALLOWED_LAYERS)) {
-    for (const name of readdirSync(join(root, layer))) {
-      if (name.endsWith('.js') && !name.endsWith('.test.js')) files.push(`${layer}/${name}`);
+  const visit = (directory) => {
+    for (const entry of readdirSync(join(root, directory), { withFileTypes: true })) {
+      const path = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) visit(path);
+      else if (entry.name.endsWith('.js') && !entry.name.endsWith('.test.js')) files.push(path);
     }
-  }
+  };
+  for (const layer of Object.keys(ALLOWED_LAYERS)) visit(layer);
   return files;
 }
 

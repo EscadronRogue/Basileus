@@ -43,6 +43,11 @@ async function openGame(t, viewport = { width: 1440, height: 900 }) {
   });
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
   page.on('requestfailed', (request) => problems.push(`requestfailed: ${request.url()}`));
+  page.on('response', (response) => {
+    if (response.status() >= 400) problems.push(`http ${response.status()}: ${response.url()}`);
+    // The embedded SVG fallback only loads when fetching assets/*.svg fails.
+    if (response.url().endsWith('/render/svgAssets.js')) problems.push('map fell back to embedded SVGs');
+  });
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   return { page, problems };
 }
@@ -140,6 +145,27 @@ test('single-player short game plays through to final scoring', { timeout: 600_0
   const end = await playToEnd(page);
 
   assert.ok(end.gameOver || end.phase === 'scoring', `game finished: ${JSON.stringify(end)}`);
+  assert.deepEqual(problems, []);
+});
+
+test('map filters, zoom, and province selection respond to input', async (t) => {
+  const { page, problems } = await openGame(t);
+  await startLocalGame(page, { mode: 'single', players: 5, turns: 6, seed: 'smoke-map' });
+  const svg = page.locator('#mapContainer svg').first();
+
+  await page.click('[data-map-filter="estates"]');
+  assert.match(await svg.getAttribute('class'), /map-filter-estates/);
+
+  const viewport = page.locator('#mapContainer svg g[transform]').first();
+  const before = await viewport.getAttribute('transform');
+  await page.click('.map-zoom-controls .map-control-btn >> nth=0');
+  assert.notEqual(await viewport.getAttribute('transform'), before, 'zoom changes the viewport');
+  assert.match(await svg.getAttribute('class'), /is-map-zoomed/);
+
+  const province = page.locator('#mapContainer [data-id="THS"]').last();
+  const box = await province.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => Boolean(window.__basileus.selectedProvinceId));
   assert.deepEqual(problems, []);
 });
 
