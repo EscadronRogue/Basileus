@@ -157,48 +157,66 @@ records the benchmark.
 
 ### Current roster
 
-Trained for the current rules (the Basileus revokes estates only, two coup
-choices, estates at rising prices, war rewards rising 1, 2, 3... per
-province, invasion strength 1.85 per imperial province on the Classic map)
-on both maps, warm-started from the previous roster, with
-`--from-roster --generations 5 --seed 20260925`: about 35,000 games, 109
-minutes on three workers.
+Trained for the current rules (one rising price 2, 2, 2, 3, 3, 3..., estate
+domains, estates revocable from the next round, the Theodosian Walls
+defending Constantinople in war, invasions at 1.1 strength per imperial
+province) with `--from-roster --generations 6 --mutation 0.25 --seed
+20260927`, on tables of 3 to 5 dynasties and 6, 9 or 12 rounds on both
+maps: about 60,000 games, 119 minutes on four workers.
 
 ### Which kinds of selfishness pay
 
-600 games of 5 dynasties on each map, drawn from the twelve trained AIs
-(fair share 20%). Troops are per round, averaged over the game, as
-Classic / Compact:
+600 games of 5 dynasties and 9 rounds on each map, drawn from the nineteen
+trained AIs (fair share 20%). Troops are per round, averaged over the game,
+as Classic / Compact:
 
 | AI | Win (Classic) | Win (Compact) | Frontier | Constantinople | Dismissed |
 | --- | --- | --- | --- | --- | --- |
-| Opportunist (lets others defend) | 38% | 32% | 2.8 / 2.2 | 1.5 / 0.4 | 3.5 / 2.2 |
-| Saboteur (lets rivals' provinces fall) | 25% | 25% | 9.6 / 4.5 | 0.7 / 0.2 | 1.5 / 1.2 |
-| Regicide (loses wars to topple the Basileus) | 22% | 20% | 9.2 / 4.6 | 1.0 / 0.2 | 1.2 / 1.1 |
-| Kingmaker | 19% | 15% | 9.5 / 5.0 | 0.1 / 0.0 | 0.6 / 0.8 |
-| Patron | 15% | 17% | 3.4 / 2.5 | 2.3 / 0.8 | 3.5 / 2.0 |
-| Miser (dismisses troops for gold) | 15% | 14% | 8.9 / 4.5 | 0.5 / 0.5 | 1.7 / 1.4 |
-| Strategist | 15% | 15% | 9.8 / 4.8 | 0.7 / 0.1 | 1.0 / 0.8 |
-| Hoarder (keeps offices, strips rivals) | 15% | 12% | 10.4 / 5.5 | 0.5 / 0.1 | 0.3 / 0.3 |
-| Landlord | 12% | 12% | 9.0 / 4.9 | 0.4 / 0.1 | 0.8 / 0.5 |
-| Glory Hunter (best defender, then a coup) | 11% | 9% | 11.1 / 5.0 | 0.8 / 1.3 | 0.1 / 0.3 |
-| Usurper | 5% | 6% | 1.6 / 1.2 | 7.8 / 3.6 | 0.3 / 0.3 |
-| Tyrant | 5% | 3% | 2.1 / 1.2 | 7.2 / 3.5 | 0.2 / 0.1 |
+| Condottiere | 25% | 29% | 6.8 / 4.1 | 1.0 / 0.7 | 1.5 / 0.8 |
+| Glory Hunter | 24% | 23% | 1.5 / 0.3 | 5.8 / 3.9 | 0.7 / 0.3 |
+| Kingmaker | 21% | 26% | 5.2 / 3.6 | 0.4 / 0.4 | 2.9 / 1.7 |
+| Loyalist | 23% | 22% | 8.4 / 4.9 | 0.1 / 0.1 | 1.7 / 1.3 |
+| Opportunist | 15% | 28% | 1.3 / 1.4 | 0.4 / 0.3 | 4.6 / 2.8 |
+| Turncoat | 23% | 15% | 0.3 / 0.1 | 7.0 / 4.1 | 0.7 / 0.4 |
+| Landlord | 13% | 22% | 3.9 / 3.2 | 1.2 / 0.9 | 2.7 / 1.6 |
+| Tyrant | 18% | 16% | 0.4 / 0.1 | 7.1 / 4.4 | 0.1 / 0.1 |
+| Wildcard | 17% | 16% | 1.7 / 1.5 | 2.2 / 1.5 | 3.1 / 1.7 |
+| Usurper | 21% | 11% | 0.1 / 0.0 | 6.3 / 3.9 | 0.6 / 0.3 |
+| Saboteur | 17% | 13% | 3.9 / 2.9 | 1.4 / 1.0 | 3.3 / 2.0 |
+| Strategist | 11% | 17% | 5.0 / 3.4 | 1.5 / 0.9 | 2.2 / 1.1 |
+| Miser | 13% | 14% | 4.8 / 3.4 | 1.1 / 0.9 | 3.3 / 2.2 |
+| Hoarder | 14% | 10% | 6.0 / 3.7 | 1.1 / 0.8 | 2.0 / 1.2 |
+| Outsider | 8% | 14% | 2.1 / 0.7 | 4.2 / 3.2 | 2.2 / 0.8 |
+| Regicide | 4% | 16% | 1.7 / 1.5 | 1.2 / 0.7 | 4.3 / 2.5 |
+| Domain Lord | 7% | 11% | 1.5 / 0.8 | 1.0 / 1.1 | 5.3 / 2.7 |
+| Maverick | 7% | 4% | 1.7 / 0.2 | 6.3 / 3.8 | 0.2 / 0.4 |
+| Patron | 5% | 7% | 0.8 / 0.7 | 2.4 / 1.8 | 5.2 / 2.9 |
 
-- The empire falls in 18% of Classic games and 25% of Compact games (10%
-  and 13% by round 3); wars are won about half the time on both maps.
-- Rising war rewards made defending pay: the retrained AIs send 7.4 troops
-  per order to the frontier on the Classic map, against 5.5 before, and
-  the fall rate dropped from 45% to 18% with the same invasions.
-- Free-riding still pays most: the Opportunist sends far fewer troops to
-  the frontier than the others (2.8 per round against about 9.5 on the
-  Classic map) and wins 1.9 times its share there, 1.6 on the Compact map. Spite (Saboteur) and undermining the
-  Basileus (Regicide) pay too.
-- Pouring troops into Constantinople does not pay (Usurper, Tyrant).
-- `--probe selfish` (the trained Strategist made selfish) wins 18% of its
-  Classic games and 15% of its Compact games; `--probe cautious` wins 3%
-  and 4%.
-- Classic: a dynasty receives 4 gold and 8 troops in the first round and 25
-  gold and 10 troops in the last. Compact: 2 gold and 5 troops in the first
-  round, 13 gold and 5 troops in the last, with half as many estates built
-  (71 per game against 143).
+- Invasions call for about 45% of the troops the empire raises (48%
+  Classic, 45% Compact), and the AIs use the room: they send 3.1 troops
+  per order to the frontier on the Classic map, against 7.4 under the
+  stronger invasions. The throne became worth fighting for: 2.7 troops per
+  order go to Constantinople.
+- No temperament runs away with the game: the best win about 1.2 to 1.5
+  times their share. The Condottiere, a new style that hires mercenaries to
+  be the best defender, wins most on both maps; holding the frontier as a
+  Loyalist pays as well as the throne-seekers (Glory Hunter, Turncoat,
+  Usurper). Free-riding pays on the Compact map (Opportunist 28%) but no
+  longer on the Classic map (15%).
+- Of the explorers, the Wildcard found a playable style (spread estates,
+  strip rivals of offices, back a challenger without claiming the throne);
+  the Maverick and the Outsider ended up as weaker throne-seekers.
+- The empire falls in 25% of Classic games and 18% of Compact games, most
+  of them early: 9% and 8% in round 1, mainly to the Bulgars, whose route
+  is short, when too many dynasties send their first troops to
+  Constantinople. Wars are won 32% of the time on the Classic map and 41% on
+  the Compact map; one dynasty wins a war alone in 2% and 12% of them.
+- A best defender takes the throne at the next coup about 10% of the time.
+- Estates: 161 built per Classic game and 130 per Compact game; at the end,
+  28% and 48% of estates are in domains. A dynasty receives 4 gold and 8
+  troops in the first round and 27 gold and 8 troops in the last on the
+  Classic map; 2 gold and 5 troops, then 24 gold and 5 troops, on the
+  Compact map.
+- Game length matters: in 6-round games the empire falls in 18% of games
+  and dynasties end on 13 gold of income; in 12-round games it falls in 33%
+  and they end on 48 gold.
