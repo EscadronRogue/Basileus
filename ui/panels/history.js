@@ -1,7 +1,15 @@
 // ui/panels/history.js - chronicle of past rounds.
 
+import { MOODS } from '../../ai/mood.js';
 import { escapeHtml } from '../html.js';
 import { renderCartouchedText } from '../labels.js';
+
+// The mood an AI dynasty announced, with what it means on hover.
+function renderMoodTag(entry) {
+  const mood = MOODS[entry.details?.mood];
+  if (!mood) return '';
+  return `<span class="history-entry-tag" title="${escapeHtml(mood.hint)}">${escapeHtml(mood.title)}</span>`;
+}
 
 export function renderHistoryPanel(container, state, options = {}) {
   if (!container || !state) return;
@@ -21,10 +29,11 @@ export function renderHistoryPanel(container, state, options = {}) {
       ${isOpen ? `
         <div class="sidebar-panel-body history-list">
           ${history.length ? history.map((entry) => `
-            <article class="history-entry-card">
+            <article class="history-entry-card${entry.category === 'voice' ? ' is-voice' : ''}">
               <header class="history-entry-head">
                 <span class="history-entry-round">R${entry.round}</span>
                 <span class="history-entry-phase">${escapeHtml(entry.phase)}</span>
+                ${entry.category === 'voice' ? renderMoodTag(entry) : ''}
               </header>
               <div class="history-entry-summary">${renderCartouchedText(state, entry.summary)}</div>
             </article>

@@ -62,12 +62,16 @@ export const TRAINABLE_WEIGHT_KEYS = Object.freeze(Object.keys(STRATEGY_WEIGHT_B
 
 // `basePolicy` names the ai/policies.js preset training starts from.
 // `traits` are the weight ranges that make the temperament; each must sit
-// inside STRATEGY_WEIGHT_BOUNDS.
+// inside STRATEGY_WEIGHT_BOUNDS. `temperament` sets its moods (ai/mood.js):
+// where it rests between duty (+1) and greed (-1) and between ambition (+1)
+// and loyalty (-1), how far events move it (volatility), and how freely it
+// strays from its best move (whim).
 export const PERSONALITIES = Object.freeze([
   {
     id: 'usurper',
     title: 'Usurper',
     summary: 'Wants the purple for itself. Pulls troops back to Constantinople whenever the frontier looks safe enough and gambles on seizing the throne.',
+    temperament: { duty: -0.3, ambition: 0.7, volatility: 1.0, whim: 0.5 },
     basePolicy: 'usurper',
     traits: {
       throneBase: [40, 80],
@@ -82,6 +86,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'opportunist',
     title: 'Opportunist',
     summary: 'Lets the others bleed at the frontier. Keeps its troops and gold for its own schemes and only fights when the empire is truly about to fall.',
+    temperament: { duty: -0.7, ambition: 0.0, volatility: 1.0, whim: 0.5 },
     basePolicy: 'freeRider',
     traits: {
       allyDefenseReliance: [0.9, 1],
@@ -97,6 +102,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'landlord',
     title: 'Landlord',
     summary: 'Builds estates wherever they pay and lives off the rents. Often leaves the frontier to others and cares little who wears the crown.',
+    temperament: { duty: -0.2, ambition: -0.2, volatility: 0.8, whim: 0.4 },
     basePolicy: 'profiteer',
     traits: {
       estateProfit: [5.5, 9],
@@ -112,6 +118,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'kingmaker',
     title: 'Kingmaker',
     summary: 'Never claims the throne itself and always does its part at the frontier. Backs whichever claimant will pay best in offices, and remembers who kept their word.',
+    temperament: { duty: 0.4, ambition: 0.0, volatility: 0.8, whim: 0.4 },
     basePolicy: 'kingmaker',
     traits: {
       throneBase: [0, 20],
@@ -127,6 +134,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'tyrant',
     title: 'Tyrant',
     summary: 'Takes power and uses it. Will strip the frontier bare to seize the throne, keeps offices for itself, strips rivals of theirs, and never forgets a slight.',
+    temperament: { duty: -0.4, ambition: 0.8, volatility: 0.7, whim: 0.4 },
     basePolicy: 'tyrant',
     traits: {
       ownRecipientBonus: [5, 8],
@@ -143,6 +151,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'patron',
     title: 'Patron',
     summary: 'Rules through favours. Hands offices to allies and backers, builds a coalition, and expects loyalty in return.',
+    temperament: { duty: 0.0, ambition: -0.2, volatility: 0.8, whim: 0.4 },
     basePolicy: 'patron',
     traits: {
       ownRecipientBonus: [0, 2.5],
@@ -158,6 +167,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'miser',
     title: 'Miser',
     summary: 'Hoards gold. Dismisses most of its troops for gold, buys little, and leaves the war and the throne to others.',
+    temperament: { duty: -0.6, ambition: -0.4, volatility: 0.6, whim: 0.3 },
     basePolicy: 'strategic',
     traits: {
       reserveValue: [1, 1.4],
@@ -173,6 +183,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'hoarder',
     title: 'Hoarder',
     summary: 'Keeps every office it can for its own dynasty and strips rivals of theirs, even when the empire raises fewer troops for it.',
+    temperament: { duty: 0.1, ambition: 0.0, volatility: 0.7, whim: 0.4 },
     basePolicy: 'strategic',
     traits: {
       ownRecipientBonus: [5.5, 8],
@@ -187,6 +198,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'saboteur',
     title: 'Saboteur',
     summary: 'Defends only where its own estates stand, and lets provinces fall when rivals it dislikes, or the leader, hold land or offices there.',
+    temperament: { duty: -0.3, ambition: 0.2, volatility: 1.1, whim: 0.6 },
     basePolicy: 'strategic',
     traits: {
       spiteWeight: [1.8, 2.5],
@@ -201,6 +213,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'regicide',
     title: 'Regicide',
     summary: 'Undermines any Basileus it wants gone: holds back from the war to load Unrest on the throne, then backs a rival claimant in the coup.',
+    temperament: { duty: -0.4, ambition: 0.5, volatility: 1.1, whim: 0.5 },
     basePolicy: 'strategic',
     traits: {
       unrestOpportunism: [1.2, 2],
@@ -214,6 +227,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'glory',
     title: 'Glory Hunter',
     summary: 'Fights hard at the frontier to be the best defender, then spends the gold and Triumph on seizing the throne.',
+    temperament: { duty: 0.6, ambition: 0.6, volatility: 1.0, whim: 0.5 },
     basePolicy: 'strategic',
     traits: {
       recoveryBonus: [1.6, 2.5],
@@ -228,6 +242,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'domainLord',
     title: 'Domain Lord',
     summary: 'Gathers its estates into domains in a few safe provinces, defends them at the frontier, and backs whichever claimant will leave them alone.',
+    temperament: { duty: 0.2, ambition: -0.3, volatility: 0.8, whim: 0.4 },
     basePolicy: 'profiteer',
     traits: {
       estateDomainWeight: [1.6, 2.4],
@@ -241,6 +256,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'condottiere',
     title: 'Condottiere',
     summary: 'Hires mercenaries to be the best defender of every war it can win, and lives off the war rewards rather than the throne.',
+    temperament: { duty: 0.7, ambition: -0.1, volatility: 0.8, whim: 0.4 },
     basePolicy: 'defender',
     traits: {
       mercenaryCostPenalty: [0, 0.12],
@@ -254,6 +270,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'turncoat',
     title: 'Turncoat',
     summary: 'Owes nobody anything: forgets favours and grudges alike, backs whoever serves it this round, and never rewards those who backed it.',
+    temperament: { duty: -0.1, ambition: 0.3, volatility: 1.6, whim: 0.9 },
     basePolicy: 'strategic',
     traits: {
       reciprocityWeight: [0, 0.3],
@@ -268,6 +285,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'loyalist',
     title: 'Loyalist',
     summary: 'Stands by the sitting Basileus in the coup and holds the frontier, counting on offices and a Basileus who spares its estates.',
+    temperament: { duty: 0.6, ambition: -0.8, volatility: 0.5, whim: 0.3 },
     basePolicy: 'loyalist',
     traits: {
       supportOtherClaimant: [0, 0.3],
@@ -285,6 +303,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'maverick',
     title: 'Maverick',
     summary: 'Found its own way from a random start: seizes the throne with troops in Constantinople, keeps for itself the offices it hands out, leaves rivals\' offices alone, and backs other challengers as its second choice.',
+    temperament: { duty: -0.2, ambition: 0.6, volatility: 1.2, whim: 0.8 },
     basePolicy: 'strategic',
     explore: { seed: 1101 },
     traits: {},
@@ -293,6 +312,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'wildcard',
     title: 'Wildcard',
     summary: 'Found its own way from a random start: spreads its estates thinly so no revocation hurts much, strips rivals of their offices, never claims the throne but backs a challenger, and gives the frontier no more than it needs.',
+    temperament: { duty: -0.3, ambition: 0.2, volatility: 1.2, whim: 0.8 },
     basePolicy: 'strategic',
     explore: { seed: 2203 },
     traits: {},
@@ -301,6 +321,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'outsider',
     title: 'Outsider',
     summary: 'Found its own way from a random start: covets the throne and pays back those who help it, gives the frontier as little as it can, and does not mind who revokes its estates.',
+    temperament: { duty: -0.4, ambition: 0.6, volatility: 1.2, whim: 0.8 },
     basePolicy: 'strategic',
     explore: { seed: 3307 },
     traits: {},
@@ -309,6 +330,7 @@ export const PERSONALITIES = Object.freeze([
     id: 'strategist',
     title: 'Strategist',
     summary: 'No fixed temperament. Weighs every move by how much it raises its own chance to win: it defends when it must and goes for the throne when the odds are good.',
+    temperament: { duty: 0.0, ambition: 0.0, volatility: 1.0, whim: 0.4 },
     basePolicy: 'strategic',
     traits: {},
   },

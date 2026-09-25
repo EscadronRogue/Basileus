@@ -73,6 +73,15 @@ ranges of the few strategy weights that make its temperament (an Usurper
 always prizes the throne, an Opportunist always leans on others to hold the
 frontier) and training tunes everything else.
 
+On top of the trained weights, every AI with a personality has a mood
+(`ai/mood.js`): Duty or Greed, and Loyalty or Ambition, pushed by what
+happens at the table (threats to its land or to Constantinople,
+revocations and favours, rivals under- or over-defending, the score) and
+by its memory, which fades. The mood tilts the frontier, reserve, throne
+and coup weights at play time, so training tunes weights around the
+resting mood; `temperament` in `ai/personalities.js` sets that rest point,
+the volatility and the whim (a seeded softmax among the best moves).
+
 ### What training rewards
 
 Only the result of the game. Each game is worth `1` for a win (shared on a
@@ -157,7 +166,7 @@ records the benchmark.
 
 ### Current roster
 
-Not yet retrained for flat prices and known invasion strength. Trained for
+Not yet retrained for flat prices, known invasion strength and moods. Trained for
 the rules before them (one rising price 2, 2, 2, 3, 3, 3..., estate
 domains, estates revocable from the next round, the Theodosian Walls
 defending Constantinople in war, invasions at 1.1 strength per imperial

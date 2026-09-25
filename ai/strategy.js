@@ -29,6 +29,7 @@ import {
 } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { BALANCE, getBalance } from '../data/balance.js';
+import { applyMoodToWeights, computeAiMood, lastShownMood } from './mood.js';
 import { analyzeMajorTitleAssignments, estimateMajorTitleYield } from './patronage.js';
 import {
   applyLegalAction,
@@ -111,7 +112,55 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   unrestOpportunism: 0.3,
 });
 
-function getStrategyWeights(meta, playerId) {
+// The AI's weights, tilted by its current mood when the game state is given.
+function getStrategyWeights(meta, playerId, state = null) {
+  const weights = getBaseStrategyWeights(meta, playerId);
+  if (!state) return weights;
+  return applyMoodToWeights(weights, getCachedMood(state, meta, playerId));
+}
+
+// Moods only change between phases, so one per player, round and phase is
+// kept on the AI meta.
+function getCachedMood(state, meta, playerId) {
+  const key = `${state?.round ?? 0}:${state?.phase || ''}:${state?.history?.length ?? 0}`;
+  if (!meta) return computeAiMood(state, meta, getAiMemory(state, meta), playerId, lastShownMood(state, playerId));
+  if (meta.moodCache?.key !== key) meta.moodCache = { key, moods: {} };
+  if (!meta.moodCache.moods[playerId]) {
+    meta.moodCache.moods[playerId] = computeAiMood(state, meta, getAiMemory(state, meta), playerId, lastShownMood(state, playerId));
+  }
+  return meta.moodCache.moods[playerId];
+}
+
+export function getAiMood(state, meta, playerId) {
+  return getCachedMood(state, meta, playerId);
+}
+
+// How freely this AI strays from its best move (its temperament's whim).
+function getWhim(state, meta, playerId) {
+  return Math.max(0, Number(getCachedMood(state, meta, playerId)?.temperament?.whim) || 0);
+}
+
+// Picks among scored options, best first: usually the best, sometimes a
+// nearly-as-good one, the more often the whimsier the AI. Deterministic for
+// a given game state, so games replay exactly.
+function chooseWithWhim(state, playerId, scored, whim, salt) {
+  if (!scored.length) return null;
+  if (!(whim > 0) || scored.length === 1) return scored[0];
+  const best = Number(scored[0].score) || 0;
+  const temperature = whim * Math.max(0.6, Math.abs(best) * 0.04);
+  const pool = scored.slice(0, 6)
+    .map((entry) => ({ entry, weight: Math.exp(((Number(entry.score) || 0) - best) / temperature) }))
+    .filter((item) => item.weight >= 0.08);
+  const total = pool.reduce((sumWeight, item) => sumWeight + item.weight, 0);
+  let draw = (hashString(tieSeed(state, playerId, `whim:${salt}`)) / 4294967296) * total;
+  for (const item of pool) {
+    draw -= item.weight;
+    if (draw <= 0) return item.entry;
+  }
+  return pool[pool.length - 1]?.entry || scored[0];
+}
+
+function getBaseStrategyWeights(meta, playerId) {
   const overrides = {
     ...(meta?.strategyWeights || {}),
     ...(meta?.players?.[playerId]?.strategyWeights || {}),
@@ -526,7 +575,7 @@ export function chooseStrategicTitleAssignment(state, meta, basileusId = state?.
   const actions = listLegalTitleAssignments(state, basileusId);
   const final = projectedScoring(state);
   const leaderId = getLeaderIdFromScores(final, basileusId);
-  const weights = getStrategyWeights(meta, basileusId);
+  const weights = getStrategyWeights(meta, basileusId, state);
   const memory = getAiMemory(state, meta);
   const context = { memory };
   return actions
@@ -583,14 +632,15 @@ export function chooseStrategicCourtAction(state, meta, playerId) {
 
   const final = projectedScoring(state);
   const leaderId = getLeaderIdFromScores(final, playerId);
-  const weights = getStrategyWeights(meta, playerId);
+  const weights = getStrategyWeights(meta, playerId, state);
   const memory = getAiMemory(state, meta);
   const context = { memory };
-  const best = candidates
+  const scored = candidates
     .map((action) => ({ action, score: scoreCourtIntent(state, final, playerId, action, leaderId, weights, context) }))
-    .sort((left, right) => compareScoredActions(state, playerId, left, right, 'court'))[0] || null;
-  if (best && best.score > weights.courtGainFloor) return best.action;
-  return confirmation;
+    .sort((left, right) => compareScoredActions(state, playerId, left, right, 'court'))
+    .filter((entry) => entry.score > weights.courtGainFloor);
+  const choice = chooseWithWhim(state, playerId, scored, getWhim(state, meta, playerId), 'court');
+  return choice ? choice.action : confirmation;
 }
 
 function orderOfficeKeys(state, playerId) {
@@ -926,7 +976,7 @@ export function buildCoupCoalitionContext(state, meta = null, memory = getAiMemo
     let supportValue = 0;
     const supporters = [];
     for (const supporterId of aiPlayerIds) {
-      const weights = getStrategyWeights(meta, supporterId);
+      const weights = getStrategyWeights(meta, supporterId, state);
       if (supporterId !== candidateId && viability[supporterId] === 'strong') continue;
       const willingness = scoreCoalitionCandidate(state, memory, supporterId, candidateId, final, leaderId, weights);
       const threshold = supporterId === candidateId ? -0.2 : 2;
@@ -1226,16 +1276,17 @@ export function chooseStrategicOrderAction(state, meta, playerId, options = {}) 
   const context = {
     leaderId: currentLeaderId(state, playerId),
     final: projectedScoring(state),
-    weights: getStrategyWeights(meta, playerId),
+    weights: getStrategyWeights(meta, playerId, state),
     memory,
     coalitionContext,
     estimates: estimateOtherDeployment(state, playerId, memory),
     nonCoupScoreCache: new Map(),
     coupScoreCache: new Map(),
   };
-  return actions
+  const scored = actions
     .map((action) => ({ action, score: scoreDeploymentTactics(state, playerId, action, context) }))
-    .sort((left, right) => compareScoredActions(state, playerId, left, right, 'orders'))[0]?.action || null;
+    .sort((left, right) => compareScoredActions(state, playerId, left, right, 'orders'));
+  return chooseWithWhim(state, playerId, scored, getWhim(state, meta, playerId), 'orders')?.action || null;
 }
 
 export function describeOrderChoice(state, playerId, action, meta = null, options = {}) {
@@ -1243,7 +1294,8 @@ export function describeOrderChoice(state, playerId, action, meta = null, option
   const invasion = state.currentInvasion;
   const memory = options.memory || (meta ? getAiMemory(state, meta) : null);
   const final = memory ? projectedScoring(state) : null;
-  const weights = getStrategyWeights(meta, playerId);
+  const weights = getStrategyWeights(meta, playerId, state);
+  const mood = meta ? getCachedMood(state, meta, playerId) : null;
   const regimeUrgency = memory
     ? scoreIncumbentRegimeUrgency(state, memory, playerId, final, currentLeaderId(state, playerId), weights)
     : 0;
@@ -1267,6 +1319,12 @@ export function describeOrderChoice(state, playerId, action, meta = null, option
         value: summary.idleTroops - summary.mercCost,
         impact: summary.idleTroops >= summary.mercCost ? 'positive' : 'negative',
         note: 'Idle troop gold after mercenary costs, scored against treasury and estate opportunities.',
+      },
+      {
+        label: 'mood',
+        value: mood ? mood.mood.title : 'none',
+        impact: 'neutral',
+        note: mood ? `Duty ${Math.round(mood.duty * 100) / 100}, ambition ${Math.round(mood.ambition * 100) / 100}${mood.reason ? `: ${mood.reason}` : ''}.` : 'No mood without a game state.',
       },
       {
         label: 'regime',
@@ -1324,10 +1382,11 @@ function scoreEstateSite(state, final, playerId, theme, alreadyPlannedHere, weig
     - concentration * weights.estateSpread * revocationRisk;
 }
 
-// Builds a plan one estate at a time, on the best province, while the next
-// estate is worth its rising price.
+// Builds a plan one estate at a time, on one of the best provinces (as its
+// whim allows), while the next estate is worth its price.
 export function chooseStrategicEstatePlan(state, meta, playerId) {
-  const weights = getStrategyWeights(meta, playerId);
+  const weights = getStrategyWeights(meta, playerId, state);
+  const whim = getWhim(state, meta, playerId);
   const final = projectedScoring(state);
   const gold = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
   const sites = listEstateSites(state);
@@ -1336,11 +1395,12 @@ export function chooseStrategicEstatePlan(state, meta, playerId) {
   for (let step = 0; step < MAX_ESTATES_PER_ROUND && sites.length; step += 1) {
     const price = getNextEstatePrice(countPlannedEstates(plan), state);
     if (spent + price > gold) break;
-    const best = sites
+    const scored = sites
       .map((theme) => ({ theme, score: scoreEstateSite(state, final, playerId, theme, plan[theme.id] || 0, weights) }))
       .sort((left, right) => (right.score - left.score)
         || (neutralTieBreakValue(state, playerId, left.theme.id, `estate-${step}`)
-          - neutralTieBreakValue(state, playerId, right.theme.id, `estate-${step}`)))[0];
+          - neutralTieBreakValue(state, playerId, right.theme.id, `estate-${step}`)));
+    const best = chooseWithWhim(state, playerId, scored, whim, `estate-${step}`);
     const net = best.score - price * weights.estatePriceWeight;
     if (net <= weights.estateGainFloor) break;
     plan[best.theme.id] = (plan[best.theme.id] || 0) + 1;
