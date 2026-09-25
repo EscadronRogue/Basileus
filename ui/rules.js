@@ -31,6 +31,7 @@ export const MAP_VALUE_LABELS = {
   THEODOSIAN_WALLS: 'Theodosian Walls',
   PATRIARCH_INFLUENCE: 'Patriarch\'s influence',
   UNREST_PER_LOST_PROVINCE: 'Unrest per lost province',
+  INVASION_STRENGTH_PER_PROVINCE: 'invasion strength per imperial province on its route',
   INVASION_STRENGTH_PER_ROUND: 'invasion strength added every round',
 };
 
@@ -48,7 +49,6 @@ function describeMapRules(map) {
 
 const SECOND_CHOICE_PERCENT = Math.round((BALANCE.COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100);
 const WAR_COST = BALANCE.PROVINCE_WAR_COST;
-const CROSSING_COST = BALANCE.LOST_PROVINCE_CROSSING_COST;
 const DOMAIN_SIZE = BALANCE.ESTATE_DOMAIN_SIZE;
 const DOMAIN_BONUS = BALANCE.ESTATE_DOMAIN_BONUS;
 
@@ -196,10 +196,10 @@ export const RULE_SECTIONS = [
     id: 'war',
     title: 'The War',
     blocks: [
-      { paragraph: `All troops at the frontier fight the invasion. Its strength is known when it is drawn: ${BALANCE.INVASION_STRENGTH_PER_REACH} for every province on its route before Constantinople (the farther the invader comes from, the stronger it is), plus ${BALANCE.INVASION_STRENGTH_PER_ROUND} for every round of the game so far (the threat grows every round).` },
+      { paragraph: `All troops at the frontier fight the invasion. Its strength is known when it is drawn: ${BALANCE.INVASION_STRENGTH_PER_PROVINCE} for every imperial province on its route (the farther the empire reaches toward the invader, the stronger it is), plus ${BALANCE.INVASION_STRENGTH_PER_ROUND} for every round of the game so far (the threat grows every round).` },
       {
         items: [
-          ['Invader stronger.', `What the invader beats the frontier by pays for its route, step by step: ${WAR_COST} to take each imperial province, ${CROSSING_COST} to cross each province already lost. It stops at the first step it cannot pay for.`],
+          ['Invader stronger.', `What the invader beats the frontier by pays for its route, step by step: ${WAR_COST} to take each imperial province; land already lost offers no resistance. It stops at the first step it cannot pay for.`],
           ['Constantinople', `ends some routes. It costs the invader ${WAR_COST} plus the Theodosian Walls (${BALANCE.THEODOSIAN_WALLS}). If the invader can pay for it too, the empire falls and nobody wins.`],
           ['Frontier stronger.', `Its lead retakes lost provinces on the route, ${WAR_COST} each, starting from the end nearest Constantinople.`],
           ['The ladder.', 'The "+N" tags on the map show what each step of the route costs the invader. The invasion card adds them up: how many troops hold every province, and how many save Constantinople.'],

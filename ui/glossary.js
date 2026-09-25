@@ -247,14 +247,14 @@ export const GLOSSARY_TERMS = [
     term: 'Invasion',
     category: 'War',
     aliases: ['invasions', 'invasion', 'invaders', 'invader'],
-    definition: 'This round\'s enemy: an estimated strength and a route of provinces, shown on the map. If it beats the frontier, it takes provinces along its route.',
+    get definition() { return `This round's enemy: a route of provinces, shown on the map, and a strength known when it is drawn: ${balance().INVASION_STRENGTH_PER_PROVINCE} for every imperial province on its route, plus ${balance().INVASION_STRENGTH_PER_ROUND} for every round so far. If it beats the frontier, it takes provinces along its route.`; },
   },
   {
     id: 'ladder',
     term: 'Invasion ladder',
     category: 'War',
     aliases: ['invasion ladder', 'ladder'],
-    get definition() { return `What each step of an invasion's route costs the invader, out of what it beats the frontier by: ${balance().PROVINCE_WAR_COST} to take an imperial province, ${balance().LOST_PROVINCE_CROSSING_COST} to cross a lost one, and ${balance().PROVINCE_WAR_COST} plus the Theodosian Walls for Constantinople. Shown as "+N" tags on the map; the invasion card adds them up.`; },
+    get definition() { return `What each step of an invasion's route costs the invader, out of what it beats the frontier by: ${balance().PROVINCE_WAR_COST} to take an imperial province, nothing to cross a lost one, and ${balance().PROVINCE_WAR_COST} plus the Theodosian Walls for Constantinople. Shown as "+N" tags on the map; the invasion card adds them up.`; },
   },
   {
     id: 'imperial',

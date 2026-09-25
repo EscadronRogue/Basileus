@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import { createGameState } from '../engine/state.js';
 import { addEstates } from '../engine/estates.js';
-import { createAIMeta, announceAiMoods, buildAIOrders } from './brain.js';
+import { createAIMeta, updateAiMoods, buildAIOrders } from './brain.js';
+import { hydrateAiMeta, serializeAiMeta } from '../game/save.js';
+import { buildPrivateNotifications } from '../engine/notifications.js';
 import { getAiMemory } from './memory.js';
 import { MOODS, applyMoodToWeights, computeAiMood } from './mood.js';
 import { DEFAULT_STRATEGY_WEIGHTS } from './strategy.js';
@@ -74,18 +76,29 @@ test('moods tilt the weights: duty toward the frontier, ambition toward the thro
   assert.ok(scheming.incumbentDefense < dutiful.incumbentDefense);
 });
 
-test('an AI tells the table when its mood changes, once', () => {
+test('an AI keeps its mood to itself: players see nothing of it', () => {
   const state = makeState();
   const meta = makeMeta(state, { 1: { duty: 0, ambition: -0.2, volatility: 1, whim: 0 } });
-  announceAiMoods(state, meta);
+  updateAiMoods(state, meta);
   state.history.push({
     id: 'h1', index: 1, round: 3, phase: 'court', category: 'court', type: 'revoke_estates', actorId: 0,
     details: { revokedPlayerId: 1, revokedPlayerIds: [1], count: 3 },
   });
-  const first = announceAiMoods(state, meta).filter((event) => event.actorId === 1);
-  assert.equal(first.length, 1);
-  assert.match(first[0].summary, /against the throne|glory/);
-  assert.equal(announceAiMoods(state, meta).filter((event) => event.actorId === 1).length, 0, 'unchanged moods are not repeated');
+  const historyLength = state.history.length;
+  const changes = updateAiMoods(state, meta).filter((change) => change.playerId === 1);
+  assert.equal(changes.length, 1);
+  assert.ok(['conspirator', 'hero'].includes(changes[0].mood));
+  assert.equal(meta.players[1].mood, changes[0].mood, 'the mood is kept on the AI');
+  assert.equal(updateAiMoods(state, meta).filter((change) => change.playerId === 1).length, 0, 'an unchanged mood is no change');
+
+  assert.equal(state.history.length, historyLength, 'nothing is written to the chronicle');
+  for (const player of state.players) {
+    const { notifications = [] } = buildPrivateNotifications(state, player.id) || {};
+    assert.ok(!notifications.some((entry) => /mood|rival/i.test(`${entry.kind} ${entry.title}`)), 'no player is told');
+  }
+
+  const restored = hydrateAiMeta(serializeAiMeta(meta), state, {});
+  assert.equal(restored.players[1].mood, meta.players[1].mood, 'a saved game keeps the mood');
 });
 
 test('a whimsical AI still replays the same game the same way', () => {

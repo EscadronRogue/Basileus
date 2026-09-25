@@ -48,11 +48,13 @@ export function serializeAiMeta(aiMeta) {
     decisionLog,
     fastCache,
     roundContext,
+    moodCache,
     opponent,
     ...rest
   } = aiMeta;
   void fastCache;
   void roundContext;
+  void moodCache;
   void opponent;
   const plain = clonePlain(rest);
   if (plain.players) {
@@ -69,13 +71,17 @@ export function serializeAiMeta(aiMeta) {
   };
 }
 
-// Rebuilds AI metadata for `aiPlayers` and restores what it observed so far.
-// AI memory itself is derived from the game state, so nothing else is needed.
+// Rebuilds AI metadata for `aiPlayers` and restores what it observed so far
+// and each AI's mood. AI memory itself is derived from the game state.
 export function hydrateAiMeta(rawMeta, state, aiPlayers = {}) {
   if (!rawMeta) return null;
   const { humanPlayerIds = [], publicLog = [], totals = null } = clonePlain(rawMeta);
   const meta = createAIMeta(state, { humanPlayerIds, aiPlayers });
   meta.publicLog = Array.isArray(publicLog) ? publicLog.slice(-PUBLIC_LOG_LIMIT) : [];
   if (totals && typeof totals === 'object') meta.totals = totals;
+  // Each AI's mood, so a resumed game plays on as it would have.
+  for (const [playerId, player] of Object.entries(rawMeta.players || {})) {
+    if (player?.mood && meta.players?.[playerId]) meta.players[playerId].mood = player.mood;
+  }
   return meta;
 }

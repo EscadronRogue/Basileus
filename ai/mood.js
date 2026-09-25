@@ -24,34 +24,11 @@ import { buildFinalScores } from '../engine/scoring.js';
 import { getPlayerName } from '../engine/state.js';
 import { getRelationship } from './memory.js';
 
-// `crownPhrase` is how the Basileus says it (it is never ambitious).
 export const MOODS = Object.freeze({
-  guardian: {
-    id: 'guardian',
-    title: 'Guardian',
-    hint: 'Defends the frontier and upholds the Basileus.',
-    phrase: 'rallies to the empire and to the throne',
-    crownPhrase: 'rules for the empire and leads its defence',
-  },
-  hero: {
-    id: 'hero',
-    title: 'Hero',
-    hint: 'Defends the frontier for glory, and means to take the throne with it.',
-    phrase: 'sets out to win glory at the frontier, and the throne after it',
-  },
-  profiteer: {
-    id: 'profiteer',
-    title: 'Profiteer',
-    hint: 'Keeps its troops and gold for itself, and leaves the throne alone.',
-    phrase: 'withdraws to its estates and lets others fight',
-    crownPhrase: 'rules from the palace and leaves the frontier to others',
-  },
-  conspirator: {
-    id: 'conspirator',
-    title: 'Conspirator',
-    hint: 'Keeps its troops close to Constantinople to bring the Basileus down.',
-    phrase: 'sets itself against the throne and keeps its troops close to Constantinople',
-  },
+  guardian: { id: 'guardian', title: 'Guardian' },
+  hero: { id: 'hero', title: 'Hero' },
+  profiteer: { id: 'profiteer', title: 'Profiteer' },
+  conspirator: { id: 'conspirator', title: 'Conspirator' },
 });
 
 // AIs without a personality (built-in strategies) keep to their best move.
@@ -113,33 +90,13 @@ function standing(state, playerId) {
   };
 }
 
-// A small deterministic hash, so the same game always words things the same
-// way.
-function hashText(text) {
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-// One of a reason's wordings, picked per dynasty and round so a table of
-// AIs does not all say the same sentence.
-function wordReason(reason, state, playerId) {
-  if (!Array.isArray(reason)) return reason || null;
-  if (!reason.length) return null;
-  return reason[hashText(`${state?.seed ?? ''}:${state?.round ?? 0}:${playerId}`) % reason.length];
-}
-
 function holdsTriumph(state, playerId) {
   return (state?.temporaryCapitalSupport || []).some((entry) => (
     entry.kind === 'reconquest' && entry.playerId === playerId && Number(entry.activeRound) >= Number(state.round)
   ));
 }
 
-// The pushes on each axis, each with the reason players are told when it
-// is the one that changes the AI's mood (a list gives several wordings).
+// The pushes on each axis, each with a reason (for tests and debugging).
 // `target` names the dynasty a push is about, when there is one.
 function computePushes(state, memory, playerId) {
   const pushes = [];
@@ -152,46 +109,29 @@ function computePushes(state, memory, playerId) {
   if (invasion?.route?.length) {
     const strength = Number(invasion.strength?.[0]) || 0;
     const thresholds = getFrontierThresholds(state, strength, invasion.route);
-    const invaders = invasion.name || 'the invaders';
+    const invaders = invasion.name || 'invaders';
     if (thresholds.saveCapital != null && thresholds.saveCapital > 0) {
-      add('duty', 0.9 * clamp((thresholds.saveCapital / troops) * 2.2, 0, 1), [
-        'Constantinople itself is in danger',
-        `the ${invaders} could reach Constantinople`,
-        'the capital must not fall',
-      ]);
+      add('duty', 0.9 * clamp((thresholds.saveCapital / troops) * 2.2, 0, 1), 'Constantinople itself is in danger');
     }
     const holdShare = thresholds.holdAll / troops;
     if (holdShare < 0.3) {
-      add('duty', -0.35, [
-        'the empire looks safe enough without it',
-        `there is little to fear from the ${invaders}`,
-        'a few troops will do at the frontier',
-      ]);
+      add('duty', -0.35, 'the empire looks safe enough without it');
     }
-    add('duty', 0.9 * clamp(stakeOnRoute(state, playerId) * 1.6, 0, 1), [
-      `its own land lies in the path of the ${invaders}`,
-      `its estates stand in the way of the ${invaders}`,
-    ]);
+    add('duty', 0.9 * clamp(stakeOnRoute(state, playerId) * 1.6, 0, 1), `its own land lies in the path of the ${invaders}`);
   }
 
   const table = memory?.table || {};
-  add('duty', 0.55 * clamp(table.underDefense, 0, 1), [
-    'the others have let the frontier down',
-    'no one else will defend the empire',
-  ]);
-  add('duty', -0.55 * clamp(table.overDefense, 0, 1), [
-    'the others will hold the frontier anyway',
-    'the others send more than enough to the frontier',
-  ]);
+  add('duty', 0.55 * clamp(table.underDefense, 0, 1), 'the others have let the frontier down');
+  add('duty', -0.55 * clamp(table.overDefense, 0, 1), 'the others will hold the frontier anyway');
 
   const { leading, gap } = standing(state, playerId);
   if (leading) {
     add('duty', 0.2, 'it has the most to lose if the empire falls');
-    add('ambition', -0.25, ['it is ahead and wants no upheaval', 'it leads and wants things to stay as they are']);
+    add('ambition', -0.25, 'it is ahead and wants no upheaval');
   }
   const roundsLeft = Math.max(0, (Number(state?.maxRounds) || 0) - (Number(state?.round) || 0));
-  if (!leading && roundsLeft <= 2 && gap < 0) add('ambition', 0.35, ['time is running out and it is behind', 'the end is near and it must catch up']);
-  if (!leading && gap < -4) add('duty', -0.25, ['it is falling behind and needs gold', 'it must rebuild its fortune first']);
+  if (!leading && roundsLeft <= 2 && gap < 0) add('ambition', 0.35, 'time is running out and it is behind');
+  if (!leading && gap < -4) add('duty', -0.25, 'it is falling behind and needs gold');
 
   const basileusId = state?.basileusId;
   if (Number.isInteger(basileusId) && basileusId !== playerId) {
@@ -205,18 +145,18 @@ function computePushes(state, memory, playerId) {
     const basileus = getPlayerName(state, basileusId);
     if (grievance > 0) {
       const reason = relation.revokedMe > 0.2
-        ? [`${basileus} revoked what it held`, `it has not forgiven ${basileus} for its estates`, `${basileus} took its land`]
-        : [`${basileus} has wronged it`, `it has a score to settle with ${basileus}`];
+        ? `${basileus} revoked what it held`
+        : `${basileus} has wronged it`;
       add('ambition', clamp(grievance, 0, 1), reason, basileusId);
     }
     const favour = 0.4 * clamp(relation.favor, 0, 1.6) + 0.4 * clamp(relation.titleFavor, 0, 1.6);
     if (favour > 0) {
-      add('ambition', -clamp(favour, 0, 0.9), [`${basileus} has favoured it`, `it owes ${basileus} its offices`], basileusId);
+      add('ambition', -clamp(favour, 0, 0.9), `${basileus} has favoured it`, basileusId);
     }
   }
   // Wearing the crown needs no explaining.
   if (basileusId === playerId) add('ambition', -1, null);
-  if (holdsTriumph(state, playerId)) add('ambition', 0.45, ['it holds a Triumph to spend', 'its Triumph gives it a claim to the throne']);
+  if (holdsTriumph(state, playerId)) add('ambition', 0.45, 'it holds a Triumph to spend');
 
   return pushes;
 }
@@ -283,7 +223,7 @@ export function computeAiMood(state, meta, memory, playerId, previous = null) {
     ambition,
     mood,
     onThrone: state?.basileusId === playerId,
-    reason: wordReason(toward?.reason, state, playerId),
+    reason: toward?.reason || null,
     target: toward?.target ?? null,
     temperament,
   };
@@ -330,20 +270,8 @@ export function applyMoodToWeights(weights, moodState) {
   };
 }
 
-// The mood an AI last showed, from the chronicle.
-export function lastShownMood(state, playerId) {
-  const history = Array.isArray(state?.history) ? state.history : [];
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const event = history[index];
-    if (event?.type === 'ai_mood' && event.actorId === playerId) return MOODS[event.details?.mood] || null;
-  }
-  return null;
-}
-
-// "Doukas sets itself against the throne and keeps its troops close to
-// Constantinople: Komnenos revoked what it held."
-export function describeMoodChange(state, playerId, moodState) {
-  const reason = moodState.reason ? `: ${moodState.reason}` : '';
-  const phrase = state?.basileusId === playerId && moodState.mood.crownPhrase ? moodState.mood.crownPhrase : moodState.mood.phrase;
-  return `${getPlayerName(state, playerId)} ${phrase}${reason}.`;
+// The mood an AI was last in, kept on its meta (see updateAiMoods in
+// ai/brain.js).
+export function getRememberedMood(meta, playerId) {
+  return MOODS[meta?.players?.[playerId]?.mood] || null;
 }

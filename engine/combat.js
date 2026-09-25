@@ -1,10 +1,9 @@
 // engine/combat.js - the war against the invasion, and what it does to provinces.
 //
 // The invasion walks its route and pays, out of its lead over the frontier,
-// PROVINCE_WAR_COST for each imperial province it takes and
-// LOST_PROVINCE_CROSSING_COST for each province already lost that it crosses;
-// Constantinople, at the end of a full route, costs PROVINCE_WAR_COST plus
-// the Theodosian Walls. It stops at the first step it cannot pay for. When
+// PROVINCE_WAR_COST for each imperial province it takes; it crosses land
+// already lost for free. Constantinople, at the end of a full route, costs
+// PROVINCE_WAR_COST plus the Theodosian Walls. It stops at the first step it cannot pay for. When
 // the frontier wins instead, its lead retakes lost provinces on the route,
 // walking back from Constantinople, at PROVINCE_WAR_COST each.
 import { getBalance } from '../data/balance.js';
@@ -13,7 +12,6 @@ function warCosts(state) {
   const balance = getBalance(state);
   return {
     province: Math.max(0, Number(balance.PROVINCE_WAR_COST) || 0),
-    crossing: Math.max(0, Number(balance.LOST_PROVINCE_CROSSING_COST) || 0),
     walls: Math.max(0, Number(balance.THEODOSIAN_WALLS) || 0),
   };
 }
@@ -27,9 +25,9 @@ function currentLostIds(state) {
 }
 
 // [{ themeId, status: 'imperial' | 'lost' | 'capital', cost, needed, walls }].
-// `cost` is what the invader pays for that step, `needed` how far it must
-// beat the frontier to get that far; Constantinople's cost includes its
-// `walls`.
+// `cost` is what the invader pays for that step (nothing for lost land),
+// `needed` how far it must beat the frontier to get that far;
+// Constantinople's cost includes its `walls`.
 export function buildInvasionLadder(state, route = state?.currentInvasion?.route || [], lostIds = currentLostIds(state)) {
   const costs = warCosts(state);
   const steps = [];
@@ -43,7 +41,7 @@ export function buildInvasionLadder(state, route = state?.currentInvasion?.route
       break;
     }
     const status = lostIds.has(themeId) ? 'lost' : 'imperial';
-    const cost = status === 'lost' ? costs.crossing : costs.province;
+    const cost = status === 'lost' ? 0 : costs.province;
     needed += cost;
     steps.push({ themeId, status, cost, needed });
   }
@@ -70,13 +68,16 @@ export function buildReconquestLadder(state, route = state?.currentInvasion?.rou
 }
 
 // The troops the frontier needs against an invasion of `strength`: to hold
-// every province, and to keep Constantinople (null when the route does not
-// reach it).
+// every province (the invader must not afford the first step that costs it
+// anything), and to keep Constantinople (null when the route does not reach
+// it). 0 when the invader cannot get that far anyway.
 export function getFrontierThresholds(state, strength, route = state?.currentInvasion?.route || []) {
   const value = Math.max(0, Number(strength) || 0);
-  const capital = buildInvasionLadder(state, route).find((step) => step.status === 'capital');
+  const ladder = buildInvasionLadder(state, route);
+  const first = ladder.find((step) => step.cost > 0);
+  const capital = ladder.find((step) => step.status === 'capital');
   return {
-    holdAll: value,
+    holdAll: first ? Math.max(0, value - first.needed + 1) : 0,
     saveCapital: capital ? Math.max(0, value - capital.needed + 1) : null,
   };
 }
