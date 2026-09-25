@@ -5,38 +5,44 @@
 // (`--set NAME=value`) through applyBalanceOverrides().
 
 export const BALANCE = {
+  // The rising price shared by mercenaries, estates, the war ladder and war
+  // rewards: RISING_PRICE_START for the first RISING_PRICE_GROUP items, then
+  // 1 more for each next group (2, 2, 2, 3, 3, 3, 4, 4, 4...).
+  RISING_PRICE_START: 2,
+  RISING_PRICE_GROUP: 3,
+
   // Income
   STARTING_INCOME_GOLD: 4,
   // The Basileus raises 1 troop for every this many provinces of the empire.
   BASILEUS_PROVINCES_PER_TROOP: 3,
+  // Every ESTATE_DOMAIN_SIZE estates a dynasty holds in one province form a
+  // domain, which pays ESTATE_DOMAIN_BONUS gold more every income.
+  ESTATE_DOMAIN_SIZE: 3,
+  ESTATE_DOMAIN_BONUS: 1,
 
   // Offices phase
   MAJOR_OFFICE_ACTION_LIMIT: 2,
   BASILEUS_REVOCATION_LIMIT: 4,
   ESTATE_REVOCATION_REFUND: 0,
 
-  // Estates phase: the nth estate a dynasty builds in one round costs
-  // ESTATE_BASE_PRICE + (n - 1) gold, like mercenaries.
-  ESTATE_BASE_PRICE: 1,
-
   // Deployment
-  MERCENARY_BASE_PRICE: 1,
   MAX_MERCENARIES: 10,
   GOLD_PER_DISMISSED_TROOP: 1,
 
   // Coup: how much of a dynasty's support its first and second choice get.
   COUP_CHOICE_WEIGHTS: [1, 0.5],
-  THEODOSIAN_WALLS_SUPPORT: 5,
+  // The Theodosian Walls: support for the Basileus in every coup, and the
+  // extra strength an invader needs to take Constantinople.
+  THEODOSIAN_WALLS: 5,
   PATRIARCH_INFLUENCE: 4,
-  // The best defender of a won war earns gold and Triumph that rise like
-  // mercenary prices: for N provinces won, base + (base + 1) + ... in all.
-  WAR_REWARD_GOLD_BASE: 1,
-  WAR_REWARD_TRIUMPH_BASE: 1,
   UNREST_PER_LOST_PROVINCE: 2,
 
   // Invasions: strength is drawn from a share of the empire's size, measured
-  // as provinces x INVASION_STRENGTH_PER_PROVINCE.
-  INVASION_STRENGTH_PER_PROVINCE: 1.85,
+  // as provinces x INVASION_STRENGTH_PER_PROVINCE. An average invasion then
+  // calls for about 45% of the troops the empire raises (ai/simulate.js
+  // reports it), so part of the empire can hold the frontier while the rest
+  // looks after itself.
+  INVASION_STRENGTH_PER_PROVINCE: 1.1,
   INVASION_STRENGTH_RATIOS: {
     easy: [0.5, 0.9],
     medium: [0.6, 1],
@@ -52,20 +58,15 @@ export const BALANCE = {
 // Values that differ on some maps (data/maps). The Compact map has about
 // half the provinces, each raising 1 troop, so what does not already scale
 // with the map (coup support, starting gold, mercenary and revocation
-// limits) is lowered too. Estates cost more there so estate income does not
-// snowball, and invasions are a little stronger for the empire's size, which
-// with the trained AIs gives about the same share of fallen empires as the
-// Classic map.
+// limits) is lowered too.
 export const MAP_BALANCE = {
   compact: {
     STARTING_INCOME_GOLD: 2,
     BASILEUS_REVOCATION_LIMIT: 2,
-    ESTATE_BASE_PRICE: 2,
     MAX_MERCENARIES: 6,
-    THEODOSIAN_WALLS_SUPPORT: 3,
+    THEODOSIAN_WALLS: 3,
     PATRIARCH_INFLUENCE: 2,
     UNREST_PER_LOST_PROVINCE: 1,
-    INVASION_STRENGTH_PER_PROVINCE: 2,
   },
 };
 

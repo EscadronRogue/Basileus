@@ -6,6 +6,7 @@
 // next one. Numbers come from the engine so definitions match the rules.
 import { MAJOR_TITLES } from '../data/titles.js';
 import { getBalance } from '../data/balance.js';
+import { describeRisingPrices } from '../engine/presentation.js';
 import { SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PERSONALITIES } from '../ai/personalities.js';
 
@@ -102,7 +103,7 @@ export const GLOSSARY_TERMS = [
     term: 'Revocation',
     category: 'Offices',
     aliases: ['revocations', 'revocation', 'revokes', 'revoke'],
-    definition: 'Taking away a Strategos (by the Domestic or Admiral of the region) or a Bishop (by the Patriarch), or all of one dynasty\'s estates in one province (by the Basileus only). Estates built last round, and a Strategos or estates in a lost province, cannot be revoked.',
+    definition: 'Taking away a Strategos (by the Domestic or Admiral of the region) or a Bishop (by the Patriarch), or all of one dynasty\'s estates in one province, domain and all (by the Basileus only). A Strategos or estates in a lost province cannot be revoked.',
   },
   // Phases
   {
@@ -125,7 +126,21 @@ export const GLOSSARY_TERMS = [
     term: 'Estate',
     category: 'Economy',
     aliases: ['Estates', 'Estate'],
-    get definition() { return `Land a dynasty owns in a province: pays it 1 gold every income while the province is imperial. A province can hold any number of estates of any dynasties. In the Estates phase each dynasty secretly plans new ones: the first costs ${balance().ESTATE_BASE_PRICE} gold that round, each next one 1 more.`; },
+    get definition() { return `Land a dynasty owns in a province: pays it 1 gold every income while the province is imperial. A province can hold any number of estates of any dynasties. In the Estates phase each dynasty secretly plans new ones at the rising price (${describeRisingPrices(balance())} gold that round).`; },
+  },
+  {
+    id: 'domain',
+    term: 'Domain',
+    category: 'Economy',
+    aliases: ['domains', 'domain'],
+    get definition() { return `Every ${balance().ESTATE_DOMAIN_SIZE} estates a dynasty holds in one province: pays ${balance().ESTATE_DOMAIN_BONUS} more gold every income. A domain is also a bigger target, since one revocation takes all of a dynasty's estates in a province.`; },
+  },
+  {
+    id: 'rising-price',
+    term: 'Rising price',
+    category: 'Economy',
+    aliases: ['rising price'],
+    get definition() { return `The price shared by estates, mercenaries and the war: ${describeRisingPrices(balance())} The first ${balance().RISING_PRICE_GROUP} cost ${balance().RISING_PRICE_START} each, and every next ${balance().RISING_PRICE_GROUP} cost 1 more.`; },
   },
   {
     id: 'deployment',
@@ -168,7 +183,7 @@ export const GLOSSARY_TERMS = [
     term: 'Mercenaries',
     category: 'Army',
     aliases: ['mercenaries', 'mercenary'],
-    get definition() { return `Troops hired with gold in Deployment: the first costs ${balance().MERCENARY_BASE_PRICE}, each next one 1 more, up to ${balance().MAX_MERCENARIES}. All go to the same place.`; },
+    get definition() { return `Troops hired with gold in Deployment at the rising price (${describeRisingPrices(balance())}), up to ${balance().MAX_MERCENARIES}. All go to the same place.`; },
   },
   {
     id: 'frontier',
@@ -211,7 +226,7 @@ export const GLOSSARY_TERMS = [
     term: 'Theodosian Walls',
     category: 'Throne',
     aliases: ['Theodosian Walls'],
-    get definition() { return `The walls of Constantinople: ${balance().THEODOSIAN_WALLS_SUPPORT} support for the Basileus in every coup.`; },
+    get definition() { return `The walls of Constantinople: ${balance().THEODOSIAN_WALLS} support for the Basileus in every coup, and ${balance().THEODOSIAN_WALLS} more strength an invader needs to take Constantinople.`; },
   },
   {
     id: 'patriarch-influence',
@@ -225,7 +240,7 @@ export const GLOSSARY_TERMS = [
     term: 'Triumph',
     category: 'Throne',
     aliases: ['Triumph'],
-    get definition() { return `Support for the best defender of the last war, for that dynasty itself, in the next coup only: ${balance().WAR_REWARD_TRIUMPH_BASE} for the first province won, 1 more for every next one.`; },
+    get definition() { return `Support for the best defender of the last war, for that dynasty itself, in the next coup only: the rising price for each province won (${describeRisingPrices(balance())}).`; },
   },
   {
     id: 'unrest',
@@ -247,7 +262,7 @@ export const GLOSSARY_TERMS = [
     term: 'Invasion ladder',
     category: 'War',
     aliases: ['invasion ladder', 'ladder'],
-    definition: 'How much the invader must beat the frontier by to take each province on its route: 1 for the first imperial province, 1 + 2 for the second, 1 + 2 + 3 for the third, and so on; lost provinces cost nothing. Shown on the invasion card and as "+N" tags on the map.',
+    get definition() { return `How much the invader must beat the frontier by to take each province on its route: each imperial province costs the rising price (${describeRisingPrices(balance())}), added up along the route; lost provinces cost nothing, and Constantinople costs the Theodosian Walls on top. Shown on the invasion card and as "+N" tags on the map.`; },
   },
   {
     id: 'imperial',
@@ -268,14 +283,14 @@ export const GLOSSARY_TERMS = [
     term: 'Reconquest',
     category: 'War',
     aliases: ['reconquest', 'reconquer', 'reconquered', 'retake', 'retaken', 'retakes'],
-    definition: 'When the frontier wins, its lead retakes lost provinces on the route at the same rising cost (1, then 2, then 3...), starting from the end nearest Constantinople.',
+    definition: 'When the frontier wins, its lead retakes lost provinces on the route at the rising price, starting from the end nearest Constantinople.',
   },
   {
     id: 'best-defender',
     term: 'Best defender',
     category: 'War',
     aliases: ['best defenders', 'best defender'],
-    get definition() { return `The dynasty with the most troops at the frontier in a won war. For each province the frontier's lead could pay for on the route it gets gold and Triumph at rising rates, like mercenaries: ${balance().WAR_REWARD_GOLD_BASE} of each for the first, 1 more of each for every next one.`; },
+    get definition() { return `The dynasty with the most troops at the frontier in a won war. For each province the frontier's lead could pay for on the route, lost or not, it gets the rising price (${describeRisingPrices(balance())}) in gold and the same in Triumph.`; },
   },
   {
     id: 'fall',

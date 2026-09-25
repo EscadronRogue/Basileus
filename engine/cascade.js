@@ -1,6 +1,8 @@
 // engine/cascade.js - Income: who receives the gold and troops of the empire.
 //
-//   Estate owner        profit (P) of each estate in an imperial province
+//   Estate owner        profit (P) of each estate in an imperial province,
+//                       plus ESTATE_DOMAIN_BONUS per domain (every
+//                       ESTATE_DOMAIN_SIZE estates of one dynasty there)
 //   Strategos           the troops (T) of its province, if imperial
 //   Domestic / Admiral  the troops (T) of every imperial province of its region
 //   Basileus            1 troop per BASILEUS_PROVINCES_PER_TROOP imperial provinces
@@ -11,8 +13,8 @@
 // and a Bishop's gold on top of the Patriarch's.
 import { BALANCE } from '../data/balance.js';
 import { REGIONS } from '../data/provinces.js';
-import { getThemeChurchValue, getThemeOwnerIncome, getThemeTroopCount } from './rules.js';
-import { getLeadingEstateHolder, getProvinceEstateHolders, getProvinceEstateTotal } from './estates.js';
+import { getThemeChurchValue, getThemeTroopCount } from './rules.js';
+import { getEstateHoldingIncome, getLeadingEstateHolder, getProvinceEstateHolders, getProvinceEstateTotal } from './estates.js';
 import { findTitleHolder } from './state.js';
 
 const ECONOMIC_REGIONS = [REGIONS.EAST, REGIONS.WEST, REGIONS.SEA];
@@ -298,10 +300,9 @@ export function runIncome(state) {
     const imperial = isImperialProvince(theme);
 
     if (imperial) {
-      const profitPerEstate = getThemeOwnerIncome(theme);
       const route = flow.routes.profit.estates;
       for (const holder of getProvinceEstateHolders(theme)) {
-        const profit = holder.count * profitPerEstate;
+        const profit = getEstateHoldingIncome(theme, holder.count, state);
         addFlowSource(flow, route, profit, { themeId: theme.id });
         addFlowRecipient(flow, route, holder.playerId, profit);
         addCategorizedIncome('estate', holder.playerId, profit);

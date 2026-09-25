@@ -27,14 +27,14 @@ test('the Maps section names every value a map changes', () => {
 
 test('glossary numbers follow the map of the game on screen', () => {
   const walls = () => getGlossaryTerm('theodosian-walls').definition;
-  assert.match(walls(), new RegExp(`: ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support`));
+  assert.match(walls(), new RegExp(`: ${BALANCE.THEODOSIAN_WALLS} support`));
   setGlossaryMap('compact');
   try {
-    assert.match(walls(), new RegExp(`: ${MAP_BALANCE.compact.THEODOSIAN_WALLS_SUPPORT} support`));
+    assert.match(walls(), new RegExp(`: ${MAP_BALANCE.compact.THEODOSIAN_WALLS} support`));
   } finally {
     setGlossaryMap(null);
   }
-  assert.match(walls(), new RegExp(`: ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support`));
+  assert.match(walls(), new RegExp(`: ${BALANCE.THEODOSIAN_WALLS} support`));
 });
 
 test('the in-game page and README point at the single rules source', () => {

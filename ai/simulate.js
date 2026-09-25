@@ -7,6 +7,7 @@ import { setDealParticipantIds } from '../engine/deals.js';
 import { createGameState } from '../engine/state.js';
 import { handleContinueAfterResolution, runAiRuntime, startInteractiveRuntime } from '../game/runtime.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
+import { getProvinceEstateHolders } from '../engine/estates.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopTotal, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { getPreferredCoupCandidate, normalizeCoupChoices } from '../engine/coup.js';
@@ -34,10 +35,13 @@ const DEFAULT_OPTIONS = {
   probe: null,
 };
 
-const FALL_RATE_ACCEPTABLE_MIN = 0.25;
-const FALL_RATE_IDEAL_MIN = 0.4;
-const FALL_RATE_IDEAL_MAX = 0.5;
-const FALL_RATE_ACCEPTABLE_MAX = 0.75;
+// Invasions should leave room to hold back: the empire falls only when most
+// dynasties let the frontier down.
+const FALL_RATE_ACCEPTABLE_MIN = 0.05;
+const FALL_RATE_IDEAL_MIN = 0.1;
+const FALL_RATE_IDEAL_MAX = 0.2;
+const FALL_RATE_ACCEPTABLE_MAX = 0.35;
+const FALL_RATE_TARGET = `acceptable ${FALL_RATE_ACCEPTABLE_MIN * 100}%-${FALL_RATE_ACCEPTABLE_MAX * 100}%, ideal ${FALL_RATE_IDEAL_MIN * 100}%-${FALL_RATE_IDEAL_MAX * 100}%`;
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -61,6 +65,16 @@ function emptyStats(options) {
       themesLost: 0,
       themesRecovered: 0,
       marginTotal: 0,
+      // Invasion strength over the troops the empire raised that round.
+      needShareTotal: 0,
+      needShareCount: 0,
+      // Won wars where the best defender alone beat the invader.
+      soloWins: 0,
+      // Best defenders rewarded, those with a coup after, and those who took
+      // the throne in that coup.
+      heroRewards: 0,
+      heroChances: 0,
+      heroCoups: 0,
     },
     coups: {
       throneChanges: 0,
@@ -90,6 +104,12 @@ function emptyStats(options) {
       provinces: 0,
       revoked: 0,
       goldSpent: 0,
+      // Holdings at the end of the game: estates, (dynasty, province) pairs
+      // holding them, estates inside complete domains, and domains.
+      endEstates: 0,
+      endHoldings: 0,
+      endInDomains: 0,
+      endDomains: 0,
     },
     scoring: {
       winnerScore: 0,
@@ -221,6 +241,7 @@ function collectResolution(stats, state) {
     if (coup.winner === state.basileusId) stats.coups.incumbentHolds += 1;
     else stats.coups.throneChanges += 1;
   }
+  collectWarDynamics(stats, state, war, coup);
 
   for (const player of state.players || []) {
     const order = summarizeOrders(state, player.id);
@@ -346,6 +367,46 @@ function collectAppointmentStatsByPlayer(state) {
   }
 
   return byPlayer;
+}
+
+// How much of the empire's troops invasions call for, whether one dynasty can
+// win a war alone, and whether the best defender turns its Triumph into the
+// throne at the next coup.
+function collectWarDynamics(stats, state, war, coup) {
+  const heroes = stats.heroWatch;
+  stats.heroWatch = null;
+  if (heroes && coup) {
+    stats.wars.heroChances += 1;
+    if (heroes.includes(coup.winner) && coup.winner !== state.basileusId) stats.wars.heroCoups += 1;
+  }
+  if (!war) return;
+  const income = state.lastIncome?.round === state.round ? state.lastIncome : null;
+  const raised = Object.values(income?.troops || {}).reduce((total, amount) => total + (Number(amount) || 0), 0);
+  if (raised > 0) {
+    stats.wars.needShareTotal += (Number(war.invaderStrength) || 0) / raised;
+    stats.wars.needShareCount += 1;
+  }
+  if (war.outcome === 'victory') {
+    const top = Math.max(0, ...(war.contributions || []).map((entry) => Number(entry.troops) || 0));
+    if (top > (Number(war.invaderStrength) || 0)) stats.wars.soloWins += 1;
+  }
+  const defenders = war.reconquestReward?.defenders || [];
+  if (defenders.length) {
+    stats.wars.heroRewards += 1;
+    stats.heroWatch = defenders.map((entry) => entry.defenderId);
+  }
+}
+
+function collectEstateConcentration(stats, state) {
+  const size = Math.max(1, Number(getBalance(state).ESTATE_DOMAIN_SIZE) || 1);
+  for (const theme of Object.values(state.themes || {})) {
+    for (const holder of getProvinceEstateHolders(theme)) {
+      stats.estates.endEstates += holder.count;
+      stats.estates.endHoldings += 1;
+      stats.estates.endInDomains += Math.floor(holder.count / size) * size;
+      stats.estates.endDomains += Math.floor(holder.count / size);
+    }
+  }
 }
 
 function collectScoring(stats, state) {
@@ -561,6 +622,7 @@ function playGame(options, gameIndex) {
 
   collectEventStats(localStats, state);
   collectScoring(localStats, state);
+  collectEstateConcentration(localStats, state);
   const appointmentStatsByPlayer = collectAppointmentStatsByPlayer(state);
 
   const final = buildFinalScores(state);
@@ -809,27 +871,27 @@ function describeFallPressure(fallRate) {
     return {
       band: 'low',
       rate: rounded,
-      target: 'acceptable 25%-75%, ideal 40%-50%',
+      target: FALL_RATE_TARGET,
     };
   }
   if (fallRate > FALL_RATE_ACCEPTABLE_MAX) {
     return {
       band: 'high',
       rate: rounded,
-      target: 'acceptable 25%-75%, ideal 40%-50%',
+      target: FALL_RATE_TARGET,
     };
   }
   if (fallRate >= FALL_RATE_IDEAL_MIN && fallRate <= FALL_RATE_IDEAL_MAX) {
     return {
       band: 'ideal',
       rate: rounded,
-      target: 'acceptable 25%-75%, ideal 40%-50%',
+      target: FALL_RATE_TARGET,
     };
   }
   return {
     band: fallRate < FALL_RATE_IDEAL_MIN ? 'acceptable-low' : 'acceptable-high',
     rate: rounded,
-    target: 'acceptable 25%-75%, ideal 40%-50%',
+    target: FALL_RATE_TARGET,
   };
 }
 
@@ -865,6 +927,10 @@ function normalizeStats(stats) {
       averageMargin: round(stats.wars.marginTotal / resolutions),
       themesLostPerWar: round(stats.wars.themesLost / resolutions),
       themesRecoveredPerWar: round(stats.wars.themesRecovered / resolutions),
+      // Invasion strength as a share of the troops the empire raised.
+      invasionNeedShare: round(stats.wars.needShareTotal / Math.max(1, stats.wars.needShareCount), 3),
+      soloWinRate: round(stats.wars.soloWins / Math.max(1, stats.wars.victory), 3),
+      heroCoupRate: round(stats.wars.heroCoups / Math.max(1, stats.wars.heroChances), 3),
     },
     coups: {
       throneChangeRate: round(stats.coups.throneChanges / resolutions, 3),
@@ -883,6 +949,11 @@ function normalizeStats(stats) {
     court: Object.fromEntries(Object.entries(stats.court).map(([key, value]) => [key, round(value / games)])),
     estates: {
       builtPerGame: round(stats.estates.built / games),
+      // At the end of the game: estates per (dynasty, province) holding, the
+      // share of estates in complete domains, and domains per game.
+      estatesPerHolding: round(stats.estates.endEstates / Math.max(1, stats.estates.endHoldings)),
+      domainShare: round(stats.estates.endInDomains / Math.max(1, stats.estates.endEstates), 3),
+      domainsPerGame: round(stats.estates.endDomains / games),
       revokedPerGame: round(stats.estates.revoked / games),
       estatesPerPlan: round(stats.estates.built / Math.max(1, stats.estates.plans)),
       provincesPerPlan: round(stats.estates.provinces / Math.max(1, stats.estates.plans)),
@@ -964,9 +1035,9 @@ function buildDiagnostics(stats, games, resolutions, orders) {
   const fallPct = Math.round(fallRate * 100);
 
   if (stats.stuck > 0) diagnostics.push('Some simulated games became stuck; inspect sample seeds before trusting aggregate behavior.');
-  if (fallPressure.band === 'ideal') diagnostics.push(`Empire-fall rate ${fallPct}% is in the ideal 40%-50% band.`);
-  else if (fallPressure.band === 'low') diagnostics.push(`Empire-fall rate ${fallPct}% is below the acceptable 25%-75% band; check whether this scenario is unusually safe.`);
-  else if (fallPressure.band === 'high') diagnostics.push(`Empire-fall rate ${fallPct}% is above the acceptable 25%-75% band; check whether this scenario is unusually punishing.`);
+  if (fallPressure.band === 'ideal') diagnostics.push(`Empire-fall rate ${fallPct}% is in the ideal band (${FALL_RATE_TARGET}).`);
+  else if (fallPressure.band === 'low') diagnostics.push(`Empire-fall rate ${fallPct}% is below the acceptable band (${FALL_RATE_TARGET}); check whether this scenario is unusually safe.`);
+  else if (fallPressure.band === 'high') diagnostics.push(`Empire-fall rate ${fallPct}% is above the acceptable band (${FALL_RATE_TARGET}); check whether this scenario is unusually punishing.`);
   else diagnostics.push(`Empire-fall rate ${fallPct}% is acceptable (${fallPressure.target}).`);
   if (fallRate < FALL_RATE_ACCEPTABLE_MIN && averageMargin > 9) diagnostics.push('War margins are very safe in this simulation sample; compare against replayed games before changing AI behavior.');
   if (fallRate > FALL_RATE_ACCEPTABLE_MAX && defeatRate > 0.6) diagnostics.push('Invasion defeats are frequent in this high-fall sample; inspect the invasion mix and seeds.');
@@ -1052,6 +1123,8 @@ function formatReport(result) {
     `Coup: throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, self top-preference ${Math.round(result.coups.selfPreferenceRate * 100)}%, incumbent backing ${Math.round(result.coups.incumbentBackRate * 100)}%`,
     `Deployment/order: frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}, idle ${result.deployment.idleTroopsPerOrder}, mercs ${result.deployment.mercenariesPerOrder}`,
     `Estates/game: built ${result.estates.builtPerGame}, revoked ${result.estates.revokedPerGame}, gold spent ${result.estates.goldSpentPerGame}; per plan ${result.estates.estatesPerPlan} estates over ${result.estates.provincesPerPlan} provinces`,
+    `Estates at the end: ${result.estates.estatesPerHolding} per dynasty and province, ${Math.round(result.estates.domainShare * 100)}% in domains, ${result.estates.domainsPerGame} domains per game`,
+    `War dynamics: invasions call for ${Math.round(result.wars.invasionNeedShare * 100)}% of the troops raised; ${Math.round(result.wars.soloWinRate * 100)}% of won wars won by one dynasty alone; best defenders take the throne at the next coup ${Math.round(result.wars.heroCoupRate * 100)}% of the time`,
     `Scoring: winner ${result.scoring.winnerScore}, average ${result.scoring.averageScore}, gap ${result.scoring.pointGap}`,
     `Seat win rates: ${Object.entries(result.seatWinRates).map(([seat, rate]) => `seat ${Number(seat) + 1} ${Math.round(rate * 100)}%`).join(', ')}`,
     `Win rate by AI (fair share ${Math.round(result.fairShare * 100)}%): ${Object.entries(result.opponentWinRates).map(([id, entry]) => `${id} ${Math.round(entry.winRate * 100)}%`).join(', ')}`,
@@ -1082,7 +1155,7 @@ function formatSweepRow(name, value, result) {
   const gold = Object.values(result.goldByRound);
   const income = Object.values(result.incomeByRound);
   const lastIncome = income[income.length - 1];
-  return `${name}=${JSON.stringify(value)}: fall ${Math.round(result.fallRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}${probe}, gold r1 ${gold[0] ?? '-'} → last ${gold[gold.length - 1] ?? '-'}, last income ${lastIncome ? `${lastIncome.gold} gold/${lastIncome.troops} troops` : '-'}, estates ${result.estates.builtPerGame}`;
+  return `${name}=${JSON.stringify(value)}: fall ${Math.round(result.fallRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}${probe}, gold r1 ${gold[0] ?? '-'} → last ${gold[gold.length - 1] ?? '-'}, last income ${lastIncome ? `${lastIncome.gold} gold/${lastIncome.troops} troops` : '-'}, estates ${result.estates.builtPerGame} (${Math.round(result.estates.domainShare * 100)}% in domains), need ${Math.round(result.wars.invasionNeedShare * 100)}%, solo wins ${Math.round(result.wars.soloWinRate * 100)}%, hero coups ${Math.round(result.wars.heroCoupRate * 100)}%`;
 }
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

@@ -53,6 +53,9 @@
     drop-shadow(0 0 1.2px rgba(250,230,160,0.82))
     drop-shadow(0 0 2.4px rgba(250,230,160,0.46));
 }
+.province-shape.map-filter-shared {
+  filter: none;
+}
 .province-shape.map-filter-disabled {
   filter: none;
   stroke-dasharray: 3 2;

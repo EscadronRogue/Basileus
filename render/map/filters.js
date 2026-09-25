@@ -7,10 +7,11 @@ import {
 } from '../../engine/cascade.js';
 import { buildInvasionLadder } from '../../engine/combat.js';
 import { getThreatenedThemeIds } from '../../engine/rules.js';
-import { getProvinceEstateTotal } from '../../engine/estates.js';
+import { getProvinceEstateHolders, getProvinceEstateTotal } from '../../engine/estates.js';
 import { applyLabelScale, updateMapCartoucheMarkers, updateMapCartoucheValues } from './cartouches.js';
 import { applyProvinceInteractionState } from './interaction.js';
 import { FILTER_VISUAL_PROPS, MAP_FILTERS, mapRuntime } from './state.js';
+import { ensureStripePattern } from './svgImport.js';
 
 export function normalizeMapFilter(filterId) {
   return Object.values(MAP_FILTERS).includes(filterId) ? filterId : MAP_FILTERS.REGIONS;
@@ -49,8 +50,15 @@ export function updateMapState(state, mapFilter = mapRuntime.activeMapFilter) {
     // Default map keeps the province region palette; active filters recolor
     // the land while the cartouche markers keep local title ownership visible.
     if (shape) {
-      shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')} ${filterClasses.join(' ')}`.trim();
+      const stripes = resolveEstateStripes(state, theme);
+      const stripeId = stripes ? ensureStripePattern(mapSvg, shape, stripes) : null;
+      // A tie between holders would otherwise show as a blank province.
+      const shapeClasses = stripeId
+        ? [...filterClasses.filter((name) => name !== 'map-filter-neutral' && name !== 'map-filter-tied'), 'map-filter-shared']
+        : filterClasses;
+      shape.className.baseVal = `province-shape province-${provinceId} ${ownership.classes.join(' ')} ${shapeClasses.join(' ')}`.trim();
       applyProvinceFilterStyle(shape, filterStyle);
+      if (stripeId) shape.style.setProperty('--province-filter-fill-color', `url(#${stripeId})`);
     }
     if (regionStroke) {
       regionStroke.className.baseVal = `region-stroke province-${provinceId} ${ownership.classes.join(' ')} ${filterClasses.join(' ')}`.trim();
@@ -71,6 +79,22 @@ export function updateMapState(state, mapFilter = mapRuntime.activeMapFilter) {
   updateBadges();
   applyLabelScale();
   applyProvinceInteractionState();
+}
+
+// Estates filter: a province where several dynasties hold estates is striped
+// in all their colours, each band as wide as its share of the estates there
+// (faded while the province is lost). Null for one holder or none.
+function resolveEstateStripes(state, theme) {
+  if (mapRuntime.activeMapFilter !== MAP_FILTERS.ESTATES || !theme || theme.id === 'CPL') return null;
+  const holders = getProvinceEstateHolders(theme);
+  if (holders.length < 2) return null;
+  return holders.map((holder) => {
+    const color = state.players.find((player) => player.id === holder.playerId)?.color || '#5a3810';
+    return {
+      color: theme.lost ? `color-mix(in srgb, ${color} 38%, #d8cfbf 62%)` : color,
+      weight: holder.count,
+    };
+  });
 }
 
 function applyMapFilterClass(svg, filterId) {

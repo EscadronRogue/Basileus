@@ -2,6 +2,7 @@
 
 import { getProvinceRegionPalette, getRegionColor } from '../../ui/labels.js';
 import {
+  ESTATE_STRIPE_BAND,
   MAP_HEIGHT,
   MAP_WIDTH,
   MIN_THREAT_HATCH_SCALE,
@@ -247,6 +248,51 @@ function createThreatHatchLine(x, height, strokeWidth, stroke, strokeOpacity) {
   line.setAttribute('stroke-opacity', strokeOpacity);
   line.setAttribute('stroke-width', String(strokeWidth));
   return line;
+}
+
+// A striped fill for a province shared by several dynasties: diagonal bands
+// in each colour, each as wide as its share. Patterns are cached in <defs> by
+// colours, shares and scale.
+export function ensureStripePattern(svg, referencePath, stripes) {
+  const defs = svg?.querySelector?.('defs');
+  if (!defs || !stripes?.length) return null;
+  const scale = Math.max(MIN_THREAT_HATCH_SCALE, Number(getElementLinearScale(referencePath)) || 1);
+  const total = stripes.reduce((sum, stripe) => sum + Math.max(0, Number(stripe.weight) || 0), 0) || 1;
+  // Every band stays visible, however small its share.
+  const shares = stripes.map((stripe) => Math.max(0.15, (Math.max(0, Number(stripe.weight) || 0)) / total));
+  const shareTotal = shares.reduce((sum, share) => sum + share, 0);
+  const key = `${stripes.map((stripe, index) => `${stripe.color}:${(shares[index] / shareTotal).toFixed(3)}`).join('|')}@${scale.toFixed(6)}`;
+  const id = `estate-stripes-${hashString(key)}`;
+  if (defs.querySelector(`#${id}`)) return id;
+
+  const period = (ESTATE_STRIPE_BAND * stripes.length) / scale;
+  const pattern = document.createElementNS(SVG_NS, 'pattern');
+  pattern.setAttribute('id', id);
+  pattern.setAttribute('data-estate-stripes', 'true');
+  pattern.setAttribute('width', String(period));
+  pattern.setAttribute('height', String(period));
+  pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+  pattern.setAttribute('patternTransform', 'rotate(45)');
+  let x = 0;
+  stripes.forEach((stripe, index) => {
+    const width = period * (shares[index] / shareTotal);
+    const band = document.createElementNS(SVG_NS, 'rect');
+    band.setAttribute('x', String(x));
+    band.setAttribute('y', '0');
+    band.setAttribute('width', String(width + period * 0.002));
+    band.setAttribute('height', String(period));
+    band.setAttribute('fill', stripe.color);
+    pattern.appendChild(band);
+    x += width;
+  });
+  defs.appendChild(pattern);
+  return id;
+}
+
+function hashString(text) {
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) hash = ((hash * 33) ^ text.charCodeAt(index)) >>> 0;
+  return hash.toString(36);
 }
 
 function getElementLinearScale(element) {

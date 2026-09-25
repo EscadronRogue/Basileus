@@ -2,6 +2,7 @@
 
 import { BALANCE, getBalance } from '../../data/balance.js';
 import { getDismissalGold, getMercenaryHireCost } from '../../engine/rules.js';
+import { describeRisingPrices } from '../../engine/presentation.js';
 import { getPlayer } from '../../engine/state.js';
 import { getCapitalSupportEntries } from '../../engine/capitalSupport.js';
 import {
@@ -423,7 +424,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
               <span class="army-card-title">${renderIcon('troop')} Mercenaries</span>
               <span class="army-card-count">${formatMercenariesHtml(draft.mercenaries.count || 0)}</span>
             </header>
-            <p class="army-card-sub">The first costs ${formatGoldHtml(BALANCE.MERCENARY_BASE_PRICE)}, each one after costs 1 more.</p>
+            <p class="army-card-sub">They cost the rising price: ${escapeHtml(describeRisingPrices())}</p>
             <div class="army-card-readiness">
               <span class="readiness-pill${totals.overBudget ? ' missing' : ' ready'}">Gold: ${totals.overBudget ? 'Too expensive' : 'Affordable'}</span>
               <span class="readiness-pill${(Number(draft.mercenaries.count) || 0) > 0 && !isDeploymentDestination(draft.mercenaries.destination) ? ' missing' : ' ready'}">Destination: ${(Number(draft.mercenaries.count) || 0) > 0 ? (draft.mercenaries.destination === 'capital' ? 'Constantinople' : draft.mercenaries.destination === 'frontier' ? 'Frontier' : 'Choose destination') : 'None hired'}</span>

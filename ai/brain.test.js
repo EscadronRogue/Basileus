@@ -10,6 +10,8 @@ import { applyCourtAction, submitHumanOrders } from '../engine/commands.js';
 import { validateMajorTitleAssignments } from '../engine/actions.js';
 import { getPreferredCoupCandidate } from '../engine/coup.js';
 import { addEstates, getEstateCount } from '../engine/estates.js';
+import { buildInvasionLadder } from '../engine/combat.js';
+import { getRisingPriceTotal } from '../engine/rules.js';
 import { phaseEstates } from '../engine/turnflow.js';
 import {
   handleContinueAfterResolution,
@@ -132,7 +134,7 @@ test('trained AI roster keeps saved weights and personality as written', () => {
 test('strategic court automation only controls AI players', () => {
   const state = makeState();
   const meta = createAIMeta(state, { humanPlayerIds: [0] });
-  addEstates(state.themes.SAM, 1, 1, { recent: false });
+  addEstates(state.themes.SAM, 1, 1);
   state.phase = 'income';
   phaseCourt(state);
 
@@ -352,6 +354,10 @@ test('AI deployment creates urgent opposition to a hostile incumbent Basileus', 
             regimeTreatmentWeight: 1.5,
             regimeUrgencyWeight: 2,
             allyDefenseReliance: 0.9,
+            // Little appetite for gold, so dismissing troops to buy estates
+            // does not crowd out the coup.
+            reserveValue: 0.15,
+            estateProfit: 2,
           },
         },
       },
@@ -431,7 +437,12 @@ test('AI deployment defunds surplus troops when frontier and coup urgency are lo
 });
 
 test('AI deployment keeps funding troops when underfunding risks Constantinople', () => {
-  const state = makeReserveDeploymentState([7, 9]);
+  // Fully funded, the frontier holds Constantinople even against the high
+  // estimate; one dismissed troop would let the invader take it.
+  const probe = makeReserveDeploymentState([1, 1]);
+  const capitalNeeded = buildInvasionLadder(probe, ['OPS', 'CPL']).at(-1).needed;
+  const troops = probe.currentTroops.DOM_EAST;
+  const state = makeReserveDeploymentState([troops + capitalNeeded - 3, troops + capitalNeeded - 1]);
   const meta = makeReserveDeploymentMeta(state);
 
   const orders = buildAIOrders(state, meta, 1);
@@ -513,7 +524,7 @@ test('estate strategy spreads a plan over several provinces within its purse', (
   const [action] = chooseStrategicEstateActions(state, meta, 1);
   const plan = action.payload.plan;
   const count = Object.values(plan).reduce((total, value) => total + value, 0);
-  const cost = (count * (count + 1)) / 2;
+  const cost = getRisingPriceTotal(count);
 
   assert.equal(count >= 2, true, 'a cheap first estate is always worth building');
   assert.equal(cost <= 12, true);
@@ -549,11 +560,11 @@ test('AI court legal actions use the shared two-action court power limit', () =>
   assert.equal(revocationModeActions.some((action) => action.payload?.action === 'appoint-strategos'), true);
 });
 
-test('AI legal court actions exclude estates built last round', () => {
+test('AI legal court actions include estates built last round', () => {
   const state = makeState();
   state.round = 2;
-  addEstates(state.themes.OPS, 2, 1, { recent: true });
-  addEstates(state.themes.SAM, 3, 1, { recent: false });
+  addEstates(state.themes.OPS, 2, 1);
+  addEstates(state.themes.SAM, 3, 1);
   state.themes.KAP.strategos = 1;
   state.phase = 'income';
   phaseCourt(state);
@@ -561,7 +572,7 @@ test('AI legal court actions exclude estates built last round', () => {
   const actions = listLegalCourtActions(state, state.basileusId);
 
   assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'estates:SAM:3'), true);
-  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'estates:OPS:2'), false);
+  assert.equal(actions.some((action) => action.payload?.action === 'revoke' && action.payload?.value === 'estates:OPS:2'), true);
   // The Basileus revokes estates only, never a Strategos.
   assert.equal(actions.some((action) => action.payload?.value === 'minor:KAP:strategos'), false);
 });
@@ -612,7 +623,7 @@ test('AI simulation runner completes deterministic all-AI games', () => {
   assert.equal(Number.isFinite(result.scoring.winnerScore), true);
   assert.equal(result.estates.builtPerGame > 0, true);
   assert.equal(result.estates.goldSpentPerGame > 0, true);
-  assert.equal(result.fallPressure.target, 'acceptable 25%-75%, ideal 40%-50%');
+  assert.equal(result.fallPressure.target, 'acceptable 5%-35%, ideal 10%-20%');
   assert.equal(result.diagnostics.some((entry) => entry.includes('Low self-claim') || entry.includes('Low estate bidding')), false);
 });
 

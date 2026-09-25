@@ -5,6 +5,7 @@ import {
   countDynastyEstates,
   countPlannedEstates,
   getEstateCount,
+  getEstateHoldingIncome,
   getNextEstatePrice,
   getProvinceEstateHolders,
   getRevocableEstateCount,
@@ -62,6 +63,8 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   estatePriceWeight: 1.15,
   estateThreatPenalty: 1.5,
   estateSpread: 0.6,
+  // How much it builds toward domains (several estates in one province).
+  estateDomainWeight: 0.8,
   invasionShortfallPenalty: 5.5,
   invasionSafetyValue: 1.2,
   invasionSurplusPenalty: 0.55,
@@ -489,8 +492,8 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
     } else if (action.payload?.value?.startsWith('minor:') && action.payload?.value?.endsWith(':bishop')) {
       deniedValue += scoreResourceGain(final, targetId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1));
     } else if (action.payload?.value?.startsWith('estates:')) {
-      const perEstate = Math.max(1, Number(theme?.P ?? theme?.origin?.P) || 1);
-      deniedValue += scoreResourceGain(final, targetId, 'estate', getRevocableEstateCount(theme, targetId) * perEstate);
+      const income = getEstateHoldingIncome(theme, getRevocableEstateCount(theme, targetId), state);
+      deniedValue += scoreResourceGain(final, targetId, 'estate', income);
     }
     const relationship = scoreRevocationRelationship(state, final, playerId, targetId, leaderId, weights, context);
     if (targetId === leaderId) return deniedValue * weights.leaderDenial + 3 + relationship;
@@ -794,9 +797,10 @@ function themeStake(state, playerId, themeId, weights = DEFAULT_STRATEGY_WEIGHTS
   );
   let value = 0;
   for (const holder of getProvinceEstateHolders(theme)) {
+    const income = getEstateHoldingIncome(theme, holder.count, state);
     value += holder.playerId === playerId
-      ? Math.min(12, holder.count * 2.5)
-      : -Math.min(4, holder.count * 0.3 * spite(holder.playerId));
+      ? Math.min(14, income * 2.5)
+      : -Math.min(4, income * 0.3 * spite(holder.playerId));
   }
   if (theme.strategos === playerId) value += 3;
   if (theme.bishop === playerId) value += 2.5;
@@ -1300,14 +1304,22 @@ function estateRouteExposure(state, themeId) {
   return exposure;
 }
 
+// Value of one more estate in `theme`. Estates count toward a domain there:
+// the estate that completes one earns its whole bonus, the ones before it a
+// share, weighed by how much this dynasty builds toward domains.
 function scoreEstateSite(state, final, playerId, theme, alreadyPlannedHere, weights) {
   const profit = Math.max(1, Number(theme.P ?? theme.origin?.P) || 1);
   const rounds = roundsOfIncomeLeft(state);
   const concentration = getEstateCount(theme, playerId) + alreadyPlannedHere;
+  const balance = getBalance(state);
+  const domainSize = Math.max(1, Number(balance.ESTATE_DOMAIN_SIZE) || 1);
+  const domainBonus = Math.max(0, Number(balance.ESTATE_DOMAIN_BONUS) || 0);
+  const domainProgress = ((concentration % domainSize) + 1) / domainSize;
+  const domainValue = domainBonus * domainProgress * (Number(weights.estateDomainWeight) || 0);
   // A Basileus does not revoke its own estates, but may lose the throne.
   const revocationRisk = playerId === state.basileusId ? 0.4 : 1;
-  return scoreResourceGain(final, playerId, 'estate', profit) * 0.35
-    + profit * weights.estateProfit * Math.min(1.6, rounds / 4)
+  return scoreResourceGain(final, playerId, 'estate', profit + domainValue) * 0.35
+    + (profit + domainValue) * weights.estateProfit * Math.min(1.6, rounds / 4)
     - estateRouteExposure(state, theme.id) * weights.estateThreatPenalty
     - concentration * weights.estateSpread * revocationRisk;
 }

@@ -17,7 +17,10 @@ function renderLadderStep(state, step, kind) {
   let value;
   if (step.status === 'lost' && kind === 'invasion') value = '<span class="ladder-value free">already lost</span>';
   else if (step.status === 'imperial' && kind === 'reconquest') value = '<span class="ladder-value free">imperial</span>';
-  else value = `<span class="ladder-value" title="${escapeHtml(`Needs to win the war by ${step.needed} or more`)}">+${step.needed}</span>`;
+  else {
+    const walls = step.walls ? `, the Theodosian Walls adding ${step.walls}` : '';
+    value = `<span class="ladder-value" title="${escapeHtml(`Needs to win the war by ${step.needed} or more${walls}`)}">+${step.needed}</span>`;
+  }
   return `<li class="ladder-step ${escapeHtml(step.status)}" data-ladder-step="${escapeHtml(step.themeId)}">${badge}${value}</li>`;
 }
 
@@ -35,7 +38,7 @@ export function renderInvasionCard(state) {
         <span class="invasion-card-name">${escapeHtml(invasion.name || 'Invaders')}</span>
         <span class="invasion-card-strength" title="Estimated strength">Strength ${formatTroopsHtml(0, { displayValue: formatStrengthRange(invasion) })}</span>
       </header>
-      <p class="invasion-card-hint">The invader takes a province when it beats the frontier by at least the number shown. Lost provinces cost it nothing.${reachesCapital ? ' If it takes Constantinople, the empire falls and nobody wins.' : ''}</p>
+      <p class="invasion-card-hint">The invader takes a province when it beats the frontier by at least the number shown. Lost provinces cost it nothing.${reachesCapital ? ` The Theodosian Walls make Constantinople cost ${escapeHtml(String(ladder.find((step) => step.status === 'capital')?.walls || 0))} more; if the invader takes it, the empire falls and nobody wins.` : ''}</p>
       <ol class="invasion-ladder">
         ${ladder.map((step) => renderLadderStep(state, step, 'invasion')).join('')}
       </ol>

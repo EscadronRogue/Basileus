@@ -13,6 +13,7 @@ import { getPlayerName } from '../../engine/state.js';
 import { readTroopCount } from '../../engine/cascade.js';
 import { buildFinalScores } from '../../engine/scoring.js';
 import { BALANCE } from '../../data/balance.js';
+import { describeRisingPrices } from '../../engine/presentation.js';
 
 export const TUTORIAL_SEED = 254;
 export const TUTORIAL_PLAYER_COUNT = 3;
@@ -201,7 +202,7 @@ export const TUTORIAL_STEPS = [
     target: () => document.querySelector('.estate-row:not(.on-route) [data-estate-add]:not([disabled])')
       || document.querySelector('[data-estate-add]:not([disabled])'),
     title: 'Build estates',
-    body: `Each estate pays you 1 gold every round, and estate income is one of the three scores. Your first estate this round costs ${BALANCE.ESTATE_BASE_PRICE} gold, the next 1 more, and so on. A province can hold any number of estates.`,
+    body: `Each estate pays you 1 gold every round, and estate income is one of the three scores. This round your estates cost the rising price: ${describeRisingPrices()} Every ${BALANCE.ESTATE_DOMAIN_SIZE} of yours in one province form a domain that pays ${BALANCE.ESTATE_DOMAIN_BONUS} more, but the Basileus can revoke all your estates in a province at once.`,
     task: 'Press + to plan an estate in this province.',
     done: () => Boolean(document.querySelector('.estate-row.planned')),
   },
@@ -267,7 +268,7 @@ export const TUTORIAL_STEPS = [
     target: () => document.querySelector('.resolution-panel .coup-result') || document.querySelector('.resolution-panel'),
     title: 'The coup',
     body: ({ state }) => `Orders are revealed. The coup is decided first. ${coupText(state)}`,
-    task: `The Theodosian Walls give the Basileus ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support in every coup. Tip: a challenger needs real troops in Constantinople, or friends.`,
+    task: `The Theodosian Walls give the Basileus ${BALANCE.THEODOSIAN_WALLS} support in every coup (and make Constantinople harder for invaders to take). Tip: a challenger needs real troops in Constantinople, or friends.`,
   },
   {
     id: 'resolution-war',
