@@ -15,7 +15,8 @@ npm run simulate:ai -- --games 200 --players 5 --deck 9
 
 - `--games N` number of games (default `100`)
 - `--players N` dynasties per game, `3`-`5` (default `5`)
-- `--deck N` game length in turns (default `9`)
+- `--deck N` game length in rounds (default `9`)
+- `--map classic|compact` the map to play on (default `classic`)
 - `--seed N` first game seed; game *i* uses seed + *i* (default `1`)
 - `--workers N` worker threads (default up to `4`); results are identical to `--workers 1`
 - `--policies a,b,c` built-in policy per seat instead of the saved tuned roster
@@ -23,7 +24,9 @@ npm run simulate:ai -- --games 200 --players 5 --deck 9
 - `--no-history` skip history recording for speed
 - `--json` machine-readable output
 - `--set NAME=value` replace a value of `data/balance.js` for this run
-  (repeatable; values are read as JSON, e.g. `--set COUP_CHOICE_WEIGHTS=[1,0.5]`)
+  (repeatable; values are read as JSON, e.g. `--set COUP_CHOICE_WEIGHTS=[1,0.5]`).
+  `--set compact.NAME=value` changes the Compact map's own value
+  (`MAP_BALANCE` in `data/balance.js`) and leaves the Classic map alone
 - `--sweep NAME=a,b,c` run once per value and print one line per value
 - `--probe cautious|selfish|gambler` seat one probe per game (rotating
   seats) among the tuned roster. A probe plays like the trained Strategist
@@ -33,8 +36,9 @@ npm run simulate:ai -- --games 200 --players 5 --deck 9
 
 The report covers completion, empire-fall rate, war and coup outcomes,
 deployment habits, estates, scoring, win rate per seat and per AI (against
-the fair share, 1 / players), the probe's win rate, average gold per dynasty
-by round, and when and to which invader the empire falls.
+the fair share, 1 / players), the probe's win rate, the gold a dynasty holds
+and the gold and troops it receives in each round, and when and to which
+invader the empire falls.
 
 Sweep example:
 
@@ -72,7 +76,9 @@ wins, and an AI that over-defends is punished by the free-riders it meets.
 ### How it searches
 
 Each personality keeps a champion, starting from its base preset clamped into
-its trait ranges. Every generation:
+its trait ranges (or, with `--from-roster`, from its saved champion). Tables
+alternate between the Classic and the Compact map (`--maps`), so one roster
+plays both. Every generation:
 
 1. The champion and `--offspring` mutants play the same `--screening-games`
    seeded tables (common random numbers, so luck mostly cancels out).
@@ -114,6 +120,9 @@ For each personality the log prints its value, win rate, and how it plays:
 - `--personalities a,b` train only some personalities
 - `--players 4,5,5` table sizes to draw from, weighted by repetition (default `4,5,5`)
 - `--decks 9` game lengths to draw from (default `9`)
+- `--maps classic,compact` maps the tables alternate between (default both)
+- `--from-roster` start each personality from its saved champion instead of its preset
+- `--fresh a,b` with `--from-roster`, start these personalities from their preset anyway
 - `--mutation X` starting mutation step, as a share of each weight's range (default `0.2`)
 - `--mutation-rate X` share of weights each mutation touches (default `0.35`)
 - `--champion-share X` share of opponent seats taken by personality champions (default `0.6`)
