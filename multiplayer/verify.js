@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { createRoom, SAVE_VERSION } from './session.js';
 import { getPlayerOrderOfficeKeys } from '../engine/orders.js';
 import { BALANCE } from '../data/balance.js';
-import { getRisingPriceTotal } from '../engine/rules.js';
 
 function claimAllSeats(room) {
   for (let seatId = 0; seatId < room.seats.length; seatId += 1) {
@@ -56,10 +55,10 @@ async function verifyMultiplayerRulePatchFlow() {
   assert.equal(room.gameState.phase, 'estates');
   assert.equal(room.gameState.players.every((player) => player.gold === BALANCE.STARTING_INCOME_GOLD), true);
 
-  send(room, 1, { type: 'estate_action', action: 'plan', plan: { OPS: 2 } });
-  assert.deepEqual(room.gameState.estatePlans[1], { OPS: 2 });
+  send(room, 1, { type: 'estate_action', action: 'plan', plan: { OPS: 1 } });
+  assert.deepEqual(room.gameState.estatePlans[1], { OPS: 1 });
   assert.deepEqual(room.createGameSnapshotFor('s2').state.estatePlans, {});
-  assert.deepEqual(room.createGameSnapshotFor('s1').state.estatePlans, { 1: { OPS: 2 } });
+  assert.deepEqual(room.createGameSnapshotFor('s1').state.estatePlans, { 1: { OPS: 1 } });
   send(room, 1, { type: 'confirm_estates' });
   assert.equal(room.gameState.phase, 'estates');
   assert.equal(room.gameState.estatesReady[1], true);
@@ -70,8 +69,8 @@ async function verifyMultiplayerRulePatchFlow() {
     if (player.id !== 1) send(room, player.id, { type: 'confirm_estates' });
   }
   assert.equal(room.gameState.phase, 'deployment');
-  assert.equal(room.gameState.themes.OPS.estates[1].count, 2);
-  assert.equal(room.gameState.players[1].gold, BALANCE.STARTING_INCOME_GOLD - getRisingPriceTotal(2));
+  assert.equal(room.gameState.themes.OPS.estates[1].count, 1);
+  assert.equal(room.gameState.players[1].gold, BALANCE.STARTING_INCOME_GOLD - BALANCE.ESTATE_PRICE);
 
   for (const player of room.gameState.players) {
     send(room, player.id, {

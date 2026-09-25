@@ -18,7 +18,7 @@ import {
   getPlayerName,
 } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
-import { getDismissalGold, getMercenaryHireCost, getRisingPriceTotal } from './rules.js';
+import { getDismissalGold, getMercenaryHireCost } from './rules.js';
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
 import { getPreferredCoupCandidate, normalizeCoupChoices } from './coup.js';
 import {
@@ -540,10 +540,10 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
   if (rewardProvinceCount <= 0) return null;
   const defenders = topRankedDefenders(contributions);
   if (!defenders.length) return null;
-  // The rising price shared with mercenaries and estates, in gold and in
-  // Triumph alike: 2, 2, 2, 3, 3, 3... for each province won.
-  const totalGold = getRisingPriceTotal(rewardProvinceCount, getBalance(state));
-  const totalTriumph = totalGold;
+  // So much gold and so much Triumph for each province won.
+  const balance = getBalance(state);
+  const totalGold = rewardProvinceCount * (Number(balance.WAR_REWARD_GOLD_PER_PROVINCE) || 0);
+  const totalTriumph = rewardProvinceCount * (Number(balance.WAR_REWARD_TRIUMPH_PER_PROVINCE) || 0);
   const gold = Math.ceil(totalGold / defenders.length);
   const capitalSupport = Math.floor(totalTriumph / defenders.length);
   const recipients = defenders.map((defender) => {

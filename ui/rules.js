@@ -6,8 +6,6 @@
 // Strings may use **bold**; everything else is plain text.
 import { BALANCE, MAP_BALANCE } from '../data/balance.js';
 import { MAPS } from '../data/maps/index.js';
-import { getRisingPriceTotal } from '../engine/rules.js';
-import { describeRisingPrices } from '../engine/presentation.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { SCORE_CATEGORIES, SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { DEFAULT_TURN_COUNT, PLAYER_COUNT_MAX, PLAYER_COUNT_MIN } from '../engine/setup.js';
@@ -33,7 +31,7 @@ export const MAP_VALUE_LABELS = {
   THEODOSIAN_WALLS: 'Theodosian Walls',
   PATRIARCH_INFLUENCE: 'Patriarch\'s influence',
   UNREST_PER_LOST_PROVINCE: 'Unrest per lost province',
-  INVASION_STRENGTH_PER_PROVINCE: 'invasion strength per imperial province',
+  INVASION_STRENGTH_PER_ROUND: 'invasion strength added every round',
 };
 
 function describeMapRules(map) {
@@ -49,9 +47,8 @@ function describeMapRules(map) {
 }
 
 const SECOND_CHOICE_PERCENT = Math.round((BALANCE.COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100);
-const RISING = describeRisingPrices();
-const RISING_GROUP = BALANCE.RISING_PRICE_GROUP;
-const RISING_START = BALANCE.RISING_PRICE_START;
+const WAR_COST = BALANCE.PROVINCE_WAR_COST;
+const CROSSING_COST = BALANCE.LOST_PROVINCE_CROSSING_COST;
 const DOMAIN_SIZE = BALANCE.ESTATE_DOMAIN_SIZE;
 const DOMAIN_BONUS = BALANCE.ESTATE_DOMAIN_BONUS;
 
@@ -106,28 +103,13 @@ export const RULE_SECTIONS = [
     id: 'round',
     title: 'A Round',
     blocks: [
-      { paragraph: 'Each round has four phases. Before the first, a new invasion is drawn and shown on the map with its route and estimated strength.' },
+      { paragraph: 'Each round has four phases. Before the first, a new invasion is drawn and shown on the map with its route and its strength.' },
       {
         steps: [
           ['Offices.', `If the last coup crowned a new Basileus, they first hand out the ${word(MAJOR_TITLE_COUNT)} major offices. Then the Domestics and the Admiral appoint and revoke Strategoi in their region and the Patriarch appoints and revokes Bishops: up to ${word(BALANCE.MAJOR_OFFICE_ACTION_LIMIT)} actions per major office. The Basileus may revoke estates, up to ${word(BALANCE.BASILEUS_REVOCATION_LIMIT)} times. Each dynasty locks when done; then income is paid.`],
           ['Estates.', 'Each dynasty secretly plans the estates it builds this round.'],
           ['Deployment.', 'Each dynasty secretly sends its armies to the frontier or to Constantinople, hires mercenaries and chooses who it backs in the coup.'],
           ['Resolution.', 'All orders are revealed. The coup is decided first, then the war is fought. Then the next round begins.'],
-        ],
-      },
-    ],
-  },
-  {
-    id: 'rising',
-    title: 'The Rising Price',
-    blocks: [
-      { paragraph: `Mercenaries, estates and the war share one rising price: the first ${word(RISING_GROUP)} cost ${RISING_START} each, the next ${word(RISING_GROUP)} ${RISING_START + 1} each, and so on (${RISING}). So three cost ${getRisingPriceTotal(3)} in all, six ${getRisingPriceTotal(6)}, nine ${getRisingPriceTotal(9)}.` },
-      {
-        items: [
-          ['Estates:', 'the estates a dynasty builds in one round, wherever they are.'],
-          ['Mercenaries:', 'the mercenaries a dynasty hires in one round.'],
-          ['The war:', 'what the invader pays for each imperial province it takes, and the frontier\'s lead for each lost province it retakes.'],
-          ['War rewards:', 'the gold and Triumph of the best defender, for each province the lead could pay for.'],
         ],
       },
     ],
@@ -171,7 +153,7 @@ export const RULE_SECTIONS = [
     blocks: [
       {
         items: [
-          ['Building.', `Each round a dynasty's estates cost the rising price (${RISING} gold), wherever it builds them. Estates can only be built in imperial provinces.`],
+          ['Building.', `Every estate costs ${BALANCE.ESTATE_PRICE} gold, however many a dynasty builds. Estates can only be built in imperial provinces.`],
           ['Any number.', 'A province can hold any number of estates, owned by any dynasties.'],
           ['Domains.', `Every ${word(DOMAIN_SIZE)} estates a dynasty holds in one province form a domain, which pays ${DOMAIN_BONUS} more gold every income: ${word(DOMAIN_SIZE)} estates there pay ${DOMAIN_SIZE + DOMAIN_BONUS}, ${word(DOMAIN_SIZE * 2)} pay ${DOMAIN_SIZE * 2 + DOMAIN_BONUS * 2}. A domain is also a bigger target: one revocation by the Basileus takes all of a dynasty's estates in a province, and a lost province pays nothing.`],
           ['Secret.', 'Plans stay hidden until Deployment opens, when every plan is paid and built at once. New estates can be revoked from the next Offices phase.'],
@@ -187,7 +169,7 @@ export const RULE_SECTIONS = [
         items: [
           ['Armies.', 'Each office\'s troops form one army; a dynasty\'s Strategos troops form one army together. Send each army to the frontier or to Constantinople, and choose how many of its troops to field.'],
           ['Dismissed troops', `are the troops you do not field: they pay you ${BALANCE.GOLD_PER_DISMISSED_TROOP} gold each instead.`],
-          ['Mercenaries', `cost the rising price (${RISING} gold), up to ${BALANCE.MAX_MERCENARIES}. They all go to the same place.`],
+          ['Mercenaries', `cost ${BALANCE.MERCENARY_PRICE} gold each, up to ${BALANCE.MAX_MERCENARIES}. They all go to the same place.`],
           ['Coup choices.', `Choose up to two claimants to the throne, yourself allowed. Your troops in Constantinople give all their support to your first choice and ${SECOND_CHOICE_PERCENT}% to your second.`],
         ],
       },
@@ -214,14 +196,14 @@ export const RULE_SECTIONS = [
     id: 'war',
     title: 'The War',
     blocks: [
-      { paragraph: 'All troops at the frontier fight the invasion. Its exact strength is drawn from the estimate when the war starts.' },
+      { paragraph: `All troops at the frontier fight the invasion. Its strength is known when it is drawn: ${BALANCE.INVASION_STRENGTH_PER_REACH} for every province on its route before Constantinople (the farther the invader comes from, the stronger it is), plus ${BALANCE.INVASION_STRENGTH_PER_ROUND} for every round of the game so far (the threat grows every round).` },
       {
         items: [
-          ['Invader stronger.', `The invader walks its route and pays for each province it takes with the strength it has over the frontier, at the rising price: ${RISING} for the first imperial provinces and so on. Lost provinces cost nothing. It stops at the first province it cannot pay for.`],
-          ['Constantinople', `ends some routes. It costs the invader the next price plus the Theodosian Walls (${BALANCE.THEODOSIAN_WALLS}). If the invader can pay for it too, the empire falls and nobody wins.`],
-          ['Frontier stronger.', 'Its lead retakes lost provinces on the route the same way, at the rising price, starting from the end nearest Constantinople.'],
-          ['The ladder.', 'The invasion card and the "+N" tags on the map show how much the invader must beat the frontier by to take each province.'],
-          ['Best defender.', `When the frontier wins, the dynasty with the most troops there is rewarded for each province the lead could pay for on the route, lost or not, at the rising price in gold and the same in Triumph: ${getRisingPriceTotal(3)} gold and ${getRisingPriceTotal(3)} Triumph for three provinces, ${getRisingPriceTotal(6)} of each for six. Tied dynasties share: gold rounded up, Triumph rounded down.`],
+          ['Invader stronger.', `What the invader beats the frontier by pays for its route, step by step: ${WAR_COST} to take each imperial province, ${CROSSING_COST} to cross each province already lost. It stops at the first step it cannot pay for.`],
+          ['Constantinople', `ends some routes. It costs the invader ${WAR_COST} plus the Theodosian Walls (${BALANCE.THEODOSIAN_WALLS}). If the invader can pay for it too, the empire falls and nobody wins.`],
+          ['Frontier stronger.', `Its lead retakes lost provinces on the route, ${WAR_COST} each, starting from the end nearest Constantinople.`],
+          ['The ladder.', 'The "+N" tags on the map show what each step of the route costs the invader. The invasion card adds them up: how many troops hold every province, and how many save Constantinople.'],
+          ['Best defender.', `When the frontier wins, the dynasty with the most troops there earns ${BALANCE.WAR_REWARD_GOLD_PER_PROVINCE} gold and ${BALANCE.WAR_REWARD_TRIUMPH_PER_PROVINCE} Triumph for each province of the route the lead could pay for at ${WAR_COST} each, lost or not. Tied dynasties share: gold rounded up, Triumph rounded down.`],
         ],
       },
     ],

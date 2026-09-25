@@ -46,8 +46,6 @@ export function serializeCurrentInvasion(invasion) {
     route: Array.isArray(invasion.route) ? invasion.route.slice() : [],
     strength: Array.isArray(invasion.strength) ? invasion.strength.slice() : [],
   };
-  if (Array.isArray(invasion.strengthBounds)) serialized.strengthBounds = invasion.strengthBounds.slice();
-  if (Array.isArray(invasion.strengthRatio)) serialized.strengthRatio = invasion.strengthRatio.slice();
   return serialized;
 }
 

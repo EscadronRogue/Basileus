@@ -11,7 +11,7 @@ import { validateMajorTitleAssignments } from '../engine/actions.js';
 import { getPreferredCoupCandidate } from '../engine/coup.js';
 import { addEstates, getEstateCount } from '../engine/estates.js';
 import { buildInvasionLadder } from '../engine/combat.js';
-import { getRisingPriceTotal } from '../engine/rules.js';
+import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
 import { phaseEstates } from '../engine/turnflow.js';
 import {
   handleContinueAfterResolution,
@@ -364,7 +364,14 @@ test('AI deployment creates urgent opposition to a hostile incumbent Basileus', 
     },
   });
 
-  const orders = buildAIOrders(state, meta, 1);
+  // Strong Walls: the hostile Basileus will not fall unless this AI acts.
+  applyBalanceOverrides({ THEODOSIAN_WALLS: 5 });
+  let orders;
+  try {
+    orders = buildAIOrders(state, meta, 1);
+  } finally {
+    resetBalance();
+  }
   const regimeFactor = orders.debug.decision.factors.find((factor) => factor.label === 'regime');
 
   assert.equal(orders.coupChoices.includes(0), false);
@@ -524,7 +531,7 @@ test('estate strategy spreads a plan over several provinces within its purse', (
   const [action] = chooseStrategicEstateActions(state, meta, 1);
   const plan = action.payload.plan;
   const count = Object.values(plan).reduce((total, value) => total + value, 0);
-  const cost = getRisingPriceTotal(count);
+  const cost = count * BALANCE.ESTATE_PRICE;
 
   assert.equal(count >= 2, true, 'a cheap first estate is always worth building');
   assert.equal(cost <= 12, true);

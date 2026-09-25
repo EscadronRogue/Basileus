@@ -157,7 +157,8 @@ records the benchmark.
 
 ### Current roster
 
-Trained for the current rules (one rising price 2, 2, 2, 3, 3, 3..., estate
+Not yet retrained for flat prices and known invasion strength. Trained for
+the rules before them (one rising price 2, 2, 2, 3, 3, 3..., estate
 domains, estates revocable from the next round, the Theodosian Walls
 defending Constantinople in war, invasions at 1.1 strength per imperial
 province) with `--from-roster --generations 6 --mutation 0.25 --seed

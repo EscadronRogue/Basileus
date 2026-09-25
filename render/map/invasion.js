@@ -66,30 +66,31 @@ export function drawInvasionRoute(invasion, state = null) {
   appendInvasionCartouche(cartoucheLayer, invasion, points[0]);
 }
 
-// A tag on the route just before each province: "+3" means the invader takes
-// it if it beats the frontier by 3 or more. Lost provinces cost nothing and
-// get no tag.
+// A tag on the route just before each province: what that step costs the
+// invader out of its lead over the frontier ("+3" to take an imperial
+// province, "+1" to cross a lost one; Constantinople adds the Walls).
 function appendLadderTags(layer, state, invasion, points, routeIds) {
   const ladder = new Map(buildInvasionLadder(state, invasion.route).map((step) => [step.themeId, step]));
   routeIds.forEach((provinceId, index) => {
     const step = ladder.get(provinceId);
-    if (!step || step.status === 'lost') return;
+    if (!step) return;
     const from = points[index];
     const to = points[index + 1];
     if (!from || !to) return;
     const cx = from.cx + (to.cx - from.cx) * 0.55;
     const cy = from.cy + (to.cy - from.cy) * 0.55;
-    const text = `+${step.needed}`;
+    const text = `+${step.cost}`;
     const width = 2 + text.length * 1.5;
     const height = 4;
     const group = document.createElementNS(SVG_NS, 'g');
-    group.setAttribute('class', `invasion-ladder-tag${step.status === 'capital' ? ' capital' : ''}`);
+    group.setAttribute('class', `invasion-ladder-tag${step.status === 'capital' ? ' capital' : ''}${step.status === 'lost' ? ' lost' : ''}`);
     group.setAttribute('data-ladder-tag', provinceId);
     group.setAttribute('transform', `translate(${(cx - width / 2).toFixed(2)} ${(cy - height / 2).toFixed(2)})`);
     const title = document.createElementNS(SVG_NS, 'title');
     const name = state.themes?.[provinceId]?.name || provinceId;
-    const walls = step.walls ? ` (the Theodosian Walls add ${step.walls})` : '';
-    title.textContent = `The invader takes ${name} if it beats the frontier by ${step.needed} or more${walls}.`;
+    const walls = step.walls ? `, the Theodosian Walls adding ${step.walls}` : '';
+    const verb = step.status === 'lost' ? 'Crossing' : 'Taking';
+    title.textContent = `${verb} ${name} costs the invader ${step.cost}${walls}. It gets that far if it beats the frontier by ${step.needed} or more.`;
     group.appendChild(title);
     const bg = document.createElementNS(SVG_NS, 'rect');
     bg.setAttribute('class', 'invasion-ladder-tag-bg');
@@ -128,7 +129,7 @@ function appendInvasionCartouche(layer, invasion, point) {
   if (!point) return;
 
   const strengthValue = Array.isArray(invasion.strength) && invasion.strength.length === 2
-    ? `${invasion.strength[0]}-${invasion.strength[1]}`
+    ? (Number(invasion.strength[0]) === Number(invasion.strength[1]) ? String(invasion.strength[0]) : `${invasion.strength[0]}-${invasion.strength[1]}`)
     : '?';
   const nameText = invasion.name || 'Invasion';
   const width = Math.max(26, Math.min(44, Math.max(nameText.length, strengthValue.length + 3) * 1.45 + 7));
