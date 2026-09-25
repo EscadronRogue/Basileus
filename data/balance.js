@@ -50,16 +50,20 @@ export const BALANCE = {
 };
 
 // Values that differ on some maps (data/maps). The Compact map has about
-// half the provinces, so what does not already scale with the map (coup
-// support, starting gold, mercenary and revocation limits) is lowered too.
+// half the provinces, each raising 1 troop, so what does not already scale
+// with the map (coup support, starting gold, mercenary and revocation
+// limits) is lowered too. Estates cost more there so estate income does not
+// snowball, and invasions are a little stronger for the empire's size.
 export const MAP_BALANCE = {
   compact: {
     STARTING_INCOME_GOLD: 2,
     BASILEUS_REVOCATION_LIMIT: 2,
+    ESTATE_BASE_PRICE: 2,
     MAX_MERCENARIES: 6,
     THEODOSIAN_WALLS_SUPPORT: 3,
     PATRIARCH_INFLUENCE: 2,
     UNREST_PER_LOST_PROVINCE: 1,
+    INVASION_STRENGTH_PER_PROVINCE: 2.2,
   },
 };
 

@@ -8,7 +8,7 @@
 // build where; the plans are paid and built together when Deployment opens.
 // Within one round the first estate a dynasty builds costs ESTATE_BASE_PRICE
 // and each further one costs 1 gold more, like mercenaries.
-import { BALANCE } from '../data/balance.js';
+import { getBalance } from '../data/balance.js';
 import { getSpendableGold } from './deals/state.js';
 import { recordHistoryEvent } from './history.js';
 import { formatGold } from './presentation.js';
@@ -145,12 +145,13 @@ export function clearRecentEstateMarks(state) {
 }
 
 // Prices
-export function getEstatePlanCost(count) {
-  return getRisingPriceTotal(count, BALANCE.ESTATE_BASE_PRICE);
+// Prices depend on the map, so pass the game state.
+export function getEstatePlanCost(count, state = null) {
+  return getRisingPriceTotal(count, getBalance(state).ESTATE_BASE_PRICE);
 }
 
-export function getNextEstatePrice(alreadyPlanned) {
-  return getRisingPriceCost(alreadyPlanned, 1, BALANCE.ESTATE_BASE_PRICE);
+export function getNextEstatePrice(alreadyPlanned, state = null) {
+  return getRisingPriceCost(alreadyPlanned, 1, getBalance(state).ESTATE_BASE_PRICE);
 }
 
 // Plans
@@ -187,7 +188,7 @@ export function validateEstatePlan(state, playerId, rawPlan = {}) {
   }
   const plan = normalizeEstatePlan(state, rawPlan);
   const count = countPlannedEstates(plan);
-  const cost = getEstatePlanCost(count);
+  const cost = getEstatePlanCost(count, state);
   const gold = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
   if (cost > gold) {
     return fail(`${count} estate${count === 1 ? '' : 's'} cost ${formatGold(cost)}; you have ${formatGold(gold)}.`);
@@ -212,7 +213,7 @@ export function settleEstatePlans(state) {
     const plan = normalizeEstatePlan(state, plans[player.id] || {});
     const count = countPlannedEstates(plan);
     if (count <= 0) continue;
-    const cost = getEstatePlanCost(count);
+    const cost = getEstatePlanCost(count, state);
     if (cost > Math.max(0, Number(getSpendableGold(state, player.id)) || 0)) continue;
     player.gold -= cost;
     const builds = [];

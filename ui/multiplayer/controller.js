@@ -31,6 +31,7 @@ import {
 } from './connection.js';
 import { dynastyNameForSeat, renderMultiplayerLobby } from './lobby.js';
 import { addEstateToDraft } from '../panels/estates.js';
+import { setGlossaryMap } from '../glossary.js';
 
 export async function launchMultiplayerClient(options = {}) {
   const playerName = String(options.playerName || '').trim() || 'Guest';
@@ -651,6 +652,7 @@ export class MultiplayerController {
   }
 
   async ensureMap() {
+    setGlossaryMap(this.state?.mapId);
     if (document.getElementById('gameMap') && getRenderedMapId() === (this.state?.mapId || 'classic')) return;
     await createMapSVG('mapContainer', {
       mapId: this.state?.mapId,

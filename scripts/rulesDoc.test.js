@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { RULES_DOC_PATH } from './build-rules-doc.js';
-import { RULE_SECTIONS, renderGlossaryHtml, renderRulesHtml, renderRulesMarkdown } from '../ui/rules.js';
-import { GLOSSARY_TERMS, findGlossaryMatches } from '../ui/glossary.js';
+import { MAP_VALUE_LABELS, RULE_SECTIONS, renderGlossaryHtml, renderRulesHtml, renderRulesMarkdown } from '../ui/rules.js';
+import { BALANCE, MAP_BALANCE } from '../data/balance.js';
+import { GLOSSARY_TERMS, findGlossaryMatches, getGlossaryTerm, setGlossaryMap } from '../ui/glossary.js';
 
 const root = new URL('../', import.meta.url);
 
@@ -16,6 +17,24 @@ test('rules HTML renders every section and escapes text', () => {
   const html = renderRulesHtml();
   for (const section of RULE_SECTIONS) assert.ok(html.includes(`<h3>${section.title.replace('&', '&amp;')}</h3>`), section.title);
   assert.doesNotMatch(html, /\*\*/, 'bold markers are converted');
+});
+
+test('the Maps section names every value a map changes', () => {
+  for (const [mapId, overlay] of Object.entries(MAP_BALANCE)) {
+    for (const key of Object.keys(overlay)) assert.ok(MAP_VALUE_LABELS[key], `${mapId}.${key} has a label in ui/rules.js`);
+  }
+});
+
+test('glossary numbers follow the map of the game on screen', () => {
+  const walls = () => getGlossaryTerm('theodosian-walls').definition;
+  assert.match(walls(), new RegExp(`: ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support`));
+  setGlossaryMap('compact');
+  try {
+    assert.match(walls(), new RegExp(`: ${MAP_BALANCE.compact.THEODOSIAN_WALLS_SUPPORT} support`));
+  } finally {
+    setGlossaryMap(null);
+  }
+  assert.match(walls(), new RegExp(`: ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support`));
 });
 
 test('the in-game page and README point at the single rules source', () => {

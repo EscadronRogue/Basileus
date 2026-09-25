@@ -5,11 +5,23 @@
 // key words, which are marked in turn, so a tooltip can be followed into the
 // next one. Numbers come from the engine so definitions match the rules.
 import { MAJOR_TITLES } from '../data/titles.js';
-import { BALANCE } from '../data/balance.js';
+import { getBalance } from '../data/balance.js';
 import { SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PERSONALITIES } from '../ai/personalities.js';
 
 const MAJOR_TITLE_COUNT = Object.keys(MAJOR_TITLES).length;
+
+// Some numbers differ between maps: definitions read them for the map of the
+// game on screen (set by the game controller), or the Classic map.
+let glossaryMapId = null;
+
+export function setGlossaryMap(mapId) {
+  glossaryMapId = mapId || null;
+}
+
+function balance() {
+  return getBalance(glossaryMapId);
+}
 
 // `aliases` are the spellings that get marked (matched as whole words, any
 // case). `category` is shown above the definition.
@@ -20,7 +32,7 @@ export const GLOSSARY_TERMS = [
     term: 'Basileus',
     category: 'Office',
     aliases: ['Basileus', 'emperor'],
-    definition: `The emperor. Hands out the ${MAJOR_TITLE_COUNT} major offices on taking the throne, is the only one who can revoke estates (up to ${BALANCE.BASILEUS_REVOCATION_LIMIT} revocations in each Offices phase, and nothing else), raises 1 troop per ${BALANCE.BASILEUS_PROVINCES_PER_TROOP} imperial provinces, and has the Theodosian Walls in every coup.`,
+    get definition() { return `The emperor. Hands out the ${MAJOR_TITLE_COUNT} major offices on taking the throne, is the only one who can revoke estates (up to ${balance().BASILEUS_REVOCATION_LIMIT} revocations in each Offices phase, and nothing else), raises 1 troop per ${balance().BASILEUS_PROVINCES_PER_TROOP} imperial provinces, and has the Theodosian Walls in every coup.`; },
   },
   {
     id: 'major-office',
@@ -41,21 +53,21 @@ export const GLOSSARY_TERMS = [
     term: 'Domestic',
     category: 'Office',
     aliases: ['Domestic of the East', 'Domestic of the West', 'Domestics', 'Domestic'],
-    definition: `Commands the eastern or the western provinces: appoints and revokes their Strategoi (up to ${BALANCE.MAJOR_OFFICE_ACTION_LIMIT} actions per Offices phase) and raises 1 troop per imperial province of the region.`,
+    get definition() { return `Commands the eastern or the western provinces: appoints and revokes their Strategoi (up to ${balance().MAJOR_OFFICE_ACTION_LIMIT} actions per Offices phase) and raises 1 troop per imperial province of the region.`; },
   },
   {
     id: 'admiral',
     term: 'Admiral',
     category: 'Office',
     aliases: ['Admiral of the Fleet', 'Admiral'],
-    definition: `Commands the sea provinces: appoints and revokes their Strategoi (up to ${BALANCE.MAJOR_OFFICE_ACTION_LIMIT} actions per Offices phase) and raises 1 troop per imperial sea province.`,
+    get definition() { return `Commands the sea provinces: appoints and revokes their Strategoi (up to ${balance().MAJOR_OFFICE_ACTION_LIMIT} actions per Offices phase) and raises 1 troop per imperial sea province.`; },
   },
   {
     id: 'patriarch',
     term: 'Patriarch',
     category: 'Office',
     aliases: ['Patriarch', 'Patriarchal'],
-    definition: `Head of the Church: appoints and revokes Bishops (up to ${BALANCE.MAJOR_OFFICE_ACTION_LIMIT} actions per Offices phase), receives 1 gold per imperial bishopric, and brings the Patriarch's influence to every coup.`,
+    get definition() { return `Head of the Church: appoints and revokes Bishops (up to ${balance().MAJOR_OFFICE_ACTION_LIMIT} actions per Offices phase), receives 1 gold per imperial bishopric, and brings the Patriarch's influence to every coup.`; },
   },
   {
     id: 'strategos',
@@ -113,7 +125,7 @@ export const GLOSSARY_TERMS = [
     term: 'Estate',
     category: 'Economy',
     aliases: ['Estates', 'Estate'],
-    definition: `Land a dynasty owns in a province: pays it 1 gold every income while the province is imperial. A province can hold any number of estates of any dynasties. In the Estates phase each dynasty secretly plans new ones: the first costs ${BALANCE.ESTATE_BASE_PRICE} gold that round, each next one 1 more.`,
+    get definition() { return `Land a dynasty owns in a province: pays it 1 gold every income while the province is imperial. A province can hold any number of estates of any dynasties. In the Estates phase each dynasty secretly plans new ones: the first costs ${balance().ESTATE_BASE_PRICE} gold that round, each next one 1 more.`; },
   },
   {
     id: 'deployment',
@@ -149,14 +161,14 @@ export const GLOSSARY_TERMS = [
     term: 'Dismissed troops',
     category: 'Army',
     aliases: ['dismissed troops', 'dismissed', 'dismiss'],
-    definition: `Troops a dynasty does not field in Deployment. Each pays it ${BALANCE.GOLD_PER_DISMISSED_TROOP} gold instead.`,
+    get definition() { return `Troops a dynasty does not field in Deployment. Each pays it ${balance().GOLD_PER_DISMISSED_TROOP} gold instead.`; },
   },
   {
     id: 'mercenaries',
     term: 'Mercenaries',
     category: 'Army',
     aliases: ['mercenaries', 'mercenary'],
-    definition: `Troops hired with gold in Deployment: the first costs ${BALANCE.MERCENARY_BASE_PRICE}, each next one 1 more, up to ${BALANCE.MAX_MERCENARIES}. All go to the same place.`,
+    get definition() { return `Troops hired with gold in Deployment: the first costs ${balance().MERCENARY_BASE_PRICE}, each next one 1 more, up to ${balance().MAX_MERCENARIES}. All go to the same place.`; },
   },
   {
     id: 'frontier',
@@ -192,35 +204,35 @@ export const GLOSSARY_TERMS = [
     term: 'Coup choices',
     category: 'Throne',
     aliases: ['first choice', 'second choice', 'claimant', 'claimants', 'coup choices', 'coup choice'],
-    definition: `Up to two claimants a dynasty backs, itself allowed: its troops in Constantinople give all their support to the first and ${Math.round((BALANCE.COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100)}% to the second. With no choice, they back nobody.`,
+    get definition() { return `Up to two claimants a dynasty backs, itself allowed: its troops in Constantinople give all their support to the first and ${Math.round((balance().COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100)}% to the second. With no choice, they back nobody.`; },
   },
   {
     id: 'theodosian-walls',
     term: 'Theodosian Walls',
     category: 'Throne',
     aliases: ['Theodosian Walls'],
-    definition: `The walls of Constantinople: ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support for the Basileus in every coup.`,
+    get definition() { return `The walls of Constantinople: ${balance().THEODOSIAN_WALLS_SUPPORT} support for the Basileus in every coup.`; },
   },
   {
     id: 'patriarch-influence',
     term: "Patriarch's influence",
     category: 'Throne',
     aliases: ["Patriarch's influence"],
-    definition: `${BALANCE.PATRIARCH_INFLUENCE} support in every coup that follows the Patriarch's coup choices like troops: all to the first choice, half to the second.`,
+    get definition() { return `${balance().PATRIARCH_INFLUENCE} support in every coup that follows the Patriarch's coup choices like troops: all to the first choice, half to the second.`; },
   },
   {
     id: 'triumph',
     term: 'Triumph',
     category: 'Throne',
     aliases: ['Triumph'],
-    definition: `Support for the best defender of the last war, for that dynasty itself, in the next coup only: ${BALANCE.WAR_REWARD_TRIUMPH_BASE} for the first province won, 1 more for every next one.`,
+    get definition() { return `Support for the best defender of the last war, for that dynasty itself, in the next coup only: ${balance().WAR_REWARD_TRIUMPH_BASE} for the first province won, 1 more for every next one.`; },
   },
   {
     id: 'unrest',
     term: 'Unrest',
     category: 'Throne',
     aliases: ['unrest'],
-    definition: `${BALANCE.UNREST_PER_LOST_PROVINCE} less support per province lost in the last war, for the Basileus who lost them, in the next coup only.`,
+    get definition() { return `${balance().UNREST_PER_LOST_PROVINCE} less support per province lost in the last war, for the Basileus who lost them, in the next coup only.`; },
   },
   // War
   {
@@ -263,7 +275,7 @@ export const GLOSSARY_TERMS = [
     term: 'Best defender',
     category: 'War',
     aliases: ['best defenders', 'best defender'],
-    definition: `The dynasty with the most troops at the frontier in a won war. For each province the frontier's lead could pay for on the route it gets gold and Triumph at rising rates, like mercenaries: ${BALANCE.WAR_REWARD_GOLD_BASE} of each for the first, 1 more of each for every next one.`,
+    get definition() { return `The dynasty with the most troops at the frontier in a won war. For each province the frontier's lead could pay for on the route it gets gold and Triumph at rising rates, like mercenaries: ${balance().WAR_REWARD_GOLD_BASE} of each for the first, 1 more of each for every next one.`; },
   },
   {
     id: 'fall',

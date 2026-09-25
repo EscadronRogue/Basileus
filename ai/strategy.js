@@ -1119,11 +1119,11 @@ function scoreReserveFrontierUrgency(state, summary, estimates, weights) {
 }
 
 // How many estates a purse buys in one Estates phase at the rising price.
-function estatesAffordable(gold) {
+function estatesAffordable(state, gold) {
   let count = 0;
   let spent = 0;
   while (count < MAX_ESTATES_PER_ROUND) {
-    const price = getNextEstatePrice(count);
+    const price = getNextEstatePrice(count, state);
     if (spent + price > gold) break;
     spent += price;
     count += 1;
@@ -1136,7 +1136,7 @@ function scoreEstateReserveOpportunity(state, final, playerId, goldGain, weights
   const gain = Math.max(0, Number(goldGain) || 0);
   if (gain <= 0 || roundsOfIncomeLeft(state) <= 1) return 0;
   const currentGold = Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
-  const extraEstates = estatesAffordable(currentGold + gain) - estatesAffordable(currentGold);
+  const extraEstates = estatesAffordable(state, currentGold + gain) - estatesAffordable(state, currentGold);
   if (extraEstates <= 0) return 0;
   const perEstate = scoreResourceGain(final, playerId, 'estate', 1) * 0.18 + weights.estateProfit * 0.22;
   // The first extra estate counts fully; later ones less, as prices rise.
@@ -1322,7 +1322,7 @@ export function chooseStrategicEstatePlan(state, meta, playerId) {
   const plan = {};
   let spent = 0;
   for (let step = 0; step < MAX_ESTATES_PER_ROUND && sites.length; step += 1) {
-    const price = getNextEstatePrice(countPlannedEstates(plan));
+    const price = getNextEstatePrice(countPlannedEstates(plan), state);
     if (spent + price > gold) break;
     const best = sites
       .map((theme) => ({ theme, score: scoreEstateSite(state, final, playerId, theme, plan[theme.id] || 0, weights) }))

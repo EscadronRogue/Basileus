@@ -36,7 +36,7 @@ import {
 } from './cascade.js';
 import { applyInvasionResult, buildInvasionLadder, buildReconquestLadder, resolveInvasion } from './combat.js';
 import { getRisingPriceTotal } from './rules.js';
-import { addEstates, getEstateCount } from './estates.js';
+import { addEstates, getEstateCount, getEstatePlanCost } from './estates.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { serializePublicGameState } from './publicState.js';
 import {
@@ -1473,6 +1473,9 @@ test('a Compact game uses its 21 provinces, invasions and lower numbers', () => 
   const walls = getCapitalSupportEntries(state).find((entry) => entry.titleKey === 'BASILEUS');
   assert.equal(walls.amount, MAP_BALANCE.compact.THEODOSIAN_WALLS_SUPPORT);
   assert.equal(getBalance(createGameState({ seed: 4 })).THEODOSIAN_WALLS_SUPPORT, BALANCE.THEODOSIAN_WALLS_SUPPORT);
+  const estatePrice = MAP_BALANCE.compact.ESTATE_BASE_PRICE;
+  assert.equal(getEstatePlanCost(2, state), estatePrice + estatePrice + 1, 'estates cost the Compact price');
+  assert.equal(getEstatePlanCost(2, createGameState({ seed: 4 })), BALANCE.ESTATE_BASE_PRICE * 2 + 1);
   assert.equal(serializePublicGameState(state).mapId, 'compact');
 });
 

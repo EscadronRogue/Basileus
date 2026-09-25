@@ -24,15 +24,16 @@ export const RULES_TAGLINE = `A game for ${PLAYER_COUNT_MIN} to ${PLAYER_COUNT_M
 const START_LOST_COUNT = PROVINCES.filter((province) => province.startLost).length;
 const PROVINCE_COUNT = PROVINCES.filter((province) => province.id !== 'CPL').length;
 const BISHOPRIC_COUNT = PROVINCES.filter((province) => (Number(province.C) || 0) > 0).length;
-// How a map value differing from the Classic map reads in the rules.
-const MAP_VALUE_LABELS = {
-  STARTING_INCOME_GOLD: (value) => `starting gold ${value}`,
-  BASILEUS_REVOCATION_LIMIT: (value) => `the Basileus revokes up to ${word(value)} times per round`,
-  MAX_MERCENARIES: (value) => `up to ${value} mercenaries`,
-  THEODOSIAN_WALLS_SUPPORT: (value) => `Theodosian Walls ${value}`,
-  PATRIARCH_INFLUENCE: (value) => `Patriarch's influence ${value}`,
-  UNREST_PER_LOST_PROVINCE: (value) => `Unrest ${value} per lost province`,
-  ESTATE_BASE_PRICE: (value) => `the first estate of a round costs ${value}`,
+// How the Maps section names each value a map can change (MAP_BALANCE).
+export const MAP_VALUE_LABELS = {
+  STARTING_INCOME_GOLD: 'starting gold',
+  BASILEUS_REVOCATION_LIMIT: 'estate revocations by the Basileus per round',
+  ESTATE_BASE_PRICE: 'price of the first estate of a round',
+  MAX_MERCENARIES: 'most mercenaries a dynasty can hire',
+  THEODOSIAN_WALLS_SUPPORT: 'Theodosian Walls',
+  PATRIARCH_INFLUENCE: 'Patriarch\'s influence',
+  UNREST_PER_LOST_PROVINCE: 'Unrest per lost province',
+  INVASION_STRENGTH_PER_PROVINCE: 'invasion strength per imperial province',
 };
 
 function describeMapRules(map) {
@@ -41,10 +42,10 @@ function describeMapRules(map) {
   const lost = provinces.filter((province) => province.startLost).length;
   const changes = Object.entries(MAP_BALANCE[map.id] || {})
     .filter(([key, value]) => MAP_VALUE_LABELS[key] && value !== BALANCE[key])
-    .map(([key, value]) => MAP_VALUE_LABELS[key](value));
+    .map(([key, value]) => `${MAP_VALUE_LABELS[key]} ${value} (Classic ${BALANCE[key]})`);
   const base = `${provinces.length} provinces, ${bishoprics} of them bishoprics; ${lost} start lost.`;
   if (!changes.length) return base;
-  return `${base} Every province still raises 1 troop, so armies and invasions are about half as big, and some numbers are lower: ${changes.join(', ')}. Everything else is the same.`;
+  return `${base} Every province raises 1 troop, so armies, invasions and income are smaller. Values that differ from the Classic map: ${changes.join('; ')}. Everything else is the same.`;
 }
 
 const SECOND_CHOICE_PERCENT = Math.round((BALANCE.COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100);

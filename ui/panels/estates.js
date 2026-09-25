@@ -26,8 +26,8 @@ function getEstateDraft(uiState, state, playerId) {
   return draft;
 }
 
-function planCost(plan) {
-  return getEstatePlanCost(countPlannedEstates(plan));
+function planCost(state, plan) {
+  return getEstatePlanCost(countPlannedEstates(plan), state);
 }
 
 function goldFor(state, playerId) {
@@ -41,7 +41,7 @@ export function addEstateToDraft(uiState, state, playerId, themeId) {
   if (!canBuildEstatesIn(state.themes?.[themeId])) return false;
   const draft = getEstateDraft(uiState, state, playerId);
   const next = { ...draft.plan, [themeId]: (Number(draft.plan[themeId]) || 0) + 1 };
-  if (planCost(next) > goldFor(state, playerId)) return false;
+  if (planCost(state, next) > goldFor(state, playerId)) return false;
   draft.plan = next;
   return true;
 }
@@ -85,8 +85,8 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
   const plan = locked ? getEstatePlan(state, playerId) : draft.plan;
   const gold = goldFor(state, playerId);
   const plannedCount = countPlannedEstates(plan);
-  const cost = planCost(plan);
-  const nextPrice = getNextEstatePrice(plannedCount);
+  const cost = planCost(state, plan);
+  const nextPrice = getNextEstatePrice(plannedCount, state);
   const canAddMore = cost + nextPrice <= gold;
   const readyCount = state.players.filter((entry) => Boolean(state.estatesReady?.[entry.id])).length;
   const sites = Object.values(state.themes || {}).filter(canBuildEstatesIn);
@@ -112,7 +112,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
           </span>
         </div>
       </header>
-      <p class="section-hint">Each estate pays its owner 1 gold every round. This round your first estate costs ${formatGoldHtml(getNextEstatePrice(0))} and each one after costs 1 more. Plans stay secret and are built when Deployment opens.</p>
+      <p class="section-hint">Each estate pays its owner 1 gold every round. This round your first estate costs ${formatGoldHtml(getNextEstatePrice(0, state))} and each one after costs 1 more. Plans stay secret and are built when Deployment opens.</p>
       <div class="estate-plan-summary" data-estate-summary>
         <span><strong>${plannedCount}</strong> estate${plannedCount === 1 ? '' : 's'} planned</span>
         <span>Cost ${formatGoldHtml(cost)}</span>

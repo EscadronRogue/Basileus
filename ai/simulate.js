@@ -199,8 +199,11 @@ function collectResolution(stats, state) {
   stats.resolutions += 1;
   const players = state.players || [];
   if (players.length) {
-    const bucket = stats.goldByRound[state.round] || (stats.goldByRound[state.round] = { gold: 0, count: 0 });
+    const bucket = stats.goldByRound[state.round] || (stats.goldByRound[state.round] = { gold: 0, count: 0, income: 0, troops: 0 });
     bucket.gold += players.reduce((total, player) => total + (Number(player.gold) || 0), 0) / players.length;
+    const income = state.lastIncome?.round === state.round ? state.lastIncome : null;
+    bucket.income += Object.values(income?.income || {}).reduce((total, amount) => total + (Number(amount) || 0), 0) / players.length;
+    bucket.troops += Object.values(income?.troops || {}).reduce((total, amount) => total + (Number(amount) || 0), 0) / players.length;
     bucket.count += 1;
   }
 
@@ -612,8 +615,10 @@ function mergeStats(target, source) {
   }
   for (const [playerId, wins] of Object.entries(source.stats.winners)) addCount(target.winners, playerId, wins);
   for (const [roundNumber, bucket] of Object.entries(source.stats.goldByRound)) {
-    const into = target.goldByRound[roundNumber] || (target.goldByRound[roundNumber] = { gold: 0, count: 0 });
+    const into = target.goldByRound[roundNumber] || (target.goldByRound[roundNumber] = { gold: 0, count: 0, income: 0, troops: 0 });
     into.gold += bucket.gold;
+    into.income += bucket.income;
+    into.troops += bucket.troops;
     into.count += bucket.count;
   }
   const winnerShare = (seat) => (source.winnerIds.includes(seat) ? 1 / source.winnerIds.length : 0);
@@ -915,6 +920,15 @@ function normalizeStats(stats) {
         .sort(([left], [right]) => Number(left) - Number(right))
         .map(([roundNumber, bucket]) => [roundNumber, round(bucket.gold / Math.max(1, bucket.count), 1)]),
     ),
+    // Average gold and troops a dynasty receives in each round's income.
+    incomeByRound: Object.fromEntries(
+      Object.entries(stats.goldByRound)
+        .sort(([left], [right]) => Number(left) - Number(right))
+        .map(([roundNumber, bucket]) => [roundNumber, {
+          gold: round(bucket.income / Math.max(1, bucket.count), 1),
+          troops: round(bucket.troops / Math.max(1, bucket.count), 1),
+        }]),
+    ),
     seatWinRates: Object.fromEntries(
       Array.from({ length: stats.options.playerCount }, (_, seat) => [seat, round((stats.winners[seat] || 0) / games, 3)]),
     ),
@@ -1043,6 +1057,7 @@ function formatReport(result) {
     `Win rate by AI (fair share ${Math.round(result.fairShare * 100)}%): ${Object.entries(result.opponentWinRates).map(([id, entry]) => `${id} ${Math.round(entry.winRate * 100)}%`).join(', ')}`,
     result.probe ? `Probe ${result.probe.policy}: win ${Math.round(result.probe.winRate * 100)}% over ${result.probe.games} games (${round(result.probe.winRate / Math.max(0.001, result.fairShare), 2)}x fair share)` : null,
     `Gold per dynasty by round: ${Object.entries(result.goldByRound).map(([roundNumber, gold]) => `r${roundNumber} ${gold}`).join(', ')}`,
+    `Income per dynasty by round (gold/troops): ${Object.entries(result.incomeByRound).map(([roundNumber, entry]) => `r${roundNumber} ${entry.gold}/${entry.troops}`).join(', ')}`,
     `Falls by invader: ${Object.entries(result.fallInvasionRates).map(([invasionId, rate]) => `${invasionId} ${Math.round(rate * 100)}%`).join(', ') || 'none'}`,
     `Falls by round: ${Object.entries(result.fallRoundRates).map(([roundNumber, rate]) => `r${roundNumber} ${Math.round(rate * 100)}%`).join(', ') || 'none'} (by round 3: ${Math.round(result.earlyFallRate * 100)}%)`,
     'Diagnostics:',
@@ -1065,7 +1080,9 @@ function formatReport(result) {
 function formatSweepRow(name, value, result) {
   const probe = result.probe ? `, ${result.probe.policy} ${Math.round(result.probe.winRate * 100)}%` : '';
   const gold = Object.values(result.goldByRound);
-  return `${name}=${JSON.stringify(value)}: fall ${Math.round(result.fallRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}${probe}, gold r1 ${gold[0] ?? '-'} → last ${gold[gold.length - 1] ?? '-'}`;
+  const income = Object.values(result.incomeByRound);
+  const lastIncome = income[income.length - 1];
+  return `${name}=${JSON.stringify(value)}: fall ${Math.round(result.fallRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}${probe}, gold r1 ${gold[0] ?? '-'} → last ${gold[gold.length - 1] ?? '-'}, last income ${lastIncome ? `${lastIncome.gold} gold/${lastIncome.troops} troops` : '-'}, estates ${result.estates.builtPerGame}`;
 }
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

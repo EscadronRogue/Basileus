@@ -30,6 +30,7 @@ import {
 } from './sharedView.js';
 import { buildLocalSave, clearLocalSave, restoreLocalSaveState, writeLocalSave } from './localSave.js';
 import { addEstateToDraft } from './panels/estates.js';
+import { setGlossaryMap } from './glossary.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 
@@ -127,6 +128,7 @@ export class GameController {
   }
 
   async mountMap() {
+    setGlossaryMap(this.state?.mapId);
     await createMapSVG('mapContainer', {
       mapId: this.state?.mapId,
       mapFilter: this.uiState.mapFilter,
