@@ -1,20 +1,17 @@
 import { createGameState } from '../engine/state.js';
 import { buildPrivateDealView, setDealParticipantIds } from '../engine/deals.js';
 import { buildPrivateNotifications } from '../engine/notifications.js';
+import { startInteractiveRuntime } from '../game/runtime.js';
+import { buildAiPlayersFromSelections } from '../game/aiSeats.js';
 import {
-  autoResolveUnavailableHumanAppointments,
-  handleContinueAfterResolution,
-  handleHumanCourtAction,
-  handleHumanCourtConfirmation,
-  handleHumanEstateAction,
-  handleHumanOrders,
-  handleEstatesConfirmation,
-  resolvePendingTitleReassignment,
-  settleAutomaticProgress,
-  startInteractiveRuntime,
-  handleManualTitleReassignment,
-} from '../game/runtime.js';
-import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta, hydrateAiOpponent } from '../ai/brain.js';
+  buildGameRecordExport,
+  createGameRecord,
+  gameRecordFilename,
+  getRecordNote,
+  performRecordedCall,
+  setRecordNote,
+} from '../game/record.js';
+import { AI_OPPONENT_MISSING_MESSAGE, createAIMeta } from '../ai/brain.js';
 import { getAiDisplayName } from '../ai/names.js';
 import { getPersonality } from '../ai/personalities.js';
 import { createMapSVG, focusProvince, setHoveredProvince } from '../render/mapRenderer.js';
@@ -28,7 +25,8 @@ import {
   renderPlayerTabs,
   scrollPhasePanelIntoView,
 } from './sharedView.js';
-import { buildLocalSave, clearLocalSave, restoreLocalSaveState, writeLocalSave } from './localSave.js';
+import { buildLocalSave, clearLocalSave, restoreLocalSaveState, writeLastGameRecord, writeLocalSave } from './localSave.js';
+import { downloadJsonFile } from './recordControls.js';
 import { addEstateToDraft } from './panels/estates.js';
 import { setGlossaryMap } from './glossary.js';
 
@@ -62,6 +60,10 @@ export class GameController {
     this.lastPhaseKey = null;
     this.autosaveEnabled = config.autosave !== false;
     this.autosaveTimer = null;
+    // The game record (game/record.js): kept for every local game but the
+    // tutorial, and downloadable from the Resolution and final panels.
+    this.recordEnabled = config.record !== false;
+    this.record = null;
     // Called after every render; the tutorial follows the game through it.
     this.onRender = typeof config.onRender === 'function' ? config.onRender : null;
   }
@@ -81,6 +83,7 @@ export class GameController {
       this.ensureHumanFocus();
     }
     this.assignPlayerFirstNames();
+    if (this.recordEnabled) this.record = createGameRecord(this.config, this.state);
 
     await this.mountMap();
     this.renderPlayerTabs();
@@ -102,10 +105,16 @@ export class GameController {
     if (Number.isInteger(save.activePlayer)) this.activePlayer = save.activePlayer;
     this.ensureHumanFocus();
     this.assignPlayerFirstNames();
+    // A save from before records existed continues without one: its record
+    // could not replay the start of the game.
+    if (this.recordEnabled && save.record) {
+      this.record = save.record;
+      this.record.resumes = (Number(this.record.resumes) || 0) + 1;
+    }
 
     await this.mountMap();
     this.renderPlayerTabs();
-    settleAutomaticProgress(this.state, this.aiMeta, this);
+    this.perform('settle', null);
     this.render();
   }
 
@@ -115,16 +124,51 @@ export class GameController {
     this.autosaveTimer = window.setTimeout(() => this.saveNow(), AUTOSAVE_DELAY_MS);
   }
 
-  // Finished games are not offered for resuming.
+  // Finished games are not offered for resuming; their record is kept so it
+  // can still be downloaded from the setup screen.
   saveNow() {
     if (!this.autosaveEnabled || !this.state) return;
     if (this.autosaveTimer && typeof window !== 'undefined') window.clearTimeout(this.autosaveTimer);
     this.autosaveTimer = null;
     if (this.state.gameOver || this.state.phase === 'scoring') {
       clearLocalSave();
+      if (this.record) writeLastGameRecord(this.buildRecordExport());
       return;
     }
     writeLocalSave(buildLocalSave(this));
+  }
+
+  // Every human command goes through here, so the record sees it.
+  perform(call, playerId, args = {}) {
+    return performRecordedCall(this.record, this.state, this.aiMeta, this, call, playerId, args);
+  }
+
+  buildRecordExport() {
+    return this.record ? buildGameRecordExport(this.record, this.state, this.aiMeta) : null;
+  }
+
+  downloadRecord() {
+    const payload = this.buildRecordExport();
+    if (!payload) return;
+    downloadJsonFile(payload, gameRecordFilename(this.record));
+  }
+
+  setRecordNote(key, text) {
+    setRecordNote(this.record, key, text);
+    this.scheduleAutosave();
+  }
+
+  // The notes box and download button on the Resolution and final panels.
+  buildRecordControls() {
+    if (!this.record) return null;
+    const final = Boolean(this.state.gameOver) || this.state.phase === 'scoring';
+    const noteKey = final ? 'game' : `round-${this.state.round}`;
+    return {
+      final,
+      note: getRecordNote(this.record, noteKey),
+      onNote: (text) => this.setRecordNote(noteKey, text),
+      download: () => this.downloadRecord(),
+    };
   }
 
   async mountMap() {
@@ -149,21 +193,7 @@ export class GameController {
   }
 
   async loadAiPlayers() {
-    const selections = this.config.aiOpponentSelections || [];
-    const aiPlayers = {};
-    for (const selection of selections) {
-      const playerId = Number(selection.playerId);
-      if (!Number.isInteger(playerId)) continue;
-      const opponent = hydrateAiOpponent(selection, playerId);
-      aiPlayers[playerId] = {
-        opponent,
-        displayName: selection.firstName || selection.name || opponent?.firstName || null,
-        opponentId: opponent?.id || selection.id || null,
-        policy: selection.policy || opponent?.policy || null,
-        strategyWeights: selection.strategyWeights || opponent?.strategyWeights || null,
-      };
-    }
-    return aiPlayers;
+    return buildAiPlayersFromSelections(this.config.aiOpponentSelections || []);
   }
 
   isSinglePlayer() {
@@ -213,7 +243,7 @@ export class GameController {
     if (!this.state || this.state.phase !== 'court') return;
     const canControl = !(this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer));
     if (!canControl) return;
-    autoResolveUnavailableHumanAppointments(this.state, this.activePlayer, this.aiMeta, this);
+    this.perform('autoResolveCourt', this.activePlayer);
     this.ensureHumanFocus();
   }
 
@@ -331,6 +361,7 @@ export class GameController {
         confirmTitleRedistribution: (assignments) => this.confirmTitleRedistribution(assignments),
         lockOrders: (orders) => this.lockOrders(orders),
         includeNewGame: true,
+        record: this.buildRecordControls(),
       },
       resolution: {
         allowManualTitleReassignment: !this.pendingAiTitleAssignment,
@@ -341,7 +372,7 @@ export class GameController {
             this.render();
             return;
           }
-          handleContinueAfterResolution(this.state, this.aiMeta, this);
+          this.perform('continueAfterResolution', null);
           this.clearActionError();
           this.render();
         },
@@ -351,7 +382,7 @@ export class GameController {
 
   createCourtHandlers(playerId) {
     const dispatch = (payload) => {
-      const result = handleHumanCourtAction(this.state, this.aiMeta, this, playerId, payload);
+      const result = this.perform('courtAction', playerId, { payload });
       if (!result.ok) {
         this.setActionError(result.reason);
         this.render();
@@ -368,7 +399,7 @@ export class GameController {
       'deal-accept': (payload) => dispatch({ action: 'deal-accept', ...payload }),
       'deal-refuse': (payload) => dispatch({ action: 'deal-refuse', ...payload }),
       'confirm-court': () => {
-        const result = handleHumanCourtConfirmation(this.state, this.aiMeta, this, playerId);
+        const result = this.perform('courtConfirm', playerId);
         if (!result.ok) {
           this.setActionError(result.reason);
           this.render();
@@ -383,21 +414,20 @@ export class GameController {
         const isDone = () => this.state.phase !== 'court' || this.state.courtActions?.playerConfirmed?.has(playerId);
         for (const action of actions) {
           if (isDone()) break;
-          result = handleHumanCourtAction(this.state, this.aiMeta, this, playerId, action);
+          result = this.perform('courtAction', playerId, { payload: action });
           if (!result.ok) break;
         }
         if (result.ok) {
           for (const powerKey of passPowers) {
             if (isDone()) break;
-            result = handleHumanCourtAction(this.state, this.aiMeta, this, playerId, {
-              action: 'pass-court-power',
-              powerKey,
+            result = this.perform('courtAction', playerId, {
+              payload: { action: 'pass-court-power', powerKey },
             });
             if (!result.ok) break;
           }
         }
         if (result.ok && !isDone() && actions.length === 0 && passPowers.length === 0) {
-          result = handleHumanCourtConfirmation(this.state, this.aiMeta, this, playerId);
+          result = this.perform('courtConfirm', playerId);
         }
         if (!result.ok) {
           this.setActionError(result.reason);
@@ -423,8 +453,8 @@ export class GameController {
     return {
       // The whole plan is sent once, then the dynasty locks.
       submitEstatePlan: ({ plan = {} } = {}) => {
-        let result = handleHumanEstateAction(this.state, this.aiMeta, this, playerId, { action: 'plan', plan });
-        if (result.ok) result = handleEstatesConfirmation(this.state, this.aiMeta, this, playerId);
+        let result = this.perform('estateAction', playerId, { payload: { action: 'plan', plan } });
+        if (result.ok) result = this.perform('estatesConfirm', playerId);
         if (!result.ok) {
           this.setActionError(result.reason);
           this.render();
@@ -437,7 +467,7 @@ export class GameController {
   }
 
   confirmEstates() {
-    const result = handleEstatesConfirmation(this.state, this.aiMeta, this, this.activePlayer);
+    const result = this.perform('estatesConfirm', this.activePlayer);
     if (!result.ok) {
       this.setActionError(result.reason);
       this.render();
@@ -448,7 +478,7 @@ export class GameController {
   }
 
   confirmTitleRedistribution(assignments) {
-    const result = handleManualTitleReassignment(this.state, this.aiMeta, this, this.activePlayer, assignments);
+    const result = this.perform('titleRedistribution', this.activePlayer, { assignments });
     if (!result.ok) {
       this.setActionError(result.reason);
       this.render();
@@ -460,7 +490,7 @@ export class GameController {
   }
 
   lockOrders(orders) {
-    const result = handleHumanOrders(this.state, this.aiMeta, this, this.activePlayer, orders);
+    const result = this.perform('orders', this.activePlayer, { orders });
     if (!result.ok) {
       this.setActionError(result.reason);
       this.render();
@@ -472,7 +502,7 @@ export class GameController {
 
   tryResolveTitleReassignment(panel) {
     if (this.pendingAiTitleAssignment && this.aiMeta) {
-      return resolvePendingTitleReassignment(this.state, this.aiMeta, this);
+      return this.perform('resolveTitleReassignment', null);
     }
 
     const assignmentControls = Array.from(panel.querySelectorAll('[data-title-assignment]'));
@@ -483,9 +513,7 @@ export class GameController {
       ]))
       : null;
 
-    const result = titleAssignments
-      ? resolvePendingTitleReassignment(this.state, this.aiMeta, this, titleAssignments)
-      : resolvePendingTitleReassignment(this.state, this.aiMeta, this);
+    const result = this.perform('resolveTitleReassignment', null, { assignments: titleAssignments });
     const errorEl = panel.querySelector('[data-role="title-reassignment-error"]');
     if (!result.ok && errorEl) errorEl.textContent = result.reason || '';
     else if (errorEl) errorEl.textContent = '';

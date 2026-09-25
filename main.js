@@ -15,8 +15,12 @@ import {
   clearLocalSave,
   describeLocalSave,
   isLocalSaveOutdated,
+  readLastGameRecord,
   readLocalSave,
 } from './ui/localSave.js';
+import { downloadJsonFile } from './ui/recordControls.js';
+import { gameRecordFilename, isGameRecord } from './game/record.js';
+import { getMapDefinition } from './data/maps/index.js';
 import { renderGlossaryHtml, renderRulesHtml } from './ui/rules.js';
 import { installGlossary } from './ui/glossaryTooltips.js';
 import { TutorialGuide } from './ui/tutorial/tutorial.js';
@@ -612,6 +616,28 @@ function renderResumeCard() {
   resumeGameError.textContent = outdated ? OUTDATED_SAVE_MESSAGE : '';
 }
 
+const lastRecordCard = document.getElementById('lastRecordCard');
+const lastRecordSummary = document.getElementById('lastRecordSummary');
+
+// The record of the last finished game, until the next one ends.
+function renderLastRecordCard() {
+  const record = readLastGameRecord();
+  lastRecordCard.hidden = !isGameRecord(record);
+  if (lastRecordCard.hidden) return;
+  const ended = record.exportedAt ? new Date(record.exportedAt) : null;
+  lastRecordSummary.textContent = [
+    `${record.config?.playerCount || '?'} dynasties`,
+    `${getMapDefinition(record.config?.mapId).name} map`,
+    record.fallen ? 'the empire fell' : `${record.round || '?'} rounds`,
+    ended && !Number.isNaN(ended.getTime()) ? `ended ${ended.toLocaleString()}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+document.getElementById('btnDownloadLastRecord').addEventListener('click', () => {
+  const record = readLastGameRecord();
+  if (isGameRecord(record)) downloadJsonFile(record, gameRecordFilename(record, new Date(record.exportedAt || Date.now())));
+});
+
 btnResumeGame.addEventListener('click', async () => {
   if (gameLaunchInFlight) return;
   const save = readLocalSave();
@@ -686,6 +712,7 @@ document.getElementById('btnTutorial').addEventListener('click', async () => {
       aiOpponentSelections: buildTutorialRivals(),
       humanPlayerIds: [TUTORIAL_HUMAN_ID],
       autosave: false,
+      record: false,
       onRender: () => guide.update(),
     });
     window.__basileus = game;
@@ -718,6 +745,7 @@ refreshSeatOptions();
 renderSetupChoiceControls();
 refreshModeVisibility();
 renderResumeCard();
+renderLastRecordCard();
 
 loadBrowserAiOpponentRoster(undefined, { required: false })
   .then((opponents) => {

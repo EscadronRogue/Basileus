@@ -68,6 +68,7 @@ npm run serve:multiplayer
 | `npm run simulate:ai -- --games 200 --players 5 --deck 9` | Runs deterministic all-AI batches (in parallel) and reports balance: fall rate, falls by round and invader, win rate per seat, and more. |
 | `npm run simulate:ai -- --map compact` | The same on the Compact map. |
 | `npm run train:ai -- --generations 3 --from-roster` | Tunes strategy weights against a mixed AI policy league on both maps and saves the best tuned opponents. See [`docs/ai-training.md`](docs/ai-training.md). |
+| `npm run record:report -- records/<file>.json` | Prints a downloaded game record as a round-by-round chronicle; `--verify` replays it from its seed. |
 | `npm run build:rules-doc` | Regenerates `docs/rules.md` from `ui/rules.js`. |
 | `npm run build:svg-fallback` | Regenerates `render/svgAssets.js` after editing `assets/*.svg`. |
 | `npm run build:compact-map` | Rebuilds `assets/hitzones-compact.svg` (the Compact map's fused provinces) from `assets/hitzones.svg`, then the fallback. Needs `npm install`. |
@@ -111,6 +112,7 @@ Render notes:
 ├── render/                 # SVG map renderer (render/map/*)
 ├── ui/                     # Browser controllers, panels, rules text, autosave
 ├── multiplayer/            # Node HTTP + WebSocket server and rooms
+├── records/                # Game records sent in from human games
 ├── assets/                 # SVG maps, fonts, and stylesheets (assets/css/*)
 ├── scripts/                # Generators and repository-wide tests
 ├── e2e/                    # Real-browser smoke tests
@@ -144,6 +146,8 @@ Useful entry points:
 `scripts/layering.test.js` enforces the layer boundaries: `engine/` imports only `data/`, `ai/` never imports the UI, and browser code never imports Node built-ins.
 
 Single-player and hotseat games autosave to the browser's `localStorage` and can be resumed from the setup screen.
+
+Local games are also **recorded** (`game/record.js`): every human command, the player's notes for each round, and at the end the full history with each AI's reasons and hidden mood. The Resolution and final panels have a notes box and a **Download game record** button, and the last finished game's record stays downloadable from the setup screen. A record replays exactly from its seed on the same code. See [`records/README.md`](records/README.md) for sending and reading records.
 
 ## AI Layer
 

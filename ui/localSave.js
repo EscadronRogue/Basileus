@@ -41,6 +41,7 @@ export function buildLocalSave(controller) {
     mapFilter: controller.uiState?.mapFilter ?? null,
     gameState: serializeGameState(controller.state),
     aiMeta: serializeAiMeta(controller.aiMeta),
+    record: controller.record ?? null,
   };
 }
 
@@ -100,4 +101,29 @@ export function describeLocalSave(save) {
     mapName: getMapDefinition(state.mapId).name,
     savedAt: save?.savedAt || null,
   };
+}
+
+// The record of the last finished game (game/record.js), kept until the next
+// one ends so it can still be downloaded from the setup screen.
+export const LAST_RECORD_KEY = 'basileus.lastGameRecord';
+
+export function writeLastGameRecord(record) {
+  const storage = getStorage();
+  if (!storage || !record) return false;
+  try {
+    storage.setItem(LAST_RECORD_KEY, JSON.stringify(record));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readLastGameRecord() {
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    return JSON.parse(storage.getItem(LAST_RECORD_KEY) || 'null');
+  } catch {
+    return null;
+  }
 }
