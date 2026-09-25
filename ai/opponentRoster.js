@@ -105,6 +105,10 @@ function normalizeTunedOpponent(entry, index = 0) {
     },
     strategyWeights,
     metrics: entry.metrics || null,
+    // How strong it proved against the rest of the roster (ai/rate.js), and
+    // whether players are offered it: weak AIs stay for training only.
+    rating: entry.rating || null,
+    offered: entry.offered !== false,
     source: 'tuned',
   };
 }
@@ -141,11 +145,19 @@ export function getTunedAiOpponents(roster = []) {
   ));
 }
 
-// The opponents a player picks from: the trained roster when there is one,
-// otherwise the built-in styles.
-export function getSelectableAiOpponents(roster = []) {
+// The trained AIs players meet: those rated strong enough. A roster rated
+// before ratings existed offers every trained AI.
+export function getOfferedAiOpponents(roster = []) {
   const tuned = getTunedAiOpponents(roster);
-  return tuned.length ? tuned : (Array.isArray(roster) ? roster : []);
+  const offered = tuned.filter((opponent) => opponent.offered !== false);
+  return offered.length ? offered : tuned;
+}
+
+// The opponents a player picks from: the offered trained AIs when there are
+// any, otherwise the built-in styles.
+export function getSelectableAiOpponents(roster = []) {
+  const offered = getOfferedAiOpponents(roster);
+  return offered.length ? offered : (Array.isArray(roster) ? roster : []);
 }
 
 // "Leon, Usurper" for a trained AI with a personality, else its name.
@@ -156,7 +168,7 @@ export function describeAiOpponentChoice(opponent) {
 }
 
 export function pickRandomTunedOpponent(roster = [], rng = Math.random) {
-  const tuned = getTunedAiOpponents(roster);
+  const tuned = getOfferedAiOpponents(roster);
   if (!tuned.length) return null;
   const random = typeof rng === 'function' ? rng : Math.random;
   const index = Math.floor(random() * tuned.length);

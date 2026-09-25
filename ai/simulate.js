@@ -35,8 +35,12 @@ const DEFAULT_OPTIONS = {
   probe: null,
 };
 
-// Invasions should leave room to hold back: the empire falls only when most
-// dynasties let the frontier down.
+// The empire-fall rate reads how the AIs play, not how the rules are set:
+// the rules make the empire hard to keep, and the AIs adapt to them. The best
+// AI would keep the empire alive and still end on top, by getting others to
+// do the defending. An empire that almost never falls means the AIs spend too
+// much on the frontier (over-defenders, which training should punish); one
+// that falls very often means they gamble it away. The bands only flag those.
 const FALL_RATE_ACCEPTABLE_MIN = 0.05;
 const FALL_RATE_IDEAL_MIN = 0.1;
 const FALL_RATE_IDEAL_MAX = 0.2;
@@ -1036,8 +1040,8 @@ function buildDiagnostics(stats, games, resolutions, orders) {
 
   if (stats.stuck > 0) diagnostics.push('Some simulated games became stuck; inspect sample seeds before trusting aggregate behavior.');
   if (fallPressure.band === 'ideal') diagnostics.push(`Empire-fall rate ${fallPct}% is in the ideal band (${FALL_RATE_TARGET}).`);
-  else if (fallPressure.band === 'low') diagnostics.push(`Empire-fall rate ${fallPct}% is below the acceptable band (${FALL_RATE_TARGET}); check whether this scenario is unusually safe.`);
-  else if (fallPressure.band === 'high') diagnostics.push(`Empire-fall rate ${fallPct}% is above the acceptable band (${FALL_RATE_TARGET}); check whether this scenario is unusually punishing.`);
+  else if (fallPressure.band === 'low') diagnostics.push(`Empire-fall rate ${fallPct}% is below the acceptable band (${FALL_RATE_TARGET}); the AIs may be over-defending.`);
+  else if (fallPressure.band === 'high') diagnostics.push(`Empire-fall rate ${fallPct}% is above the acceptable band (${FALL_RATE_TARGET}); the AIs may be gambling the empire away.`);
   else diagnostics.push(`Empire-fall rate ${fallPct}% is acceptable (${fallPressure.target}).`);
   if (fallRate < FALL_RATE_ACCEPTABLE_MIN && averageMargin > 9) diagnostics.push('War margins are very safe in this simulation sample; compare against replayed games before changing AI behavior.');
   if (fallRate > FALL_RATE_ACCEPTABLE_MAX && defeatRate > 0.6) diagnostics.push('Invasion defeats are frequent in this high-fall sample; inspect the invasion mix and seeds.');

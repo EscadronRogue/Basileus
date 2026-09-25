@@ -56,6 +56,8 @@ export const STRATEGY_WEIGHT_BOUNDS = Object.freeze({
   officeKeepWeight: [0, 2.4],
   spiteWeight: [0, 2.5],
   unrestOpportunism: [0, 2],
+  bishopAppointBonus: [0, 6],
+  bishopKeepWeight: [0, 6],
 });
 
 export const TRAINABLE_WEIGHT_KEYS = Object.freeze(Object.keys(STRATEGY_WEIGHT_BOUNDS));
@@ -115,22 +117,6 @@ export const PERSONALITIES = Object.freeze([
     },
   },
   {
-    id: 'kingmaker',
-    title: 'Kingmaker',
-    summary: 'Never claims the throne itself and always does its part at the frontier. Backs whichever claimant will pay best in offices, and remembers who kept their word.',
-    temperament: { duty: 0.4, ambition: 0.0, volatility: 0.8, whim: 0.4 },
-    basePolicy: 'kingmaker',
-    traits: {
-      throneBase: [0, 20],
-      selfClaim: [0.05, 0.7],
-      supportOtherClaimant: [1.1, 1.8],
-      relationshipCoupWeight: [1, 1.8],
-      basileusTitleExpectation: [1.2, 2.4],
-      reciprocityWeight: [0.8, 1.8],
-      officeKeepWeight: [0.8, 2.4],
-    },
-  },
-  {
     id: 'tyrant',
     title: 'Tyrant',
     summary: 'Takes power and uses it. Will strip the frontier bare to seize the throne, keeps offices for itself, strips rivals of theirs, and never forgets a slight.',
@@ -162,7 +148,7 @@ export const PERSONALITIES = Object.freeze([
       trustWeight: [0.5, 1.2],
     },
   },
-  // Five ways of serving yourself at the empire's expense.
+  // Four ways of serving yourself at the empire's expense.
   {
     id: 'miser',
     title: 'Miser',
@@ -210,20 +196,6 @@ export const PERSONALITIES = Object.freeze([
     },
   },
   {
-    id: 'regicide',
-    title: 'Regicide',
-    summary: 'Undermines any Basileus it wants gone: holds back from the war to load Unrest on the throne, then backs a rival claimant in the coup.',
-    temperament: { duty: -0.4, ambition: 0.5, volatility: 1.1, whim: 0.5 },
-    basePolicy: 'strategic',
-    traits: {
-      unrestOpportunism: [1.2, 2],
-      regimeUrgencyWeight: [1.4, 2.4],
-      incumbentDefense: [0.1, 0.5],
-      supportOtherClaimant: [0.8, 1.8],
-      allyDefenseReliance: [0.85, 1],
-    },
-  },
-  {
     id: 'glory',
     title: 'Glory Hunter',
     summary: 'Fights hard at the frontier to be the best defender, then spends the gold and Triumph on seizing the throne.',
@@ -237,35 +209,7 @@ export const PERSONALITIES = Object.freeze([
       coupOpportunityWeight: [1.2, 2.4],
     },
   },
-  // Four more ways to play, to widen what training meets.
-  {
-    id: 'domainLord',
-    title: 'Domain Lord',
-    summary: 'Gathers its estates into domains in a few safe provinces, defends them at the frontier, and backs whichever claimant will leave them alone.',
-    temperament: { duty: 0.2, ambition: -0.3, volatility: 0.8, whim: 0.4 },
-    basePolicy: 'profiteer',
-    traits: {
-      estateDomainWeight: [1.6, 2.4],
-      estateSpread: [0, 0.4],
-      estateShieldWeight: [1.2, 2.4],
-      estateThreatPenalty: [1.5, 5],
-      estateProfit: [4, 9],
-    },
-  },
-  {
-    id: 'condottiere',
-    title: 'Condottiere',
-    summary: 'Hires mercenaries to be the best defender of every war it can win, and lives off the war rewards rather than the throne.',
-    temperament: { duty: 0.7, ambition: -0.1, volatility: 0.8, whim: 0.4 },
-    basePolicy: 'defender',
-    traits: {
-      mercenaryCostPenalty: [0, 0.12],
-      recoveryBonus: [1.4, 2.5],
-      invasionSafetyValue: [1.2, 4],
-      throneBase: [0, 20],
-      selfClaim: [0.05, 0.8],
-    },
-  },
+  // Three more ways to play, to widen what training meets.
   {
     id: 'turncoat',
     title: 'Turncoat',
@@ -296,7 +240,18 @@ export const PERSONALITIES = Object.freeze([
       allyDefenseReliance: [0.55, 0.8],
     },
   },
-  // Explorers: no temperament at all. Each starts from its own random point
+  {
+    id: 'prelate',
+    title: 'Prelate',
+    summary: 'Builds up the Church: as Patriarch it fills every bishopric it can, rivals included, and keeps the Bishops it finds instead of revoking them.',
+    temperament: { duty: 0.3, ambition: -0.1, volatility: 0.8, whim: 0.4 },
+    basePolicy: 'strategic',
+    traits: {
+      bishopAppointBonus: [3, 6],
+      bishopKeepWeight: [3, 6],
+    },
+  },
+  // An explorer: no temperament at all. It starts from its own random point
   // of the whole weight space and trains with bolder steps, to find ways of
   // winning the others do not try.
   {
@@ -306,24 +261,6 @@ export const PERSONALITIES = Object.freeze([
     temperament: { duty: -0.2, ambition: 0.6, volatility: 1.2, whim: 0.8 },
     basePolicy: 'strategic',
     explore: { seed: 1101 },
-    traits: {},
-  },
-  {
-    id: 'wildcard',
-    title: 'Wildcard',
-    summary: 'Found its own way from a random start: spreads its estates thinly so no revocation hurts much, strips rivals of their offices, never claims the throne but backs a challenger, and gives the frontier no more than it needs.',
-    temperament: { duty: -0.3, ambition: 0.2, volatility: 1.2, whim: 0.8 },
-    basePolicy: 'strategic',
-    explore: { seed: 2203 },
-    traits: {},
-  },
-  {
-    id: 'outsider',
-    title: 'Outsider',
-    summary: 'Found its own way from a random start: covets the throne and pays back those who help it, gives the frontier as little as it can, and does not mind who revokes its estates.',
-    temperament: { duty: -0.4, ambition: 0.6, volatility: 1.2, whim: 0.8 },
-    basePolicy: 'strategic',
-    explore: { seed: 3307 },
     traits: {},
   },
   {

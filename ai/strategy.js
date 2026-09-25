@@ -110,6 +110,11 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   spiteWeight: 1,
   // How much it lets a war go to load Unrest on a Basileus it wants gone.
   unrestOpportunism: 0.3,
+  // As Patriarch: how much it values filling a bishopric, whoever gets it,
+  // and keeping a sitting Bishop rather than revoking it. Both are 0 by
+  // default: training finds out whether a full Church pays.
+  bishopAppointBonus: 0,
+  bishopKeepWeight: 0,
 });
 
 // The AI's weights, tilted by its current mood when the game state is given.
@@ -531,7 +536,8 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
   }
   if (payloadAction === 'appoint-bishop') {
     return scoreRecipientGain(final, playerId, targetId, leaderId, 'office', Math.max(1, Number(theme?.C ?? theme?.origin?.C) || 1), weights, context)
-      + scoreAppointmentUnlock(state, playerId, targetId, leaderId, weights);
+      + scoreAppointmentUnlock(state, playerId, targetId, leaderId, weights)
+      + (Number(weights.bishopAppointBonus) || 0);
   }
   if (payloadAction === 'revoke') {
     if (targetId === playerId) return -100;
@@ -545,8 +551,9 @@ function scoreCourtIntent(state, final, playerId, action, leaderId = getLeaderId
       deniedValue += scoreResourceGain(final, targetId, 'estate', income);
     }
     const relationship = scoreRevocationRelationship(state, final, playerId, targetId, leaderId, weights, context);
-    if (targetId === leaderId) return deniedValue * weights.leaderDenial + 3 + relationship;
-    return deniedValue * weights.rivalDenial + relationship;
+    const churchKeep = action.payload?.value?.endsWith(':bishop') ? Number(weights.bishopKeepWeight) || 0 : 0;
+    if (targetId === leaderId) return deniedValue * weights.leaderDenial + 3 + relationship - churchKeep;
+    return deniedValue * weights.rivalDenial + relationship - churchKeep;
   }
   return 0;
 }

@@ -90,7 +90,7 @@ The claimant with the most support becomes Basileus from the next round. If nobo
 
 ## The War
 
-All troops at the frontier fight the invasion. Its strength is known when it is drawn: 2 for every imperial province on its route (the farther the empire reaches toward the invader, the stronger it is), plus 2 for every round of the game so far (the threat grows every round).
+All troops at the frontier fight the invasion. Its strength is known when it is drawn: 3 for every imperial province on its route, as much as taking it costs (the farther the empire reaches toward the invader, the stronger it is, and no province holds on its own), plus 2 for every round of the game so far (the threat grows every round).
 
 - **Invader stronger.** What the invader beats the frontier by pays for its route, step by step: 3 to take each imperial province; land already lost offers no resistance. It stops at the first step it cannot pay for.
 - **Constantinople** ends some routes. It costs the invader 3 plus the Theodosian Walls (3). If the invader can pay for it too, the empire falls and nobody wins.
@@ -134,7 +134,7 @@ After the last round's Resolution, a final Offices phase is played (after the ma
 - **Patriarch's influence** (throne): 2.5 support in every coup that follows the Patriarch's coup choices like troops: all to the first choice, half to the second.
 - **Triumph** (throne): Support for the best defender of the last war, for that dynasty itself, in the next coup only: 3 for each province won.
 - **Unrest** (throne): 2 less support per province lost in the last war, for the Basileus who lost them, in the next coup only.
-- **Invasion** (war): This round's enemy: a route of provinces, shown on the map, and a strength known when it is drawn: 2 for every imperial province on its route, plus 2 for every round so far. If it beats the frontier, it takes provinces along its route.
+- **Invasion** (war): This round's enemy: a route of provinces, shown on the map, and a strength known when it is drawn: 3 for every imperial province on its route, plus 2 for every round so far. If it beats the frontier, it takes provinces along its route.
 - **Invasion ladder** (war): What each step of an invasion's route costs the invader, out of what it beats the frontier by: 3 to take an imperial province, nothing to cross a lost one, and 3 plus the Theodosian Walls for Constantinople. Shown as "+N" tags on the map; the invasion card adds them up.
 - **Imperial province** (map): A province the empire holds. Only imperial provinces raise troops and pay estate gold.
 - **Lost province** (map): A province held by invaders. Its Strategos and estates stay on record but produce nothing, and cannot be revoked, until the empire retakes it. Its Bishop is still paid.

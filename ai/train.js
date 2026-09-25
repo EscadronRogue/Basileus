@@ -765,6 +765,11 @@ function parseArgs(argv) {
       options.balance = { ...(options.balance || {}), [name]: value };
     } else if (key === 'json') options.json = true;
     else if (key === 'no-save') options.save = false;
+    else if (key === 'no-rate') options.rate = false;
+    else if (key === 'rating-games') {
+      options.ratingGames = argv[index + 1];
+      index += 1;
+    }
     else if (key === 'from-roster') options.fromRoster = true;
     else if (key === 'fresh') {
       options.fresh = argv[index + 1];
@@ -850,4 +855,16 @@ if (isCli) {
   const result = await trainPersonalities(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else console.log(formatTrainingReport(result));
+  // A new roster is rated at once, so players only meet the AIs that hold
+  // their own (ai/rate.js).
+  if (result.saved && options.rate !== false) {
+    const { rateRoster } = await import('./rate.js');
+    const { ratings } = await rateRoster({
+      rosterPath: result.saved.path,
+      workers: options.workers ? Number(options.workers) : undefined,
+      ...(options.ratingGames ? { games: Number(options.ratingGames) } : {}),
+    });
+    const weak = Object.entries(ratings).filter(([, rating]) => !rating.offered).map(([id]) => id);
+    if (!options.json) console.log(`Rated the roster; not offered to players: ${weak.length ? weak.join(', ') : 'none'}.`);
+  }
 }

@@ -10,7 +10,7 @@ import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 // Bumped whenever a rule change makes older saves unplayable. A save made
 // under other rules is refused instead of loading into a broken game.
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 
 export function isCurrentRulesVersion(rawState) {
   return Number(rawState?.rulesVersion) === RULES_VERSION;

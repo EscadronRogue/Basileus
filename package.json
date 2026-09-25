@@ -31,6 +31,7 @@
     "serve:multiplayer": "node multiplayer/server.js",
     "simulate:ai": "node ai/simulate.js",
     "train:ai": "node ai/train.js",
+    "rate:ai": "node ai/rate.js",
     "record:report": "node scripts/record-report.js",
     "build:svg-fallback": "node scripts/build-svg-fallback.js",
     "build:compact-map": "node scripts/build-compact-map.mjs && node scripts/build-svg-fallback.js",
@@ -38,7 +39,7 @@
     "test": "npm run test:data && npm run test:economy && npm run test:ai && npm run test:ui && npm run test:multiplayer",
     "test:data": "node --test data/data.test.js render/svgAssets.test.js scripts/layering.test.js scripts/rulesDoc.test.js scripts/terms.test.js",
     "test:economy": "node engine/economy.test.js",
-    "test:ai": "node --test ai/brain.test.js ai/mood.test.js ai/purge.test.js ai/deals.test.js ai/balance.test.js game/save.test.js game/record.test.js",
+    "test:ai": "node --test ai/brain.test.js ai/mood.test.js ai/purge.test.js ai/deals.test.js ai/balance.test.js ai/rate.test.js game/save.test.js game/record.test.js",
     "test:ui": "node ui/gameController.test.js",
     "test:multiplayer": "node --test multiplayer/server.test.js multiplayer/service.test.js && node multiplayer/verify.js",
     "test:browser": "node --test --test-concurrency=1 e2e/smoke.test.js"

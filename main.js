@@ -5,6 +5,7 @@ import { loadBrowserAiOpponentRoster } from './ai/brain.js';
 import {
   RANDOM_TUNED_OPPONENT_ID,
   describeAiOpponentChoice,
+  getOfferedAiOpponents,
   getSelectableAiOpponents,
   getTunedAiOpponents,
 } from './ai/opponentRoster.js';
@@ -386,8 +387,8 @@ async function readSelectedMultiplayerSave() {
 function buildAiOpponentSelections(playerCount, humanSeat, rng = Math.random) {
   const selections = [];
   if (!aiOpponentRoster.length) return selections;
-  const trainedOpponents = getTrainedAiOpponents();
-  const randomTrainedBag = makeRandomOpponentBag(trainedOpponents);
+  // Random seats draw only from the AIs players are offered.
+  const randomTrainedBag = makeRandomOpponentBag(getOfferedAiOpponents(aiOpponentRoster));
   for (let playerId = 0; playerId < playerCount; playerId += 1) {
     if (playerId === humanSeat) continue;
     const seat = playerId + 1;
