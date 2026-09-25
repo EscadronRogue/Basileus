@@ -400,7 +400,10 @@ function buildSpec(scenario, candidatePolicy, league, options) {
     mapId: scenario.mapId || 'classic',
     policies,
     allowUntunedPolicies: true,
-    historyEnabled: false,
+    // AI memory and moods are rebuilt from the chronicle: without it every
+    // AI would train with no grudges, favours or changes of mood, unlike
+    // the games people play.
+    historyEnabled: true,
     samples: 0,
     maxSteps: options.maxSteps,
     balance: options.balance,
