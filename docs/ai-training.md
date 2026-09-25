@@ -149,6 +149,7 @@ For each personality the log prints its value, win rate, and how it plays:
 ### Options
 
 - `--generations N` generations (default `6`)
+- `--until TIME` start no generation after this time (e.g. `2026-09-26T06:00Z`); the one under way finishes, then the finals run. With it, `--generations` is only a cap
 - `--offspring N` mutants per personality per generation (default `6`)
 - `--finalists N` mutants per personality that replay the confirmation tables (default `2`)
 - `--screening-games N`, `--confirm-games N`, `--final-games N` tables per stage (defaults `36`, `72`, `160`)
