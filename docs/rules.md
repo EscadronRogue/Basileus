@@ -31,7 +31,7 @@ If an invasion takes Constantinople, the empire falls and the game ends at once:
 Choose the map when you set up a game. The rules are the same on both.
 
 - **Classic:** 40 provinces, 14 of them bishoprics; 13 start lost.
-- **Compact:** 21 provinces, 7 of them bishoprics; 7 start lost. Every province raises 1 troop, so armies, invasions and income are smaller. Values that differ from the Classic map: starting gold 2 (Classic 4); estate revocations by the Basileus per round 2 (Classic 4); price of the first estate of a round 2 (Classic 1); most mercenaries a dynasty can hire 6 (Classic 10); Theodosian Walls 3 (Classic 5); Patriarch's influence 2 (Classic 4); Unrest per lost province 1 (Classic 2); invasion strength per imperial province 2.2 (Classic 1.85). Everything else is the same.
+- **Compact:** 21 provinces, 7 of them bishoprics; 7 start lost. Every province raises 1 troop, so armies, invasions and income are smaller. Values that differ from the Classic map: starting gold 2 (Classic 4); estate revocations by the Basileus per round 2 (Classic 4); price of the first estate of a round 2 (Classic 1); most mercenaries a dynasty can hire 6 (Classic 10); Theodosian Walls 3 (Classic 5); Patriarch's influence 2 (Classic 4); Unrest per lost province 1 (Classic 2); invasion strength per imperial province 2 (Classic 1.85). Everything else is the same.
 
 ## A Round
 

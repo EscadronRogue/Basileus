@@ -167,7 +167,7 @@ export function createInvasionInstance(template, rng, state = null) {
 
 export function isEarlyInvasionGraceRound(state) {
   const round = Number(state?.round) || 0;
-  return round >= 1 && round <= BALANCE.EARLY_INVASION_GRACE_ROUNDS;
+  return round >= 1 && round <= getBalance(state).EARLY_INVASION_GRACE_ROUNDS;
 }
 
 export function prepareInvasionForDraw(state, invasion, rng) {

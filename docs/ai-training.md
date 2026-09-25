@@ -149,38 +149,47 @@ records the benchmark.
 ### Current roster
 
 Trained for the current rules (the Basileus revokes estates only, two coup
-choices, estates at 1, 2, 3..., offices raising their own troops, invasion
-strength 1.7 per imperial province) with `--generations 8 --seed 20260926`:
-about 45,000 games, 229 minutes on four workers.
+choices, estates at rising prices, war rewards rising 1, 2, 3... per
+province, invasion strength 1.85 per imperial province on the Classic map)
+on both maps, warm-started from the previous roster, with
+`--from-roster --generations 5 --seed 20260925`: about 35,000 games, 109
+minutes on three workers.
 
 ### Which kinds of selfishness pay
 
-600 games of 5 dynasties drawn from the twelve trained AIs (fair share 20%);
-troops are per round, averaged over the game:
+600 games of 5 dynasties on each map, drawn from the twelve trained AIs
+(fair share 20%). Troops are per round, averaged over the game, as
+Classic / Compact:
 
-| AI | Win | vs fair share | Frontier | Constantinople | Dismissed | Empire falls in its games |
-| --- | --- | --- | --- | --- | --- | --- |
-| Opportunist (lets others defend) | 34% | 1.71x | 3.9 | 1.0 | 3.6 | 21% |
-| Saboteur (lets rivals' provinces fall) | 25% | 1.27x | 8.7 | 0.6 | 2.1 | 12% |
-| Regicide (loses wars to topple the Basileus) | 23% | 1.16x | 8.7 | 1.5 | 1.0 | 13% |
-| Landlord | 19% | 0.96x | 7.3 | 1.0 | 1.6 | 22% |
-| Patron | 19% | 0.93x | 4.6 | 1.9 | 3.3 | 15% |
-| Kingmaker | 18% | 0.87x | 9.8 | 0.2 | 1.0 | 22% |
-| Glory Hunter (best defender, then a coup) | 16% | 0.78x | 7.1 | 3.6 | 0.2 | 12% |
-| Miser (dismisses troops for gold) | 15% | 0.74x | 8.9 | 0.5 | 2.0 | 13% |
-| Hoarder (keeps offices, strips rivals) | 11% | 0.56x | 9.6 | 1.0 | 1.1 | 10% |
-| Usurper | 10% | 0.49x | 1.6 | 8.2 | 0.3 | 20% |
-| Strategist | 10% | 0.47x | 9.5 | 0.8 | 1.1 | 12% |
-| Tyrant | 2% | 0.09x | 1.3 | 8.8 | 0.3 | 23% |
+| AI | Win (Classic) | Win (Compact) | Frontier | Constantinople | Dismissed |
+| --- | --- | --- | --- | --- | --- |
+| Opportunist (lets others defend) | 38% | 32% | 2.8 / 2.2 | 1.5 / 0.4 | 3.5 / 2.2 |
+| Saboteur (lets rivals' provinces fall) | 25% | 25% | 9.6 / 4.5 | 0.7 / 0.2 | 1.5 / 1.2 |
+| Regicide (loses wars to topple the Basileus) | 22% | 20% | 9.2 / 4.6 | 1.0 / 0.2 | 1.2 / 1.1 |
+| Kingmaker | 19% | 15% | 9.5 / 5.0 | 0.1 / 0.0 | 0.6 / 0.8 |
+| Patron | 15% | 17% | 3.4 / 2.5 | 2.3 / 0.8 | 3.5 / 2.0 |
+| Miser (dismisses troops for gold) | 15% | 14% | 8.9 / 4.5 | 0.5 / 0.5 | 1.7 / 1.4 |
+| Strategist | 15% | 15% | 9.8 / 4.8 | 0.7 / 0.1 | 1.0 / 0.8 |
+| Hoarder (keeps offices, strips rivals) | 15% | 12% | 10.4 / 5.5 | 0.5 / 0.1 | 0.3 / 0.3 |
+| Landlord | 12% | 12% | 9.0 / 4.9 | 0.4 / 0.1 | 0.8 / 0.5 |
+| Glory Hunter (best defender, then a coup) | 11% | 9% | 11.1 / 5.0 | 0.8 / 1.3 | 0.1 / 0.3 |
+| Usurper | 5% | 6% | 1.6 / 1.2 | 7.8 / 3.6 | 0.3 / 0.3 |
+| Tyrant | 5% | 3% | 2.1 / 1.2 | 7.2 / 3.5 | 0.2 / 0.1 |
 
-- The empire falls in 16% of these games; wars are won 49% of the time.
-- Free-riding pays most: the Opportunist sends half as many troops to the
-  frontier as the others, dismisses the rest for gold, and wins 1.7 times
-  its share. Spite (Saboteur) and undermining the Basileus (Regicide) pay
-  too.
-- Pouring troops into Constantinople does not pay (Usurper, Tyrant), and
-  neither does keeping every office (Hoarder).
-- `--probe selfish` (the trained Strategist made selfish) wins 19% of its
-  games, twice the Strategist's 10%; `--probe cautious` wins 1%.
-- Gold per dynasty stays around 2 until round 6 and rises to 15 by the last
-  round.
+- The empire falls in 18% of Classic games and 25% of Compact games (10%
+  and 13% by round 3); wars are won about half the time on both maps.
+- Rising war rewards made defending pay: the retrained AIs send 7.4 troops
+  per order to the frontier on the Classic map, against 5.5 before, and
+  the fall rate dropped from 45% to 18% with the same invasions.
+- Free-riding still pays most: the Opportunist sends far fewer troops to
+  the frontier than the others (2.8 per round against about 9.5 on the
+  Classic map) and wins 1.9 times its share there, 1.6 on the Compact map. Spite (Saboteur) and undermining the
+  Basileus (Regicide) pay too.
+- Pouring troops into Constantinople does not pay (Usurper, Tyrant).
+- `--probe selfish` (the trained Strategist made selfish) wins 18% of its
+  Classic games and 15% of its Compact games; `--probe cautious` wins 3%
+  and 4%.
+- Classic: a dynasty receives 4 gold and 8 troops in the first round and 25
+  gold and 10 troops in the last. Compact: 2 gold and 5 troops in the first
+  round, 13 gold and 5 troops in the last, with half as many estates built
+  (71 per game against 143).

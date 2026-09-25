@@ -23,9 +23,12 @@ test('seeded all-AI games complete with plausible balance', { timeout: 300_000 }
     assert.ok(shareOfWins < 0.5, `seat ${Number(seat) + 1} wins ${Math.round(shareOfWins * 100)}% of surviving games`);
   }
   assert.ok(Number.isFinite(result.scoring.pointGap) && result.scoring.pointGap >= 0);
-  // No AI temperament runs away with the game.
+  // No AI temperament runs away with the game. With twelve AIs each plays
+  // only about ten of these games, so the bound allows two standard errors
+  // of sampling noise on top of 2.5x the fair share.
   for (const [id, entry] of Object.entries(result.opponentWinRates)) {
-    assert.ok(entry.winRate < result.fairShare * 2.5, `${id} wins ${Math.round(entry.winRate * 100)}% of its games`);
+    const noise = 2 * Math.sqrt((result.fairShare * (1 - result.fairShare)) / Math.max(1, entry.games));
+    assert.ok(entry.winRate < result.fairShare * 2.5 + noise, `${id} wins ${Math.round(entry.winRate * 100)}% of its ${entry.games} games`);
   }
 });
 
