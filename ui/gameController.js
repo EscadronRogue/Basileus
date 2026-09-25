@@ -39,6 +39,7 @@ export class GameController {
       playerCount: config.playerCount || 5,
       turnCount: config.turnCount || config.deckSize || 9,
       deckSize: config.turnCount || config.deckSize || 9,
+      mapId: config.mapId || 'classic',
       seed: config.seed || Date.now(),
       historyEnabled: config.historyEnabled !== false,
       mode: config.mode || 'hotseat',
@@ -127,6 +128,7 @@ export class GameController {
 
   async mountMap() {
     await createMapSVG('mapContainer', {
+      mapId: this.state?.mapId,
       mapFilter: this.uiState.mapFilter,
       onMapFilterChange: (filterId) => {
         this.uiState.mapFilter = filterId;

@@ -10,7 +10,7 @@ import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopTotal, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { getPreferredCoupCandidate, normalizeCoupChoices } from '../engine/coup.js';
-import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
+import { applyBalanceOverrides, getBalance, resetBalance } from '../data/balance.js';
 import { createAIMeta } from './brain.js';
 import { POLICY_WEIGHT_PRESETS } from './policies.js';
 import { loadTunedOpponentRosterSync } from './nodeOpponentRoster.js';
@@ -27,6 +27,8 @@ const DEFAULT_OPTIONS = {
   allowUntunedPolicies: false,
   // Balance values replaced for this run: { NAME: value } (see data/balance.js).
   balance: null,
+  // The map to play on (data/maps).
+  mapId: 'classic',
   // A built-in preset (such as 'cautious' or 'gambler') seated once per game,
   // rotating through the seats, among the tuned roster.
   probe: null,
@@ -172,7 +174,7 @@ function summarizeOrders(state, playerId) {
   }
 
   const mercenaries = state.mercenaryOrders?.[playerId] || orders.mercenaries || {};
-  const mercenaryCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(mercenaries.count) || 0));
+  const mercenaryCount = Math.max(0, Math.min(getBalance(state).MAX_MERCENARIES, Number(mercenaries.count) || 0));
   if (mercenaries.destination === 'capital') capitalTroops += mercenaryCount;
   else frontierTroops += mercenaryCount;
 
@@ -492,6 +494,7 @@ function createAllAiGame(options, seed) {
   const state = createGameState({
     playerCount: options.playerCount,
     deckSize: options.deckSize,
+    mapId: options.mapId,
     seed,
     historyEnabled: options.historyEnabled !== false,
   });
@@ -653,6 +656,7 @@ function normalizeSimulationOptions(rawOptions = {}) {
     allowUntunedPolicies: Boolean(rawOptions.allowUntunedPolicies),
     balance: rawOptions.balance && Object.keys(rawOptions.balance).length ? { ...rawOptions.balance } : null,
     probe: rawOptions.probe || null,
+    mapId: rawOptions.mapId || DEFAULT_OPTIONS.mapId,
   };
 }
 
@@ -1019,13 +1023,14 @@ function parseArgs(argv) {
     else if (key === 'policies') options.policies = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
     else if (key === 'workers') options.workers = toInt(value, defaultSimulationWorkers());
     else if (key === 'probe') options.probe = String(value || '').trim() || null;
+    else if (key === 'map') options.mapId = String(value || '').trim() || 'classic';
   }
   return options;
 }
 
 function formatReport(result) {
   const lines = [
-    `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} turns, seed ${result.options.seed}`,
+    `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} rounds, ${result.options.mapId} map, seed ${result.options.seed}`,
     result.options.balance ? `Balance: ${Object.entries(result.options.balance).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(', ')}` : null,
     result.options.policies ? null : 'Opponents: saved tuned AI roster',
     `Completion: ${result.completed}/${result.games} complete, stuck ${result.stuck}, fall rate ${Math.round(result.fallRate * 100)}% (${result.fallPressure.band}), avg rounds ${result.averageRounds}`,

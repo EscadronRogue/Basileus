@@ -1,15 +1,19 @@
 // render/map/svgImport.js - loads the SVG assets and imports background, province shapes, and hatch patterns.
 
-import { PROVINCES } from '../../data/provinces.js';
 import { getProvinceRegionPalette, getRegionColor } from '../../ui/labels.js';
 import {
   MAP_HEIGHT,
   MAP_WIDTH,
   MIN_THREAT_HATCH_SCALE,
   SVG_NS,
+  mapRuntime,
   THREAT_HATCH_PRIMARY_STROKE,
   THREAT_HATCH_SPACING,
 } from './state.js';
+
+function mapProvinces() {
+  return mapRuntime.map?.provinces || [];
+}
 
 export async function loadSvgAsset(relativePath, fallbackName) {
   if (typeof fetch === 'function') {
@@ -78,7 +82,7 @@ export function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, th
     if (!isProvinceId(provinceId)) continue;
 
     configureProvincePath(path, provinceId, `province-shape province-${provinceId}`, 'province');
-    const province = PROVINCES.find((entry) => entry.id === provinceId);
+    const province = mapProvinces().find((entry) => entry.id === provinceId);
     if (province) applyProvincePalette(path, province.region);
   }
 
@@ -118,7 +122,7 @@ export function importProvinceShapes(rootSvg, visualLayer, regionStrokeLayer, th
     path.style.fillOpacity = '1';
 
     // Apply region color variables so the overlay stroke matches the province outline
-    const province = PROVINCES.find((p) => p.id === provinceId);
+    const province = mapProvinces().find((p) => p.id === provinceId);
     if (province) applyProvincePalette(path, province.region);
   }
 
@@ -151,7 +155,7 @@ export function applyProvincePalette(element, region) {
 }
 
 function applyInsetRegionBorder(rootSvg, path, provinceId) {
-  const province = PROVINCES.find((entry) => entry.id === provinceId);
+  const province = mapProvinces().find((entry) => entry.id === provinceId);
   if (!province) return;
 
   const regionColor = getRegionColor(province.region);
@@ -205,7 +209,7 @@ export function configureThreatHatchPatterns(svg) {
     const provinceId = path.getAttribute('data-id');
     if (!provinceId) return;
 
-    const province = PROVINCES.find((p) => p.id === provinceId);
+    const province = mapProvinces().find((p) => p.id === provinceId);
     const regionColor = getRegionColor(province?.region);
 
     const patternId = `threat-hatch-${provinceId}`;

@@ -22,9 +22,16 @@ If an invasion takes Constantinople, the empire falls and the game ends at once:
 
 ## Game Start
 
-- **The map** has 40 provinces around Constantinople, in three regions: East, West and Sea. 14 of them are bishoprics. 13 provinces start the game lost to invaders; the others are imperial.
+- **The map** has provinces around Constantinople in three regions: East, West and Sea. On the Classic map there are 40; 14 of them are bishoprics and 13 start the game lost to invaders; the others are imperial. See Maps for the Compact map.
 - **Offices.** One dynasty, drawn at random, starts as Basileus. The four major offices (Domestic of the East, Domestic of the West, Admiral, Patriarch) are dealt to the other dynasties. No Strategos, Bishop or estate exists yet.
 - **Gold.** Every dynasty receives 4 gold with the first income.
+
+## Maps
+
+Choose the map when you set up a game. The rules are the same on both.
+
+- **Classic:** 40 provinces, 14 of them bishoprics; 13 start lost.
+- **Compact:** 21 provinces, 7 of them bishoprics; 7 start lost. Every province still raises 1 troop, so armies and invasions are about half as big, and some numbers are lower: starting gold 2, the Basileus revokes up to two times per round, up to 6 mercenaries, Theodosian Walls 3, Patriarch's influence 2, Unrest 1 per lost province. Everything else is the same.
 
 ## A Round
 
@@ -77,7 +84,7 @@ The claimant with the most support becomes Basileus from the next round. If nobo
 - **Troops in Constantinople** follow their dynasty's choices: all to the first, 50% to the second.
 - **Theodosian Walls:** the Basileus always has 5 support.
 - **Patriarch's influence:** 4 support that follows the Patriarch's choices like troops.
-- **Triumph:** the best defender of the last war gets 2 support per province won (see The War).
+- **Triumph:** support for the best defender of the last war (see The War).
 - **Unrest:** a Basileus who lost provinces in the last war has 2 less support per lost province.
 - **Ties** go to the claimant with more of the Patriarch's influence, then to the Basileus, then to the first in seating order.
 
@@ -89,7 +96,7 @@ All troops at the frontier fight the invasion. Its exact strength is drawn from 
 - **Constantinople** ends some routes. If the invader can pay for it too, the empire falls and nobody wins.
 - **Frontier stronger.** Its lead retakes lost provinces on the route the same way, 1, then 2, then 3, starting from the end nearest Constantinople.
 - **The ladder.** The invasion card and the "+N" tags on the map show how much the invader must beat the frontier by to take each province.
-- **Best defender.** When the frontier wins, the dynasty with the most troops there gets 1 gold and 2 Triumph for each province its lead could pay for on the route, lost or not. Tied dynasties share: gold rounded up, Triumph rounded down.
+- **Best defender.** When the frontier wins, the dynasty with the most troops there is rewarded for each province the lead could pay for on the route, lost or not, at rising rates like mercenaries: 1 gold and 1 Triumph for the first province, 1 more of each for every next one (so 6 gold and 6 Triumph for three). Tied dynasties share: gold rounded up, Triumph rounded down.
 
 ## End of the Game
 
@@ -124,13 +131,13 @@ After the last round's Resolution, a final Offices phase is played (after the ma
 - **Coup choices** (throne): Up to two claimants a dynasty backs, itself allowed: its troops in Constantinople give all their support to the first and 50% to the second. With no choice, they back nobody.
 - **Theodosian Walls** (throne): The walls of Constantinople: 5 support for the Basileus in every coup.
 - **Patriarch's influence** (throne): 4 support in every coup that follows the Patriarch's coup choices like troops: all to the first choice, half to the second.
-- **Triumph** (throne): Support for the best defender of the last war: 2 per province won, for that dynasty itself, in the next coup only.
+- **Triumph** (throne): Support for the best defender of the last war, for that dynasty itself, in the next coup only: 1 for the first province won, 1 more for every next one.
 - **Unrest** (throne): 2 less support per province lost in the last war, for the Basileus who lost them, in the next coup only.
 - **Invasion** (war): This round's enemy: an estimated strength and a route of provinces, shown on the map. If it beats the frontier, it takes provinces along its route.
 - **Invasion ladder** (war): How much the invader must beat the frontier by to take each province on its route: 1 for the first imperial province, 1 + 2 for the second, 1 + 2 + 3 for the third, and so on; lost provinces cost nothing. Shown on the invasion card and as "+N" tags on the map.
 - **Imperial province** (map): A province the empire holds. Only imperial provinces raise troops and pay estate gold.
 - **Lost province** (map): A province held by invaders. Its Strategos and estates stay on record but produce nothing, and cannot be revoked, until the empire retakes it. Its Bishop is still paid.
 - **Reconquest** (war): When the frontier wins, its lead retakes lost provinces on the route at the same rising cost (1, then 2, then 3...), starting from the end nearest Constantinople.
-- **Best defender** (war): The dynasty with the most troops at the frontier in a won war. It gets 1 gold and 2 Triumph for each province the frontier's lead could pay for on the route.
+- **Best defender** (war): The dynasty with the most troops at the frontier in a won war. For each province the frontier's lead could pay for on the route it gets gold and Triumph at rising rates, like mercenaries: 1 of each for the first, 1 more of each for every next one.
 - **Fall of the empire** (war): If an invasion takes Constantinople, the game ends at once and nobody wins.
 - **Balance of Power** (scoring): How the game is won: 1 point per 10% share of all the gold, estate income and office income, up to 10 points each. The two incomes are those of the final income.

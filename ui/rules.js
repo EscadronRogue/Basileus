@@ -4,7 +4,9 @@
 // by scripts/build-rules-doc.js, together with the glossary (ui/glossary.js). Numbers come
 // from the engine so the text cannot drift from what the game enforces.
 // Strings may use **bold**; everything else is plain text.
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, MAP_BALANCE } from '../data/balance.js';
+import { MAPS } from '../data/maps/index.js';
+import { getRisingPriceTotal } from '../engine/rules.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { SCORE_CATEGORIES, SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { DEFAULT_TURN_COUNT, PLAYER_COUNT_MAX, PLAYER_COUNT_MIN } from '../engine/setup.js';
@@ -22,6 +24,29 @@ export const RULES_TAGLINE = `A game for ${PLAYER_COUNT_MIN} to ${PLAYER_COUNT_M
 const START_LOST_COUNT = PROVINCES.filter((province) => province.startLost).length;
 const PROVINCE_COUNT = PROVINCES.filter((province) => province.id !== 'CPL').length;
 const BISHOPRIC_COUNT = PROVINCES.filter((province) => (Number(province.C) || 0) > 0).length;
+// How a map value differing from the Classic map reads in the rules.
+const MAP_VALUE_LABELS = {
+  STARTING_INCOME_GOLD: (value) => `starting gold ${value}`,
+  BASILEUS_REVOCATION_LIMIT: (value) => `the Basileus revokes up to ${word(value)} times per round`,
+  MAX_MERCENARIES: (value) => `up to ${value} mercenaries`,
+  THEODOSIAN_WALLS_SUPPORT: (value) => `Theodosian Walls ${value}`,
+  PATRIARCH_INFLUENCE: (value) => `Patriarch's influence ${value}`,
+  UNREST_PER_LOST_PROVINCE: (value) => `Unrest ${value} per lost province`,
+  ESTATE_BASE_PRICE: (value) => `the first estate of a round costs ${value}`,
+};
+
+function describeMapRules(map) {
+  const provinces = map.provinces.filter((province) => province.id !== 'CPL');
+  const bishoprics = provinces.filter((province) => (Number(province.C) || 0) > 0).length;
+  const lost = provinces.filter((province) => province.startLost).length;
+  const changes = Object.entries(MAP_BALANCE[map.id] || {})
+    .filter(([key, value]) => MAP_VALUE_LABELS[key] && value !== BALANCE[key])
+    .map(([key, value]) => MAP_VALUE_LABELS[key](value));
+  const base = `${provinces.length} provinces, ${bishoprics} of them bishoprics; ${lost} start lost.`;
+  if (!changes.length) return base;
+  return `${base} Every province still raises 1 troop, so armies and invasions are about half as big, and some numbers are lower: ${changes.join(', ')}. Everything else is the same.`;
+}
+
 const SECOND_CHOICE_PERCENT = Math.round((BALANCE.COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100);
 
 export const RULE_SECTIONS = [
@@ -56,11 +81,19 @@ export const RULE_SECTIONS = [
     blocks: [
       {
         items: [
-          ['The map', `has ${PROVINCE_COUNT} provinces around Constantinople, in three regions: East, West and Sea. ${BISHOPRIC_COUNT} of them are bishoprics. ${START_LOST_COUNT} provinces start the game lost to invaders; the others are imperial.`],
+          ['The map', `has provinces around Constantinople in three regions: East, West and Sea. On the Classic map there are ${PROVINCE_COUNT}; ${BISHOPRIC_COUNT} of them are bishoprics and ${START_LOST_COUNT} start the game lost to invaders; the others are imperial. See Maps for the Compact map.`],
           ['Offices.', `One dynasty, drawn at random, starts as Basileus. The ${word(MAJOR_TITLE_COUNT)} major offices (Domestic of the East, Domestic of the West, Admiral, Patriarch) are dealt to the other dynasties. No Strategos, Bishop or estate exists yet.`],
           ['Gold.', `Every dynasty receives ${BALANCE.STARTING_INCOME_GOLD} gold with the first income.`],
         ],
       },
+    ],
+  },
+  {
+    id: 'maps',
+    title: 'Maps',
+    blocks: [
+      { paragraph: 'Choose the map when you set up a game. The rules are the same on both.' },
+      { items: Object.values(MAPS).map((map) => [`${map.name}:`, describeMapRules(map)]) },
     ],
   },
   {
@@ -149,7 +182,7 @@ export const RULE_SECTIONS = [
           ['Troops in Constantinople', `follow their dynasty's choices: all to the first, ${SECOND_CHOICE_PERCENT}% to the second.`],
           ['Theodosian Walls:', `the Basileus always has ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support.`],
           ['Patriarch\'s influence:', `${BALANCE.PATRIARCH_INFLUENCE} support that follows the Patriarch's choices like troops.`],
-          ['Triumph:', `the best defender of the last war gets ${BALANCE.TRIUMPH_PER_PROVINCE} support per province won (see The War).`],
+          ['Triumph:', 'support for the best defender of the last war (see The War).'],
           ['Unrest:', `a Basileus who lost provinces in the last war has ${BALANCE.UNREST_PER_LOST_PROVINCE} less support per lost province.`],
           ['Ties', 'go to the claimant with more of the Patriarch\'s influence, then to the Basileus, then to the first in seating order.'],
         ],
@@ -167,7 +200,7 @@ export const RULE_SECTIONS = [
           ['Constantinople', 'ends some routes. If the invader can pay for it too, the empire falls and nobody wins.'],
           ['Frontier stronger.', 'Its lead retakes lost provinces on the route the same way, 1, then 2, then 3, starting from the end nearest Constantinople.'],
           ['The ladder.', 'The invasion card and the "+N" tags on the map show how much the invader must beat the frontier by to take each province.'],
-          ['Best defender.', `When the frontier wins, the dynasty with the most troops there gets ${BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE} gold and ${BALANCE.TRIUMPH_PER_PROVINCE} Triumph for each province its lead could pay for on the route, lost or not. Tied dynasties share: gold rounded up, Triumph rounded down.`],
+          ['Best defender.', `When the frontier wins, the dynasty with the most troops there is rewarded for each province the lead could pay for on the route, lost or not, at rising rates like mercenaries: ${BALANCE.WAR_REWARD_GOLD_BASE} gold and ${BALANCE.WAR_REWARD_TRIUMPH_BASE} Triumph for the first province, 1 more of each for every next one (so ${getRisingPriceTotal(3, BALANCE.WAR_REWARD_GOLD_BASE)} gold and ${getRisingPriceTotal(3, BALANCE.WAR_REWARD_TRIUMPH_BASE)} Triumph for three). Tied dynasties share: gold rounded up, Triumph rounded down.`],
         ],
       },
     ],

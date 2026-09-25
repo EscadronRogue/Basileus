@@ -1,5 +1,5 @@
 import { MAJOR_TITLES } from '../data/titles.js';
-import { BALANCE } from '../data/balance.js';
+import { getBalance } from '../data/balance.js';
 import { findTitleHolder, getPlayerName } from './state.js';
 
 function ensureTemporaryCapitalSupport(state) {
@@ -75,7 +75,7 @@ export function getCapitalSupportEntries(state, round = state?.round) {
       label: 'Theodosian Walls',
       playerId: basileusId,
       titleKey: 'BASILEUS',
-      amount: BALANCE.THEODOSIAN_WALLS_SUPPORT,
+      amount: getBalance(state).THEODOSIAN_WALLS_SUPPORT,
       activeRound,
     });
   }
@@ -88,7 +88,7 @@ export function getCapitalSupportEntries(state, round = state?.round) {
       label: "Patriarch's influence",
       playerId: patriarchId,
       titleKey: 'PATRIARCH',
-      amount: BALANCE.PATRIARCH_INFLUENCE,
+      amount: getBalance(state).PATRIARCH_INFLUENCE,
       activeRound,
     });
   }

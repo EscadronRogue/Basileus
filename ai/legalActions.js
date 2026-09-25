@@ -20,7 +20,7 @@ import { getPlayerOrderOfficeKeys, normalizeHumanOrders } from '../engine/orders
 import { getDeploymentArmyTroopTotal } from '../engine/deployment.js';
 import { getPreferredCoupCandidate } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, getBalance } from '../data/balance.js';
 import { clonePlainData } from '../engine/clone.js';
 import { getPlayerMemory, getRelationship, relationshipScore } from './memory.js';
 
@@ -271,16 +271,16 @@ function getUnfundedGoldFromArmies(state, playerId, armies) {
   }, 0);
 }
 
-function getMaxMercenariesForBudget(budget) {
+function getMaxMercenariesForBudget(budget, maxMercenaries = BALANCE.MAX_MERCENARIES) {
   let count = 0;
-  while (count < BALANCE.MAX_MERCENARIES && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  while (count < maxMercenaries && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
   return count;
 }
 
 function buildMercenaryPlans(state, playerId, armies) {
   const spendable = Math.max(0, Number(getSpendableGold(state, playerId)) || 0);
   const budget = spendable + getUnfundedGoldFromArmies(state, playerId, armies);
-  const maxAffordable = getMaxMercenariesForBudget(budget);
+  const maxAffordable = getMaxMercenariesForBudget(budget, getBalance(state).MAX_MERCENARIES);
   const counts = [...new Set([0, Math.min(2, maxAffordable), Math.floor(maxAffordable / 2), maxAffordable])]
     .filter((count) => count >= 0 && count <= maxAffordable)
     .sort((left, right) => left - right);

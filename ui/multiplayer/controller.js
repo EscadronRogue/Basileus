@@ -1,7 +1,7 @@
 // ui/multiplayer/controller.js - live WebSocket connection, keepalives, and in-game rendering.
 
 import { hydratePublicState } from '../../engine/publicState.js';
-import { createMapSVG, focusProvince, setHoveredProvince } from '../../render/mapRenderer.js';
+import { createMapSVG, focusProvince, getRenderedMapId, setHoveredProvince } from '../../render/mapRenderer.js';
 import {
   applyProvinceInterfaceState,
   createDefaultUiState,
@@ -651,8 +651,9 @@ export class MultiplayerController {
   }
 
   async ensureMap() {
-    if (document.getElementById('gameMap')) return;
+    if (document.getElementById('gameMap') && getRenderedMapId() === (this.state?.mapId || 'classic')) return;
     await createMapSVG('mapContainer', {
+      mapId: this.state?.mapId,
       mapFilter: this.uiState.mapFilter,
       onMapFilterChange: (filterId) => {
         this.uiState.mapFilter = filterId;

@@ -213,7 +213,7 @@ export const GLOSSARY_TERMS = [
     term: 'Triumph',
     category: 'Throne',
     aliases: ['Triumph'],
-    definition: `Support for the best defender of the last war: ${BALANCE.TRIUMPH_PER_PROVINCE} per province won, for that dynasty itself, in the next coup only.`,
+    definition: `Support for the best defender of the last war, for that dynasty itself, in the next coup only: ${BALANCE.WAR_REWARD_TRIUMPH_BASE} for the first province won, 1 more for every next one.`,
   },
   {
     id: 'unrest',
@@ -263,7 +263,7 @@ export const GLOSSARY_TERMS = [
     term: 'Best defender',
     category: 'War',
     aliases: ['best defenders', 'best defender'],
-    definition: `The dynasty with the most troops at the frontier in a won war. It gets ${BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE} gold and ${BALANCE.TRIUMPH_PER_PROVINCE} Triumph for each province the frontier's lead could pay for on the route.`,
+    definition: `The dynasty with the most troops at the frontier in a won war. For each province the frontier's lead could pay for on the route it gets gold and Triumph at rising rates, like mercenaries: ${BALANCE.WAR_REWARD_GOLD_BASE} of each for the first, 1 more of each for every next one.`,
   },
   {
     id: 'fall',

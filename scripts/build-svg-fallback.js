@@ -13,6 +13,7 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const SVG_FALLBACK_SOURCES = Object.freeze({
   MAP_BACKGROUND_SVG: 'assets/map.svg',
   HITZONES_SVG: 'assets/hitzones.svg',
+  HITZONES_COMPACT_SVG: 'assets/hitzones-compact.svg',
   ORIGIN_SVG: 'assets/origin.svg',
 });
 

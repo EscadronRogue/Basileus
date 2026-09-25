@@ -8,7 +8,7 @@ import {
   INVASION_DIFFICULTIES,
   getDynastyColor,
 } from '../data/invasions.js';
-import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
+import { BALANCE, MAP_BALANCE, applyBalanceOverrides, getBalance, resetBalance } from '../data/balance.js';
 
 const {
   EARLY_INVASION_GRACE_ROUNDS,
@@ -35,6 +35,7 @@ import {
   runIncome,
 } from './cascade.js';
 import { applyInvasionResult, buildInvasionLadder, buildReconquestLadder, resolveInvasion } from './combat.js';
+import { getRisingPriceTotal } from './rules.js';
 import { addEstates, getEstateCount } from './estates.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { serializePublicGameState } from './publicState.js';
@@ -62,7 +63,7 @@ import {
   phaseEstates,
   phaseResolution,
 } from './turnflow.js';
-import { addTemporaryCapitalSupport, getCapitalSupportByPlayer } from './capitalSupport.js';
+import { addTemporaryCapitalSupport, getCapitalSupportByPlayer, getCapitalSupportEntries } from './capitalSupport.js';
 import { normalizeCoupChoices } from './coup.js';
 import {
   getCourtPowerActionCount,
@@ -1181,12 +1182,12 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   phaseResolution(state);
 
   assert.equal(state.themes.SAM.lost, false);
-  assert.equal(getPlayer(state, 2).gold, BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE);
+  assert.equal(getPlayer(state, 2).gold, getRisingPriceTotal(1, BALANCE.WAR_REWARD_GOLD_BASE));
   assert.deepEqual(state.lastWarResult.themesRecovered, ['SAM']);
   assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
   assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
   assert.equal(getCapitalSupportByPlayer(state)[0], BALANCE.THEODOSIAN_WALLS_SUPPORT);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], BALANCE.TRIUMPH_PER_PROVINCE);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], getRisingPriceTotal(1, BALANCE.WAR_REWARD_TRIUMPH_BASE));
 });
 
 test('repulsed invasions reward the top defender for province wins even without lost provinces', () => {
@@ -1210,8 +1211,9 @@ test('repulsed invasions reward the top defender for province wins even without 
   assert.equal(state.lastWarResult.reconquestRewardProvinceCount, 2);
   assert.equal(state.lastWarResult.reconquestReward.rewardProvinceCount, 2);
   assert.deepEqual(state.lastWarResult.reconquestReward.themeIds, []);
-  assert.equal(getPlayer(state, 2).gold, 2 * BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2 * BALANCE.TRIUMPH_PER_PROVINCE);
+  // Two provinces won: 1 + 2, like mercenary prices.
+  assert.equal(getPlayer(state, 2).gold, getRisingPriceTotal(2, BALANCE.WAR_REWARD_GOLD_BASE));
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], getRisingPriceTotal(2, BALANCE.WAR_REWARD_TRIUMPH_BASE));
 });
 
 test('tied top defenders split reconquest reward with rounded shares', () => {
@@ -1244,13 +1246,13 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   phaseResolution(state);
 
   assert.equal(state.lastWarResult.themesRecovered.length, 3);
-  const goldShare = Math.ceil((3 * BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE) / 2);
+  const goldShare = Math.ceil(getRisingPriceTotal(3, BALANCE.WAR_REWARD_GOLD_BASE) / 2);
   assert.equal(getPlayer(state, 2).gold, goldShare);
   assert.equal(getPlayer(state, 3).gold, goldShare);
   assert.deepEqual(state.lastWarResult.reconquestReward.defenders.map((entry) => entry.defenderId), [2, 3]);
   assert.equal(state.lastWarResult.reconquestReward.gold, goldShare);
   // Three provinces won: gold is split rounding up, Triumph rounding down.
-  const triumphShare = Math.floor((3 * BALANCE.TRIUMPH_PER_PROVINCE) / 2);
+  const triumphShare = Math.floor(getRisingPriceTotal(3, BALANCE.WAR_REWARD_TRIUMPH_BASE) / 2);
   assert.equal(state.lastWarResult.reconquestReward.capitalSupport, triumphShare);
   assert.equal(getCapitalSupportByPlayer(state, 2)[2], triumphShare);
   assert.equal(getCapitalSupportByPlayer(state, 2)[3], triumphShare);
@@ -1455,4 +1457,27 @@ test('nothing in a lost province can be revoked, and the Basileus is not offered
   assert.equal(revokeEstate.ok, false);
   assert.equal(state.themes.OPS.strategos, 2);
   assert.equal(getEstateCount(state.themes.OPS, 3), 1);
+});
+
+test('a Compact game uses its 21 provinces, invasions and lower numbers', () => {
+  const state = createGameState({ playerCount: 5, deckSize: 9, seed: 4, mapId: 'compact' });
+  assert.equal(state.mapId, 'compact');
+  assert.equal(Object.keys(state.themes).length, 22);
+  assert.equal(Object.values(state.themes).filter((theme) => theme.lost).length, 7);
+  assert.equal(Object.values(state.themes).filter((theme) => (Number(theme.C) || 0) > 0).length, 7);
+  for (const invasion of state.invasionDeck) {
+    for (const id of invasion.route) assert.ok(state.themes[id], `${invasion.id} route province ${id}`);
+  }
+  const balance = getBalance(state);
+  assert.equal(balance.THEODOSIAN_WALLS_SUPPORT, MAP_BALANCE.compact.THEODOSIAN_WALLS_SUPPORT);
+  const walls = getCapitalSupportEntries(state).find((entry) => entry.titleKey === 'BASILEUS');
+  assert.equal(walls.amount, MAP_BALANCE.compact.THEODOSIAN_WALLS_SUPPORT);
+  assert.equal(getBalance(createGameState({ seed: 4 })).THEODOSIAN_WALLS_SUPPORT, BALANCE.THEODOSIAN_WALLS_SUPPORT);
+  assert.equal(serializePublicGameState(state).mapId, 'compact');
+});
+
+test('unknown maps fall back to the Classic map', () => {
+  const state = createGameState({ seed: 4, mapId: 'atlantis' });
+  assert.equal(state.mapId, 'classic');
+  assert.equal(Object.keys(state.themes).length, 41);
 });

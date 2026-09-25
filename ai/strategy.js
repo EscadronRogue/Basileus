@@ -10,7 +10,7 @@ import {
   getRevocableEstateCount,
 } from '../engine/estates.js';
 import { getSpendableGold } from '../engine/deals.js';
-import { INVASIONS } from '../data/invasions.js';
+import { getMapInvasions } from '../data/maps/index.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
 import { getPlayer } from '../engine/state.js';
@@ -27,7 +27,7 @@ import {
   normalizeCoupChoices,
 } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, getBalance } from '../data/balance.js';
 import { analyzeMajorTitleAssignments, estimateMajorTitleYield } from './patronage.js';
 import {
   applyLegalAction,
@@ -611,7 +611,7 @@ function summarizeOrders(state, playerId, orders = {}) {
     idleTroops += total - funded;
   }
 
-  const mercCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(orders.mercenaries?.count) || 0));
+  const mercCount = Math.max(0, Math.min(getBalance(state).MAX_MERCENARIES, Number(orders.mercenaries?.count) || 0));
   if (orders.mercenaries?.destination === 'capital') capitalTroops += mercCount;
   else frontierTroops += mercCount;
 
@@ -631,9 +631,9 @@ function summarizeOrders(state, playerId, orders = {}) {
   };
 }
 
-function getMaxMercenariesForBudget(budget) {
+function getMaxMercenariesForBudget(budget, maxMercenaries = BALANCE.MAX_MERCENARIES) {
   let count = 0;
-  while (count < BALANCE.MAX_MERCENARIES && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  while (count < maxMercenaries && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
   return count;
 }
 
@@ -642,7 +642,7 @@ function estimatePotentialCapitalTroops(state, playerId) {
     return sum + getDeploymentArmyTroopTotal(state, playerId, officeKey);
   }, 0);
   const gold = Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
-  return officeTroops + getMaxMercenariesForBudget(gold);
+  return officeTroops + getMaxMercenariesForBudget(gold, getBalance(state).MAX_MERCENARIES);
 }
 
 function patternAdjustedDeploymentRatios(state, playerId, playerMemory, table) {
@@ -809,7 +809,7 @@ function themeStake(state, playerId, themeId, weights = DEFAULT_STRATEGY_WEIGHTS
 // against a Basileus this dynasty wants gone, costly when it holds the throne.
 function scoreUnrestOutcome(state, playerId, lostCount, weights, context = {}) {
   if (!lostCount || !Number.isInteger(state.basileusId)) return 0;
-  const unrest = lostCount * (Number(BALANCE.UNREST_PER_LOST_PROVINCE) || 0);
+  const unrest = lostCount * (Number(getBalance(state).UNREST_PER_LOST_PROVINCE) || 0);
   if (state.basileusId === playerId) return -unrest * 0.25 * (Number(weights.incumbentDefense) || 1);
   if (context.incumbentUrgency == null) {
     const final = context.final || projectedScoring(state);
@@ -1286,16 +1286,16 @@ function roundsOfIncomeLeft(state) {
 
 // Share of the invasions the province stands in the way of: the current one
 // weighs most, the rest of the deck by how often each is drawn.
-const INVASION_DRAW_TOTAL = INVASIONS.reduce((total, invasion) => total + (Number(invasion.drawWeight) || 0), 0) || 1;
-
 function estateRouteExposure(state, themeId) {
   let exposure = 0;
   const route = state.currentInvasion?.route || [];
   const imperialOnRoute = route.filter((id) => id !== 'CPL' && state.themes?.[id] && !state.themes[id].lost);
   const position = imperialOnRoute.indexOf(themeId);
   if (position >= 0) exposure += 1 / (1 + position);
-  for (const invasion of INVASIONS) {
-    if (invasion.route.includes(themeId)) exposure += 0.35 * ((Number(invasion.drawWeight) || 0) / INVASION_DRAW_TOTAL);
+  const invasions = getMapInvasions(state);
+  const drawTotal = invasions.reduce((total, invasion) => total + (Number(invasion.drawWeight) || 0), 0) || 1;
+  for (const invasion of invasions) {
+    if (invasion.route.includes(themeId)) exposure += 0.35 * ((Number(invasion.drawWeight) || 0) / drawTotal);
   }
   return exposure;
 }
