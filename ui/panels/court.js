@@ -27,6 +27,7 @@ import {
   getDraftBucket,
   getRevocationTargets,
   getStrategosTargets,
+  notifyDraftChange,
   playerDisplayLabel,
   regionTitleFor,
   roleKeysForCourt,
@@ -615,7 +616,10 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
   ensureCourtPlan(draft);
   const powerKeys = getVisibleCourtPowerKeys(state, activePlayerId);
   const confirmed = Boolean(state.courtActions?.playerConfirmed?.has(activePlayerId));
-  const rerender = () => renderCourtPanel(container, state, activePlayerId, callbacks, options);
+  const rerender = () => {
+    renderCourtPanel(container, state, activePlayerId, callbacks, options);
+    notifyDraftChange();
+  };
   const plannedCount = draft.plannedActions.length;
   const hasPlan = plannedCount > 0;
   container.innerHTML = `
@@ -739,4 +743,77 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
     ));
     callbacks['submit-court-plan']?.({ actions, passPowers });
   });
+}
+
+// ---------------------------------------------------------------------------
+// The same plan, driven from the map (ui/mapActions.js): what the dynasty
+// can plan in one province, and the edits the map popover makes. They share
+// the panel's draft, so the panel shows what was planned on the map.
+
+function getCourtDraft(uiState, state, playerId) {
+  const draft = getDraftBucket(uiState, state, 'court', playerId);
+  if (!draft.appointStrategos) draft.appointStrategos = {};
+  if (!draft.appointBishop) draft.appointBishop = {};
+  if (!draft.revoke) draft.revoke = {};
+  ensureCourtPlan(draft);
+  return draft;
+}
+
+// [{ key, powerKey, powerLabel, kind, mode, label, holderId, revokeValue,
+//    disabledReason, plannedAction, plannedKey, appointees }] for one
+// province. `mode` is 'bound' (a holder that can be revoked) or 'open' (a
+// seat to fill); `appointees` lists who can fill an open seat.
+export function getProvinceCourtOptions(state, playerId, themeId, uiState) {
+  if (state?.phase !== 'court' || !state.themes?.[themeId]) return { options: [], planError: '' };
+  if (state.courtActions?.playerConfirmed?.has(playerId)) return { options: [], planError: '' };
+  const draft = getCourtDraft(uiState, state, playerId);
+  const options = [];
+  for (const powerKey of getVisibleCourtPowerKeys(state, playerId)) {
+    if (isCourtPowerExhausted(state, playerId, powerKey)) continue;
+    const plannedActions = getPlannedCourtActionsForPower(draft, powerKey);
+    for (const entry of buildCourtConnectionEntries(state, playerId, powerKey, draft)) {
+      if (entry.theme?.id !== themeId) continue;
+      const plannedAction = getPlannedActionForEntry(entry, plannedActions);
+      const option = {
+        key: entry.key,
+        powerKey,
+        powerLabel: getCourtPowerLabel(powerKey),
+        kind: entry.kind,
+        mode: entry.mode,
+        label: entry.label,
+        holderId: entry.holderId ?? null,
+        revokeValue: entry.revokeValue || null,
+        disabledReason: entry.mode === 'bound' ? entry.revokeDisabledReason || '' : entry.targetDisabledReason || '',
+        plannedAction,
+        plannedKey: plannedAction ? courtPlanActionKey(plannedAction) : null,
+        appointees: [],
+      };
+      if (entry.mode === 'open') {
+        option.appointees = (state.players || []).map((player) => ({
+          playerId: player.id,
+          disabledReason: getAppointmentDisabledReason(state, playerId, powerKey, themeId, player.id, draft),
+        }));
+      }
+      options.push(option);
+    }
+  }
+  return { options, planError: draft.planError || '' };
+}
+
+export function toggleProvinceRevocation(state, playerId, uiState, powerKey, value) {
+  return toggleCourtPlannedRevocation(state, playerId, getCourtDraft(uiState, state, playerId), powerKey, value);
+}
+
+export function planProvinceAppointment(state, playerId, uiState, powerKey, kind, themeId, appointeeId) {
+  const draft = getCourtDraft(uiState, state, playerId);
+  const action = kind === 'bishop'
+    ? { action: 'appoint-bishop', themeId, appointeeId, powerKey }
+    : { action: 'appoint-strategos', titleKey: regionTitleFor(state.themes[themeId]), themeId, appointeeId, powerKey };
+  delete draft.wireStart;
+  return queueCourtPlannedAction(state, playerId, draft, action);
+}
+
+export function removeProvincePlannedAction(state, playerId, uiState, actionKey) {
+  removeCourtPlannedAction(getCourtDraft(uiState, state, playerId), actionKey);
+  return true;
 }

@@ -169,6 +169,58 @@ test('the compact map starts, draws its 21 provinces, and plays to the end', { t
   assert.deepEqual(problems, []);
 });
 
+test('the province popover plays Offices and Estates from the map', { timeout: 300_000 }, async (t) => {
+  const { page, problems } = await openGame(t);
+  await startLocalGame(page, { mode: 'hotseat', players: 5, turns: 6, seed: 'smoke-popover' });
+
+  // Offices: the Basileus revokes a rival's estates from the map.
+  const court = await page.evaluate(async () => {
+    const { addEstates } = await import('/engine/estates.js');
+    const c = window.__basileus;
+    const s = c.state;
+    const themeId = Object.keys(s.themes).find((id) => id !== 'CPL' && !s.themes[id].lost);
+    const victim = s.players.find((player) => player.id !== s.basileusId).id;
+    addEstates(s.themes[themeId], victim, 3);
+    s.courtActions.playerConfirmed.delete(s.basileusId);
+    c.activePlayer = s.basileusId;
+    c.selectProvince(themeId);
+    return { themeId, victim, phase: s.phase };
+  });
+  assert.equal(court.phase, 'court');
+  await page.click(`.map-province-actions [data-map-revoke="estates:${court.themeId}:${court.victim}"]`);
+  assert.match(await page.textContent('.court-plan-preview'), /1 planned action/);
+  const countEstates = () => page.evaluate(async ({ themeId, victim }) => {
+    const { getEstateCount } = await import('/engine/estates.js');
+    return getEstateCount(window.__basileus.state.themes[themeId], victim);
+  }, court);
+  assert.equal(await countEstates(), 3, 'planning commits nothing');
+  await page.click('[data-action="confirm-court-plan"]');
+  assert.equal(await countEstates(), 0, 'the revocation planned on the map was carried out');
+
+  // Estates: the popover adds and takes back.
+  const estates = await page.evaluate(async () => {
+    const { phaseEstates } = await import('/engine/turnflow.js');
+    const c = window.__basileus;
+    const s = c.state;
+    s.phase = 'estates';
+    phaseEstates(s);
+    const player = s.players.find((entry) => !s.estatesReady?.[entry.id]);
+    player.gold = 12;
+    c.activePlayer = player.id;
+    c.render();
+    return { themeId: Object.keys(s.themes).find((id) => id !== 'CPL' && !s.themes[id].lost) };
+  });
+  await page.evaluate((themeId) => window.__basileus.selectProvince(themeId), estates.themeId);
+  await page.click('.map-province-actions [data-map-estate-add]');
+  await page.click('.map-province-actions [data-map-estate-add]');
+  await page.click('.map-province-actions [data-map-estate-remove]');
+  assert.equal((await page.textContent('.map-province-actions .estate-step-count')).trim(), '1');
+  assert.match((await page.textContent('[data-estate-summary]')).replace(/\s+/g, ' '), /1 estate planned/);
+  await page.click('.map-province-actions [data-map-actions-close]');
+  assert.equal(await page.locator('.map-province-actions').count(), 0, 'closing deselects the province');
+  assert.deepEqual(problems, []);
+});
+
 function readSnapshot(page) {
   return page.evaluate(() => {
     const { state, activePlayer } = window.__basileus;

@@ -2176,3 +2176,99 @@
 .ladder-step.capital { border-color: rgba(160,48,48,0.6); background: rgba(160,48,48,0.1); }
 .invasion-ladder.reconquest .ladder-step { border-color: rgba(58,107,40,0.3); }
 .invasion-ladder.reconquest .ladder-value { color: var(--win); }
+
+/* Province popover: play the phase on the map (ui/mapActions.js). */
+.map-province-actions {
+  position: absolute;
+  z-index: 4;
+  width: min(300px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 8px 10px 9px;
+  border: 1px solid rgba(168,116,32,0.55);
+  border-radius: var(--r-md, 10px);
+  background: rgba(253,246,227,0.97);
+  box-shadow: 0 10px 28px rgba(60,36,8,0.28);
+  color: var(--umber-1);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.map-province-actions[hidden] { display: none; }
+.map-actions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.map-actions-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--umber-0);
+}
+.map-actions-close {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--umber-2);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.map-actions-close:hover { background: rgba(168,116,32,0.14); }
+.map-actions-holders { margin-bottom: 6px; }
+.map-actions-stepper { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.map-actions-price { color: var(--umber-2); font-size: 12px; }
+.map-actions-note { margin: 6px 0 0; color: var(--umber-2); font-size: 12px; }
+.map-actions-group + .map-actions-group { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(168,116,32,0.18); }
+.map-actions-group-title {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--purple-0);
+}
+.map-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+.map-actions-row.map-actions-appoint { flex-direction: column; align-items: flex-start; }
+.map-actions-row-label { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.map-actions-btn {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid rgba(168,116,32,0.5);
+  border-radius: 999px;
+  background: rgba(255,250,236,0.95);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.map-actions-btn.is-revoke { border-color: rgba(160,48,48,0.55); color: var(--crimson-0); }
+.map-actions-btn.is-planned { background: rgba(240,200,90,0.35); }
+.map-actions-btn:disabled { opacity: 0.4; cursor: default; }
+.map-actions-appointees { display: flex; flex-wrap: wrap; gap: 4px; }
+.map-actions-appointee {
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.map-actions-appointee:hover:not(:disabled) { border-color: rgba(168,116,32,0.55); background: rgba(240,200,90,0.2); }
+.map-actions-appointee:disabled { opacity: 0.35; cursor: default; }
+@media (max-width: 600px) {
+  .map-province-actions { width: calc(100% - 16px); }
+}

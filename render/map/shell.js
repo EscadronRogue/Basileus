@@ -168,6 +168,7 @@ function syncMapShellSize(container, shell) {
   if (Math.abs(width - mapRuntime.shellWidthPx) > 0.5) {
     mapRuntime.shellWidthPx = width;
     applyLabelScale();
+    mapRuntime.viewChangeHandler?.();
   }
 }
 

@@ -54,6 +54,14 @@ export function getDraftBucket(uiState, state, scope, playerId) {
   return uiState.drafts[key];
 }
 
+// A panel changed a draft on its own (without a full redraw): tells the map
+// popover (ui/mapActions.js) to catch up.
+export function notifyDraftChange() {
+  const doc = globalThis.document;
+  if (typeof doc?.dispatchEvent !== 'function' || typeof globalThis.CustomEvent !== 'function') return;
+  doc.dispatchEvent(new globalThis.CustomEvent('basileus:draft-change'));
+}
+
 export function playerDisplayLabel(player) {
   return player?.firstName ? `${player.firstName} ${player.dynasty}` : (player?.dynasty || 'Player');
 }

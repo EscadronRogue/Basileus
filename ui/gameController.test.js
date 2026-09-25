@@ -8,7 +8,8 @@ import { STRATEGOS_DEPLOYMENT_ARMY_KEY } from '../engine/deployment.js';
 import { resolveInvasion } from '../engine/combat.js';
 import { addEstates } from '../engine/estates.js';
 import { phaseEstates } from '../engine/turnflow.js';
-import { addEstateToDraft } from './panels/estates.js';
+import { addEstateToDraft, getEstateDraft, removeEstateFromDraft } from './panels/estates.js';
+import { getProvinceCourtOptions, planProvinceAppointment, toggleProvinceRevocation } from './panels/court.js';
 import { toggleCoupChoice } from './panels/orders.js';
 import { playerDisplayLabel } from './panels/shared.js';
 import { formatHalves } from './icons.js';
@@ -1134,4 +1135,78 @@ test('fallen empire final scoring makes the collective loss explicit', () => {
   assert.doesNotMatch(html, /Highest point total wins/);
   assert.doesNotMatch(html, /Winner, rank/);
   assert.doesNotMatch(html, /score-row\s+winner/);
+});
+
+function openCourt(state) {
+  state.phase = 'court';
+  state.courtActions = {
+    actionUsed: {},
+    powerUsed: {},
+    appointedThisTurn: {},
+    revokedThisTurn: {},
+    playerConfirmed: new Set(),
+  };
+}
+
+test('the map popover plans a revocation into the same plan as the Offices panel', () => {
+  const state = makeState();
+  openCourt(state);
+  addEstates(state.themes.KAP, 1, 3);
+  addEstates(state.themes.KAP, 2, 1);
+  const uiState = createDefaultUiState();
+
+  const { options } = getProvinceCourtOptions(state, 0, 'KAP', uiState);
+  const estates = options.filter((option) => option.kind === 'estate');
+  assert.deepEqual(estates.map((option) => option.holderId).sort(), [1, 2]);
+  assert.ok(estates.every((option) => option.powerKey === 'BASILEUS' && option.mode === 'bound' && !option.plannedAction));
+
+  const target = estates.find((option) => option.holderId === 1);
+  assert.equal(toggleProvinceRevocation(state, 0, uiState, target.powerKey, target.revokeValue), true);
+  const after = getProvinceCourtOptions(state, 0, 'KAP', uiState).options.find((option) => option.holderId === 1);
+  assert.equal(after.plannedAction?.value, 'estates:KAP:1');
+
+  const container = makePanelContainer();
+  renderCourtPanel(container, state, 0, {}, { uiState });
+  assert.match(container.innerHTML, /1 planned action/);
+
+  toggleProvinceRevocation(state, 0, uiState, target.powerKey, target.revokeValue);
+  assert.equal(getProvinceCourtOptions(state, 0, 'KAP', uiState).options.find((option) => option.holderId === 1).plannedAction, null);
+});
+
+test('the map popover offers an open seat to every legal appointee', () => {
+  const state = makeState();
+  openCourt(state);
+  const theme = Object.values(state.themes).find((entry) => entry.region === 'east' && entry.id !== 'CPL' && !entry.lost && entry.strategos == null);
+  const uiState = createDefaultUiState();
+
+  const open = getProvinceCourtOptions(state, 1, theme.id, uiState).options.find((option) => option.mode === 'open' && option.kind === 'strategos');
+  assert.ok(open, 'the Domestic of the East can fill the seat');
+  assert.equal(open.powerKey, 'DOM_EAST');
+  const legal = open.appointees.filter((entry) => !entry.disabledReason).map((entry) => entry.playerId);
+  assert.ok(legal.length > 0);
+
+  assert.equal(planProvinceAppointment(state, 1, uiState, open.powerKey, 'strategos', theme.id, legal[0]), true);
+  const planned = getProvinceCourtOptions(state, 1, theme.id, uiState).options.find((option) => option.kind === 'strategos');
+  assert.equal(planned.plannedAction?.appointeeId, legal[0]);
+  assert.ok(planned.plannedKey);
+});
+
+test('nothing is offered on the map once a dynasty has locked its offices', () => {
+  const state = makeState();
+  openCourt(state);
+  addEstates(state.themes.KAP, 1, 3);
+  state.courtActions.playerConfirmed.add(0);
+  assert.deepEqual(getProvinceCourtOptions(state, 0, 'KAP', createDefaultUiState()).options, []);
+});
+
+test('the estate popover edits the Estates panel plan', () => {
+  const state = makeState();
+  phaseEstates(state);
+  state.players[1].gold = BALANCE.ESTATE_PRICE * 2;
+  const uiState = createDefaultUiState();
+  assert.equal(addEstateToDraft(uiState, state, 1, 'KAP'), true);
+  assert.equal(addEstateToDraft(uiState, state, 1, 'KAP'), true);
+  assert.equal(addEstateToDraft(uiState, state, 1, 'KAP'), false, 'not enough gold for a third');
+  assert.equal(removeEstateFromDraft(uiState, state, 1, 'KAP'), true);
+  assert.deepEqual(getEstateDraft(uiState, state, 1).plan, { KAP: 1 });
 });

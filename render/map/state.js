@@ -121,6 +121,8 @@ export const mapRuntime = {
   mapShellResizeObserver: null,
   mapShellResizeHandler: null,
   shellWidthPx: 0,
+  // Called when the map pans, zooms or resizes, so overlays follow it.
+  viewChangeHandler: null,
 };
 
 export function createGestureState() {
