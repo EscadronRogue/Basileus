@@ -53,12 +53,21 @@ npm run train:ai -- --generations 8
 ```
 
 Training produces one AI opponent per **personality** (`ai/personalities.js`):
-Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Strategist, and
-five that are selfish in different ways: the Miser (dismisses troops for
-gold), the Hoarder (keeps offices, strips rivals), the Saboteur (lets
-provinces of disliked rivals fall), the Regicide (loses wars on purpose to
-load Unrest on an unwanted Basileus) and the Glory Hunter (wins the
-best-defender reward, then spends it on a coup).
+Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Strategist; five
+that are selfish in different ways: the Miser (dismisses troops for gold),
+the Hoarder (keeps offices, strips rivals), the Saboteur (lets provinces of
+disliked rivals fall), the Regicide (loses wars on purpose to load Unrest on
+an unwanted Basileus) and the Glory Hunter (wins the best-defender reward,
+then spends it on a coup); four more styles: the Domain Lord (gathers its
+estates into domains), the Condottiere (hires mercenaries to be the best
+defender), the Turncoat (no loyalty in the coup) and the Loyalist (backs
+the sitting Basileus); and three **explorers**, the Maverick, the Wildcard
+and the Outsider.
+
+An explorer has no temperament at all: it starts from its own random point
+of the whole weight space (`explore.seed` in `ai/personalities.js`) and
+mutates with bolder steps, so training can find ways of winning the preset
+styles do not try. Its description says what it ended up doing.
 Every AI uses the same planner (`ai/strategy.js`); a personality fixes the
 ranges of the few strategy weights that make its temperament (an Usurper
 always prizes the throne, an Opportunist always leans on others to hold the
@@ -118,8 +127,8 @@ For each personality the log prints its value, win rate, and how it plays:
 - `--screening-games N`, `--confirm-games N`, `--final-games N` tables per stage (defaults `36`, `72`, `160`)
 - `--benchmark-games N` tables per benchmark (default `60`; `0` skips it)
 - `--personalities a,b` train only some personalities
-- `--players 4,5,5` table sizes to draw from, weighted by repetition (default `4,5,5`)
-- `--decks 9` game lengths to draw from (default `9`)
+- `--players 3,4,5,5` table sizes to draw from, weighted by repetition (default `3,4,5,5`)
+- `--decks 6,9,12` game lengths to draw from (default `6,9,12`)
 - `--maps classic,compact` maps the tables alternate between (default both)
 - `--from-roster` start each personality from its saved champion instead of its preset
 - `--fresh a,b` with `--from-roster`, start these personalities from their preset anyway
@@ -133,8 +142,8 @@ For each personality the log prints its value, win rate, and how it plays:
 - `--set NAME=value` train under other balance values (recorded in the roster)
 - `--no-save`, `--quiet`, `--json`
 
-A default run plays about 3,300 games per generation; on four cores a
-generation takes around ten minutes.
+A default run plays about 8,900 games per generation; on four workers a
+generation takes around sixteen minutes.
 
 A quick smoke run:
 

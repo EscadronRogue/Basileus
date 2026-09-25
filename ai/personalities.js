@@ -284,7 +284,7 @@ export const PERSONALITIES = Object.freeze([
   {
     id: 'maverick',
     title: 'Maverick',
-    summary: 'Started from nothing in particular, with no set temperament, and learned its own way to win.',
+    summary: 'Found its own way from a random start: seizes the throne with troops in Constantinople, keeps for itself the offices it hands out, leaves rivals\' offices alone, and backs other challengers as its second choice.',
     basePolicy: 'strategic',
     explore: { seed: 1101 },
     traits: {},
@@ -292,7 +292,7 @@ export const PERSONALITIES = Object.freeze([
   {
     id: 'wildcard',
     title: 'Wildcard',
-    summary: 'Started from nothing in particular, with no set temperament, and learned its own way to win.',
+    summary: 'Found its own way from a random start: spreads its estates thinly so no revocation hurts much, strips rivals of their offices, never claims the throne but backs a challenger, and gives the frontier no more than it needs.',
     basePolicy: 'strategic',
     explore: { seed: 2203 },
     traits: {},
@@ -300,7 +300,7 @@ export const PERSONALITIES = Object.freeze([
   {
     id: 'outsider',
     title: 'Outsider',
-    summary: 'Started from nothing in particular, with no set temperament, and learned its own way to win.',
+    summary: 'Found its own way from a random start: covets the throne and pays back those who help it, gives the frontier as little as it can, and does not mind who revokes its estates.',
     basePolicy: 'strategic',
     explore: { seed: 3307 },
     traits: {},
