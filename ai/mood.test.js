@@ -96,3 +96,18 @@ test('a whimsical AI still replays the same game the same way', () => {
   const second = buildAIOrders(clonePlainData(state), makeMeta(state, { 1: { duty: 0, ambition: 0, volatility: 1, whim: 0.9 } }), 1);
   assert.deepEqual({ ...first, debug: null }, { ...second, debug: null });
 });
+
+test('the Basileus keeps valuing its own throne whatever its temperament', () => {
+  const state = makeState();
+  const meta = makeMeta(state, { 0: { duty: 0, ambition: 0.7, volatility: 1, whim: 0 } });
+  const mood = moodOf(state, meta, 0);
+  const weights = applyMoodToWeights(DEFAULT_STRATEGY_WEIGHTS, mood);
+  assert.equal(weights.throneBase, DEFAULT_STRATEGY_WEIGHTS.throneBase);
+  assert.equal(weights.selfClaim, DEFAULT_STRATEGY_WEIGHTS.selfClaim);
+});
+
+test('at rest an AI plays its trained weights', () => {
+  const temperament = { duty: -0.7, ambition: 0.4, volatility: 1, whim: 0 };
+  const weights = applyMoodToWeights(DEFAULT_STRATEGY_WEIGHTS, { duty: -0.7, ambition: 0.4, temperament });
+  assert.deepEqual(weights, { ...DEFAULT_STRATEGY_WEIGHTS });
+});

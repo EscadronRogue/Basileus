@@ -196,9 +196,12 @@ function computePushes(state, memory, playerId) {
   const basileusId = state?.basileusId;
   if (Number.isInteger(basileusId) && basileusId !== playerId) {
     const relation = getRelationship(memory, playerId, basileusId);
-    const grievance = 0.55 * clamp(relation.revokedMe, 0, 1.6)
-      + 0.3 * clamp(relation.harm, 0, 1.6)
-      + 0.3 * clamp(relation.titleJealousy, 0, 1.6);
+    // One revoked estate stirs about half a push; more estates, or a
+    // grudge on top, fill it. Loyal temperaments swallow a small loss.
+    const revoked = Number(relation.revokedMe) || 0;
+    const grievance = 0.35 * clamp(revoked, 0, 2.5)
+      + 0.12 * clamp((Number(relation.harm) || 0) - revoked, 0, 2.5)
+      + 0.25 * clamp(relation.titleJealousy, 0, 2.5);
     const basileus = getPlayerName(state, basileusId);
     if (grievance > 0) {
       const reason = relation.revokedMe > 0.2
@@ -279,6 +282,7 @@ export function computeAiMood(state, meta, memory, playerId, previous = null) {
     duty,
     ambition,
     mood,
+    onThrone: state?.basileusId === playerId,
     reason: wordReason(toward?.reason, state, playerId),
     target: toward?.target ?? null,
     temperament,
@@ -295,11 +299,17 @@ export function restingMood(state, meta, playerId) {
 
 // Strategy weights as this mood tilts them: duty weighs the frontier more
 // and gold less, ambition weighs the throne more and the sitting Basileus
-// less.
+// less. Only the distance from the resting mood tilts them: the trained
+// weights already play the personality at rest. The Basileus's loyalty is
+// to its own throne, which the throne weights already value, so they stay
+// as trained.
 export function applyMoodToWeights(weights, moodState) {
   if (!moodState) return weights;
-  const duty = clamp(moodState.duty, -1, 1);
-  const ambition = clamp(moodState.ambition, -1, 1);
+  const rest = moodState.temperament || DEFAULT_TEMPERAMENT;
+  const duty = clamp(clamp(moodState.duty, -1, 1) - (Number(rest.duty) || 0), -1, 1);
+  const ambition = moodState.onThrone
+    ? 0
+    : clamp(clamp(moodState.ambition, -1, 1) - (Number(rest.ambition) || 0), -1, 1);
   const scale = (value, factor) => Math.max(0, (Number(value) || 0) * factor);
   return {
     ...weights,
