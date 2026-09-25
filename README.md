@@ -16,6 +16,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 - **Interactive tutorial.** "Play the tutorial" on the setup screen walks you through a full round, pointing at each control, then lets you finish a short game.
 - **Hover glossary.** Key words are bold wherever they appear; hover one for its definition, and keep hovering to lock the tooltip and explore the words inside it.
 - **Two maps.** Classic, with 40 provinces, or Compact, with 21 larger provinces fused from them, for smaller armies and less gold.
+- **Play on the map.** Select a province and a card opens beside it with what you can do there this phase: plan estates with − and +, or, in the Offices phase, revoke what others hold there or appoint a Strategos or a Bishop. It shares the side panel's plan, so you still lock from the panel.
 - **AI rivals with personalities.** Nineteen temperaments, each selfish in its own way (Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Miser, Hoarder, Saboteur, Regicide, Glory Hunter, Domain Lord, Condottiere, Turncoat, Loyalist and Strategist), plus three explorers (Maverick, Wildcard, Outsider) that started from random weights and found their own way to win. All are trained by self-play on both maps, with 3 to 5 dynasties and 6 to 12 rounds, to win rather than to play safe. Every AI move goes through the same legal command layer as a human's.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 

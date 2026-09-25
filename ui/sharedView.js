@@ -20,6 +20,7 @@ import { getPlayerStyleAttr, renderCartouchedText, renderPlayerRoleName } from '
 import { formatGoldHtml, formatTroopsHtml, renderIconSet } from './icons.js';
 import { escapeHtml } from './html.js';
 import { announceGameProgress } from './announcer.js';
+import { renderMapProvinceActions } from './mapActions.js';
 import { getPlayerPhase, getPlayerPhaseName } from '../data/terms.js';
 
 export function createDefaultUiState() {
@@ -810,6 +811,7 @@ export function renderGameFrame({
   onSelectProvince = null,
   onHoverProvince = null,
   rerender = null,
+  mapActions = null,
 }) {
   if (!state) return;
   renderTopBar(state);
@@ -837,6 +839,16 @@ export function renderGameFrame({
     hoveredProvinceId,
     onSelectProvince,
     onHoverProvince,
+  });
+  // The province popover: play the phase on the map (ui/mapActions.js).
+  renderMapProvinceActions({
+    state,
+    playerId: mapActions?.playerId ?? null,
+    provinceId: selectedProvinceId,
+    uiState,
+    canControl: Boolean(mapActions?.canControl),
+    rerender,
+    onClose: () => onSelectProvince?.(null),
   });
   if (state.gameOver || state.phase === 'scoring') renderGameOverOverlay?.();
 }

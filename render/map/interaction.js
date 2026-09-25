@@ -544,6 +544,27 @@ export function applyMapTransform() {
   );
   mapRuntime.viewportLayer.ownerSVGElement?.classList.toggle('is-map-zoomed', mapRuntime.mapView.zoom > 1.001);
   applyLabelScale();
+  mapRuntime.viewChangeHandler?.();
+}
+
+// Where a province's name cartouche sits, in pixels from the top left of
+// the map shell, with the shell's size; null before the map is drawn.
+export function getProvinceAnchorPx(provinceId) {
+  const centroid = mapRuntime.provinceCentroids?.[provinceId];
+  const width = mapRuntime.shellWidthPx;
+  if (!centroid || !(width > 0)) return null;
+  const pxPerUnit = width / MAP_WIDTH;
+  const { zoom, panX, panY } = mapRuntime.mapView;
+  return {
+    x: (panX + zoom * centroid.cx) * pxPerUnit,
+    y: (panY + zoom * centroid.cy) * pxPerUnit,
+    width,
+    height: MAP_HEIGHT * pxPerUnit,
+  };
+}
+
+export function setMapViewChangeHandler(handler) {
+  mapRuntime.viewChangeHandler = typeof handler === 'function' ? handler : null;
 }
 
 function clampMapView() {

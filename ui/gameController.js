@@ -242,6 +242,10 @@ export class GameController {
       onSelectProvince: (provinceId) => this.selectProvince(provinceId, { focusMap: true }),
       onHoverProvince: (provinceId) => this.previewProvince(provinceId),
       rerender: () => this.render(),
+      mapActions: {
+        playerId: this.activePlayer,
+        canControl: !(this.isSinglePlayer() && !this.isControllablePlayer(this.activePlayer)),
+      },
     });
 
     if (phaseChanged) {

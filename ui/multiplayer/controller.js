@@ -699,6 +699,10 @@ export class MultiplayerController {
         onSelectProvince: (provinceId) => this.selectProvince(provinceId, { focusMap: true }),
         onHoverProvince: (provinceId) => this.previewProvince(provinceId),
         rerender: () => this.render(),
+        mapActions: {
+          playerId: this.getControlledSeatId(),
+          canControl: this.getControlledSeatId() != null,
+        },
       });
       if (phaseChanged) {
         const initialPhase = this.lastPhaseKey === null;

@@ -19,11 +19,11 @@ import { getRegionLabel, renderEstateStack, renderProvinceBadge } from '../label
 import { formatGoldHtml } from '../icons.js';
 import { escapeHtml } from '../html.js';
 import { renderInvasionCard } from './invasion.js';
-import { bindSelectAction, getDraftBucket } from './shared.js';
+import { bindSelectAction, getDraftBucket, notifyDraftChange } from './shared.js';
 
 const REGION_ORDER = ['east', 'west', 'sea'];
 
-function getEstateDraft(uiState, state, playerId) {
+export function getEstateDraft(uiState, state, playerId) {
   const draft = getDraftBucket(uiState, state, 'estates', playerId);
   if (!draft.plan) draft.plan = { ...getEstatePlan(state, playerId) };
   return draft;
@@ -49,7 +49,7 @@ export function addEstateToDraft(uiState, state, playerId, themeId) {
   return true;
 }
 
-function removeEstateFromDraft(uiState, state, playerId, themeId) {
+export function removeEstateFromDraft(uiState, state, playerId, themeId) {
   const draft = getEstateDraft(uiState, state, playerId);
   const current = Number(draft.plan[themeId]) || 0;
   if (current <= 0) return false;
@@ -153,7 +153,10 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
     </section>
   `;
 
-  const rerender = () => renderEstatesPanel(container, state, playerId, callbacks, options);
+  const rerender = () => {
+    renderEstatesPanel(container, state, playerId, callbacks, options);
+    notifyDraftChange();
+  };
   container.querySelectorAll('[data-estate-add]').forEach((button) => {
     button.addEventListener('click', () => {
       if (addEstateToDraft(options.uiState, state, playerId, button.dataset.estateAdd)) rerender();
