@@ -53,18 +53,20 @@ npm run train:ai -- --generations 8
 ```
 
 Training produces one AI opponent per **personality** (`ai/personalities.js`):
-Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Strategist; five
-that are selfish in different ways: the Miser (dismisses troops for gold),
-the Hoarder (keeps offices, strips rivals), the Saboteur (lets provinces of
-disliked rivals fall), the Regicide (loses wars on purpose to load Unrest on
-an unwanted Basileus) and the Glory Hunter (wins the best-defender reward,
-then spends it on a coup); four more styles: the Domain Lord (gathers its
-estates into domains), the Condottiere (hires mercenaries to be the best
-defender), the Turncoat (no loyalty in the coup) and the Loyalist (backs
-the sitting Basileus); and three **explorers**, the Maverick, the Wildcard
-and the Outsider.
+Usurper, Opportunist, Landlord, Tyrant, Patron, Strategist; four that are
+selfish in different ways: the Miser (dismisses troops for gold), the
+Hoarder (keeps offices, strips rivals), the Saboteur (lets provinces of
+disliked rivals fall) and the Glory Hunter (wins the best-defender reward,
+then spends it on a coup); three more styles: the Turncoat (no loyalty in
+the coup), the Loyalist (backs the sitting Basileus) and the Prelate (as
+Patriarch, fills bishoprics and keeps Bishops rather than revoking them);
+and an **explorer**, the Maverick.
 
-An explorer has no temperament at all: it starts from its own random point
+Every AI may also tune `bishopAppointBonus` and `bishopKeepWeight` (0 by
+default), so training finds out whether a full Church pays; the Prelate is
+held to high values of both.
+
+The explorer has no temperament at all: it starts from its own random point
 of the whole weight space (`explore.seed` in `ai/personalities.js`) and
 mutates with bolder steps, so training can find ways of winning the preset
 styles do not try. Its description says what it ended up doing.
@@ -98,6 +100,14 @@ empire, or a game that does not finish, is worth `0` to every dynasty, as in
 the rules. Nothing rewards defending, prudence or duty for its own sake: an AI
 that lets others defend while it takes the throne is right to do so if that
 wins, and an AI that over-defends is punished by the free-riders it meets.
+
+The best AI would keep the empire alive and still end on top: richer, with
+more offices and estates than anyone, having got the others to do the
+defending. Caring for the empire and for oneself at once is hard to reward
+directly, so the reward stays the result alone, and the empire-fall rate the
+simulator reports is a check on the AIs, not a target for the rules: a
+rate near zero flags AIs that over-defend, a very high one AIs that gamble
+the empire away. The rules are set for the game; the AIs adapt to them.
 
 ### How it searches
 
@@ -158,6 +168,7 @@ For each personality the log prints its value, win rate, and how it plays:
 - `--output PATH` roster file (default `ai/tunedOpponents.json`)
 - `--set NAME=value` train under other balance values (recorded in the roster)
 - `--no-save`, `--quiet`, `--json`
+- `--no-rate` skip rating the saved roster; `--rating-games N` tables for it (default `480`)
 
 A default run plays about 8,900 games per generation; on four workers a
 generation takes around sixteen minutes.
@@ -171,6 +182,19 @@ npm run train:ai -- --generations 1 --offspring 2 --screening-games 4 --confirm-
 The roster file replaces the previous one. Each entry keeps its personality,
 trait-bounded weights, final metrics and training settings; the file also
 records the benchmark.
+
+### Rating: which AIs players meet
+
+After saving, training rates the new roster (`ai/rate.js`, also
+`npm run rate:ai`): every AI plays an equal share of seats against the rest
+of the roster on both maps, at 4 and 5 dynasties and 6, 9 or 12 rounds. Its
+**strength** is its wins over the fair share it would get by chance, divided
+by the roster's average, so 1 is an average AI; a fallen empire is a loss
+for everyone. From 1.15 an AI is *strong*, from 0.8 *average*, and below it
+*weak*. Weak AIs stay in training, where they tell a better AI from a worse
+one, but players are not offered them: not in the setup screen, the random
+seats or multiplayer rooms (unless fewer than four would be left). Each
+roster entry keeps its `rating` and `offered`.
 
 ### Current roster
 
