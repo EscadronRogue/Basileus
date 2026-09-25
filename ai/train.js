@@ -73,6 +73,10 @@ const DEFAULT_OPTIONS = Object.freeze({
   seed: null,
   workers: null,
   save: true,
+  // Start each personality from its saved champion instead of its preset,
+  // except the ones listed in `fresh`.
+  fromRoster: false,
+  fresh: [],
   outputPath: fileURLToPath(new URL('./tunedOpponents.json', import.meta.url)),
 });
 
@@ -152,6 +156,8 @@ export function normalizeTrainingOptions(rawOptions = {}) {
     seed: rawOptions.seed == null || rawOptions.seed === '' ? randomTrainingSeed() : toInt(rawOptions.seed, 1),
     workers: Math.max(1, toInt(rawOptions.workers, defaultSimulationWorkers())),
     save: rawOptions.save !== false,
+    fromRoster: Boolean(rawOptions.fromRoster),
+    fresh: toList(rawOptions.fresh, []),
     outputPath: rawOptions.outputPath || DEFAULT_OPTIONS.outputPath,
     onProgress: typeof rawOptions.onProgress === 'function' ? rawOptions.onProgress : null,
     // Balance values replaced for every training game (data/balance.js).
@@ -627,8 +633,15 @@ export async function trainPersonalities(rawOptions = {}) {
   const options = { ...normalizeTrainingOptions(rawOptions), startedAt: Date.now() };
   const rng = makeRng(options.seed);
   const previousRoster = readSavedRoster(options.outputPath);
+  const startingWeights = (personalityId) => {
+    const saved = options.fromRoster && !options.fresh.includes(personalityId)
+      ? previousRoster.find((entry) => entry.personality === personalityId)
+      : null;
+    const seed = personalitySeedWeights(personalityId);
+    return saved ? clampToPersonality(getPersonality(personalityId), { ...seed, ...(saved.strategyWeights || {}) }) : seed;
+  };
   const lines = Object.fromEntries(options.personalities.map((personalityId) => [personalityId, {
-    champion: { weights: personalitySeedWeights(personalityId), generation: 0 },
+    champion: { weights: startingWeights(personalityId), generation: 0 },
     sigma: options.mutation,
     archive: [],
   }]));
@@ -725,6 +738,11 @@ function parseArgs(argv) {
       options.balance = { ...(options.balance || {}), [name]: value };
     } else if (key === 'json') options.json = true;
     else if (key === 'no-save') options.save = false;
+    else if (key === 'from-roster') options.fromRoster = true;
+    else if (key === 'fresh') {
+      options.fresh = argv[index + 1];
+      index += 1;
+    }
     else if (key === 'quiet') options.quiet = true;
     else if (flags[key]) {
       const value = argv[index + 1];

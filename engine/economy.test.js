@@ -1181,7 +1181,7 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   phaseResolution(state);
 
   assert.equal(state.themes.SAM.lost, false);
-  assert.equal(getPlayer(state, 2).gold, 1);
+  assert.equal(getPlayer(state, 2).gold, BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE);
   assert.deepEqual(state.lastWarResult.themesRecovered, ['SAM']);
   assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
   assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
@@ -1210,7 +1210,7 @@ test('repulsed invasions reward the top defender for province wins even without 
   assert.equal(state.lastWarResult.reconquestRewardProvinceCount, 2);
   assert.equal(state.lastWarResult.reconquestReward.rewardProvinceCount, 2);
   assert.deepEqual(state.lastWarResult.reconquestReward.themeIds, []);
-  assert.equal(getPlayer(state, 2).gold, 2);
+  assert.equal(getPlayer(state, 2).gold, 2 * BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE);
   assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2 * BALANCE.TRIUMPH_PER_PROVINCE);
 });
 
@@ -1244,10 +1244,11 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   phaseResolution(state);
 
   assert.equal(state.lastWarResult.themesRecovered.length, 3);
-  assert.equal(getPlayer(state, 2).gold, 2);
-  assert.equal(getPlayer(state, 3).gold, 2);
+  const goldShare = Math.ceil((3 * BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE) / 2);
+  assert.equal(getPlayer(state, 2).gold, goldShare);
+  assert.equal(getPlayer(state, 3).gold, goldShare);
   assert.deepEqual(state.lastWarResult.reconquestReward.defenders.map((entry) => entry.defenderId), [2, 3]);
-  assert.equal(state.lastWarResult.reconquestReward.gold, 2);
+  assert.equal(state.lastWarResult.reconquestReward.gold, goldShare);
   // Three provinces won: gold is split rounding up, Triumph rounding down.
   const triumphShare = Math.floor((3 * BALANCE.TRIUMPH_PER_PROVINCE) / 2);
   assert.equal(state.lastWarResult.reconquestReward.capitalSupport, triumphShare);
