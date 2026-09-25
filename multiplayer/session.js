@@ -367,6 +367,7 @@ export class MultiplayerRoom {
       playerCount: this.config.playerCount,
       turnCount: this.config.turnCount,
       deckSize: this.config.deckSize,
+      mapId: this.config.mapId,
       seed,
       historyEnabled: true,
     });

@@ -55,10 +55,11 @@ async function chooseSetup(page, selectId, value) {
   await page.click(`[data-setup-choice="${selectId}"] [data-setup-choice-value="${value}"]`);
 }
 
-async function startLocalGame(page, { mode = 'single', players = 5, turns = 6, seed = 'smoke' } = {}) {
+async function startLocalGame(page, { mode = 'single', players = 5, turns = 6, seed = 'smoke', map = null } = {}) {
   await chooseSetup(page, 'setupMode', mode);
   await chooseSetup(page, 'setupPlayers', String(players));
   await chooseSetup(page, 'setupTurns', String(turns));
+  if (map) await chooseSetup(page, 'setupMap', map);
   await page.click('#setupAiDetails summary').catch(() => {});
   await page.click('.setup-advanced-card:has(#setupSeed) summary');
   await page.fill('#setupSeed', seed);
@@ -140,6 +141,27 @@ test('single-player short game plays through to final scoring', { timeout: 600_0
   const { page, problems } = await openGame(t);
   await startLocalGame(page, { mode: 'single', players: 5, turns: 6, seed: 'smoke-single' });
   assert.equal(await page.locator('#mapContainer svg').count() > 0, true, 'map renders');
+
+  const end = await playToEnd(page);
+
+  assert.ok(end.gameOver || end.phase === 'scoring', `game finished: ${JSON.stringify(end)}`);
+  assert.deepEqual(problems, []);
+});
+
+test('the compact map starts, draws its 21 provinces, and plays to the end', { timeout: 600_000 }, async (t) => {
+  const { page, problems } = await openGame(t);
+  await startLocalGame(page, { mode: 'single', players: 4, turns: 6, seed: 'smoke-compact', map: 'compact' });
+  const map = await page.evaluate(() => ({
+    mapId: window.__basileus.state.mapId,
+    themes: Object.keys(window.__basileus.state.themes).length,
+    shapes: document.querySelectorAll('#mapContainer .province-shape').length,
+    hitboxes: document.querySelectorAll('#mapContainer .province-hitbox').length,
+  }));
+  assert.equal(map.mapId, 'compact');
+  // 21 provinces plus Constantinople.
+  assert.equal(map.themes, 22);
+  assert.equal(map.shapes, 22, 'every compact province has a fused outline');
+  assert.equal(map.hitboxes, 22, 'every compact province can be clicked');
 
   const end = await playToEnd(page);
 

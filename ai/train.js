@@ -65,6 +65,8 @@ const DEFAULT_OPTIONS = Object.freeze({
   benchmarkGames: 60,
   playerCounts: [4, 5, 5],
   deckSizes: [9],
+  // Maps the tables are drawn from, so one roster plays both.
+  maps: ['classic', 'compact'],
   mutation: 0.2,
   mutationRate: 0.35,
   championShare: 0.6,
@@ -73,6 +75,10 @@ const DEFAULT_OPTIONS = Object.freeze({
   seed: null,
   workers: null,
   save: true,
+  // Start each personality from its saved champion instead of its preset,
+  // except the ones listed in `fresh`.
+  fromRoster: false,
+  fresh: [],
   outputPath: fileURLToPath(new URL('./tunedOpponents.json', import.meta.url)),
 });
 
@@ -144,6 +150,7 @@ export function normalizeTrainingOptions(rawOptions = {}) {
     benchmarkGames: Math.max(0, toInt(rawOptions.benchmarkGames, DEFAULT_OPTIONS.benchmarkGames)),
     playerCounts: toIntList(rawOptions.playerCounts, DEFAULT_OPTIONS.playerCounts, 3, 5),
     deckSizes: toIntList(rawOptions.deckSizes, DEFAULT_OPTIONS.deckSizes, 1, 9),
+    maps: toList(rawOptions.maps, DEFAULT_OPTIONS.maps),
     mutation: Math.min(MAX_SIGMA, Math.max(MIN_SIGMA, toFloat(rawOptions.mutation, DEFAULT_OPTIONS.mutation))),
     mutationRate: Math.min(1, Math.max(0.05, toFloat(rawOptions.mutationRate, DEFAULT_OPTIONS.mutationRate))),
     championShare: Math.min(1, Math.max(0, toFloat(rawOptions.championShare, DEFAULT_OPTIONS.championShare))),
@@ -152,6 +159,8 @@ export function normalizeTrainingOptions(rawOptions = {}) {
     seed: rawOptions.seed == null || rawOptions.seed === '' ? randomTrainingSeed() : toInt(rawOptions.seed, 1),
     workers: Math.max(1, toInt(rawOptions.workers, defaultSimulationWorkers())),
     save: rawOptions.save !== false,
+    fromRoster: Boolean(rawOptions.fromRoster),
+    fresh: toList(rawOptions.fresh, []),
     outputPath: rawOptions.outputPath || DEFAULT_OPTIONS.outputPath,
     onProgress: typeof rawOptions.onProgress === 'function' ? rawOptions.onProgress : null,
     // Balance values replaced for every training game (data/balance.js).
@@ -198,6 +207,7 @@ export function summarizeSeatBehavior(game, seat) {
     throneRounds: Number(stats.throneRounds) || 0,
     frontierTroops: Number(stats.frontierTroops) || 0,
     capitalTroops: Number(stats.capitalTroops) || 0,
+    idleTroops: Number(stats.idleTroops) || 0,
     estatesBought: Number(behavior.estatesBought) || 0,
     revocations: Number(behavior.revocations) || 0,
     appointmentsToOthers: Number(behavior.appointmentsToOthers) || 0,
@@ -220,6 +230,7 @@ export function createEvaluation() {
     throneRounds: 0,
     frontierTroops: 0,
     capitalTroops: 0,
+    idleTroops: 0,
     estatesBought: 0,
     revocations: 0,
     appointmentsToOthers: 0,
@@ -265,6 +276,7 @@ export function describeEvaluation(evaluation) {
     reignShare: round(evaluation.throneRounds / orders),
     frontierTroopsPerOrder: round(evaluation.frontierTroops / orders, 2),
     capitalTroopsPerOrder: round(evaluation.capitalTroops / orders, 2),
+    dismissedTroopsPerOrder: round(evaluation.idleTroops / orders, 2),
     estatesPerGame: round(evaluation.estatesBought / games, 2),
     revocationsPerGame: round(evaluation.revocations / games, 2),
     appointmentsToOthersPerGame: round(evaluation.appointmentsToOthers / games, 2),
@@ -345,6 +357,7 @@ export function buildScenarios(rng, count, options) {
       seed: Math.floor(rng() * 2 ** 31),
       playerCount,
       deckSize: pick(rng, options.deckSizes),
+      mapId: options.maps[index % options.maps.length],
       seat: index % playerCount,
       opponents,
     });
@@ -368,6 +381,7 @@ function buildSpec(scenario, candidatePolicy, league, options) {
     seed: scenario.seed,
     playerCount: scenario.playerCount,
     deckSize: scenario.deckSize,
+    mapId: scenario.mapId || 'classic',
     policies,
     allowUntunedPolicies: true,
     historyEnabled: false,
@@ -548,6 +562,7 @@ async function runBenchmarks(runner, finals, previousRoster, rng, options) {
         seed: Math.floor(rng() * 2 ** 31),
         playerCount,
         deckSize: pick(rng, options.deckSizes),
+        mapId: options.maps[index % options.maps.length],
         seat: index % playerCount,
         opponents: Array.from({ length: playerCount - 1 }, () => pick(rng, set.opponents)),
       });
@@ -606,6 +621,7 @@ function buildRosterPayload(result) {
         seed: result.options.seed,
         playerCounts: result.options.playerCounts,
         deckSizes: result.options.deckSizes,
+        maps: result.options.maps,
         finalGames: result.options.finalGames,
         balance: result.options.balance,
       },
@@ -624,8 +640,15 @@ export async function trainPersonalities(rawOptions = {}) {
   const options = { ...normalizeTrainingOptions(rawOptions), startedAt: Date.now() };
   const rng = makeRng(options.seed);
   const previousRoster = readSavedRoster(options.outputPath);
+  const startingWeights = (personalityId) => {
+    const saved = options.fromRoster && !options.fresh.includes(personalityId)
+      ? previousRoster.find((entry) => entry.personality === personalityId)
+      : null;
+    const seed = personalitySeedWeights(personalityId);
+    return saved ? clampToPersonality(getPersonality(personalityId), { ...seed, ...(saved.strategyWeights || {}) }) : seed;
+  };
   const lines = Object.fromEntries(options.personalities.map((personalityId) => [personalityId, {
-    champion: { weights: personalitySeedWeights(personalityId), generation: 0 },
+    champion: { weights: startingWeights(personalityId), generation: 0 },
     sigma: options.mutation,
     archive: [],
   }]));
@@ -703,6 +726,7 @@ function parseArgs(argv) {
     'player-counts': 'playerCounts',
     decks: 'deckSizes',
     deck: 'deckSizes',
+    maps: 'maps',
     mutation: 'mutation',
     'mutation-rate': 'mutationRate',
     'champion-share': 'championShare',
@@ -722,6 +746,11 @@ function parseArgs(argv) {
       options.balance = { ...(options.balance || {}), [name]: value };
     } else if (key === 'json') options.json = true;
     else if (key === 'no-save') options.save = false;
+    else if (key === 'from-roster') options.fromRoster = true;
+    else if (key === 'fresh') {
+      options.fresh = argv[index + 1];
+      index += 1;
+    }
     else if (key === 'quiet') options.quiet = true;
     else if (flags[key]) {
       const value = argv[index + 1];
@@ -745,6 +774,7 @@ export function formatBehavior(metrics) {
     `win ${percent(metrics.winRate)}`,
     `value ${metrics.value}`,
     `fall ${percent(metrics.fallRate)}`,
+    `troops/round: frontier ${metrics.frontierTroopsPerOrder}, Constantinople ${metrics.capitalTroopsPerOrder}, dismissed ${metrics.dismissedTroopsPerOrder}`,
     `holds back ${percent(metrics.holdBackRate)}`,
     `burns ${percent(metrics.burnedWhileHoldingBackRate)}`,
     `throne bids ${percent(metrics.capitalBidRate)}`,

@@ -15,7 +15,8 @@ npm run simulate:ai -- --games 200 --players 5 --deck 9
 
 - `--games N` number of games (default `100`)
 - `--players N` dynasties per game, `3`-`5` (default `5`)
-- `--deck N` game length in turns (default `9`)
+- `--deck N` game length in rounds (default `9`)
+- `--map classic|compact` the map to play on (default `classic`)
 - `--seed N` first game seed; game *i* uses seed + *i* (default `1`)
 - `--workers N` worker threads (default up to `4`); results are identical to `--workers 1`
 - `--policies a,b,c` built-in policy per seat instead of the saved tuned roster
@@ -23,17 +24,21 @@ npm run simulate:ai -- --games 200 --players 5 --deck 9
 - `--no-history` skip history recording for speed
 - `--json` machine-readable output
 - `--set NAME=value` replace a value of `data/balance.js` for this run
-  (repeatable; values are read as JSON, e.g. `--set COUP_CHOICE_WEIGHTS=[1,0.5]`)
+  (repeatable; values are read as JSON, e.g. `--set COUP_CHOICE_WEIGHTS=[1,0.5]`).
+  `--set compact.NAME=value` changes the Compact map's own value
+  (`MAP_BALANCE` in `data/balance.js`) and leaves the Classic map alone
 - `--sweep NAME=a,b,c` run once per value and print one line per value
-- `--probe cautious|gambler` seat one probe per game (rotating seats) among
-  the tuned roster. A probe plays like the trained Strategist except for the
-  weights its preset in `ai/policies.js` changes: `cautious` over-defends and
-  never bids for the throne, `gambler` bids for the throne whenever it can.
+- `--probe cautious|selfish|gambler` seat one probe per game (rotating
+  seats) among the tuned roster. A probe plays like the trained Strategist
+  except for the weights its preset in `ai/policies.js` changes: `cautious`
+  gives everything to the common good, `selfish` gives as little as it can,
+  `gambler` only takes throne risks.
 
 The report covers completion, empire-fall rate, war and coup outcomes,
 deployment habits, estates, scoring, win rate per seat and per AI (against
-the fair share, 1 / players), the probe's win rate, average gold per dynasty
-by round, and when and to which invader the empire falls.
+the fair share, 1 / players), the probe's win rate, the gold a dynasty holds
+and the gold and troops it receives in each round, and when and to which
+invader the empire falls.
 
 Sweep example:
 
@@ -48,7 +53,12 @@ npm run train:ai -- --generations 8
 ```
 
 Training produces one AI opponent per **personality** (`ai/personalities.js`):
-Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron and Strategist.
+Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Strategist, and
+five that are selfish in different ways: the Miser (dismisses troops for
+gold), the Hoarder (keeps offices, strips rivals), the Saboteur (lets
+provinces of disliked rivals fall), the Regicide (loses wars on purpose to
+load Unrest on an unwanted Basileus) and the Glory Hunter (wins the
+best-defender reward, then spends it on a coup).
 Every AI uses the same planner (`ai/strategy.js`); a personality fixes the
 ranges of the few strategy weights that make its temperament (an Usurper
 always prizes the throne, an Opportunist always leans on others to hold the
@@ -66,7 +76,9 @@ wins, and an AI that over-defends is punished by the free-riders it meets.
 ### How it searches
 
 Each personality keeps a champion, starting from its base preset clamped into
-its trait ranges. Every generation:
+its trait ranges (or, with `--from-roster`, from its saved champion). Tables
+alternate between the Classic and the Compact map (`--maps`), so one roster
+plays both. Every generation:
 
 1. The champion and `--offspring` mutants play the same `--screening-games`
    seeded tables (common random numbers, so luck mostly cancels out).
@@ -108,6 +120,9 @@ For each personality the log prints its value, win rate, and how it plays:
 - `--personalities a,b` train only some personalities
 - `--players 4,5,5` table sizes to draw from, weighted by repetition (default `4,5,5`)
 - `--decks 9` game lengths to draw from (default `9`)
+- `--maps classic,compact` maps the tables alternate between (default both)
+- `--from-roster` start each personality from its saved champion instead of its preset
+- `--fresh a,b` with `--from-roster`, start these personalities from their preset anyway
 - `--mutation X` starting mutation step, as a share of each weight's range (default `0.2`)
 - `--mutation-rate X` share of weights each mutation touches (default `0.35`)
 - `--champion-share X` share of opponent seats taken by personality champions (default `0.6`)
@@ -133,37 +148,39 @@ records the benchmark.
 
 ### Current roster
 
-Trained for the current rules (two coup choices, estates at 1, 2, 3...,
-offices raising their own troops, invasion strength 1.7 per imperial
-province) with `--generations 8 --seed 20260925`: about 26,000 games, 113
-minutes on three workers. Final measurements on 160 fresh tables per
-personality:
+Trained for the current rules (the Basileus revokes estates only, two coup
+choices, estates at 1, 2, 3..., offices raising their own troops, invasion
+strength 1.7 per imperial province) with `--generations 8 --seed 20260926`:
+about 45,000 games, 229 minutes on four workers.
 
-| Personality | Win | Holds back | Throne bids | Seizures/game | Empire falls |
-| --- | --- | --- | --- | --- | --- |
-| Usurper | 22% | 8% | 23% | 0.72 | 11% |
-| Opportunist | 27% | 8% | 9% | 0.44 | 14% |
-| Landlord | 30% | 5% | 9% | 0.46 | 9% |
-| Kingmaker | 28% | 4% | 6% | 0.33 | 9% |
-| Tyrant | 19% | 48% | 73% | 1.12 | 19% |
-| Patron | 27% | 3% | 7% | 0.32 | 6% |
-| Strategist | 32% | 4% | 6% | 0.39 | 6% |
+### Which kinds of selfishness pay
 
-Alone against four default planners the new AIs win 52-70% of their games.
-Seated among the previous roster (trained for the old rules) they win 18-28%,
-and those tables lose the empire in 33-53% of games: the old AIs no longer
-defend enough.
+600 games of 5 dynasties drawn from the twelve trained AIs (fair share 20%);
+troops are per round, averaged over the game:
 
-### Balance check (roster only, 200 games, 5 players, 9 rounds)
+| AI | Win | vs fair share | Frontier | Constantinople | Dismissed | Empire falls in its games |
+| --- | --- | --- | --- | --- | --- | --- |
+| Opportunist (lets others defend) | 34% | 1.71x | 3.9 | 1.0 | 3.6 | 21% |
+| Saboteur (lets rivals' provinces fall) | 25% | 1.27x | 8.7 | 0.6 | 2.1 | 12% |
+| Regicide (loses wars to topple the Basileus) | 23% | 1.16x | 8.7 | 1.5 | 1.0 | 13% |
+| Landlord | 19% | 0.96x | 7.3 | 1.0 | 1.6 | 22% |
+| Patron | 19% | 0.93x | 4.6 | 1.9 | 3.3 | 15% |
+| Kingmaker | 18% | 0.87x | 9.8 | 0.2 | 1.0 | 22% |
+| Glory Hunter (best defender, then a coup) | 16% | 0.78x | 7.1 | 3.6 | 0.2 | 12% |
+| Miser (dismisses troops for gold) | 15% | 0.74x | 8.9 | 0.5 | 2.0 | 13% |
+| Hoarder (keeps offices, strips rivals) | 11% | 0.56x | 9.6 | 1.0 | 1.1 | 10% |
+| Usurper | 10% | 0.49x | 1.6 | 8.2 | 0.3 | 20% |
+| Strategist | 10% | 0.47x | 9.5 | 0.8 | 1.1 | 12% |
+| Tyrant | 2% | 0.09x | 1.3 | 8.8 | 0.3 | 23% |
 
-- Empire falls in 13% of games; wars are won 70% of the time.
-- Win rate per AI ranges from 9% (Tyrant) to 25% (Landlord) against a fair
-  share of 20%.
-- `--probe cautious` wins 0-1% of its games: over-defending is punished.
-- `--probe gambler` wins 7-9%, although it holds the throne in 78% of rounds:
-  it ends with a quarter less gold than the others, because the troops it
-  keeps in Constantinople are not dismissed for gold. With the current
-  rules the throne does not pay back what it costs to take and hold;
-  lowering the Theodosian Walls from 5 to 2 does not change that (8%).
-- Gold per dynasty grows slowly through the game (1-5 gold held until
-  round 8) and jumps in the last round, when estates stop paying back.
+- The empire falls in 16% of these games; wars are won 49% of the time.
+- Free-riding pays most: the Opportunist sends half as many troops to the
+  frontier as the others, dismisses the rest for gold, and wins 1.7 times
+  its share. Spite (Saboteur) and undermining the Basileus (Regicide) pay
+  too.
+- Pouring troops into Constantinople does not pay (Usurper, Tyrant), and
+  neither does keeping every office (Hoarder).
+- `--probe selfish` (the trained Strategist made selfish) wins 19% of its
+  games, twice the Strategist's 10%; `--probe cautious` wins 1%.
+- Gold per dynasty stays around 2 until round 6 and rises to 15 by the last
+  round.

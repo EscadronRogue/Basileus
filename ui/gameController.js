@@ -30,6 +30,7 @@ import {
 } from './sharedView.js';
 import { buildLocalSave, clearLocalSave, restoreLocalSaveState, writeLocalSave } from './localSave.js';
 import { addEstateToDraft } from './panels/estates.js';
+import { setGlossaryMap } from './glossary.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 
@@ -39,6 +40,7 @@ export class GameController {
       playerCount: config.playerCount || 5,
       turnCount: config.turnCount || config.deckSize || 9,
       deckSize: config.turnCount || config.deckSize || 9,
+      mapId: config.mapId || 'classic',
       seed: config.seed || Date.now(),
       historyEnabled: config.historyEnabled !== false,
       mode: config.mode || 'hotseat',
@@ -126,7 +128,9 @@ export class GameController {
   }
 
   async mountMap() {
+    setGlossaryMap(this.state?.mapId);
     await createMapSVG('mapContainer', {
+      mapId: this.state?.mapId,
       mapFilter: this.uiState.mapFilter,
       onMapFilterChange: (filterId) => {
         this.uiState.mapFilter = filterId;

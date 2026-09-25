@@ -15,7 +15,8 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 - **Multiplayer.** Built-in WebSocket server (`multiplayer/server.js`) using only Node built-ins.
 - **Interactive tutorial.** "Play the tutorial" on the setup screen walks you through a full round, pointing at each control, then lets you finish a short game.
 - **Hover glossary.** Key words are bold wherever they appear; hover one for its definition, and keep hovering to lock the tooltip and explore the words inside it.
-- **AI rivals with personalities.** Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron and Strategist, each trained by self-play to win rather than to play safe. Every AI move goes through the same legal command layer as a human's.
+- **Two maps.** Classic, with 40 provinces, or Compact, with 21 larger provinces fused from them, for smaller armies and less gold.
+- **AI rivals with personalities.** Twelve temperaments, each selfish in its own way (Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Miser, Hoarder, Saboteur, Regicide, Glory Hunter and Strategist), trained by self-play on both maps to win rather than to play safe. Every AI move goes through the same legal command layer as a human's.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -64,9 +65,11 @@ npm run serve:multiplayer
 | `npm run serve` | Static + multiplayer HTTP server. |
 | `npm run serve:multiplayer` | Same server entry point, useful for deployment. |
 | `npm run simulate:ai -- --games 200 --players 5 --deck 9` | Runs deterministic all-AI batches (in parallel) and reports balance: fall rate, falls by round and invader, win rate per seat, and more. |
-| `npm run train:ai -- --generations 3 --population 10 --games 24` | Tunes strategy weights against a mixed AI policy league and saves the best tuned opponents. See [`docs/ai-training.md`](docs/ai-training.md). |
+| `npm run simulate:ai -- --map compact` | The same on the Compact map. |
+| `npm run train:ai -- --generations 3 --from-roster` | Tunes strategy weights against a mixed AI policy league on both maps and saves the best tuned opponents. See [`docs/ai-training.md`](docs/ai-training.md). |
 | `npm run build:rules-doc` | Regenerates `docs/rules.md` from `ui/rules.js`. |
 | `npm run build:svg-fallback` | Regenerates `render/svgAssets.js` after editing `assets/*.svg`. |
+| `npm run build:compact-map` | Rebuilds `assets/hitzones-compact.svg` (the Compact map's fused provinces) from `assets/hitzones.svg`, then the fallback. Needs `npm install`. |
 | `npm test` | Runs the full unit suite (no browser needed). |
 | `npm run test:data` | Game data integrity, layering rules, and generated-file sync. |
 | `npm run test:economy` | Engine/economy rules tests. |
@@ -115,7 +118,9 @@ Render notes:
 
 ## Game Overview
 
-Players are rival noble houses inside the Byzantine Empire. Each round an invasion is drawn, the great offices appoint and revoke at Court, estates and offices pay out, dynasties bid for land, and everyone secretly deploys troops to the frontier or the capital. The coup is settled before the war: the throne can change hands while the empire burns. After the last turn, dynasties score for their share of gold, profit income, and office income, unless Constantinople falls and everyone loses.
+Players are rival noble houses inside the Byzantine Empire. Each round an invasion is drawn; the major offices appoint and revoke Strategoi and Bishops, and the Basileus may revoke estates; offices and estates pay out; dynasties secretly plan new estates; and everyone secretly sends troops to the frontier or to Constantinople. The coup is settled before the war: the throne can change hands while the empire burns. After the last round, dynasties score for their share of the empire's wealth, unless Constantinople falls and everyone loses.
+
+The game is played on one of two maps. Classic has 40 provinces. Compact fuses them into 21 larger ones, each raising 1 troop, so armies and income stay small; a few values are tuned for it (`MAP_BALANCE` in `data/balance.js`).
 
 The complete rules are in [`docs/rules.md`](docs/rules.md), generated from [`ui/rules.js`](ui/rules.js) and the glossary in [`ui/glossary.js`](ui/glossary.js), which are also what the in-game "How to Play" card and hover tooltips show. Edit them there and run `npm run build:rules-doc`.
 
@@ -129,6 +134,8 @@ Useful entry points:
 - `engine/turnflow.js` - round/phase orchestration
 - `game/runtime.js` - drives phases and AI seats for every game mode
 - `ai/brain.js` - strategic AI runtime integration
+- `data/maps/` - the two maps: provinces, invasion routes, and the Compact map's fusions
+- `data/balance.js` - every tuning value, with per-map overrides
 - `ui/rules.js`, `ui/glossary.js` - the rules text, key-word definitions, and `docs/rules.md` source
 - `ui/tutorial/` - the tutorial game's script (`steps.js`) and guide overlay (`tutorial.js`)
 - `multiplayer/wsServer.js` - handcoded WebSocket framing
@@ -139,11 +146,11 @@ Single-player and hotseat games autosave to the browser's `localStorage` and can
 
 ## AI Layer
 
-AI dynasties use legal action generation plus a compact strategic evaluator. The evaluator projects income-share scoring, watches 10% scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate bids, court appointments/revocations, deployment orders, and title redistribution.
+AI dynasties use legal action generation plus a compact strategic evaluator. The evaluator projects share-based scoring, watches scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate plans, appointments and revocations, deployment orders, and office handouts.
 
-Each AI opponent has a **personality** (`ai/personalities.js`): Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron or Strategist. A personality fixes the weights that make its temperament; `ai/train.js` tunes the rest by playing thousands of games, and it rewards only winning. A fallen empire counts as a loss for everyone, and nothing rewards prudence for its own sake, so a trained AI will let others defend, or strip the capital to seize the throne, whenever that wins more games. The trained roster lives in `ai/tunedOpponents.json`, one Greek-named AI per personality; the setup screen shows each one's temperament, and in game its name carries it (e.g. "Leon Doukas (Usurper AI)").
+Each AI opponent has a **personality** (`ai/personalities.js`), one of twelve kinds of selfishness: Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Miser, Hoarder, Saboteur, Regicide, Glory Hunter or Strategist. A personality fixes the weights that make its temperament; `ai/train.js` tunes the rest by playing thousands of games, and it rewards only winning. A fallen empire counts as a loss for everyone, and nothing rewards prudence for its own sake, so a trained AI will let others defend, or strip the capital to seize the throne, whenever that wins more games. The trained roster lives in `ai/tunedOpponents.json`, one Greek-named AI per personality; the setup screen shows each one's temperament, and in game its name carries it (e.g. "Leon Doukas (Usurper AI)").
 
-`ai/simulate.js` runs repeatable all-AI batches and reports empire falls, war and coup outcomes, deployment habits and win rate per seat.
+`ai/simulate.js` runs repeatable all-AI batches on either map and reports empire falls, war and coup outcomes, deployment habits, income per round, and win rate per seat and per AI.
 
 AI dynasties answer formal deal offers as soon as they receive them (`ai/deals.js`): each clause is valued from the AI's side, conditional clauses are discounted, and the offer must clear a bar that is lower for trusted partners and higher for a runaway leader. They do not propose or counter deals yet.
 

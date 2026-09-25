@@ -4,7 +4,9 @@
 // by scripts/build-rules-doc.js, together with the glossary (ui/glossary.js). Numbers come
 // from the engine so the text cannot drift from what the game enforces.
 // Strings may use **bold**; everything else is plain text.
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, MAP_BALANCE } from '../data/balance.js';
+import { MAPS } from '../data/maps/index.js';
+import { getRisingPriceTotal } from '../engine/rules.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { SCORE_CATEGORIES, SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { DEFAULT_TURN_COUNT, PLAYER_COUNT_MAX, PLAYER_COUNT_MIN } from '../engine/setup.js';
@@ -22,6 +24,30 @@ export const RULES_TAGLINE = `A game for ${PLAYER_COUNT_MIN} to ${PLAYER_COUNT_M
 const START_LOST_COUNT = PROVINCES.filter((province) => province.startLost).length;
 const PROVINCE_COUNT = PROVINCES.filter((province) => province.id !== 'CPL').length;
 const BISHOPRIC_COUNT = PROVINCES.filter((province) => (Number(province.C) || 0) > 0).length;
+// How the Maps section names each value a map can change (MAP_BALANCE).
+export const MAP_VALUE_LABELS = {
+  STARTING_INCOME_GOLD: 'starting gold',
+  BASILEUS_REVOCATION_LIMIT: 'estate revocations by the Basileus per round',
+  ESTATE_BASE_PRICE: 'price of the first estate of a round',
+  MAX_MERCENARIES: 'most mercenaries a dynasty can hire',
+  THEODOSIAN_WALLS_SUPPORT: 'Theodosian Walls',
+  PATRIARCH_INFLUENCE: 'Patriarch\'s influence',
+  UNREST_PER_LOST_PROVINCE: 'Unrest per lost province',
+  INVASION_STRENGTH_PER_PROVINCE: 'invasion strength per imperial province',
+};
+
+function describeMapRules(map) {
+  const provinces = map.provinces.filter((province) => province.id !== 'CPL');
+  const bishoprics = provinces.filter((province) => (Number(province.C) || 0) > 0).length;
+  const lost = provinces.filter((province) => province.startLost).length;
+  const changes = Object.entries(MAP_BALANCE[map.id] || {})
+    .filter(([key, value]) => MAP_VALUE_LABELS[key] && value !== BALANCE[key])
+    .map(([key, value]) => `${MAP_VALUE_LABELS[key]} ${value} (Classic ${BALANCE[key]})`);
+  const base = `${provinces.length} provinces, ${bishoprics} of them bishoprics; ${lost} start lost.`;
+  if (!changes.length) return base;
+  return `${base} Every province raises 1 troop, so armies, invasions and income are smaller. Values that differ from the Classic map: ${changes.join('; ')}. Everything else is the same.`;
+}
+
 const SECOND_CHOICE_PERCENT = Math.round((BALANCE.COUP_CHOICE_WEIGHTS?.[1] ?? 0.5) * 100);
 
 export const RULE_SECTIONS = [
@@ -56,11 +82,19 @@ export const RULE_SECTIONS = [
     blocks: [
       {
         items: [
-          ['The map', `has ${PROVINCE_COUNT} provinces around Constantinople, in three regions: East, West and Sea. ${BISHOPRIC_COUNT} of them are bishoprics. ${START_LOST_COUNT} provinces start the game lost to invaders; the others are imperial.`],
+          ['The map', `has provinces around Constantinople in three regions: East, West and Sea. On the Classic map there are ${PROVINCE_COUNT}; ${BISHOPRIC_COUNT} of them are bishoprics and ${START_LOST_COUNT} start the game lost to invaders; the others are imperial. See Maps for the Compact map.`],
           ['Offices.', `One dynasty, drawn at random, starts as Basileus. The ${word(MAJOR_TITLE_COUNT)} major offices (Domestic of the East, Domestic of the West, Admiral, Patriarch) are dealt to the other dynasties. No Strategos, Bishop or estate exists yet.`],
           ['Gold.', `Every dynasty receives ${BALANCE.STARTING_INCOME_GOLD} gold with the first income.`],
         ],
       },
+    ],
+  },
+  {
+    id: 'maps',
+    title: 'Maps',
+    blocks: [
+      { paragraph: 'Choose the map when you set up a game. The rules are the same on both.' },
+      { items: Object.values(MAPS).map((map) => [`${map.name}:`, describeMapRules(map)]) },
     ],
   },
   {
@@ -70,7 +104,7 @@ export const RULE_SECTIONS = [
       { paragraph: 'Each round has four phases. Before the first, a new invasion is drawn and shown on the map with its route and estimated strength.' },
       {
         steps: [
-          ['Offices.', `If the last coup crowned a new Basileus, they first hand out the ${word(MAJOR_TITLE_COUNT)} major offices. Then the Domestics and the Admiral appoint and revoke Strategoi in their region and the Patriarch appoints and revokes Bishops: up to ${word(BALANCE.MAJOR_OFFICE_ACTION_LIMIT)} actions per major office. The Basileus may make up to ${word(BALANCE.BASILEUS_REVOCATION_LIMIT)} revocations. Each dynasty locks when done; then income is paid.`],
+          ['Offices.', `If the last coup crowned a new Basileus, they first hand out the ${word(MAJOR_TITLE_COUNT)} major offices. Then the Domestics and the Admiral appoint and revoke Strategoi in their region and the Patriarch appoints and revokes Bishops: up to ${word(BALANCE.MAJOR_OFFICE_ACTION_LIMIT)} actions per major office. The Basileus may revoke estates, up to ${word(BALANCE.BASILEUS_REVOCATION_LIMIT)} times. Each dynasty locks when done; then income is paid.`],
           ['Estates.', 'Each dynasty secretly plans the estates it builds this round.'],
           ['Deployment.', 'Each dynasty secretly sends its armies to the frontier or to Constantinople, hires mercenaries and chooses who it backs in the coup.'],
           ['Resolution.', 'All orders are revealed. The coup is decided first, then the war is fought. Then the next round begins.'],
@@ -104,7 +138,7 @@ export const RULE_SECTIONS = [
         items: [
           ['Appointing.', 'A Strategos can only be appointed in an imperial province, a Bishop in any bishopric. A dynasty may hold any number of minor offices, including through its own appointments.'],
           ['No repeats.', 'An office cannot appoint the same dynasty twice in a row: appointing another dynasty unlocks the first again. The same holds for revoking the same target twice in a row.'],
-          ['Revoking', 'takes a Strategos or Bishop away. One revocation by the Basileus takes all of one dynasty\'s estates in one province, except those built last round, with no refund.'],
+          ['Revoking.', 'A Domestic or the Admiral may revoke the Strategoi of their region, the Patriarch any Bishop. Only the Basileus revokes estates, and cannot revoke anything else: one revocation takes all of one dynasty\'s estates in one province, except those built last round, with no refund.'],
           ['Lost provinces.', 'No Strategos can be appointed in a lost province, and its Strategos and estates cannot be revoked: they stay on record and work again when the province is retaken. Its Bishop can still be appointed and revoked.'],
           ['Major offices', 'only change hands when a new Basileus hands them all out.'],
         ],
@@ -149,7 +183,7 @@ export const RULE_SECTIONS = [
           ['Troops in Constantinople', `follow their dynasty's choices: all to the first, ${SECOND_CHOICE_PERCENT}% to the second.`],
           ['Theodosian Walls:', `the Basileus always has ${BALANCE.THEODOSIAN_WALLS_SUPPORT} support.`],
           ['Patriarch\'s influence:', `${BALANCE.PATRIARCH_INFLUENCE} support that follows the Patriarch's choices like troops.`],
-          ['Triumph:', `the best defender of the last war gets ${BALANCE.TRIUMPH_PER_PROVINCE} support per province won (see The War).`],
+          ['Triumph:', 'support for the best defender of the last war (see The War).'],
           ['Unrest:', `a Basileus who lost provinces in the last war has ${BALANCE.UNREST_PER_LOST_PROVINCE} less support per lost province.`],
           ['Ties', 'go to the claimant with more of the Patriarch\'s influence, then to the Basileus, then to the first in seating order.'],
         ],
@@ -167,7 +201,7 @@ export const RULE_SECTIONS = [
           ['Constantinople', 'ends some routes. If the invader can pay for it too, the empire falls and nobody wins.'],
           ['Frontier stronger.', 'Its lead retakes lost provinces on the route the same way, 1, then 2, then 3, starting from the end nearest Constantinople.'],
           ['The ladder.', 'The invasion card and the "+N" tags on the map show how much the invader must beat the frontier by to take each province.'],
-          ['Best defender.', `When the frontier wins, the dynasty with the most troops there gets ${BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE} gold and ${BALANCE.TRIUMPH_PER_PROVINCE} Triumph for each province its lead could pay for on the route, lost or not. Tied dynasties share: gold rounded up, Triumph rounded down.`],
+          ['Best defender.', `When the frontier wins, the dynasty with the most troops there is rewarded for each province the lead could pay for on the route, lost or not, at rising rates like mercenaries: ${BALANCE.WAR_REWARD_GOLD_BASE} gold and ${BALANCE.WAR_REWARD_TRIUMPH_BASE} Triumph for the first province, 1 more of each for every next one (so ${getRisingPriceTotal(3, BALANCE.WAR_REWARD_GOLD_BASE)} gold and ${getRisingPriceTotal(3, BALANCE.WAR_REWARD_TRIUMPH_BASE)} Triumph for three). Tied dynasties share: gold rounded up, Triumph rounded down.`],
         ],
       },
     ],

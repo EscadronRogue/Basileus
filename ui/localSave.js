@@ -1,5 +1,6 @@
 // ui/localSave.js - one autosave slot for single-player and hotseat games,
 // kept in this browser's localStorage so a refresh or closed tab can resume.
+import { getMapDefinition } from '../data/maps/index.js';
 import {
   OUTDATED_SAVE_MESSAGE,
   hydrateAiMeta,
@@ -96,6 +97,7 @@ export function describeLocalSave(save) {
     round: Number(state.round) || 0,
     turnCount: Number(config.turnCount || config.deckSize) || null,
     playerCount: (state.players || []).length,
+    mapName: getMapDefinition(state.mapId).name,
     savedAt: save?.savedAt || null,
   };
 }

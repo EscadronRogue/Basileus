@@ -1,6 +1,5 @@
 // render/map/geometry.js - SVG path bounds, transforms, and marker/anchor parsing.
 
-import { PROVINCES } from '../../data/provinces.js';
 import {
   CURVE_EPSILON,
   MAP_HEIGHT,
@@ -8,6 +7,7 @@ import {
   PATH_PARAM_COUNTS,
   PROVINCE_LABEL_SUFFIX,
   SVG_PATH_TOKEN_PATTERN,
+  mapRuntime,
 } from './state.js';
 import { parseSvgRoot } from './svgImport.js';
 
@@ -16,9 +16,21 @@ export function parseProvinceLabelAnchors(originSvgText) {
   const markers = sourceSvg ? parseSvgPointMarkers(sourceSvg) : {};
   const anchors = {};
 
-  for (const province of PROVINCES) {
-    const marker = markers[`${province.id}${PROVINCE_LABEL_SUFFIX}`];
-    if (marker) anchors[province.id] = marker;
+  const map = mapRuntime.map;
+  for (const province of map?.provinces || []) {
+    // A fused province (Compact map) is labelled between its parts' labels,
+    // unless the map places it itself.
+    const parts = province.labelAt ? [] : (map.parts?.[province.id] || [province.id]);
+    const points = parts
+      .map((partId) => markers[`${partId}${PROVINCE_LABEL_SUFFIX}`])
+      .filter(Boolean);
+    if (province.labelAt) anchors[province.id] = { ...province.labelAt };
+    else if (points.length) {
+      anchors[province.id] = {
+        cx: points.reduce((sum, point) => sum + point.cx, 0) / points.length,
+        cy: points.reduce((sum, point) => sum + point.cy, 0) / points.length,
+      };
+    }
   }
 
   return anchors;

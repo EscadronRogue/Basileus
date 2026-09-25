@@ -1,6 +1,6 @@
 import { normalizeOrdersWithDealLocks, getSpendableGold } from './deals.js';
 import { getPlayer } from './state.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, getBalance } from '../data/balance.js';
 import { getDismissalGold, getMercenaryHireCost } from './rules.js';
 import {
   getDefaultDeploymentFunding,
@@ -104,13 +104,13 @@ function normalizeArmyOrders(state, playerId, rawOrders = {}) {
   return armies;
 }
 
-function normalizeMercenaryOrder(rawMercenaries = {}) {
+function normalizeMercenaryOrder(rawMercenaries = {}, maxMercenaries = BALANCE.MAX_MERCENARIES) {
   if (Array.isArray(rawMercenaries)) {
     const count = rawMercenaries.reduce((total, entry) => total + Math.max(0, toInt(entry?.count, 0)), 0);
-    return { count: Math.min(BALANCE.MAX_MERCENARIES, count), destination: normalizeDestination(rawMercenaries[0]?.destination) };
+    return { count: Math.min(maxMercenaries, count), destination: normalizeDestination(rawMercenaries[0]?.destination) };
   }
   return {
-    count: Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, toInt(rawMercenaries?.count, 0))),
+    count: Math.max(0, Math.min(maxMercenaries, toInt(rawMercenaries?.count, 0))),
     destination: normalizeDestination(rawMercenaries?.destination),
   };
 }
@@ -140,8 +140,8 @@ function validateArmyOrders(state, playerId, armies) {
   return { ok: true, armies: normalized };
 }
 
-function validateMercenaryOrder(mercenaries) {
-  const count = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, toInt(mercenaries?.count, 0)));
+function validateMercenaryOrder(mercenaries, maxMercenaries = BALANCE.MAX_MERCENARIES) {
+  const count = Math.max(0, Math.min(maxMercenaries, toInt(mercenaries?.count, 0)));
   const destination = normalizeDestination(mercenaries?.destination);
   if (count > 0 && !destination) return orderFailure('Choose a destination for hired mercenaries.');
   return {
@@ -175,7 +175,8 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
   if (!player) return orderFailure('Player not found.');
 
   const armies = normalizeArmyOrders(state, playerId, rawOrders);
-  const mercenaries = normalizeMercenaryOrder(rawOrders?.mercenaries);
+  const maxMercenaries = getBalance(state).MAX_MERCENARIES;
+  const mercenaries = normalizeMercenaryOrder(rawOrders?.mercenaries, maxMercenaries);
   const coupChoices = readCoupChoices(state, playerId, rawOrders);
   const rawNormalizedOrders = { armies, mercenaries, coupChoices };
   if (rawOrders?.debug) rawNormalizedOrders.debug = rawOrders.debug;
@@ -188,7 +189,7 @@ export function normalizeHumanOrders(state, playerId, rawOrders = {}, options = 
   const armyValidation = validateArmyOrders(state, playerId, dealLocks.orders.armies);
   if (!armyValidation.ok) return armyValidation;
 
-  const mercenaryValidation = validateMercenaryOrder(dealLocks.orders.mercenaries);
+  const mercenaryValidation = validateMercenaryOrder(dealLocks.orders.mercenaries, maxMercenaries);
   if (!mercenaryValidation.ok) return mercenaryValidation;
 
   const normalizedOrders = {

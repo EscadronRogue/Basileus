@@ -3,6 +3,7 @@
 import { ensureSvgIconSymbols } from '../../ui/icons.js';
 import { addProvinceLabels, applyLabelScale } from './cartouches.js';
 import { normalizeMapFilter, setActiveMapFilter, updateMapFilterControlState, updateMapState } from './filters.js';
+import { getMapDefinition } from '../../data/maps/index.js';
 import { parseInvasionOrigins, parseProvinceLabelAnchors } from './geometry.js';
 import { applyMapTransform, installMapInteractions, resetMapView, zoomMapAtCenter } from './interaction.js';
 import {
@@ -15,6 +16,7 @@ import {
   MAP_WIDTH,
   MAP_ZOOM_STEP,
   SVG_ASSET_PATHS,
+  getHitzonesAsset,
   createGestureState,
   mapRuntime,
 } from './state.js';
@@ -35,6 +37,7 @@ export async function createMapSVG(containerId, options = {}) {
   mapRuntime.provinceHoverHandler = options.onProvinceHover || null;
   mapRuntime.mapFilterChangeHandler = options.onMapFilterChange || null;
   mapRuntime.activeMapFilter = normalizeMapFilter(options.mapFilter || MAP_FILTERS.REGIONS);
+  mapRuntime.map = getMapDefinition(options.mapId);
   mapRuntime.provinceCentroids = {};
   mapRuntime.invasionOrigins = {};
   mapRuntime.selectedProvinceId = null;
@@ -85,9 +88,10 @@ export async function createMapSVG(containerId, options = {}) {
   createGroup(mapRuntime.viewportLayer, 'layer-badges');
   createGroup(mapRuntime.viewportLayer, 'layer-invasion');
 
+  const hitzones = getHitzonesAsset(mapRuntime.map);
   const [backgroundSvg, hitzonesSvg, originSvg] = await Promise.all([
     loadSvgAsset(SVG_ASSET_PATHS.background, 'MAP_BACKGROUND_SVG'),
-    loadSvgAsset(SVG_ASSET_PATHS.hitzones, 'HITZONES_SVG'),
+    loadSvgAsset(hitzones.path, hitzones.fallbackName),
     loadSvgAsset(SVG_ASSET_PATHS.origin, 'ORIGIN_SVG'),
   ]);
 
@@ -109,6 +113,11 @@ export async function createMapSVG(containerId, options = {}) {
   });
 
   return svg;
+}
+
+// The id of the map currently drawn, or null before createMapSVG().
+export function getRenderedMapId() {
+  return mapRuntime.map?.id || null;
 }
 
 function createMapShell(svg, controls) {

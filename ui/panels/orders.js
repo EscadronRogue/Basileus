@@ -1,6 +1,6 @@
 // ui/panels/orders.js - Deployment panel: troops fielded, destinations, mercenaries, and coup choices.
 
-import { BALANCE } from '../../data/balance.js';
+import { BALANCE, getBalance } from '../../data/balance.js';
 import { getDismissalGold, getMercenaryHireCost } from '../../engine/rules.js';
 import { getPlayer } from '../../engine/state.js';
 import { getCapitalSupportEntries } from '../../engine/capitalSupport.js';
@@ -430,7 +430,7 @@ export function renderOrdersPanel(container, state, playerId, callbacks = {}, op
             </div>
             <label class="army-card-slider">
               <span class="army-slider-label">Hire</span>
-              <input type="range" min="0" max="${BALANCE.MAX_MERCENARIES}" value="${draft.mercenaries.count || 0}" data-mercenary-count>
+              <input type="range" min="0" max="${getBalance(state).MAX_MERCENARIES}" value="${draft.mercenaries.count || 0}" data-mercenary-count>
               <span class="army-slider-readout">
                 <span class="army-slider-num" data-mercenary-num>${draft.mercenaries.count || 0}</span>
                 <span class="army-slider-cost" data-mercenary-cost>${formatGoldHtml(-totals.mercCost, { tone: 'upkeep' })}</span>

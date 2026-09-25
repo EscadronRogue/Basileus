@@ -1,7 +1,7 @@
 // ui/multiplayer/controller.js - live WebSocket connection, keepalives, and in-game rendering.
 
 import { hydratePublicState } from '../../engine/publicState.js';
-import { createMapSVG, focusProvince, setHoveredProvince } from '../../render/mapRenderer.js';
+import { createMapSVG, focusProvince, getRenderedMapId, setHoveredProvince } from '../../render/mapRenderer.js';
 import {
   applyProvinceInterfaceState,
   createDefaultUiState,
@@ -31,6 +31,7 @@ import {
 } from './connection.js';
 import { dynastyNameForSeat, renderMultiplayerLobby } from './lobby.js';
 import { addEstateToDraft } from '../panels/estates.js';
+import { setGlossaryMap } from '../glossary.js';
 
 export async function launchMultiplayerClient(options = {}) {
   const playerName = String(options.playerName || '').trim() || 'Guest';
@@ -651,8 +652,10 @@ export class MultiplayerController {
   }
 
   async ensureMap() {
-    if (document.getElementById('gameMap')) return;
+    setGlossaryMap(this.state?.mapId);
+    if (document.getElementById('gameMap') && getRenderedMapId() === (this.state?.mapId || 'classic')) return;
     await createMapSVG('mapContainer', {
+      mapId: this.state?.mapId,
       mapFilter: this.uiState.mapFilter,
       onMapFilterChange: (filterId) => {
         this.uiState.mapFilter = filterId;

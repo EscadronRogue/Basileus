@@ -1,17 +1,17 @@
 // engine/state.js - game state initialization and shared lookups.
-import { PROVINCES, buildAdjacency, REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
+import { REGION_BORDER_COLORS, REGIONS } from '../data/provinces.js';
+import { buildMapAdjacency, getMapInvasions, getMapProvinces, normalizeMapId } from '../data/maps/index.js';
 import {
-  INVASIONS,
   getDynastyProfileForSeat,
   INVASION_OBJECTIVES,
   INVASION_DIFFICULTIES,
 } from '../data/invasions.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, getBalance } from '../data/balance.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 // Bumped whenever a rule change makes older saves unplayable. A save made
 // under other rules is refused instead of loading into a broken game.
-export const RULES_VERSION = 2;
+export const RULES_VERSION = 3;
 
 export function isCurrentRulesVersion(rawState) {
   return Number(rawState?.rulesVersion) === RULES_VERSION;
@@ -76,9 +76,10 @@ function pickWeightedInvasionTemplate(invasions, rng, emptyMessage) {
   return weightedInvasions[weightedInvasions.length - 1].invasion;
 }
 
-export function pickInvasionTemplate(rng) {
+// `map` is a map id or a game state (data/maps).
+export function pickInvasionTemplate(rng, map = null) {
   return pickWeightedInvasionTemplate(
-    INVASIONS,
+    getMapInvasions(map),
     rng,
     'At least one invasion must have a positive draw weight.',
   );
@@ -86,7 +87,7 @@ export function pickInvasionTemplate(rng) {
 
 export function pickTriggerableInvasionTemplate(state, rng) {
   return pickWeightedInvasionTemplate(
-    INVASIONS.filter((invasion) => canTriggerInvasion(state, invasion)),
+    getMapInvasions(state).filter((invasion) => canTriggerInvasion(state, invasion)),
     rng,
     'At least one triggerable invasion must have a positive draw weight.',
   );
@@ -106,7 +107,7 @@ export function getEmpireProvinceStrength(state) {
   const themes = Object.values(state?.themes || {});
   const count = themes.length
     ? themes.filter((theme) => theme?.id !== 'CPL' && !theme?.lost).length
-    : PROVINCES.filter((province) => province.id !== 'CPL' && !province.startLost).length;
+    : getMapProvinces(state).filter((province) => province.id !== 'CPL' && !province.startLost).length;
   return Math.max(1, count);
 }
 
@@ -126,7 +127,7 @@ export function getInvasionStrengthBounds(invasion, state) {
     ? Math.floor(Number(invasion.empireStrength))
     : getEmpireProvinceStrength(state);
   const [minRatio, maxRatio] = getInvasionStrengthRatio(invasion);
-  const scaledStrength = empireStrength * (Number(BALANCE.INVASION_STRENGTH_PER_PROVINCE) || 1);
+  const scaledStrength = empireStrength * (Number(getBalance(state).INVASION_STRENGTH_PER_PROVINCE) || 1);
   const min = Math.max(1, Math.ceil(scaledStrength * minRatio));
   const max = Math.max(min, Math.floor(scaledStrength * maxRatio));
   return [min, max];
@@ -234,8 +235,10 @@ export function createGameState({
   seed,
   historyEnabled = false,
   features = null,
+  mapId: requestedMapId = null,
 } = {}) {
   const rng = makeRng(seed);
+  const mapId = normalizeMapId(requestedMapId);
   const turnCount = Math.max(1, Math.floor(Number(configuredTurnCount ?? deckSize) || 9));
   const players = [];
 
@@ -266,16 +269,17 @@ export function createGameState({
     }
   }
 
-  const themes = Object.fromEntries(PROVINCES.map((province) => [province.id, createThemeState(province)]));
+  const themes = Object.fromEntries(getMapProvinces(mapId).map((province) => [province.id, createThemeState(province)]));
   const deck = Array.from({ length: turnCount }, () => (
-    createInvasionInstance(pickInvasionTemplate(rng), rng)
+    createInvasionInstance(pickInvasionTemplate(rng, mapId), rng)
   ));
 
   return {
     rulesVersion: RULES_VERSION,
+    mapId,
     features: { deals: Boolean(features?.deals) },
     rng,
-    adjacency: buildAdjacency(),
+    adjacency: buildMapAdjacency(mapId),
     historyEnabled,
     historySeq: 0,
     round: 0,

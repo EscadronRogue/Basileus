@@ -10,7 +10,7 @@ import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores } from '../engine/scoring.js';
 import { getDeploymentArmyTroopTotal, getPlayerDeploymentArmyKeys } from '../engine/deployment.js';
 import { getPreferredCoupCandidate, normalizeCoupChoices } from '../engine/coup.js';
-import { BALANCE, applyBalanceOverrides, resetBalance } from '../data/balance.js';
+import { applyBalanceOverrides, getBalance, resetBalance } from '../data/balance.js';
 import { createAIMeta } from './brain.js';
 import { POLICY_WEIGHT_PRESETS } from './policies.js';
 import { loadTunedOpponentRosterSync } from './nodeOpponentRoster.js';
@@ -27,6 +27,8 @@ const DEFAULT_OPTIONS = {
   allowUntunedPolicies: false,
   // Balance values replaced for this run: { NAME: value } (see data/balance.js).
   balance: null,
+  // The map to play on (data/maps).
+  mapId: 'classic',
   // A built-in preset (such as 'cautious' or 'gambler') seated once per game,
   // rotating through the seats, among the tuned roster.
   probe: null,
@@ -172,7 +174,7 @@ function summarizeOrders(state, playerId) {
   }
 
   const mercenaries = state.mercenaryOrders?.[playerId] || orders.mercenaries || {};
-  const mercenaryCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(mercenaries.count) || 0));
+  const mercenaryCount = Math.max(0, Math.min(getBalance(state).MAX_MERCENARIES, Number(mercenaries.count) || 0));
   if (mercenaries.destination === 'capital') capitalTroops += mercenaryCount;
   else frontierTroops += mercenaryCount;
 
@@ -197,8 +199,11 @@ function collectResolution(stats, state) {
   stats.resolutions += 1;
   const players = state.players || [];
   if (players.length) {
-    const bucket = stats.goldByRound[state.round] || (stats.goldByRound[state.round] = { gold: 0, count: 0 });
+    const bucket = stats.goldByRound[state.round] || (stats.goldByRound[state.round] = { gold: 0, count: 0, income: 0, troops: 0 });
     bucket.gold += players.reduce((total, player) => total + (Number(player.gold) || 0), 0) / players.length;
+    const income = state.lastIncome?.round === state.round ? state.lastIncome : null;
+    bucket.income += Object.values(income?.income || {}).reduce((total, amount) => total + (Number(amount) || 0), 0) / players.length;
+    bucket.troops += Object.values(income?.troops || {}).reduce((total, amount) => total + (Number(amount) || 0), 0) / players.length;
     bucket.count += 1;
   }
 
@@ -492,6 +497,7 @@ function createAllAiGame(options, seed) {
   const state = createGameState({
     playerCount: options.playerCount,
     deckSize: options.deckSize,
+    mapId: options.mapId,
     seed,
     historyEnabled: options.historyEnabled !== false,
   });
@@ -609,15 +615,25 @@ function mergeStats(target, source) {
   }
   for (const [playerId, wins] of Object.entries(source.stats.winners)) addCount(target.winners, playerId, wins);
   for (const [roundNumber, bucket] of Object.entries(source.stats.goldByRound)) {
-    const into = target.goldByRound[roundNumber] || (target.goldByRound[roundNumber] = { gold: 0, count: 0 });
+    const into = target.goldByRound[roundNumber] || (target.goldByRound[roundNumber] = { gold: 0, count: 0, income: 0, troops: 0 });
     into.gold += bucket.gold;
+    into.income += bucket.income;
+    into.troops += bucket.troops;
     into.count += bucket.count;
   }
   const winnerShare = (seat) => (source.winnerIds.includes(seat) ? 1 / source.winnerIds.length : 0);
   for (const [seat, key] of Object.entries(source.seatLabels || {})) {
-    const entry = target.byOpponent[key] || (target.byOpponent[key] = { games: 0, wins: 0 });
+    const entry = target.byOpponent[key] || (target.byOpponent[key] = {
+      games: 0, wins: 0, falls: 0, orders: 0, frontierTroops: 0, capitalTroops: 0, idleTroops: 0,
+    });
+    const seatStats = source.playerStatsByPlayer?.[seat] || {};
     entry.games += 1;
     entry.wins += winnerShare(Number(seat));
+    entry.falls += source.fall ? 1 : 0;
+    entry.orders += Number(seatStats.orders) || 0;
+    entry.frontierTroops += Number(seatStats.frontierTroops) || 0;
+    entry.capitalTroops += Number(seatStats.capitalTroops) || 0;
+    entry.idleTroops += Number(seatStats.idleTroops) || 0;
   }
   if (source.probeSeat != null) {
     target.probe.games += 1;
@@ -645,6 +661,7 @@ function normalizeSimulationOptions(rawOptions = {}) {
     allowUntunedPolicies: Boolean(rawOptions.allowUntunedPolicies),
     balance: rawOptions.balance && Object.keys(rawOptions.balance).length ? { ...rawOptions.balance } : null,
     probe: rawOptions.probe || null,
+    mapId: rawOptions.mapId || DEFAULT_OPTIONS.mapId,
   };
 }
 
@@ -885,13 +902,32 @@ function normalizeStats(stats) {
     opponentWinRates: Object.fromEntries(
       Object.entries(stats.byOpponent)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([id, entry]) => [id, { games: entry.games, winRate: round(entry.wins / Math.max(1, entry.games), 3) }]),
+        .map(([id, entry]) => {
+          const orders = Math.max(1, entry.orders);
+          return [id, {
+            games: entry.games,
+            winRate: round(entry.wins / Math.max(1, entry.games), 3),
+            fallRate: round(entry.falls / Math.max(1, entry.games), 3),
+            frontierPerRound: round(entry.frontierTroops / orders, 2),
+            constantinoplePerRound: round(entry.capitalTroops / orders, 2),
+            dismissedPerRound: round(entry.idleTroops / orders, 2),
+          }];
+        }),
     ),
     // Average gold a dynasty holds when each round is resolved.
     goldByRound: Object.fromEntries(
       Object.entries(stats.goldByRound)
         .sort(([left], [right]) => Number(left) - Number(right))
         .map(([roundNumber, bucket]) => [roundNumber, round(bucket.gold / Math.max(1, bucket.count), 1)]),
+    ),
+    // Average gold and troops a dynasty receives in each round's income.
+    incomeByRound: Object.fromEntries(
+      Object.entries(stats.goldByRound)
+        .sort(([left], [right]) => Number(left) - Number(right))
+        .map(([roundNumber, bucket]) => [roundNumber, {
+          gold: round(bucket.income / Math.max(1, bucket.count), 1),
+          troops: round(bucket.troops / Math.max(1, bucket.count), 1),
+        }]),
     ),
     seatWinRates: Object.fromEntries(
       Array.from({ length: stats.options.playerCount }, (_, seat) => [seat, round((stats.winners[seat] || 0) / games, 3)]),
@@ -1001,13 +1037,14 @@ function parseArgs(argv) {
     else if (key === 'policies') options.policies = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
     else if (key === 'workers') options.workers = toInt(value, defaultSimulationWorkers());
     else if (key === 'probe') options.probe = String(value || '').trim() || null;
+    else if (key === 'map') options.mapId = String(value || '').trim() || 'classic';
   }
   return options;
 }
 
 function formatReport(result) {
   const lines = [
-    `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} turns, seed ${result.options.seed}`,
+    `AI simulation: ${result.games} games, ${result.options.playerCount} players, ${result.options.deckSize} rounds, ${result.options.mapId} map, seed ${result.options.seed}`,
     result.options.balance ? `Balance: ${Object.entries(result.options.balance).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(', ')}` : null,
     result.options.policies ? null : 'Opponents: saved tuned AI roster',
     `Completion: ${result.completed}/${result.games} complete, stuck ${result.stuck}, fall rate ${Math.round(result.fallRate * 100)}% (${result.fallPressure.band}), avg rounds ${result.averageRounds}`,
@@ -1020,6 +1057,7 @@ function formatReport(result) {
     `Win rate by AI (fair share ${Math.round(result.fairShare * 100)}%): ${Object.entries(result.opponentWinRates).map(([id, entry]) => `${id} ${Math.round(entry.winRate * 100)}%`).join(', ')}`,
     result.probe ? `Probe ${result.probe.policy}: win ${Math.round(result.probe.winRate * 100)}% over ${result.probe.games} games (${round(result.probe.winRate / Math.max(0.001, result.fairShare), 2)}x fair share)` : null,
     `Gold per dynasty by round: ${Object.entries(result.goldByRound).map(([roundNumber, gold]) => `r${roundNumber} ${gold}`).join(', ')}`,
+    `Income per dynasty by round (gold/troops): ${Object.entries(result.incomeByRound).map(([roundNumber, entry]) => `r${roundNumber} ${entry.gold}/${entry.troops}`).join(', ')}`,
     `Falls by invader: ${Object.entries(result.fallInvasionRates).map(([invasionId, rate]) => `${invasionId} ${Math.round(rate * 100)}%`).join(', ') || 'none'}`,
     `Falls by round: ${Object.entries(result.fallRoundRates).map(([roundNumber, rate]) => `r${roundNumber} ${Math.round(rate * 100)}%`).join(', ') || 'none'} (by round 3: ${Math.round(result.earlyFallRate * 100)}%)`,
     'Diagnostics:',
@@ -1042,7 +1080,9 @@ function formatReport(result) {
 function formatSweepRow(name, value, result) {
   const probe = result.probe ? `, ${result.probe.policy} ${Math.round(result.probe.winRate * 100)}%` : '';
   const gold = Object.values(result.goldByRound);
-  return `${name}=${JSON.stringify(value)}: fall ${Math.round(result.fallRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}${probe}, gold r1 ${gold[0] ?? '-'} → last ${gold[gold.length - 1] ?? '-'}`;
+  const income = Object.values(result.incomeByRound);
+  const lastIncome = income[income.length - 1];
+  return `${name}=${JSON.stringify(value)}: fall ${Math.round(result.fallRate * 100)}%, defeat ${Math.round(result.wars.defeatRate * 100)}%, throne changes ${Math.round(result.coups.throneChangeRate * 100)}%, frontier ${result.deployment.frontierTroopsPerOrder}, capital ${result.deployment.capitalTroopsPerOrder}${probe}, gold r1 ${gold[0] ?? '-'} → last ${gold[gold.length - 1] ?? '-'}, last income ${lastIncome ? `${lastIncome.gold} gold/${lastIncome.troops} troops` : '-'}, estates ${result.estates.builtPerGame}`;
 }
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

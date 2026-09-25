@@ -1,6 +1,5 @@
 // render/map/cartouches.js - province name cartouches and their holdings row.
 
-import { PROVINCES } from '../../data/provinces.js';
 import { getProvinceEstateHolders } from '../../engine/estates.js';
 import { formatPlayerLabel } from '../../engine/state.js';
 import { resolveProvinceOwnership } from './filters.js';
@@ -97,7 +96,7 @@ export function applyLabelScale() {
 export function addProvinceLabels(layer) {
   layer.replaceChildren();
 
-  for (const province of PROVINCES) {
+  for (const province of mapRuntime.map?.provinces || []) {
     const centroid = mapRuntime.provinceCentroids[province.id];
     if (!centroid) continue;
 

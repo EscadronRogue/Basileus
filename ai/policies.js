@@ -205,9 +205,13 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     backerRevocationMercy: 1.1,
     allyDefenseReliance: 0.55,
   },
-  // Probe presets for balance runs (ai/simulate.js --probe): one plays it
-  // safe everywhere, the other takes every risk. The rules should punish the
-  // first and reward the second.
+  // Probe presets for balance runs (ai/simulate.js --probe). `cautious`
+  // gives everything to the common good; `selfish` gives as little as it can
+  // get away with: dismisses troops for gold, leaves the defence to others
+  // unless its own estates are threatened, keeps offices for itself, and is
+  // glad to see rivals' provinces or an unwanted Basileus suffer. `gambler`
+  // only takes throne risks. The rules should punish the first and let the
+  // second do at least as well as anyone.
   cautious: {
     invasionShortfallPenalty: 10,
     invasionSafetyValue: 2.7,
@@ -226,6 +230,24 @@ export const POLICY_WEIGHT_PRESETS = Object.freeze({
     defenseContextWeight: 2.1,
     coupOpportunityWeight: 0.08,
     allyDefenseReliance: 0.55,
+  },
+  selfish: {
+    allyDefenseReliance: 1,
+    invasionShortfallPenalty: 2.5,
+    invasionSafetyValue: 0.3,
+    invasionSurplusPenalty: 1.4,
+    capitalFallPenalty: 400,
+    capitalRiskPenalty: 120,
+    defenseContextWeight: 0.4,
+    reserveValue: 0.9,
+    mercenaryCostPenalty: 0.4,
+    ownRecipientBonus: 6,
+    leaderDenial: 2,
+    rivalDenial: 1,
+    grudgeWeight: 1.4,
+    spiteWeight: 2.2,
+    unrestOpportunism: 1.5,
+    estateShieldWeight: 1.5,
   },
   gambler: {
     throneBase: 55,

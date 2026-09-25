@@ -13,6 +13,7 @@ export const PLAYER_TEXT_SOURCES = [
   'ui',
   'render',
   'game',
+  'ai/personalities.js',
   'data/terms.js',
   'data/titles.js',
   'data/invasions.js',

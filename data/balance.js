@@ -28,13 +28,15 @@ export const BALANCE = {
   COUP_CHOICE_WEIGHTS: [1, 0.5],
   THEODOSIAN_WALLS_SUPPORT: 5,
   PATRIARCH_INFLUENCE: 4,
-  TRIUMPH_PER_PROVINCE: 2,
-  BEST_DEFENDER_GOLD_PER_PROVINCE: 1,
+  // The best defender of a won war earns gold and Triumph that rise like
+  // mercenary prices: for N provinces won, base + (base + 1) + ... in all.
+  WAR_REWARD_GOLD_BASE: 1,
+  WAR_REWARD_TRIUMPH_BASE: 1,
   UNREST_PER_LOST_PROVINCE: 2,
 
   // Invasions: strength is drawn from a share of the empire's size, measured
   // as provinces x INVASION_STRENGTH_PER_PROVINCE.
-  INVASION_STRENGTH_PER_PROVINCE: 1.7,
+  INVASION_STRENGTH_PER_PROVINCE: 1.85,
   INVASION_STRENGTH_RATIOS: {
     easy: [0.5, 0.9],
     medium: [0.6, 1],
@@ -47,14 +49,49 @@ export const BALANCE = {
   EARLY_INVASION_GRACE_ROUNDS: 2,
 };
 
+// Values that differ on some maps (data/maps). The Compact map has about
+// half the provinces, each raising 1 troop, so what does not already scale
+// with the map (coup support, starting gold, mercenary and revocation
+// limits) is lowered too. Estates cost more there so estate income does not
+// snowball, and invasions are a little stronger for the empire's size.
+export const MAP_BALANCE = {
+  compact: {
+    STARTING_INCOME_GOLD: 2,
+    BASILEUS_REVOCATION_LIMIT: 2,
+    ESTATE_BASE_PRICE: 2,
+    MAX_MERCENARIES: 6,
+    THEODOSIAN_WALLS_SUPPORT: 3,
+    PATRIARCH_INFLUENCE: 2,
+    UNREST_PER_LOST_PROVINCE: 1,
+    INVASION_STRENGTH_PER_PROVINCE: 2.2,
+  },
+};
+
 const DEFAULT_BALANCE = structuredClone(BALANCE);
+const DEFAULT_MAP_BALANCE = structuredClone(MAP_BALANCE);
+
+// The values for a map (its id, or a game state): BALANCE with the map's
+// own values on top.
+export function getBalance(mapOrState = null) {
+  const mapId = typeof mapOrState === 'string' ? mapOrState : mapOrState?.mapId;
+  const overlay = mapId ? MAP_BALANCE[mapId] : null;
+  return overlay ? { ...BALANCE, ...overlay } : BALANCE;
+}
 
 // Replaces some values for the rest of this process (simulation and training
 // only). Unknown names are refused so a typo cannot silently do nothing.
+// "NAME" changes the value for every map without its own; "compact.NAME"
+// changes it for the Compact map only.
 export function applyBalanceOverrides(overrides = {}) {
-  for (const [key, value] of Object.entries(overrides || {})) {
-    if (!Object.hasOwn(DEFAULT_BALANCE, key)) throw new Error(`Unknown balance setting: ${key}`);
-    BALANCE[key] = structuredClone(value);
+  for (const [rawKey, value] of Object.entries(overrides || {})) {
+    const [mapId, key] = rawKey.includes('.') ? rawKey.split('.') : [null, rawKey];
+    if (!Object.hasOwn(DEFAULT_BALANCE, key)) throw new Error(`Unknown balance setting: ${rawKey}`);
+    if (mapId) {
+      if (!Object.hasOwn(MAP_BALANCE, mapId)) throw new Error(`Unknown map in balance setting: ${rawKey}`);
+      MAP_BALANCE[mapId][key] = structuredClone(value);
+    } else {
+      BALANCE[key] = structuredClone(value);
+    }
   }
   return BALANCE;
 }
@@ -62,6 +99,8 @@ export function applyBalanceOverrides(overrides = {}) {
 export function resetBalance() {
   for (const key of Object.keys(BALANCE)) delete BALANCE[key];
   Object.assign(BALANCE, structuredClone(DEFAULT_BALANCE));
+  for (const mapId of Object.keys(MAP_BALANCE)) delete MAP_BALANCE[mapId];
+  Object.assign(MAP_BALANCE, structuredClone(DEFAULT_MAP_BALANCE));
   return BALANCE;
 }
 

@@ -16,6 +16,14 @@ export const SVG_ASSET_PATHS = Object.freeze({
   origin: '../../assets/origin.svg',
 });
 
+// The province shapes of a map (data/maps): its asset and embedded fallback.
+export function getHitzonesAsset(map) {
+  return {
+    path: `../../assets/${map?.hitzonesAsset || 'hitzones.svg'}`,
+    fallbackName: map?.hitzonesFallback || 'HITZONES_SVG',
+  };
+}
+
 export const INVASION_ORIGIN_IDS = Object.freeze({
   emirate: 'AGH',
   aghlabids: 'AGH',
@@ -94,6 +102,8 @@ export const FILTER_VISUAL_PROPS = [
 
 // Mutable renderer state shared by the map modules; createMapSVG() resets it.
 export const mapRuntime = {
+  // The map being drawn (data/maps); createMapSVG() sets it.
+  map: null,
   provinceCentroids: {},
   invasionOrigins: {},
   provinceSelectHandler: null,

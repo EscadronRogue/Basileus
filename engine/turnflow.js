@@ -5,7 +5,7 @@ import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup 
 import { clearRecentEstateMarks, settleEstatePlans } from './estates.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, getBalance } from '../data/balance.js';
 import {
   canTriggerInvasion,
   createInvasionInstance,
@@ -18,7 +18,7 @@ import {
   getPlayerName,
 } from './state.js';
 import { formatGold, formatTroops } from './presentation.js';
-import { getDismissalGold, getMercenaryHireCost } from './rules.js';
+import { getDismissalGold, getMercenaryHireCost, getRisingPriceTotal } from './rules.js';
 import { addTemporaryCapitalSupport, expireCapitalSupport, getPlayerCapitalSupport } from './capitalSupport.js';
 import { getPreferredCoupCandidate, normalizeCoupChoices } from './coup.js';
 import {
@@ -103,7 +103,7 @@ function isStartingIncome(state) {
 }
 
 function buildStartingIncome(state) {
-  return Object.fromEntries(state.players.map((player) => [player.id, BALANCE.STARTING_INCOME_GOLD]));
+  return Object.fromEntries(state.players.map((player) => [player.id, getBalance(state).STARTING_INCOME_GOLD]));
 }
 
 function officeName(state, officeKey) {
@@ -364,7 +364,7 @@ export function submitOrders(state, playerId, orders) {
     dismissedTroops += total - funded;
   }
 
-  const mercCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(normalizedOrders.mercenaries?.count) || 0));
+  const mercCount = Math.max(0, Math.min(getBalance(state).MAX_MERCENARIES, Number(normalizedOrders.mercenaries?.count) || 0));
   normalizedOrders.mercenaries = {
     ...(normalizedOrders.mercenaries || {}),
     count: mercCount,
@@ -542,8 +542,10 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
   if (rewardProvinceCount <= 0) return null;
   const defenders = topRankedDefenders(contributions);
   if (!defenders.length) return null;
-  const totalGold = rewardProvinceCount * BALANCE.BEST_DEFENDER_GOLD_PER_PROVINCE;
-  const totalTriumph = rewardProvinceCount * BALANCE.TRIUMPH_PER_PROVINCE;
+  // Like mercenary prices: 1 for the first province won, 2 for the next...
+  const balance = getBalance(state);
+  const totalGold = getRisingPriceTotal(rewardProvinceCount, balance.WAR_REWARD_GOLD_BASE);
+  const totalTriumph = getRisingPriceTotal(rewardProvinceCount, balance.WAR_REWARD_TRIUMPH_BASE);
   const gold = Math.ceil(totalGold / defenders.length);
   const capitalSupport = Math.floor(totalTriumph / defenders.length);
   const recipients = defenders.map((defender) => {
@@ -620,7 +622,7 @@ function applyBasileusLossPenalty(state, warResult) {
   const lost = Array.isArray(warResult?.themesLost) ? warResult.themesLost.length : 0;
   if (lost <= 0) return null;
   const penalizedBasileusId = state.basileusId;
-  const unrest = lost * BALANCE.UNREST_PER_LOST_PROVINCE;
+  const unrest = lost * getBalance(state).UNREST_PER_LOST_PROVINCE;
   const penalty = addTemporaryCapitalSupport(state, {
     kind: 'lost_provinces',
     label: 'Unrest',

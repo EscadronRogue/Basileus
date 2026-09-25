@@ -72,6 +72,28 @@ test('multiplayer room follows court, estates, deployment, resolution flow', asy
   assert.equal(room.gameState.phase, 'resolution');
 });
 
+test('a Compact room plays on the Compact map and keeps it through a save', async () => {
+  const room = createRoom({
+    existingRoomCodes: new Set(),
+    hostSessionId: 's0',
+    hostPlayerName: 'Host',
+    config: { playerCount: 4, deckSize: 1, seed: '23', mapId: 'compact' },
+  });
+  for (let seatId = 0; seatId < 4; seatId += 1) room.claimSeat(`s${seatId}`, seatId, `Player ${seatId + 1}`);
+  await room.startGame('s0');
+  assert.equal(room.gameState.mapId, 'compact');
+  assert.equal(Object.keys(room.gameState.themes).length, 22);
+
+  const restored = createRoomFromSave({
+    existingRoomCodes: new Set([room.roomCode]),
+    hostSessionId: 'restore-host',
+    hostPlayerName: 'Restorer',
+    saveGame: room.createSavePayload(),
+  });
+  assert.equal(restored.gameState.mapId, 'compact');
+  assert.equal(Object.keys(restored.gameState.themes).length, 22);
+});
+
 test('multiplayer saves use the patched schema version', async () => {
   const room = await makeStartedRoom();
   const save = room.createSavePayload();

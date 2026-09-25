@@ -547,7 +547,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
   const exhausted = isCourtPowerExhausted(state, playerId, powerKey);
   const usedSummary = usedKinds.length ? usedKinds.join(', ') : getCourtPowerActionKind(state, playerId, powerKey);
   const connectionsHtml = renderCourtConnectionsForPower(state, playerId, draft, powerKey);
-  const actionLimit = getCourtPowerActionLimit(powerKey);
+  const actionLimit = getCourtPowerActionLimit(powerKey, state);
   const remainingActions = Math.max(0, actionLimit - actionCount);
   const remainingAfterPlan = Math.max(0, actionLimit - actionCount - plannedActions.length);
   const powerLabel = getCourtPowerLabel(powerKey);
@@ -569,7 +569,7 @@ function renderCourtPowerCard(state, playerId, draft, powerKey) {
     : actionCount > 0 && !exhausted
     ? `${courtPowerCountLabel(remainingActions, 'action')} remains for this office.`
     : !exhausted && powerKey === 'BASILEUS'
-      ? `Up to ${actionLimit} revocations for this office this round.`
+      ? `Up to ${actionLimit} estate revocations this round: one takes all of a dynasty's estates in one province.`
     : !exhausted
       ? `Up to ${actionLimit} appointments or revocations for this office this round.`
       : '';
@@ -735,7 +735,7 @@ export function renderCourtPanel(container, state, activePlayerId, callbacks = {
       return counts;
     }, {});
     const passPowers = powerKeys.filter((powerKey) => (
-      getCourtPowerActionCount(state, activePlayerId, powerKey) + (plannedCounts[powerKey] || 0) < getCourtPowerActionLimit(powerKey)
+      getCourtPowerActionCount(state, activePlayerId, powerKey) + (plannedCounts[powerKey] || 0) < getCourtPowerActionLimit(powerKey, state)
     ));
     callbacks['submit-court-plan']?.({ actions, passPowers });
   });

@@ -2,6 +2,7 @@ import { runIncome } from '../engine/cascade.js';
 import { resolveInvasion } from '../engine/combat.js';
 import {
   addEstates,
+  countDynastyEstates,
   countPlannedEstates,
   getEstateCount,
   getNextEstatePrice,
@@ -9,7 +10,7 @@ import {
   getRevocableEstateCount,
 } from '../engine/estates.js';
 import { getSpendableGold } from '../engine/deals.js';
-import { INVASIONS } from '../data/invasions.js';
+import { getMapInvasions } from '../data/maps/index.js';
 import { getMercenaryHireCost } from '../engine/rules.js';
 import { buildFinalScores, getScorePointsForShare, SCORE_SHARE_THRESHOLDS } from '../engine/scoring.js';
 import { getPlayer } from '../engine/state.js';
@@ -26,7 +27,7 @@ import {
   normalizeCoupChoices,
 } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, getBalance } from '../data/balance.js';
 import { analyzeMajorTitleAssignments, estimateMajorTitleYield } from './patronage.js';
 import {
   applyLegalAction,
@@ -94,6 +95,17 @@ export const DEFAULT_STRATEGY_WEIGHTS = Object.freeze({
   regimeUrgencyWeight: 1,
   allyDefenseReliance: 1,
   kingmakerPenalty: 0.25,
+  // How much a dynasty cares that its own estates cannot be revoked (on the
+  // throne, or under a Basileus that spares it).
+  estateShieldWeight: 0.6,
+  // How much it values keeping the major office it holds: a new Basileus
+  // hands them all out again, and a Basileus holds none.
+  officeKeepWeight: 0.6,
+  // How glad it is to see rivals' estates and offices lost to invaders,
+  // more so for dynasties it dislikes or the leader.
+  spiteWeight: 1,
+  // How much it lets a war go to load Unrest on a Basileus it wants gone.
+  unrestOpportunism: 0.3,
 });
 
 function getStrategyWeights(meta, playerId) {
@@ -306,9 +318,22 @@ function scoreExpectedMajorTitlePatronage(state, final, supporterId) {
   return Math.min(16, bestYield) * 0.8;
 }
 
+function heldOfficeYield(state, playerId) {
+  return (getPlayer(state, playerId)?.majorTitles || [])
+    .reduce((total, titleKey) => total + estimateMajorTitleYield(state, titleKey), 0);
+}
+
 function scoreBasileusPreference(state, memory, supporterId, candidateId, final, leaderId, weights) {
   if (!Number.isInteger(candidateId)) return 0;
-  if (candidateId === supporterId) return weights.throneBase * weights.selfClaim;
+  const estateStake = countDynastyEstates(state, supporterId, { activeOnly: true });
+  const officeYield = heldOfficeYield(state, supporterId);
+  if (candidateId === supporterId) {
+    // On the throne nobody can revoke your estates, but a Basileus holds no
+    // major office: claiming it gives up the one you have.
+    return weights.throneBase * weights.selfClaim
+      + estateStake * (Number(weights.estateShieldWeight) || 0) * 0.5
+      - officeYield * (Number(weights.officeKeepWeight) || 0) * 0.6;
+  }
 
   const relationToCandidate = getRelationship(memory, supporterId, candidateId);
   const candidatePattern = getPlayerMemory(memory, candidateId);
@@ -338,7 +363,12 @@ function scoreBasileusPreference(state, memory, supporterId, candidateId, final,
     + Math.max(0, -Number(relationToCandidate.trust) || 0) * 0.35
     + Math.max(0, Number(relationToCandidate.titleJealousy) || 0) * 0.8
     - Math.max(0, Number(relationToCandidate.titleFavor) || 0) * 0.3
-  ) * weights.basileusRevocationFear;
+  ) * weights.basileusRevocationFear
+    * (1 + estateStake * 0.08 * (Number(weights.estateShieldWeight) || 0));
+  // Keeping the Basileus keeps every major office where it is.
+  const statusQuo = candidateId === state.basileusId
+    ? officeYield * (Number(weights.officeKeepWeight) || 0) * 0.6
+    : 0;
   const relationship = scoreRelationshipModifier(
     memory,
     supporterId,
@@ -347,7 +377,7 @@ function scoreBasileusPreference(state, memory, supporterId, candidateId, final,
     0.9 * (Number(weights.regimeTreatmentWeight) || 1),
   );
   const leaderPenalty = candidateId === leaderId ? weights.supportLeaderPenalty * 2.4 : 0;
-  return titleExpectation + relationship + titleQuality - revocationFear - leaderPenalty - pointGap * weights.kingmakerPenalty;
+  return titleExpectation + relationship + titleQuality + statusQuo - revocationFear - leaderPenalty - pointGap * weights.kingmakerPenalty;
 }
 
 function scoreIncumbentRegimeUrgency(state, memory, playerId, final, leaderId, weights = DEFAULT_STRATEGY_WEIGHTS) {
@@ -581,7 +611,7 @@ function summarizeOrders(state, playerId, orders = {}) {
     idleTroops += total - funded;
   }
 
-  const mercCount = Math.max(0, Math.min(BALANCE.MAX_MERCENARIES, Number(orders.mercenaries?.count) || 0));
+  const mercCount = Math.max(0, Math.min(getBalance(state).MAX_MERCENARIES, Number(orders.mercenaries?.count) || 0));
   if (orders.mercenaries?.destination === 'capital') capitalTroops += mercCount;
   else frontierTroops += mercCount;
 
@@ -601,9 +631,9 @@ function summarizeOrders(state, playerId, orders = {}) {
   };
 }
 
-function getMaxMercenariesForBudget(budget) {
+function getMaxMercenariesForBudget(budget, maxMercenaries = BALANCE.MAX_MERCENARIES) {
   let count = 0;
-  while (count < BALANCE.MAX_MERCENARIES && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
+  while (count < maxMercenaries && getMercenaryHireCost(0, count + 1) <= budget) count += 1;
   return count;
 }
 
@@ -612,7 +642,7 @@ function estimatePotentialCapitalTroops(state, playerId) {
     return sum + getDeploymentArmyTroopTotal(state, playerId, officeKey);
   }, 0);
   const gold = Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
-  return officeTroops + getMaxMercenariesForBudget(gold);
+  return officeTroops + getMaxMercenariesForBudget(gold, getBalance(state).MAX_MERCENARIES);
 }
 
 function patternAdjustedDeploymentRatios(state, playerId, playerMemory, table) {
@@ -751,18 +781,41 @@ function scoreDefenderRewardProspect(summary, estimates, rewardProvinceCount, re
   return participationValue + patronageValue - secondPlaceDrag;
 }
 
-function themeStake(state, playerId, themeId) {
+// What losing a province costs this dynasty: its own estates and offices
+// there, minus the satisfaction of seeing rivals lose theirs (more for
+// dynasties it dislikes, and for the leader).
+function themeStake(state, playerId, themeId, weights = DEFAULT_STRATEGY_WEIGHTS, context = {}) {
   const theme = state.themes?.[themeId];
   if (!theme) return 0;
+  const spite = (otherId) => (Number(weights.spiteWeight) || 0) * (
+    1
+    + Math.max(0, -relationshipScore(context.memory, playerId, otherId)) * 0.25
+    + (otherId === context.leaderId ? 1 : 0)
+  );
   let value = 0;
   for (const holder of getProvinceEstateHolders(theme)) {
-    value += holder.playerId === playerId ? Math.min(12, holder.count * 2.5) : -Math.min(3, holder.count * 0.3);
+    value += holder.playerId === playerId
+      ? Math.min(12, holder.count * 2.5)
+      : -Math.min(4, holder.count * 0.3 * spite(holder.playerId));
   }
   if (theme.strategos === playerId) value += 3;
   if (theme.bishop === playerId) value += 2.5;
-  if (theme.strategos != null && theme.strategos !== playerId) value -= 0.4;
-  if (theme.bishop != null && theme.bishop !== playerId) value -= 0.35;
+  if (theme.strategos != null && theme.strategos !== playerId) value -= 0.4 * spite(theme.strategos);
+  if (theme.bishop != null && theme.bishop !== playerId) value -= 0.35 * spite(theme.bishop);
   return value;
+}
+
+// Lost provinces load Unrest on the Basileus in the next coup: welcome
+// against a Basileus this dynasty wants gone, costly when it holds the throne.
+function scoreUnrestOutcome(state, playerId, lostCount, weights, context = {}) {
+  if (!lostCount || !Number.isInteger(state.basileusId)) return 0;
+  const unrest = lostCount * (Number(getBalance(state).UNREST_PER_LOST_PROVINCE) || 0);
+  if (state.basileusId === playerId) return -unrest * 0.25 * (Number(weights.incumbentDefense) || 1);
+  if (context.incumbentUrgency == null) {
+    const final = context.final || projectedScoring(state);
+    context.incumbentUrgency = scoreIncumbentRegimeUrgency(state, context.memory, playerId, final, context.leaderId, weights);
+  }
+  return unrest * context.incumbentUrgency * (Number(weights.unrestOpportunism) || 0) * 0.35;
 }
 
 function scoreWarPlan(state, playerId, summary, estimates, weights, context = {}) {
@@ -779,8 +832,9 @@ function scoreWarPlan(state, playerId, summary, estimates, weights, context = {}
   if (expected.reachedCPL) value -= weights.capitalFallPenalty;
   else if (high.reachedCPL) value -= weights.capitalRiskPenalty;
 
-  for (const themeId of expected.themesLost || []) value -= themeStake(state, playerId, themeId);
-  for (const themeId of expected.themesRecovered || []) value += Math.max(0.5, themeStake(state, playerId, themeId) * 0.5);
+  for (const themeId of expected.themesLost || []) value -= themeStake(state, playerId, themeId, weights, context);
+  for (const themeId of expected.themesRecovered || []) value += Math.max(0.5, themeStake(state, playerId, themeId, weights, context) * 0.5);
+  value += scoreUnrestOutcome(state, playerId, (expected.themesLost || []).length, weights, context);
 
   const recoveredCount = Array.isArray(expected.themesRecovered) ? expected.themesRecovered.length : 0;
   const rewardProvinceCount = Math.max(recoveredCount, Number(expected.reconquestRewardProvinceCount) || 0);
@@ -1065,11 +1119,11 @@ function scoreReserveFrontierUrgency(state, summary, estimates, weights) {
 }
 
 // How many estates a purse buys in one Estates phase at the rising price.
-function estatesAffordable(gold) {
+function estatesAffordable(state, gold) {
   let count = 0;
   let spent = 0;
   while (count < MAX_ESTATES_PER_ROUND) {
-    const price = getNextEstatePrice(count);
+    const price = getNextEstatePrice(count, state);
     if (spent + price > gold) break;
     spent += price;
     count += 1;
@@ -1082,7 +1136,7 @@ function scoreEstateReserveOpportunity(state, final, playerId, goldGain, weights
   const gain = Math.max(0, Number(goldGain) || 0);
   if (gain <= 0 || roundsOfIncomeLeft(state) <= 1) return 0;
   const currentGold = Math.max(0, Number(getPlayer(state, playerId)?.gold) || 0);
-  const extraEstates = estatesAffordable(currentGold + gain) - estatesAffordable(currentGold);
+  const extraEstates = estatesAffordable(state, currentGold + gain) - estatesAffordable(state, currentGold);
   if (extraEstates <= 0) return 0;
   const perEstate = scoreResourceGain(final, playerId, 'estate', 1) * 0.18 + weights.estateProfit * 0.22;
   // The first extra estate counts fully; later ones less, as prices rise.
@@ -1232,16 +1286,16 @@ function roundsOfIncomeLeft(state) {
 
 // Share of the invasions the province stands in the way of: the current one
 // weighs most, the rest of the deck by how often each is drawn.
-const INVASION_DRAW_TOTAL = INVASIONS.reduce((total, invasion) => total + (Number(invasion.drawWeight) || 0), 0) || 1;
-
 function estateRouteExposure(state, themeId) {
   let exposure = 0;
   const route = state.currentInvasion?.route || [];
   const imperialOnRoute = route.filter((id) => id !== 'CPL' && state.themes?.[id] && !state.themes[id].lost);
   const position = imperialOnRoute.indexOf(themeId);
   if (position >= 0) exposure += 1 / (1 + position);
-  for (const invasion of INVASIONS) {
-    if (invasion.route.includes(themeId)) exposure += 0.35 * ((Number(invasion.drawWeight) || 0) / INVASION_DRAW_TOTAL);
+  const invasions = getMapInvasions(state);
+  const drawTotal = invasions.reduce((total, invasion) => total + (Number(invasion.drawWeight) || 0), 0) || 1;
+  for (const invasion of invasions) {
+    if (invasion.route.includes(themeId)) exposure += 0.35 * ((Number(invasion.drawWeight) || 0) / drawTotal);
   }
   return exposure;
 }
@@ -1268,7 +1322,7 @@ export function chooseStrategicEstatePlan(state, meta, playerId) {
   const plan = {};
   let spent = 0;
   for (let step = 0; step < MAX_ESTATES_PER_ROUND && sites.length; step += 1) {
-    const price = getNextEstatePrice(countPlannedEstates(plan));
+    const price = getNextEstatePrice(countPlannedEstates(plan), state);
     if (spent + price > gold) break;
     const best = sites
       .map((theme) => ({ theme, score: scoreEstateSite(state, final, playerId, theme, plan[theme.id] || 0, weights) }))

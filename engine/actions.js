@@ -23,7 +23,7 @@ import {
   removeRevocableEstates,
 } from './estates.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
-import { BALANCE } from '../data/balance.js';
+import { BALANCE, getBalance } from '../data/balance.js';
 import { getCapitalSupportEntries } from './capitalSupport.js';
 import { buildDefaultCoupChoices, getCoupChoiceShares, normalizeCoupChoices } from './coup.js';
 
@@ -33,16 +33,19 @@ const STRATEGOS_TITLE_BY_REGION = {
   sea: 'ADMIRAL',
 };
 
-export function getCourtPowerAppointmentLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? 0 : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
+// `state` picks the map's values (data/balance.js, MAP_BALANCE).
+export function getCourtPowerAppointmentLimit(powerKey, state = null) {
+  return powerKey === 'BASILEUS' ? 0 : getBalance(state).MAJOR_OFFICE_ACTION_LIMIT;
 }
 
-export function getCourtPowerRevocationLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? BALANCE.BASILEUS_REVOCATION_LIMIT : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
+export function getCourtPowerRevocationLimit(powerKey, state = null) {
+  const balance = getBalance(state);
+  return powerKey === 'BASILEUS' ? balance.BASILEUS_REVOCATION_LIMIT : balance.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
-export function getCourtPowerActionLimit(powerKey) {
-  return powerKey === 'BASILEUS' ? BALANCE.BASILEUS_REVOCATION_LIMIT : BALANCE.MAJOR_OFFICE_ACTION_LIMIT;
+export function getCourtPowerActionLimit(powerKey, state = null) {
+  const balance = getBalance(state);
+  return powerKey === 'BASILEUS' ? balance.BASILEUS_REVOCATION_LIMIT : balance.MAJOR_OFFICE_ACTION_LIMIT;
 }
 
 function themeName(state, themeId) {
@@ -170,9 +173,9 @@ export function isCourtPowerExhausted(state, playerId, powerKey) {
   const appointments = getCourtPowerAppointmentCount(state, playerId, powerKey);
   const revocations = getCourtPowerRevocationCount(state, playerId, powerKey);
   const totalActions = getCourtPowerActionCount(state, playerId, powerKey);
-  if (totalActions >= getCourtPowerActionLimit(powerKey)) return true;
-  const revocationLimit = getCourtPowerRevocationLimit(powerKey);
-  const appointmentLimit = getCourtPowerAppointmentLimit(powerKey);
+  if (totalActions >= getCourtPowerActionLimit(powerKey, state)) return true;
+  const revocationLimit = getCourtPowerRevocationLimit(powerKey, state);
+  const appointmentLimit = getCourtPowerAppointmentLimit(powerKey, state);
   if (revocationLimit > 0 && revocations >= revocationLimit) return true;
   if (appointmentLimit > 0 && appointments >= appointmentLimit) return true;
   return false;
@@ -221,7 +224,7 @@ function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
   const revocations = getCourtPowerRevocationCount(state, playerId, powerKey);
   const totalActions = getCourtPowerActionCount(state, playerId, powerKey);
   if (actionKind === 'appoint') {
-    const appointmentLimit = getCourtPowerAppointmentLimit(powerKey);
+    const appointmentLimit = getCourtPowerAppointmentLimit(powerKey, state);
     if (appointmentLimit <= 0) {
       return fail(`${courtPowerName(powerKey)} cannot appoint.`);
     }
@@ -229,12 +232,12 @@ function checkCourtActionAvailable(state, playerId, powerKey, actionKind) {
       return fail(`${courtPowerName(powerKey)} already used ${appointmentLimit} appointments this round and cannot appoint again until the next one.`);
     }
   } else if (actionKind === 'revoke') {
-    const revocationLimit = getCourtPowerRevocationLimit(powerKey);
+    const revocationLimit = getCourtPowerRevocationLimit(powerKey, state);
     if (revocations >= revocationLimit) {
       return fail(`${courtPowerName(powerKey)} already used ${revocationLimit} revocations this round and cannot revoke again until the next one.`);
     }
   }
-  const actionLimit = getCourtPowerActionLimit(powerKey);
+  const actionLimit = getCourtPowerActionLimit(powerKey, state);
   if (totalActions >= actionLimit) {
     return fail(`${courtPowerName(powerKey)} already used its ${actionLimit} actions this round.`);
   }
@@ -372,10 +375,10 @@ export function appointBishop(state, appointerId, themeId, appointeeId) {
 }
 
 // Revocations
+// Only the Domestic or Admiral of the region; the Basileus revokes estates only.
 export function canPlayerRevokeStrategos(state, playerId, themeId) {
   const theme = state.themes[themeId];
   if (!theme) return false;
-  if (playerId === state.basileusId) return true;
   const requiredTitle = STRATEGOS_TITLE_BY_REGION[theme.region];
   return Boolean(requiredTitle && getPlayer(state, playerId)?.majorTitles?.includes(requiredTitle));
 }
@@ -384,7 +387,7 @@ export function canPlayerRevokeBishop(state, playerId) {
   return Boolean(getPlayer(state, playerId)?.majorTitles?.includes('PATRIARCH'));
 }
 
-export function revokeMinorTitle(state, themeId, titleType, revokerId = state.basileusId) {
+export function revokeMinorTitle(state, themeId, titleType, revokerId) {
   const theme = state.themes[themeId];
   if (!theme) return fail('Choose a province.');
   if (titleType !== 'strategos' && titleType !== 'bishop') return fail('Choose a Strategos or a Bishop.');
@@ -396,11 +399,7 @@ export function revokeMinorTitle(state, themeId, titleType, revokerId = state.ba
   const slotKey = getMinorTitleSlotKey(themeId, titleType);
   const sameTurn = currentTurnTitleBlock(state, slotKey, `The ${titleType} of ${themeName(state, themeId)}`);
   if (!sameTurn.ok) return sameTurn;
-  const powerKey = titleType === 'strategos' && revokerId === state.basileusId
-    ? 'BASILEUS'
-    : titleType === 'strategos'
-      ? STRATEGOS_TITLE_BY_REGION[theme.region]
-      : 'PATRIARCH';
+  const powerKey = titleType === 'strategos' ? STRATEGOS_TITLE_BY_REGION[theme.region] : 'PATRIARCH';
   if (titleType === 'strategos' && !canPlayerRevokeStrategos(state, revokerId, themeId)) {
     return fail('Only the regional Domestic or Admiral can revoke this strategos.');
   }
@@ -492,16 +491,9 @@ function unique(values) {
 function hasBasileusRevocationTarget(state) {
   return Object.values(state.themes || {}).some((theme) => (
     theme.id !== 'CPL'
-    && (
-      (
-        theme.strategos != null
-        && !theme.lost
-        && !isTitleAppointedThisTurn(state, getMinorTitleSlotKey(theme.id, 'strategos'))
-      )
-      || getProvinceEstateHolders(theme).some((holder) => (
-        canRevokeEstates(state, theme.id, holder.playerId, state.basileusId).ok
-      ))
-    )
+    && getProvinceEstateHolders(theme).some((holder) => (
+      canRevokeEstates(state, theme.id, holder.playerId, state.basileusId).ok
+    ))
   ));
 }
 
@@ -574,7 +566,7 @@ export function passCourtPower(state, playerId, powerKey) {
     return fail(`${courtPowerName(normalizedPowerKey)} already passed this round.`);
   }
   if (isCourtPowerExhausted(state, playerId, normalizedPowerKey)) {
-    return fail(`${courtPowerName(normalizedPowerKey)} already used its ${getCourtPowerActionLimit(normalizedPowerKey)} actions this round.`);
+    return fail(`${courtPowerName(normalizedPowerKey)} already used its ${getCourtPowerActionLimit(normalizedPowerKey, state)} actions this round.`);
   }
   markCourtPowerPassed(state, playerId, normalizedPowerKey);
   return { ok: true };

@@ -71,6 +71,7 @@ const defaultSetupActions = document.getElementById('defaultSetupActions');
 const multiplayerActions = document.getElementById('multiplayerActions');
 const setupPlayers = document.getElementById('setupPlayers');
 const setupTurns = document.getElementById('setupTurns');
+const setupMap = document.getElementById('setupMap');
 const setupMode = document.getElementById('setupMode');
 const setupSeat = document.getElementById('setupSeat');
 const singlePlayerFields = document.getElementById('singlePlayerFields');
@@ -185,7 +186,7 @@ function renderSetupChoiceControl(select) {
 }
 
 function renderSetupChoiceControls() {
-  [setupMode, setupPlayers, setupTurns, setupSeat].forEach(renderSetupChoiceControl);
+  [setupMode, setupPlayers, setupTurns, setupMap, setupSeat].filter(Boolean).forEach(renderSetupChoiceControl);
 }
 
 function getNonRandomOptionValues(select) {
@@ -442,6 +443,7 @@ async function launchMultiplayerFlow(intent) {
         playerCount,
         turnCount,
         deckSize: turnCount,
+        mapId: setupMap?.value || 'classic',
         seed: seedInput,
       },
       saveGame,
@@ -505,6 +507,7 @@ btnStart.addEventListener('click', async () => {
       playerCount,
       turnCount,
       deckSize: turnCount,
+      mapId: setupMap?.value || 'classic',
       seed,
       mode,
       aiOpponentSelections,
@@ -539,6 +542,7 @@ setupPlayers.addEventListener('change', () => {
   renderAiRoster();
 });
 setupTurns.addEventListener('change', () => renderSetupChoiceControl(setupTurns));
+setupMap?.addEventListener('change', () => renderSetupChoiceControl(setupMap));
 setupMode.addEventListener('change', () => {
   renderSetupChoiceControl(setupMode);
   refreshModeVisibility();
@@ -599,6 +603,7 @@ function renderResumeCard() {
     info.dynasty ? `${info.mode} as ${info.dynasty}` : info.mode,
     info.turnCount ? `round ${info.round} of ${info.turnCount}` : `round ${info.round}`,
     `${info.playerCount} dynasties`,
+    `${info.mapName} map`,
     formatSavedAgo(info.savedAt) ? `saved ${formatSavedAgo(info.savedAt)}` : '',
   ].filter(Boolean);
   resumeGameSummary.textContent = parts.join(' · ');

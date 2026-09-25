@@ -1,6 +1,7 @@
 // ui/multiplayer/lobby.js - the pre-game room lobby: settings, seats, AI choices, and start.
 
 import { getDynastyProfileForSeat } from '../../data/invasions.js';
+import { MAP_IDS, getMapDefinition } from '../../data/maps/index.js';
 import {
   RANDOM_TUNED_OPPONENT_ID,
   describeAiOpponentChoice,
@@ -36,6 +37,11 @@ export function renderRoomChoiceButtons(name, options, selectedValue) {
   `;
 }
 
+function describeMap(mapId) {
+  const map = getMapDefinition(mapId);
+  return `${map.name} - ${map.summary}`;
+}
+
 // Renders the lobby into the controller's setup dialog and wires its buttons
 // back to the controller's WebSocket commands.
 export function renderMultiplayerLobby(controller) {
@@ -46,6 +52,7 @@ export function renderMultiplayerLobby(controller) {
   const tunedAiOpponents = getTunedAiOpponents(aiOpponents);
   const config = controller.roomSnapshot.config || {};
   const turnCount = Number(config.turnCount || config.deckSize || 9);
+  const mapId = getMapDefinition(config.mapId).id;
   const controlledSeatId = controller.getControlledSeatId();
   const previousCard = controller.setupDialog.querySelector('.setup-card');
   const previousDialogScrollTop = controller.setupDialog.scrollTop;
@@ -75,10 +82,19 @@ export function renderMultiplayerLobby(controller) {
         <label>Game Length</label>
         ${isHost ? `
           <select id="roomTurnCount" class="room-config-source" aria-hidden="true" tabindex="-1">
-            ${[6, 9, 12].map((count) => `<option value="${count}" ${count === turnCount ? 'selected' : ''}>${count} turns</option>`).join('')}
+            ${[6, 9, 12].map((count) => `<option value="${count}" ${count === turnCount ? 'selected' : ''}>${count} rounds</option>`).join('')}
           </select>
-          ${renderRoomChoiceButtons('roomTurnCount', [6, 9, 12].map((count) => ({ value: count, label: `${count} turns` })), turnCount)}
-        ` : `<div class="setup-hint">${escapeHtml(turnCount)} turns</div>`}
+          ${renderRoomChoiceButtons('roomTurnCount', [6, 9, 12].map((count) => ({ value: count, label: `${count} rounds` })), turnCount)}
+        ` : `<div class="setup-hint">${escapeHtml(turnCount)} rounds</div>`}
+      </div>
+      <div class="setup-field">
+        <label>Map</label>
+        ${isHost ? `
+          <select id="roomMapId" class="room-config-source" aria-hidden="true" tabindex="-1">
+            ${MAP_IDS.map((id) => `<option value="${id}" ${id === mapId ? 'selected' : ''}>${escapeHtml(describeMap(id))}</option>`).join('')}
+          </select>
+          ${renderRoomChoiceButtons('roomMapId', MAP_IDS.map((id) => ({ value: id, label: describeMap(id) })), mapId)}
+        ` : `<div class="setup-hint">${escapeHtml(describeMap(mapId))}</div>`}
       </div>
       <div class="setup-field">
         <label>Seed</label>
@@ -200,8 +216,9 @@ export function renderMultiplayerLobby(controller) {
     const playerCount = Number(controller.setupDialog.querySelector('#roomPlayerCount')?.value || config.playerCount || 5);
     const turnCount = Number(controller.setupDialog.querySelector('#roomTurnCount')?.value || config.turnCount || config.deckSize || 9);
     const seed = controller.setupDialog.querySelector('#roomSeedInput')?.value?.trim() || '';
+    const selectedMapId = controller.setupDialog.querySelector('#roomMapId')?.value || mapId;
     controller.send('set_room_config', {
-      config: { playerCount, turnCount, deckSize: turnCount, seed },
+      config: { playerCount, turnCount, deckSize: turnCount, mapId: selectedMapId, seed },
     });
     controller.send('start_game');
   });

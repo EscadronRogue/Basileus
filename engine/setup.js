@@ -1,3 +1,5 @@
+import { DEFAULT_MAP_ID, normalizeMapId } from '../data/maps/index.js';
+
 export const PLAYER_COUNT_MIN = 3;
 export const PLAYER_COUNT_MAX = 5;
 export const DEFAULT_PLAYER_COUNT = 5;
@@ -8,6 +10,7 @@ export const DEFAULT_ROOM_CONFIG = {
   playerCount: DEFAULT_PLAYER_COUNT,
   turnCount: DEFAULT_TURN_COUNT,
   deckSize: DEFAULT_TURN_COUNT,
+  mapId: DEFAULT_MAP_ID,
   seed: '',
 };
 
@@ -57,6 +60,7 @@ export function normalizeRoomConfig(rawConfig = {}) {
     playerCount: clamp(toInt(rawConfig.playerCount, DEFAULT_PLAYER_COUNT), PLAYER_COUNT_MIN, PLAYER_COUNT_MAX),
     turnCount,
     deckSize: turnCount,
+    mapId: normalizeMapId(rawConfig.mapId),
     seed: String(rawConfig.seed ?? DEFAULT_ROOM_CONFIG.seed).trim(),
   };
 }
