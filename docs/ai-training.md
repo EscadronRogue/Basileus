@@ -74,10 +74,10 @@ always prizes the throne, an Opportunist always leans on others to hold the
 frontier) and training tunes everything else.
 
 On top of the trained weights, every AI with a personality has a mood
-(`ai/mood.js`): Duty or Greed, and Loyalty or Ambition, pushed by what
-happens at the table (threats to its land or to Constantinople,
-revocations and favours, rivals under- or over-defending, the score) and
-by its memory, which fades. At play time, the distance from its resting
+(`ai/mood.js`), its own and never shown to the players: Duty or Greed, and
+Loyalty or Ambition, pushed by what happens at the table (threats to its
+land or to Constantinople, revocations and favours, rivals under- or
+over-defending, the score) and by its memory, which fades. At play time, the distance from its resting
 mood tilts the frontier, reserve, throne and coup weights; at rest it plays
 its trained weights, so training tunes them for the resting mood.
 `temperament` in `ai/personalities.js` sets that rest point, the volatility
@@ -182,6 +182,16 @@ games, 177 minutes on four workers. Against the roster before it, every
 new champion but four (Usurper, Patron, Glory Hunter, Maverick) wins at
 least its share.
 
+Invasions changed since: their strength grows by 2 for every imperial
+province on the route instead of 1 for every province, and lost land no
+longer costs the invader anything to cross. The roster was not retrained
+for it. On 300 games of 5 dynasties and 9 rounds, invasions now call for
+46% of the troops the empire raises on the Classic map (47% Compact); the
+frontier wins 47% of wars (48%), and the empire falls in 29% of Classic
+games and 12% of Compact games, never before round 4. More than half of
+the Classic falls are to the Bulgars, whose route is short. The figures
+below were measured before this change.
+
 ### Which kinds of selfishness pay
 
 600 games of 5 dynasties and 9 rounds on each map, drawn from the nineteen
@@ -216,9 +226,8 @@ as Classic / Compact:
   roster before, which trained without memory). One dynasty wins a war
   alone in 3% and 4% of them.
 - The empire falls in 5% of Classic games and 2% of Compact games, none
-  before round 5: below the 10-20% the simulator aims for. The AIs defend
-  well enough that invasions could be made stronger
-  (`INVASION_STRENGTH_PER_ROUND` or `INVASION_STRENGTH_PER_REACH`).
+  before round 5: below the 10-20% the simulator aims for, which is why
+  invasions were made stronger (see above).
 - The throne changes hands at 61% of Classic coups and 57% of Compact
   ones, and a best defender takes it at the next coup about half the time.
 - The dynasties that win mix the frontier, the capital and their estates:

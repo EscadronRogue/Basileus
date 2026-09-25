@@ -840,7 +840,7 @@ test('estates and deployment show the invasion ladder', () => {
   const state = makeState();
   for (const theme of Object.values(state.themes)) theme.lost = false;
   state.themes.STR.lost = true;
-  state.currentInvasion = { id: 'bulgars', name: 'Bulgars', route: ['THS', 'STR', 'MAK', 'CPL'], strength: [4, 6] };
+  state.currentInvasion = { id: 'bulgars', name: 'Bulgars', route: ['THS', 'STR', 'MAK', 'CPL'], strength: [4, 6], reach: 2, drawnRound: 1 };
   state.phase = 'deployment';
   state.currentTroops = { BASILEUS: 2 };
   const container = makePanelContainer();
@@ -852,11 +852,19 @@ test('estates and deployment show the invasion ladder', () => {
   // Each step shows its own cost; Constantinople adds the Walls.
   const cost = BALANCE.PROVINCE_WAR_COST;
   const walls = BALANCE.THEODOSIAN_WALLS;
-  assert.match(container.innerHTML, new RegExp(`data-ladder-step="THS"[\\s\\S]*\\+${cost}</span>[\\s\\S]*data-ladder-step="STR"[\\s\\S]*\\+${BALANCE.LOST_PROVINCE_CROSSING_COST}</span>[\\s\\S]*data-ladder-step="MAK"[\\s\\S]*\\+${cost}</span>[\\s\\S]*data-ladder-step="CPL"[\\s\\S]*\\+${cost + walls} \\(Theodosian Walls ${walls}\\)</span>`));
-  // Strength 4-6 in this test: holding everything takes 6 troops.
-  assert.match(container.innerHTML, /Hold every province:/);
-  assert.match(container.innerHTML, /Save Constantinople:/);
+  assert.match(container.innerHTML, new RegExp(`data-ladder-step="THS"[\\s\\S]*\\+${cost}</span>[\\s\\S]*data-ladder-step="STR"[\\s\\S]*>lost</span>[\\s\\S]*data-ladder-step="MAK"[\\s\\S]*\\+${cost}</span>[\\s\\S]*data-ladder-step="CPL"[\\s\\S]*\\+${cost + walls} \\(Theodosian Walls ${walls}\\)</span>`));
+  assert.match(container.innerHTML, new RegExp(`${BALANCE.INVASION_STRENGTH_PER_PROVINCE} × 2 imperial provinces on its route \\+ ${BALANCE.INVASION_STRENGTH_PER_ROUND} × round 1`));
+  // Strength 4: a lead of 3 takes Thessalonike, so 2 troops hold everything;
+  // Constantinople is beyond its reach.
+  assert.match(container.innerHTML, /Hold every province: <strong>[\s\S]*?2[\s\S]*?<\/strong>/);
+  assert.match(container.innerHTML, /Constantinople is out of its reach/);
+  assert.doesNotMatch(container.innerHTML, /Save Constantinople:/);
   assert.match(container.innerHTML, /retakes lost provinces on the route/);
+
+  // A stronger invasion can reach it.
+  state.currentInvasion = { ...state.currentInvasion, strength: [20, 20] };
+  renderOrdersPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
+  assert.match(container.innerHTML, /Save Constantinople:/);
 });
 
 test('coup resolution shows each claimant\'s support by source', () => {

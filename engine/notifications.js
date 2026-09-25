@@ -248,21 +248,6 @@ function buildHistoryEventNotifications(state, viewerId, notifications) {
       continue;
     }
 
-    // An AI dynasty changes its mood and says why. Every other dynasty
-    // hears it; it is bad news for the one it turns against.
-    if (event.type === 'ai_mood') {
-      if (normalizePlayerId(event.actorId) === normalizedViewerId) continue;
-      const aimedAtViewer = normalizePlayerId(details.targetId) === normalizedViewerId;
-      const againstViewer = aimedAtViewer && (details.mood === 'conspirator' || details.mood === 'hero');
-      pushHistoryNotification(notifications, event, viewerId, {
-        kind: 'ai_mood',
-        title: againstViewer ? 'A rival sets itself against you' : 'A rival changes course',
-        tone: againstViewer ? 'negative' : aimedAtViewer ? 'positive' : 'neutral',
-        urgent: againstViewer,
-      });
-      continue;
-    }
-
     if (event.type === 'coup_result') {
       const winnerId = normalizePlayerId(details.winnerId);
       if (winnerId === normalizedViewerId) {

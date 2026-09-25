@@ -10,7 +10,7 @@ import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 // Bumped whenever a rule change makes older saves unplayable. A save made
 // under other rules is refused instead of loading into a broken game.
-export const RULES_VERSION = 4;
+export const RULES_VERSION = 5;
 
 export function isCurrentRulesVersion(rawState) {
   return Number(rawState?.rulesVersion) === RULES_VERSION;
@@ -102,20 +102,32 @@ const PLAYER_ROLE_TEXT_STYLES = {
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAST', 'DOM_WEST'];
 
-// How far an invader comes from: the provinces on its route before
-// Constantinople.
-export function getInvasionReach(invasion) {
-  return (Array.isArray(invasion?.route) ? invasion.route : []).filter((themeId) => themeId !== 'CPL').length;
+// The empire's reach toward an invader: its imperial provinces on the
+// invasion's route before Constantinople. Without a game state, every
+// province on the route.
+export function getInvasionReach(invasion, state = null) {
+  return (Array.isArray(invasion?.route) ? invasion.route : []).filter((themeId) => {
+    if (themeId === 'CPL') return false;
+    if (!state) return true;
+    const theme = state.themes?.[themeId];
+    return Boolean(theme && !theme.lost);
+  }).length;
 }
 
 // An invasion's strength is known as soon as it is drawn: the farther the
-// invader comes from, the stronger it is, and the threat grows every round.
-export function getInvasionStrength(invasion, state) {
+// empire reaches along its route, the stronger it is, and the threat grows
+// every round. { reach, round, strength }.
+export function getInvasionStrengthParts(invasion, state) {
   const balance = getBalance(state);
+  const reach = getInvasionReach(invasion, state);
   const round = Math.max(1, Number(state?.round) || 1);
-  const strength = getInvasionReach(invasion) * (Number(balance.INVASION_STRENGTH_PER_REACH) || 0)
+  const strength = reach * (Number(balance.INVASION_STRENGTH_PER_PROVINCE) || 0)
     + round * (Number(balance.INVASION_STRENGTH_PER_ROUND) || 0);
-  return Math.max(1, Math.round(strength));
+  return { reach, round, strength: Math.max(1, Math.round(strength)) };
+}
+
+export function getInvasionStrength(invasion, state) {
+  return getInvasionStrengthParts(invasion, state).strength;
 }
 
 // A copy of an invasion template; with a game state, it gets its strength
@@ -128,8 +140,8 @@ export function createInvasionInstance(template, rng, state = null) {
     strength: Array.isArray(template.strength) ? template.strength.slice() : template.strength,
   };
   if (!state) return instance;
-  const strength = getInvasionStrength(instance, state);
-  return { ...instance, reach: getInvasionReach(instance), strength: [strength, strength] };
+  const { reach, round, strength } = getInvasionStrengthParts(instance, state);
+  return { ...instance, reach, drawnRound: round, strength: [strength, strength] };
 }
 
 export function prepareInvasionForDraw(state, invasion, rng) {

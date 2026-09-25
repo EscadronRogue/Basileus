@@ -29,7 +29,7 @@ import {
 } from '../engine/coup.js';
 import { MAJOR_TITLES } from '../data/titles.js';
 import { BALANCE, getBalance } from '../data/balance.js';
-import { applyMoodToWeights, computeAiMood, lastShownMood } from './mood.js';
+import { applyMoodToWeights, computeAiMood, getRememberedMood } from './mood.js';
 import { analyzeMajorTitleAssignments, estimateMajorTitleYield } from './patronage.js';
 import {
   applyLegalAction,
@@ -123,10 +123,10 @@ function getStrategyWeights(meta, playerId, state = null) {
 // kept on the AI meta.
 function getCachedMood(state, meta, playerId) {
   const key = `${state?.round ?? 0}:${state?.phase || ''}:${state?.history?.length ?? 0}`;
-  if (!meta) return computeAiMood(state, meta, getAiMemory(state, meta), playerId, lastShownMood(state, playerId));
+  if (!meta) return computeAiMood(state, meta, getAiMemory(state, meta), playerId, null);
   if (meta.moodCache?.key !== key) meta.moodCache = { key, moods: {} };
   if (!meta.moodCache.moods[playerId]) {
-    meta.moodCache.moods[playerId] = computeAiMood(state, meta, getAiMemory(state, meta), playerId, lastShownMood(state, playerId));
+    meta.moodCache.moods[playerId] = computeAiMood(state, meta, getAiMemory(state, meta), playerId, getRememberedMood(meta, playerId));
   }
   return meta.moodCache.moods[playerId];
 }

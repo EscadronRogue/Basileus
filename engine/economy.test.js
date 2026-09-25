@@ -145,31 +145,43 @@ test('invasion picker uses weighted probability bands', () => {
   assert.equal(pickInvasionTemplate(() => 0.999999).id, 'caliphate');
 });
 
-test('invasion strength is known: it grows with the reach of the route and every round', () => {
+test('invasion strength is known: it grows with the empire along the route and every round', () => {
   const turks = INVASIONS.find((entry) => entry.id === 'turks');
   const bulgars = INVASIONS.find((entry) => entry.id === 'bulgars');
   const emirate = INVASIONS.find((entry) => entry.id === 'emirate');
   const state = makeState();
+  for (const theme of Object.values(state.themes)) theme.lost = false;
   state.round = 3;
-  const expected = (template, round) => getInvasionReach(template) * BALANCE.INVASION_STRENGTH_PER_REACH
+  const imperialOnRoute = (template) => template.route.filter((id) => id !== 'CPL' && !state.themes[id].lost).length;
+  const expected = (template, round) => imperialOnRoute(template) * BALANCE.INVASION_STRENGTH_PER_PROVINCE
     + round * BALANCE.INVASION_STRENGTH_PER_ROUND;
 
-  assert.equal(getInvasionReach(turks), turks.route.filter((id) => id !== 'CPL').length);
+  assert.equal(getInvasionReach(turks, state), turks.route.filter((id) => id !== 'CPL').length);
   const invasion = createInvasionInstance(turks, () => 0, state);
-  assert.equal(invasion.reach, getInvasionReach(turks));
+  assert.equal(invasion.reach, getInvasionReach(turks, state));
+  assert.equal(invasion.drawnRound, 3);
   assert.deepEqual(invasion.strength, [expected(turks, 3), expected(turks, 3)], 'one known number, no range');
-  assert.ok(getInvasionStrength(bulgars, state) < getInvasionStrength(turks, state), 'the farther the invader comes from, the stronger');
+  assert.ok(getInvasionStrength(bulgars, state) < getInvasionStrength(turks, state), 'the farther the empire reaches, the stronger');
   state.round = 4;
   assert.equal(getInvasionStrength(turks, state) - expected(turks, 3), BALANCE.INVASION_STRENGTH_PER_ROUND, 'the threat grows every round');
 
-  // A drawn invasion gets the strength of the round it strikes in; the
-  // empire's size does not matter.
+  // Land lost on the route does not count: a smaller empire there faces a
+  // weaker invasion, a wider one a stronger invasion.
+  const full = getInvasionStrength(turks, state);
+  state.themes[turks.route[0]].lost = true;
+  assert.equal(getInvasionReach(turks, state), turks.route.filter((id) => id !== 'CPL').length - 1);
+  assert.equal(getInvasionStrength(turks, state), full - BALANCE.INVASION_STRENGTH_PER_PROVINCE);
+
+  // A drawn invasion gets the strength of the round it strikes in.
   const drawState = makeState();
+  for (const theme of Object.values(drawState.themes)) theme.lost = false;
   drawState.invasionDeck = [turks];
   drawState.themes.OPS.lost = true;
   phaseInvasion(drawState);
   assert.equal(drawState.round, 1);
-  assert.deepEqual(drawState.currentInvasion.strength, [expected(turks, 1), expected(turks, 1)]);
+  const drawnReach = turks.route.filter((id) => id !== 'CPL' && id !== 'OPS').length;
+  const drawn = drawnReach * BALANCE.INVASION_STRENGTH_PER_PROVINCE + BALANCE.INVASION_STRENGTH_PER_ROUND;
+  assert.deepEqual(drawState.currentInvasion.strength, [drawn, drawn]);
   assert.equal(emirate.name, 'Emirate');
   assert.equal(emirate.objective, 'provinces');
   assert.equal(emirate.requiresImperialTarget, true);
@@ -182,7 +194,7 @@ test('the Compact map makes the threat grow more slowly', () => {
   const template = state.invasionDeck[0];
   assert.equal(
     getInvasionStrength(template, state),
-    getInvasionReach(template) * BALANCE.INVASION_STRENGTH_PER_REACH + 5 * MAP_BALANCE.compact.INVASION_STRENGTH_PER_ROUND,
+    getInvasionReach(template, state) * BALANCE.INVASION_STRENGTH_PER_PROVINCE + 5 * MAP_BALANCE.compact.INVASION_STRENGTH_PER_ROUND,
   );
 });
 
@@ -938,18 +950,17 @@ test('nobody backed in the coup leaves the Basileus on the throne', () => {
   }
 });
 
-test('the invasion ladder costs the same for every imperial province, little for lost ones, and ends at the Walls', () => {
+test('the invasion ladder costs the same for every imperial province, nothing for lost ones, and ends at the Walls', () => {
   const state = makeState();
   for (const theme of Object.values(state.themes)) theme.lost = false;
   state.themes.STR.lost = true;
   const ladder = buildInvasionLadder(state, ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL']);
-  const crossing = BALANCE.LOST_PROVINCE_CROSSING_COST;
   const expected = [];
   let needed = 0;
   for (const themeId of ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR']) {
     const lost = themeId === 'STR';
-    needed += lost ? crossing : WAR_COST;
-    expected.push([themeId, lost ? 'lost' : 'imperial', lost ? crossing : WAR_COST, needed]);
+    needed += lost ? 0 : WAR_COST;
+    expected.push([themeId, lost ? 'lost' : 'imperial', lost ? 0 : WAR_COST, needed]);
   }
   const capitalCost = WAR_COST + BALANCE.THEODOSIAN_WALLS;
   expected.push(['CPL', 'capital', capitalCost, needed + capitalCost]);
@@ -967,19 +978,18 @@ test('the invasion ladder costs the same for every imperial province, little for
   // What the frontier needs: the strength to hold everything, and less to
   // save Constantinople.
   const thresholds = getFrontierThresholds(state, 30, ['CHE', 'PAR', 'CPL']);
-  assert.equal(thresholds.holdAll, 30);
+  assert.equal(thresholds.holdAll, 30 - WAR_COST + 1, 'a lead too small to take the first province takes nothing');
   assert.equal(thresholds.saveCapital, 30 - (3 * WAR_COST + BALANCE.THEODOSIAN_WALLS) + 1);
   assert.equal(getFrontierThresholds(state, 30, ['CHE', 'PAR']).saveCapital, null);
 });
 
-test('crossing a lost province costs the invader too', () => {
+test('lost land offers the invader no resistance', () => {
   const state = makeState();
   for (const theme of Object.values(state.themes)) theme.lost = false;
   state.themes.OPS.lost = true;
-  const crossing = BALANCE.LOST_PROVINCE_CROSSING_COST;
-  const war = resolveInvasion(state, 0, crossing + WAR_COST, { route: ['OPS', 'SAM', 'CPL'] });
+  const war = resolveInvasion(state, 0, WAR_COST, { route: ['OPS', 'SAM', 'CPL'] });
   assert.deepEqual(war.steps.map((step) => [step.themeId, step.outcome]), [['OPS', 'crossed'], ['SAM', 'taken'], ['CPL', 'held']]);
-  assert.equal(war.spent, crossing + WAR_COST);
+  assert.equal(war.spent, WAR_COST);
 });
 
 test('the Theodosian Walls make Constantinople cost the invader more on the Compact map too', () => {

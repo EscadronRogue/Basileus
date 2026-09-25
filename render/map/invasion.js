@@ -68,12 +68,13 @@ export function drawInvasionRoute(invasion, state = null) {
 
 // A tag on the route just before each province: what that step costs the
 // invader out of its lead over the frontier ("+3" to take an imperial
-// province, "+1" to cross a lost one; Constantinople adds the Walls).
+// province; Constantinople adds the Walls). Lost land costs nothing and has
+// no tag.
 function appendLadderTags(layer, state, invasion, points, routeIds) {
   const ladder = new Map(buildInvasionLadder(state, invasion.route).map((step) => [step.themeId, step]));
   routeIds.forEach((provinceId, index) => {
     const step = ladder.get(provinceId);
-    if (!step) return;
+    if (!step || step.status === 'lost') return;
     const from = points[index];
     const to = points[index + 1];
     if (!from || !to) return;
@@ -83,14 +84,13 @@ function appendLadderTags(layer, state, invasion, points, routeIds) {
     const width = 2 + text.length * 1.5;
     const height = 4;
     const group = document.createElementNS(SVG_NS, 'g');
-    group.setAttribute('class', `invasion-ladder-tag${step.status === 'capital' ? ' capital' : ''}${step.status === 'lost' ? ' lost' : ''}`);
+    group.setAttribute('class', `invasion-ladder-tag${step.status === 'capital' ? ' capital' : ''}`);
     group.setAttribute('data-ladder-tag', provinceId);
     group.setAttribute('transform', `translate(${(cx - width / 2).toFixed(2)} ${(cy - height / 2).toFixed(2)})`);
     const title = document.createElementNS(SVG_NS, 'title');
     const name = state.themes?.[provinceId]?.name || provinceId;
     const walls = step.walls ? `, the Theodosian Walls adding ${step.walls}` : '';
-    const verb = step.status === 'lost' ? 'Crossing' : 'Taking';
-    title.textContent = `${verb} ${name} costs the invader ${step.cost}${walls}. It gets that far if it beats the frontier by ${step.needed} or more.`;
+    title.textContent = `Taking ${name} costs the invader ${step.cost}${walls}. It gets that far if it beats the frontier by ${step.needed} or more.`;
     group.appendChild(title);
     const bg = document.createElementNS(SVG_NS, 'rect');
     bg.setAttribute('class', 'invasion-ladder-tag-bg');

@@ -37,22 +37,22 @@ export const BALANCE = {
   UNREST_PER_LOST_PROVINCE: 2,
 
   // The war. Walking its route, the invader pays PROVINCE_WAR_COST of its
-  // lead over the frontier to take each imperial province, and
-  // LOST_PROVINCE_CROSSING_COST to cross one already lost; Constantinople
-  // costs PROVINCE_WAR_COST plus the Walls. When the frontier wins, its lead
-  // retakes lost provinces at PROVINCE_WAR_COST each.
+  // lead over the frontier to take each imperial province; land already lost
+  // offers no resistance. Constantinople costs PROVINCE_WAR_COST plus the
+  // Walls. When the frontier wins, its lead retakes lost provinces at
+  // PROVINCE_WAR_COST each.
   PROVINCE_WAR_COST: 3,
-  LOST_PROVINCE_CROSSING_COST: 1,
   // The best defender of a won war earns, for every province the lead could
   // pay for on the route, this much gold and this much Triumph.
   WAR_REWARD_GOLD_PER_PROVINCE: 3,
   WAR_REWARD_TRIUMPH_PER_PROVINCE: 3,
 
-  // Invasions: the strength of an invasion is known when it is drawn. The
-  // farther the invader comes from, the stronger it is: it grows with the
-  // number of provinces on its route before Constantinople (its reach). And
-  // the threat grows every round.
-  INVASION_STRENGTH_PER_REACH: 1,
+  // Invasions: the strength of an invasion is known when it is drawn. It
+  // grows with how far the empire reaches along its route: every imperial
+  // province on the route adds INVASION_STRENGTH_PER_PROVINCE, so a wide
+  // empire is harder to hold than land close to Constantinople, and losing
+  // land does not make invaders weaker. And the threat grows every round.
+  INVASION_STRENGTH_PER_PROVINCE: 2,
   INVASION_STRENGTH_PER_ROUND: 2,
 };
 
