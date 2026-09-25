@@ -339,6 +339,8 @@
   pointer-events: none;
 }
 .invasion-ladder-tag.capital .invasion-ladder-tag-text { fill: #ffffff; }
+/* Crossing a lost province costs little: a paler tag. */
+.invasion-ladder-tag.lost .invasion-ladder-tag-bg { opacity: 0.72; stroke-dasharray: 0.6 0.4; }
 
 .invasion-cartouche-bg {
   fill: var(--invasion-lost-fill);

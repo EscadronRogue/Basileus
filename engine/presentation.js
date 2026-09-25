@@ -3,7 +3,6 @@
 // Used by history summaries, notifications, and other text sinks. The HTML
 // variants with SVG icons live in ui/icons.js so the engine never depends on
 // the UI layer.
-import { getRisingStepPrice } from './rules.js';
 
 function normalizeDisplayNumber(value) {
   const numeric = Number(value) || 0;
@@ -23,7 +22,3 @@ export function formatTroops(count, noun = 'troop') {
   return `${amount} ${noun}${amount === 1 ? '' : 's'}`;
 }
 
-// The rising price as players read it: "2, 2, 2, 3, 3, 3, 4…".
-export function describeRisingPrices(balance = undefined, count = 7) {
-  return `${Array.from({ length: count }, (_, index) => getRisingStepPrice(index + 1, balance)).join(', ')}…`;
-}

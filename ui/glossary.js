@@ -6,7 +6,6 @@
 // next one. Numbers come from the engine so definitions match the rules.
 import { MAJOR_TITLES } from '../data/titles.js';
 import { getBalance } from '../data/balance.js';
-import { describeRisingPrices } from '../engine/presentation.js';
 import { SCORE_MAX_POINTS_PER_CATEGORY, SCORE_SHARE_STEP_PERCENT } from '../engine/scoring.js';
 import { PERSONALITIES } from '../ai/personalities.js';
 
@@ -126,7 +125,7 @@ export const GLOSSARY_TERMS = [
     term: 'Estate',
     category: 'Economy',
     aliases: ['Estates', 'Estate'],
-    get definition() { return `Land a dynasty owns in a province: pays it 1 gold every income while the province is imperial. A province can hold any number of estates of any dynasties. In the Estates phase each dynasty secretly plans new ones at the rising price (${describeRisingPrices(balance())} gold that round).`; },
+    get definition() { return `Land a dynasty owns in a province: pays it 1 gold every income while the province is imperial. A province can hold any number of estates of any dynasties. In the Estates phase each dynasty secretly plans new ones, at ${balance().ESTATE_PRICE} gold each.`; },
   },
   {
     id: 'domain',
@@ -134,13 +133,6 @@ export const GLOSSARY_TERMS = [
     category: 'Economy',
     aliases: ['domains', 'domain'],
     get definition() { return `Every ${balance().ESTATE_DOMAIN_SIZE} estates a dynasty holds in one province: pays ${balance().ESTATE_DOMAIN_BONUS} more gold every income. A domain is also a bigger target, since one revocation takes all of a dynasty's estates in a province.`; },
-  },
-  {
-    id: 'rising-price',
-    term: 'Rising price',
-    category: 'Economy',
-    aliases: ['rising price'],
-    get definition() { return `The price shared by estates, mercenaries and the war: ${describeRisingPrices(balance())} The first ${balance().RISING_PRICE_GROUP} cost ${balance().RISING_PRICE_START} each, and every next ${balance().RISING_PRICE_GROUP} cost 1 more.`; },
   },
   {
     id: 'deployment',
@@ -183,7 +175,7 @@ export const GLOSSARY_TERMS = [
     term: 'Mercenaries',
     category: 'Army',
     aliases: ['mercenaries', 'mercenary'],
-    get definition() { return `Troops hired with gold in Deployment at the rising price (${describeRisingPrices(balance())}), up to ${balance().MAX_MERCENARIES}. All go to the same place.`; },
+    get definition() { return `Troops hired with gold in Deployment, ${balance().MERCENARY_PRICE} gold each, up to ${balance().MAX_MERCENARIES}. All go to the same place.`; },
   },
   {
     id: 'frontier',
@@ -240,7 +232,7 @@ export const GLOSSARY_TERMS = [
     term: 'Triumph',
     category: 'Throne',
     aliases: ['Triumph'],
-    get definition() { return `Support for the best defender of the last war, for that dynasty itself, in the next coup only: the rising price for each province won (${describeRisingPrices(balance())}).`; },
+    get definition() { return `Support for the best defender of the last war, for that dynasty itself, in the next coup only: ${balance().WAR_REWARD_TRIUMPH_PER_PROVINCE} for each province won.`; },
   },
   {
     id: 'unrest',
@@ -262,7 +254,7 @@ export const GLOSSARY_TERMS = [
     term: 'Invasion ladder',
     category: 'War',
     aliases: ['invasion ladder', 'ladder'],
-    get definition() { return `How much the invader must beat the frontier by to take each province on its route: each imperial province costs the rising price (${describeRisingPrices(balance())}), added up along the route; lost provinces cost nothing, and Constantinople costs the Theodosian Walls on top. Shown on the invasion card and as "+N" tags on the map.`; },
+    get definition() { return `What each step of an invasion's route costs the invader, out of what it beats the frontier by: ${balance().PROVINCE_WAR_COST} to take an imperial province, ${balance().LOST_PROVINCE_CROSSING_COST} to cross a lost one, and ${balance().PROVINCE_WAR_COST} plus the Theodosian Walls for Constantinople. Shown as "+N" tags on the map; the invasion card adds them up.`; },
   },
   {
     id: 'imperial',
@@ -283,14 +275,14 @@ export const GLOSSARY_TERMS = [
     term: 'Reconquest',
     category: 'War',
     aliases: ['reconquest', 'reconquer', 'reconquered', 'retake', 'retaken', 'retakes'],
-    definition: 'When the frontier wins, its lead retakes lost provinces on the route at the rising price, starting from the end nearest Constantinople.',
+    get definition() { return `When the frontier wins, its lead retakes lost provinces on the route, ${balance().PROVINCE_WAR_COST} each, starting from the end nearest Constantinople.`; },
   },
   {
     id: 'best-defender',
     term: 'Best defender',
     category: 'War',
     aliases: ['best defenders', 'best defender'],
-    get definition() { return `The dynasty with the most troops at the frontier in a won war. For each province the frontier's lead could pay for on the route, lost or not, it gets the rising price (${describeRisingPrices(balance())}) in gold and the same in Triumph.`; },
+    get definition() { return `The dynasty with the most troops at the frontier in a won war. For each province of the route the frontier's lead could pay for (${balance().PROVINCE_WAR_COST} each), lost or not, it gets ${balance().WAR_REWARD_GOLD_PER_PROVINCE} gold and ${balance().WAR_REWARD_TRIUMPH_PER_PROVINCE} Triumph.`; },
   },
   {
     id: 'fall',

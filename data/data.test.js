@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs';
 import { ADJACENCY_EDGES, PROVINCES, REGIONS, buildAdjacency } from './provinces.js';
 import {
   DYNASTY_PROFILES,
-  INVASION_DIFFICULTIES,
   INVASION_OBJECTIVES,
   INVASIONS,
 } from './invasions.js';
@@ -64,14 +63,12 @@ test('adjacency edges are known, unique, and connect every province to the capit
   assert.deepEqual(PROVINCES.map((province) => province.id).filter((id) => !reached.has(id)), []);
 });
 
-test('invasions have valid weights, difficulties, and routes', () => {
+test('invasions have valid weights and routes', () => {
   const ids = new Set();
   for (const invasion of INVASIONS) {
     assert.ok(!ids.has(invasion.id), `${invasion.id} is unique`);
     ids.add(invasion.id);
     assert.ok(invasion.drawWeight > 0, `${invasion.id} can be drawn`);
-    assert.ok(Object.values(INVASION_DIFFICULTIES).includes(invasion.difficulty), `${invasion.id} difficulty`);
-    assert.ok(BALANCE.INVASION_STRENGTH_RATIOS[invasion.difficulty], `${invasion.id} strength ratio`);
     assert.ok(Object.values(INVASION_OBJECTIVES).includes(invasion.objective), `${invasion.id} objective`);
     assert.match(invasion.color, /^#[0-9a-f]{6}$/i, `${invasion.id} color`);
 

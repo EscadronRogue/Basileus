@@ -14,7 +14,6 @@ import {
   getEstatePlanCost,
   getNextEstatePrice,
 } from '../../engine/estates.js';
-import { describeRisingPrices } from '../../engine/presentation.js';
 import { getSpendableGold } from '../../engine/deals.js';
 import { getRegionLabel, renderEstateStack, renderProvinceBadge } from '../labels.js';
 import { formatGoldHtml } from '../icons.js';
@@ -130,7 +129,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
           </span>
         </div>
       </header>
-      <p class="section-hint">Each estate pays its owner 1 gold every round, and every ${getBalance(state).ESTATE_DOMAIN_SIZE} of yours in one province form a domain worth ${formatGoldHtml(getBalance(state).ESTATE_DOMAIN_BONUS)} more. This round your estates cost the rising price: ${escapeHtml(describeRisingPrices(getBalance(state)))} Plans stay secret and are built when Deployment opens.</p>
+      <p class="section-hint">Each estate pays its owner 1 gold every round, and every ${getBalance(state).ESTATE_DOMAIN_SIZE} of yours in one province form a domain worth ${formatGoldHtml(getBalance(state).ESTATE_DOMAIN_BONUS)} more. Every estate costs ${formatGoldHtml(getBalance(state).ESTATE_PRICE)}. Plans stay secret and are built when Deployment opens.</p>
       <div class="estate-plan-summary" data-estate-summary>
         <span><strong>${plannedCount}</strong> estate${plannedCount === 1 ? '' : 's'} planned</span>
         <span>Cost ${formatGoldHtml(cost)}</span>

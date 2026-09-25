@@ -13,7 +13,6 @@ import { getPlayerName } from '../../engine/state.js';
 import { readTroopCount } from '../../engine/cascade.js';
 import { buildFinalScores } from '../../engine/scoring.js';
 import { BALANCE } from '../../data/balance.js';
-import { describeRisingPrices } from '../../engine/presentation.js';
 
 export const TUTORIAL_SEED = 254;
 export const TUTORIAL_PLAYER_COUNT = 3;
@@ -202,7 +201,7 @@ export const TUTORIAL_STEPS = [
     target: () => document.querySelector('.estate-row:not(.on-route) [data-estate-add]:not([disabled])')
       || document.querySelector('[data-estate-add]:not([disabled])'),
     title: 'Build estates',
-    body: `Each estate pays you 1 gold every round, and estate income is one of the three scores. This round your estates cost the rising price: ${describeRisingPrices()} Every ${BALANCE.ESTATE_DOMAIN_SIZE} of yours in one province form a domain that pays ${BALANCE.ESTATE_DOMAIN_BONUS} more, but the Basileus can revoke all your estates in a province at once.`,
+    body: `Each estate pays you 1 gold every round, and estate income is one of the three scores. Every estate costs ${BALANCE.ESTATE_PRICE} gold. Every ${BALANCE.ESTATE_DOMAIN_SIZE} of yours in one province form a domain that pays ${BALANCE.ESTATE_DOMAIN_BONUS} more, but the Basileus can revoke all your estates in a province at once.`,
     task: 'Press + to plan an estate in this province.',
     done: () => Boolean(document.querySelector('.estate-row.planned')),
   },

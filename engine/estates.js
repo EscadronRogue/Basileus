@@ -5,13 +5,12 @@
 //
 // In the Estates phase every dynasty plans in secret how many estates to
 // build where; the plans are paid and built together when Deployment opens.
-// Within one round a dynasty's estates cost the rising price shared with
-// mercenaries (2, 2, 2, 3, 3, 3...).
+// Every estate costs ESTATE_PRICE, however many are built.
 import { getBalance } from '../data/balance.js';
 import { getSpendableGold } from './deals/state.js';
 import { recordHistoryEvent } from './history.js';
 import { formatGold } from './presentation.js';
-import { getRisingPriceCost, getRisingPriceTotal, getThemeOwnerIncome } from './rules.js';
+import { getThemeOwnerIncome } from './rules.js';
 import { getPlayer, getPlayerName } from './state.js';
 
 function fail(reason) {
@@ -135,11 +134,11 @@ export function getEstateHoldingIncome(theme, estateCount, state = null) {
 
 // Prices depend on the map, so pass the game state.
 export function getEstatePlanCost(count, state = null) {
-  return getRisingPriceTotal(count, getBalance(state));
+  return toCount(count) * getNextEstatePrice(0, state);
 }
 
 export function getNextEstatePrice(alreadyPlanned, state = null) {
-  return getRisingPriceCost(alreadyPlanned, 1, getBalance(state));
+  return Math.max(0, Number(getBalance(state).ESTATE_PRICE) || 0);
 }
 
 // Plans

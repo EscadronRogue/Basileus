@@ -5,24 +5,18 @@ import {
   DYNASTY_COLORS,
   DYNASTY_PROFILES,
   INVASIONS,
-  INVASION_DIFFICULTIES,
   getDynastyColor,
 } from '../data/invasions.js';
 import { BALANCE, MAP_BALANCE, applyBalanceOverrides, getBalance, resetBalance } from '../data/balance.js';
 
-const {
-  EARLY_INVASION_GRACE_ROUNDS,
-  INVASION_ESTIMATE_INTERVAL,
-  INVASION_STRENGTH_RATIOS,
-} = BALANCE;
 import { PROVINCES } from '../data/provinces.js';
 import {
   createGameState,
   createInvasionInstance,
   makeRng,
   canTriggerInvasion,
-  getEmpireProvinceStrength,
-  getInvasionStrengthBounds,
+  getInvasionReach,
+  getInvasionStrength,
   getPlayer,
   getOfficeHolder,
   pickInvasionTemplate,
@@ -34,8 +28,8 @@ import {
   readTroopCount,
   runIncome,
 } from './cascade.js';
-import { applyInvasionResult, buildInvasionLadder, buildReconquestLadder, resolveInvasion } from './combat.js';
-import { getDismissalGold, getMercenaryCostForCount, getRisingPriceTotal, getRisingStepPrice } from './rules.js';
+import { applyInvasionResult, buildInvasionLadder, buildReconquestLadder, getFrontierThresholds, resolveInvasion } from './combat.js';
+import { getDismissalGold, getMercenaryCostForCount } from './rules.js';
 import { addEstates, getDomainCount, getEstateCount, getEstatePlanCost } from './estates.js';
 import { buildPrivateNotifications } from './notifications.js';
 import { serializePublicGameState } from './publicState.js';
@@ -92,6 +86,10 @@ function enterCourt(state) {
   phaseCourt(state);
 }
 
+// Flat prices: every estate the same, every province of the war the same.
+const estates = (count) => count * BALANCE.ESTATE_PRICE;
+const WAR_COST = BALANCE.PROVINCE_WAR_COST;
+
 test('invasion draw weights match the configured probability table', () => {
   const weights = Object.fromEntries(INVASIONS.map(({ id, drawWeight }) => [id, drawWeight]));
 
@@ -147,95 +145,45 @@ test('invasion picker uses weighted probability bands', () => {
   assert.equal(pickInvasionTemplate(() => 0.999999).id, 'caliphate');
 });
 
-test('invasion templates carry relative difficulty bands', () => {
-  const emirateTemplate = INVASIONS.find((entry) => entry.id === 'emirate');
-  const turksTemplate = INVASIONS.find((entry) => entry.id === 'turks');
+test('invasion strength is known: it grows with the reach of the route and every round', () => {
+  const turks = INVASIONS.find((entry) => entry.id === 'turks');
+  const bulgars = INVASIONS.find((entry) => entry.id === 'bulgars');
+  const emirate = INVASIONS.find((entry) => entry.id === 'emirate');
   const state = makeState();
-  const empireStrength = getEmpireProvinceStrength(state);
-  const expectedDifficulties = {
-    emirate: INVASION_DIFFICULTIES.MEDIUM,
-    kievan_rus: INVASION_DIFFICULTIES.EASY,
-    normans: INVASION_DIFFICULTIES.MEDIUM,
-    venetians: INVASION_DIFFICULTIES.MEDIUM,
-    bulgars: INVASION_DIFFICULTIES.MEDIUM,
-    serbs: INVASION_DIFFICULTIES.EASY,
-    hungarians: INVASION_DIFFICULTIES.MEDIUM,
-    turks: INVASION_DIFFICULTIES.HARD,
-    caliphate: INVASION_DIFFICULTIES.HARD,
-  };
+  state.round = 3;
+  const expected = (template, round) => getInvasionReach(template) * BALANCE.INVASION_STRENGTH_PER_REACH
+    + round * BALANCE.INVASION_STRENGTH_PER_ROUND;
 
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.EASY], [0.5, 0.9]);
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.MEDIUM], [0.6, 1]);
-  assert.deepEqual(INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD], [0.7, 1.1]);
-  for (const template of INVASIONS) {
-    const expectedDifficulty = expectedDifficulties[template.id];
-    assert.equal(template.difficulty, expectedDifficulty, `${template.id} should use the configured difficulty`);
+  assert.equal(getInvasionReach(turks), turks.route.filter((id) => id !== 'CPL').length);
+  const invasion = createInvasionInstance(turks, () => 0, state);
+  assert.equal(invasion.reach, getInvasionReach(turks));
+  assert.deepEqual(invasion.strength, [expected(turks, 3), expected(turks, 3)], 'one known number, no range');
+  assert.ok(getInvasionStrength(bulgars, state) < getInvasionStrength(turks, state), 'the farther the invader comes from, the stronger');
+  state.round = 4;
+  assert.equal(getInvasionStrength(turks, state) - expected(turks, 3), BALANCE.INVASION_STRENGTH_PER_ROUND, 'the threat grows every round');
 
-    const [min, max] = getInvasionStrengthBounds(template, state);
-    const [minRatio, maxRatio] = INVASION_STRENGTH_RATIOS[expectedDifficulty];
-    const scaled = empireStrength * BALANCE.INVASION_STRENGTH_PER_PROVINCE;
-    assert.equal(min, Math.ceil(scaled * minRatio), `${template.id} strength minimum should scale from empire strength`);
-    assert.equal(max, Math.floor(scaled * maxRatio), `${template.id} strength maximum should scale from empire strength`);
-
-    const invasion = createInvasionInstance(template, () => 0, state);
-    assert.equal(invasion.empireStrength, empireStrength);
-    assert.deepEqual(invasion.strengthBounds, [min, max]);
-    assert.deepEqual(invasion.strength, [min, Math.min(max, min + INVASION_ESTIMATE_INTERVAL)]);
-  }
-
-  state.themes.OPS.lost = true;
-  assert.equal(getEmpireProvinceStrength(state), empireStrength - 1);
-  const [hardMinRatio, hardMaxRatio] = INVASION_STRENGTH_RATIOS[INVASION_DIFFICULTIES.HARD];
-  assert.deepEqual(
-    getInvasionStrengthBounds(turksTemplate, state),
-    [
-      Math.ceil((empireStrength - 1) * BALANCE.INVASION_STRENGTH_PER_PROVINCE * hardMinRatio),
-      Math.floor((empireStrength - 1) * BALANCE.INVASION_STRENGTH_PER_PROVINCE * hardMaxRatio),
-    ],
-  );
-
+  // A drawn invasion gets the strength of the round it strikes in; the
+  // empire's size does not matter.
   const drawState = makeState();
-  drawState.invasionDeck = [turksTemplate];
-  drawState.round = EARLY_INVASION_GRACE_ROUNDS;
-  drawState.maxRounds = EARLY_INVASION_GRACE_ROUNDS + 1;
+  drawState.invasionDeck = [turks];
   drawState.themes.OPS.lost = true;
   phaseInvasion(drawState);
-  assert.equal(drawState.currentInvasion.empireStrength, empireStrength - 1);
-  assert.deepEqual(drawState.currentInvasion.strengthBounds, getInvasionStrengthBounds(turksTemplate, drawState));
-  assert.equal(emirateTemplate.name, 'Emirate');
-  assert.equal(emirateTemplate.objective, 'provinces');
-  assert.equal(emirateTemplate.requiresImperialTarget, true);
-  assert.deepEqual(emirateTemplate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP']);
+  assert.equal(drawState.round, 1);
+  assert.deepEqual(drawState.currentInvasion.strength, [expected(turks, 1), expected(turks, 1)]);
+  assert.equal(emirate.name, 'Emirate');
+  assert.equal(emirate.objective, 'provinces');
+  assert.equal(emirate.requiresImperialTarget, true);
+  assert.deepEqual(emirate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP']);
 });
 
-test('invasions in the early grace rounds strike at most at easy strength', () => {
-  const turksTemplate = INVASIONS.find((entry) => entry.id === 'turks');
-  const kievTemplate = INVASIONS.find((entry) => entry.id === 'kievan_rus');
-  assert.ok(EARLY_INVASION_GRACE_ROUNDS >= 1);
-
-  const early = makeState();
-  early.invasionDeck = [turksTemplate];
-  phaseInvasion(early);
-  assert.equal(early.round, 1);
-  assert.equal(early.currentInvasion.difficulty, INVASION_DIFFICULTIES.EASY);
-  assert.equal(early.currentInvasion.earlyGrace, true);
-  assert.deepEqual(
-    early.currentInvasion.strengthBounds,
-    getInvasionStrengthBounds({ ...turksTemplate, difficulty: INVASION_DIFFICULTIES.EASY }, early),
+test('the Compact map makes the threat grow more slowly', () => {
+  const state = createGameState({ seed: 4, mapId: 'compact' });
+  state.round = 5;
+  const template = state.invasionDeck[0];
+  assert.equal(
+    getInvasionStrength(template, state),
+    getInvasionReach(template) * BALANCE.INVASION_STRENGTH_PER_REACH + 5 * MAP_BALANCE.compact.INVASION_STRENGTH_PER_ROUND,
   );
-
-  const alreadyEasy = makeState();
-  alreadyEasy.invasionDeck = [kievTemplate];
-  phaseInvasion(alreadyEasy);
-  assert.equal(alreadyEasy.currentInvasion.earlyGrace, undefined);
-
-  const later = makeState();
-  later.round = EARLY_INVASION_GRACE_ROUNDS;
-  later.maxRounds = EARLY_INVASION_GRACE_ROUNDS + 1;
-  later.invasionDeck = [turksTemplate];
-  phaseInvasion(later);
-  assert.equal(later.currentInvasion.difficulty, INVASION_DIFFICULTIES.HARD);
-  assert.equal(later.currentInvasion.earlyGrace, undefined);
 });
 
 test('score shares award one point per 10 percent threshold', () => {
@@ -656,7 +604,7 @@ test('estates built last round can be revoked in the next Offices phase', () => 
   for (const player of state.players) confirmEstates(state, player.id);
   assert.equal(state.phase, 'deployment');
   assert.equal(getEstateCount(state.themes.OPS, 2), 3);
-  assert.equal(getPlayer(state, 2).gold, 20 - getRisingPriceTotal(2));
+  assert.equal(getPlayer(state, 2).gold, 20 - estates(2));
 
   state.round = 2;
   enterCourt(state);
@@ -732,18 +680,18 @@ test('court no longer allows gifting estates', () => {
   assert.equal(getEstateCount(state.themes.SAM, 2), 1);
 });
 
-test('estate plans are secret, cost the rising price per dynasty and are built when Deployment opens', () => {
+test('estate plans are secret, cost the same per estate and are built when Deployment opens', () => {
   const state = makeState();
   phaseEstates(state);
-  const gold = getRisingPriceTotal(4) - 1;
+  const gold = estates(4) - 1;
   getPlayer(state, 2).gold = gold;
-  getPlayer(state, 3).gold = getRisingPriceTotal(1);
+  getPlayer(state, 3).gold = estates(1);
 
   const tooMany = applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 4 } });
   assert.equal(tooMany.ok, false, 'four estates cost more than the purse');
   const plan = applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 2, SAM: 1 } });
   assert.equal(plan.ok, true);
-  assert.equal(plan.cost, getRisingPriceTotal(3));
+  assert.equal(plan.cost, estates(3));
   assert.equal(getPlayer(state, 2).gold, gold, 'nothing is paid before Deployment');
   assert.equal(applyEstateAction(state, 3, { action: 'plan', plan: { OPS: 1 } }).ok, true);
 
@@ -763,22 +711,22 @@ test('estate plans are secret, cost the rising price per dynasty and are built w
   assert.equal(getEstateCount(state.themes.OPS, 2), 2);
   assert.equal(getEstateCount(state.themes.SAM, 2), 1);
   assert.equal(getEstateCount(state.themes.OPS, 3), 1, 'several dynasties build in one province');
-  assert.equal(getPlayer(state, 2).gold, gold - getRisingPriceTotal(3));
+  assert.equal(getPlayer(state, 2).gold, gold - estates(3));
   assert.equal(getPlayer(state, 3).gold, 0);
   assert.equal(runIncome(state).incomeBreakdown.estate[2], 3, 'each estate pays 1 gold');
   assert.match(state.history.find((event) => event.type === 'build_estates')?.summary || '', /Opsikion ×2/);
 });
 
-test('the estate price starts again each round, and lost provinces take no estates', () => {
+test('every estate costs the same, and lost provinces take no estates', () => {
   const state = makeState();
   phaseEstates(state);
   getPlayer(state, 2).gold = 20;
   assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 1 } }).ok, true);
   for (const player of state.players) confirmEstates(state, player.id);
-  assert.equal(getPlayer(state, 2).gold, 20 - getRisingPriceTotal(1));
+  assert.equal(getPlayer(state, 2).gold, 20 - estates(1));
 
   phaseEstates(state);
-  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 1 } }).cost, getRisingPriceTotal(1));
+  assert.equal(applyEstateAction(state, 2, { action: 'plan', plan: { OPS: 1 } }).cost, estates(1));
   const lost = applyEstateAction(state, 2, { action: 'plan', plan: { ANT: 1 } });
   assert.equal(lost.ok, false);
   assert.match(lost.reason, /lost/);
@@ -990,36 +938,48 @@ test('nobody backed in the coup leaves the Basileus on the throne', () => {
   }
 });
 
-test('the invasion ladder costs the rising price per imperial province, crosses lost ones free, and ends at the Walls', () => {
+test('the invasion ladder costs the same for every imperial province, little for lost ones, and ends at the Walls', () => {
   const state = makeState();
   for (const theme of Object.values(state.themes)) theme.lost = false;
   state.themes.STR.lost = true;
   const ladder = buildInvasionLadder(state, ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR', 'CPL']);
+  const crossing = BALANCE.LOST_PROVINCE_CROSSING_COST;
   const expected = [];
   let needed = 0;
-  let position = 1;
   for (const themeId of ['CHE', 'PAR', 'BUL', 'THS', 'STR', 'MAK', 'THR']) {
-    if (themeId === 'STR') {
-      expected.push([themeId, 'lost', 0, needed]);
-      continue;
-    }
-    needed += getRisingStepPrice(position);
-    expected.push([themeId, 'imperial', getRisingStepPrice(position), needed]);
-    position += 1;
+    const lost = themeId === 'STR';
+    needed += lost ? crossing : WAR_COST;
+    expected.push([themeId, lost ? 'lost' : 'imperial', lost ? crossing : WAR_COST, needed]);
   }
-  const capitalCost = getRisingStepPrice(position) + BALANCE.THEODOSIAN_WALLS;
+  const capitalCost = WAR_COST + BALANCE.THEODOSIAN_WALLS;
   expected.push(['CPL', 'capital', capitalCost, needed + capitalCost]);
   assert.deepEqual(ladder.map((step) => [step.themeId, step.status, step.cost, step.needed]), expected);
-  assert.deepEqual(expected.slice(0, 4).map((step) => step[2]), [2, 2, 2, 3], 'the rising price: 2, 2, 2, 3...');
   assert.equal(ladder.at(-1).walls, BALANCE.THEODOSIAN_WALLS, 'the Walls defend Constantinople');
 
   const back = buildReconquestLadder(state, ['CHE', 'PAR', 'STR', 'MAK', 'CPL'], new Set(['PAR', 'MAK']));
   assert.deepEqual(back.map((step) => [step.themeId, step.status, step.cost, step.needed]), [
-    ['MAK', 'lost', getRisingStepPrice(1), getRisingPriceTotal(1)],
-    ['STR', 'imperial', 0, getRisingPriceTotal(1)],
-    ['PAR', 'lost', getRisingStepPrice(2), getRisingPriceTotal(2)],
-    ['CHE', 'imperial', 0, getRisingPriceTotal(2)],
+    ['MAK', 'lost', WAR_COST, WAR_COST],
+    ['STR', 'imperial', 0, WAR_COST],
+    ['PAR', 'lost', WAR_COST, 2 * WAR_COST],
+    ['CHE', 'imperial', 0, 2 * WAR_COST],
   ]);
+
+  // What the frontier needs: the strength to hold everything, and less to
+  // save Constantinople.
+  const thresholds = getFrontierThresholds(state, 30, ['CHE', 'PAR', 'CPL']);
+  assert.equal(thresholds.holdAll, 30);
+  assert.equal(thresholds.saveCapital, 30 - (3 * WAR_COST + BALANCE.THEODOSIAN_WALLS) + 1);
+  assert.equal(getFrontierThresholds(state, 30, ['CHE', 'PAR']).saveCapital, null);
+});
+
+test('crossing a lost province costs the invader too', () => {
+  const state = makeState();
+  for (const theme of Object.values(state.themes)) theme.lost = false;
+  state.themes.OPS.lost = true;
+  const crossing = BALANCE.LOST_PROVINCE_CROSSING_COST;
+  const war = resolveInvasion(state, 0, crossing + WAR_COST, { route: ['OPS', 'SAM', 'CPL'] });
+  assert.deepEqual(war.steps.map((step) => [step.themeId, step.outcome]), [['OPS', 'crossed'], ['SAM', 'taken'], ['CPL', 'held']]);
+  assert.equal(war.spent, crossing + WAR_COST);
 });
 
 test('the Theodosian Walls make Constantinople cost the invader more on the Compact map too', () => {
@@ -1190,10 +1150,10 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [1, 1] };
   state.themes.SAM.lost = true;
-  state.currentTroops = { DOM_WEST: 3 };
+  state.currentTroops = { DOM_WEST: 1 + WAR_COST };
   state.allOrders = {
     2: {
-      armies: { DOM_WEST: { funded: 3, destination: 'frontier' } },
+      armies: { DOM_WEST: { funded: 1 + WAR_COST, destination: 'frontier' } },
       mercenaries: { count: 0, destination: 'frontier' },
       coupChoices: [2, 0],
     },
@@ -1203,12 +1163,12 @@ test('reconquered provinces auto-restore and reward the top defender next round'
   phaseResolution(state);
 
   assert.equal(state.themes.SAM.lost, false);
-  assert.equal(getPlayer(state, 2).gold, getRisingPriceTotal(1));
+  assert.equal(getPlayer(state, 2).gold, BALANCE.WAR_REWARD_GOLD_PER_PROVINCE);
   assert.deepEqual(state.lastWarResult.themesRecovered, ['SAM']);
   assert.equal(state.lastWarResult.reconquestReward.defenderId, 2);
   assert.equal(getCapitalSupportByPlayer(state)[2], undefined);
   assert.equal(getCapitalSupportByPlayer(state)[0], BALANCE.THEODOSIAN_WALLS);
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], getRisingPriceTotal(1));
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], BALANCE.WAR_REWARD_TRIUMPH_PER_PROVINCE);
 });
 
 test('repulsed invasions reward the top defender for province wins even without lost provinces', () => {
@@ -1217,7 +1177,7 @@ test('repulsed invasions reward the top defender for province wins even without 
   state.phase = 'deployment';
   state.currentInvasion = { name: 'Raiders', route: ['OPS', 'SAM', 'ITA'], strength: [2, 2] };
   // A lead that pays for two provinces but not three.
-  const troops = 2 + getRisingPriceTotal(2);
+  const troops = 2 + 2 * WAR_COST;
   state.currentTroops = { DOM_WEST: troops };
   state.allOrders = {
     2: {
@@ -1234,9 +1194,9 @@ test('repulsed invasions reward the top defender for province wins even without 
   assert.equal(state.lastWarResult.reconquestRewardProvinceCount, 2);
   assert.equal(state.lastWarResult.reconquestReward.rewardProvinceCount, 2);
   assert.deepEqual(state.lastWarResult.reconquestReward.themeIds, []);
-  // Two provinces won, at the rising price.
-  assert.equal(getPlayer(state, 2).gold, getRisingPriceTotal(2));
-  assert.equal(getCapitalSupportByPlayer(state, 2)[2], getRisingPriceTotal(2));
+  // Two provinces won.
+  assert.equal(getPlayer(state, 2).gold, 2 * BALANCE.WAR_REWARD_GOLD_PER_PROVINCE);
+  assert.equal(getCapitalSupportByPlayer(state, 2)[2], 2 * BALANCE.WAR_REWARD_TRIUMPH_PER_PROVINCE);
 });
 
 test('tied top defenders split reconquest reward with rounded shares', () => {
@@ -1247,7 +1207,7 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   state.themes.OPS.lost = true;
   state.themes.SAM.lost = true;
   state.themes.ITA.lost = true;
-  const each = (2 + getRisingPriceTotal(3)) / 2;
+  const each = Math.ceil((2 + 3 * WAR_COST) / 2);
   state.currentTroops = {
     DOM_WEST: each,
     ADMIRAL: each,
@@ -1270,13 +1230,13 @@ test('tied top defenders split reconquest reward with rounded shares', () => {
   phaseResolution(state);
 
   assert.equal(state.lastWarResult.themesRecovered.length, 3);
-  const goldShare = Math.ceil(getRisingPriceTotal(3) / 2);
+  const goldShare = Math.ceil((3 * BALANCE.WAR_REWARD_GOLD_PER_PROVINCE) / 2);
   assert.equal(getPlayer(state, 2).gold, goldShare);
   assert.equal(getPlayer(state, 3).gold, goldShare);
   assert.deepEqual(state.lastWarResult.reconquestReward.defenders.map((entry) => entry.defenderId), [2, 3]);
   assert.equal(state.lastWarResult.reconquestReward.gold, goldShare);
   // Three provinces won: gold is split rounding up, Triumph rounding down.
-  const triumphShare = Math.floor(getRisingPriceTotal(3) / 2);
+  const triumphShare = Math.floor((3 * BALANCE.WAR_REWARD_TRIUMPH_PER_PROVINCE) / 2);
   assert.equal(state.lastWarResult.reconquestReward.capitalSupport, triumphShare);
   assert.equal(getCapitalSupportByPlayer(state, 2)[2], triumphShare);
   assert.equal(getCapitalSupportByPlayer(state, 2)[3], triumphShare);
@@ -1286,7 +1246,7 @@ test('lost provinces reduce the next round Basileus passive support', () => {
   const state = makeState();
   state.round = 1;
   state.phase = 'deployment';
-  state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [getRisingStepPrice(1), getRisingStepPrice(1)] };
+  state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [WAR_COST, WAR_COST] };
   state.currentTroops = {};
   state.allOrders = {
     0: { armies: {}, mercenaries: { count: 0, destination: 'frontier' }, coupChoices: [0, 1] },
@@ -1302,7 +1262,7 @@ test('lost province unrest follows the basileus who lost provinces through a cou
   const state = makeState();
   state.round = 1;
   state.phase = 'deployment';
-  state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [getRisingStepPrice(1), getRisingStepPrice(1)] };
+  state.currentInvasion = { name: 'Raiders', route: ['SAM'], strength: [WAR_COST, WAR_COST] };
   state.currentTroops = {};
   state.mercenaryOrders = {
     2: { count: BALANCE.THEODOSIAN_WALLS + BALANCE.PATRIARCH_INFLUENCE + 1, destination: 'capital' },
@@ -1499,7 +1459,7 @@ test('a Compact game uses its 21 provinces, invasions and lower numbers', () => 
   const walls = getCapitalSupportEntries(state).find((entry) => entry.titleKey === 'BASILEUS');
   assert.equal(walls.amount, MAP_BALANCE.compact.THEODOSIAN_WALLS);
   assert.equal(getBalance(createGameState({ seed: 4 })).THEODOSIAN_WALLS, BALANCE.THEODOSIAN_WALLS);
-  assert.equal(getEstatePlanCost(2, state), getRisingPriceTotal(2), 'both maps share the rising price');
+  assert.equal(getEstatePlanCost(2, state), estates(2), 'both maps share the estate price');
   assert.equal(serializePublicGameState(state).mapId, 'compact');
 });
 

@@ -4,14 +4,13 @@ import { buildMapAdjacency, getMapInvasions, getMapProvinces, normalizeMapId } f
 import {
   getDynastyProfileForSeat,
   INVASION_OBJECTIVES,
-  INVASION_DIFFICULTIES,
 } from '../data/invasions.js';
-import { BALANCE, getBalance } from '../data/balance.js';
+import { getBalance } from '../data/balance.js';
 import { MAJOR_TITLES, MAJOR_TITLE_DISTRIBUTION } from '../data/titles.js';
 
 // Bumped whenever a rule change makes older saves unplayable. A save made
 // under other rules is refused instead of loading into a broken game.
-export const RULES_VERSION = 3;
+export const RULES_VERSION = 4;
 
 export function isCurrentRulesVersion(rawState) {
   return Number(rawState?.rulesVersion) === RULES_VERSION;
@@ -103,81 +102,38 @@ const PLAYER_ROLE_TEXT_STYLES = {
 
 const PLAYER_ROLE_COLOR_PRIORITY = ['BASILEUS', 'PATRIARCH', 'ADMIRAL', 'DOM_EAST', 'DOM_WEST'];
 
-export function getEmpireProvinceStrength(state) {
-  const themes = Object.values(state?.themes || {});
-  const count = themes.length
-    ? themes.filter((theme) => theme?.id !== 'CPL' && !theme?.lost).length
-    : getMapProvinces(state).filter((province) => province.id !== 'CPL' && !province.startLost).length;
-  return Math.max(1, count);
+// How far an invader comes from: the provinces on its route before
+// Constantinople.
+export function getInvasionReach(invasion) {
+  return (Array.isArray(invasion?.route) ? invasion.route : []).filter((themeId) => themeId !== 'CPL').length;
 }
 
-export function getInvasionDifficulty(invasion) {
-  const difficulty = String(invasion?.difficulty || INVASION_DIFFICULTIES.MEDIUM).toLowerCase();
-  return Object.hasOwn(BALANCE.INVASION_STRENGTH_RATIOS, difficulty)
-    ? difficulty
-    : INVASION_DIFFICULTIES.MEDIUM;
+// An invasion's strength is known as soon as it is drawn: the farther the
+// invader comes from, the stronger it is, and the threat grows every round.
+export function getInvasionStrength(invasion, state) {
+  const balance = getBalance(state);
+  const round = Math.max(1, Number(state?.round) || 1);
+  const strength = getInvasionReach(invasion) * (Number(balance.INVASION_STRENGTH_PER_REACH) || 0)
+    + round * (Number(balance.INVASION_STRENGTH_PER_ROUND) || 0);
+  return Math.max(1, Math.round(strength));
 }
 
-export function getInvasionStrengthRatio(invasion) {
-  return BALANCE.INVASION_STRENGTH_RATIOS[getInvasionDifficulty(invasion)].slice();
-}
-
-export function getInvasionStrengthBounds(invasion, state) {
-  const empireStrength = Number(invasion?.empireStrength) > 0
-    ? Math.floor(Number(invasion.empireStrength))
-    : getEmpireProvinceStrength(state);
-  const [minRatio, maxRatio] = getInvasionStrengthRatio(invasion);
-  const scaledStrength = empireStrength * (Number(getBalance(state).INVASION_STRENGTH_PER_PROVINCE) || 1);
-  const min = Math.max(1, Math.ceil(scaledStrength * minRatio));
-  const max = Math.max(min, Math.floor(scaledStrength * maxRatio));
-  return [min, max];
-}
-
-function createInvasionStrengthRange(bounds, rng) {
-  const [baseMin, baseMax] = bounds;
-  const estimateInterval = Math.min(BALANCE.INVASION_ESTIMATE_INTERVAL, Math.max(0, baseMax - baseMin));
-  const estimateMin = rollRange(baseMin, baseMax - estimateInterval, rng);
-  return [estimateMin, estimateMin + estimateInterval];
-}
-
+// A copy of an invasion template; with a game state, it gets its strength
+// for the current round. `strength` stays a [low, high] pair, both the same.
 export function createInvasionInstance(template, rng, state = null) {
   const instance = {
     ...template,
     route: Array.isArray(template.route) ? template.route.slice() : [],
     originMarker: template.originMarker || null,
     strength: Array.isArray(template.strength) ? template.strength.slice() : template.strength,
-    strengthBounds: Array.isArray(template.strengthBounds) ? template.strengthBounds.slice() : template.strengthBounds,
   };
-
-  if (!state || template?.difficulty == null) return instance;
-
-  const empireStrength = getEmpireProvinceStrength(state);
-  const difficulty = getInvasionDifficulty(template);
-  const strengthRatio = getInvasionStrengthRatio(template);
-  const strengthBounds = getInvasionStrengthBounds({ difficulty, empireStrength }, state);
-  return {
-    ...instance,
-    difficulty,
-    empireStrength,
-    strengthRatio,
-    strengthBounds,
-    strength: createInvasionStrengthRange(strengthBounds, rng),
-  };
-}
-
-export function isEarlyInvasionGraceRound(state) {
-  const round = Number(state?.round) || 0;
-  return round >= 1 && round <= getBalance(state).EARLY_INVASION_GRACE_ROUNDS;
+  if (!state) return instance;
+  const strength = getInvasionStrength(instance, state);
+  return { ...instance, reach: getInvasionReach(instance), strength: [strength, strength] };
 }
 
 export function prepareInvasionForDraw(state, invasion, rng) {
-  const graced = isEarlyInvasionGraceRound(state)
-    && invasion?.difficulty != null
-    && getInvasionDifficulty(invasion) !== INVASION_DIFFICULTIES.EASY;
-  const template = graced
-    ? { ...invasion, difficulty: INVASION_DIFFICULTIES.EASY, earlyGrace: true }
-    : invasion;
-  return createInvasionInstance(template, rng, state);
+  return createInvasionInstance(invasion, rng, state);
 }
 
 function invasionRequiresImperialTarget(invasion) {

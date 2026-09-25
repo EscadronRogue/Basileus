@@ -5,11 +5,10 @@
 // (`--set NAME=value`) through applyBalanceOverrides().
 
 export const BALANCE = {
-  // The rising price shared by mercenaries, estates, the war ladder and war
-  // rewards: RISING_PRICE_START for the first RISING_PRICE_GROUP items, then
-  // 1 more for each next group (2, 2, 2, 3, 3, 3, 4, 4, 4...).
-  RISING_PRICE_START: 2,
-  RISING_PRICE_GROUP: 3,
+  // Prices do not rise with quantity: every estate and every mercenary costs
+  // the same.
+  ESTATE_PRICE: 3,
+  MERCENARY_PRICE: 3,
 
   // Income
   STARTING_INCOME_GOLD: 4,
@@ -33,40 +32,43 @@ export const BALANCE = {
   COUP_CHOICE_WEIGHTS: [1, 0.5],
   // The Theodosian Walls: support for the Basileus in every coup, and the
   // extra strength an invader needs to take Constantinople.
-  THEODOSIAN_WALLS: 5,
-  PATRIARCH_INFLUENCE: 4,
+  THEODOSIAN_WALLS: 3,
+  PATRIARCH_INFLUENCE: 2.5,
   UNREST_PER_LOST_PROVINCE: 2,
 
-  // Invasions: strength is drawn from a share of the empire's size, measured
-  // as provinces x INVASION_STRENGTH_PER_PROVINCE. An average invasion then
-  // calls for about 45% of the troops the empire raises (ai/simulate.js
-  // reports it), so part of the empire can hold the frontier while the rest
-  // looks after itself.
-  INVASION_STRENGTH_PER_PROVINCE: 1.1,
-  INVASION_STRENGTH_RATIOS: {
-    easy: [0.5, 0.9],
-    medium: [0.6, 1],
-    hard: [0.7, 1.1],
-  },
-  // Width of the strength range shown to players.
-  INVASION_ESTIMATE_INTERVAL: 5,
-  // Invasions drawn in the first rounds strike at most at easy strength, so a
-  // game cannot be lost before dynasties have raised any troops.
-  EARLY_INVASION_GRACE_ROUNDS: 2,
+  // The war. Walking its route, the invader pays PROVINCE_WAR_COST of its
+  // lead over the frontier to take each imperial province, and
+  // LOST_PROVINCE_CROSSING_COST to cross one already lost; Constantinople
+  // costs PROVINCE_WAR_COST plus the Walls. When the frontier wins, its lead
+  // retakes lost provinces at PROVINCE_WAR_COST each.
+  PROVINCE_WAR_COST: 3,
+  LOST_PROVINCE_CROSSING_COST: 1,
+  // The best defender of a won war earns, for every province the lead could
+  // pay for on the route, this much gold and this much Triumph.
+  WAR_REWARD_GOLD_PER_PROVINCE: 3,
+  WAR_REWARD_TRIUMPH_PER_PROVINCE: 3,
+
+  // Invasions: the strength of an invasion is known when it is drawn. The
+  // farther the invader comes from, the stronger it is: it grows with the
+  // number of provinces on its route before Constantinople (its reach). And
+  // the threat grows every round.
+  INVASION_STRENGTH_PER_REACH: 1,
+  INVASION_STRENGTH_PER_ROUND: 2,
 };
 
 // Values that differ on some maps (data/maps). The Compact map has about
 // half the provinces, each raising 1 troop, so what does not already scale
-// with the map (coup support, starting gold, mercenary and revocation
-// limits) is lowered too.
+// with the map (coup support, mercenary and revocation limits, how fast the
+// threat grows) is lowered too. Starting gold still buys one estate.
 export const MAP_BALANCE = {
   compact: {
-    STARTING_INCOME_GOLD: 2,
+    STARTING_INCOME_GOLD: 3,
     BASILEUS_REVOCATION_LIMIT: 2,
     MAX_MERCENARIES: 6,
-    THEODOSIAN_WALLS: 3,
-    PATRIARCH_INFLUENCE: 2,
+    THEODOSIAN_WALLS: 2,
+    PATRIARCH_INFLUENCE: 1.5,
     UNREST_PER_LOST_PROVINCE: 1,
+    INVASION_STRENGTH_PER_ROUND: 1,
   },
 };
 

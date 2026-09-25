@@ -1,7 +1,7 @@
 // ui/panels/invasion.js - the invasion ladder: how much the invader must beat
 // the frontier by to take each province, and what a war actually cost.
 
-import { buildInvasionLadder, buildReconquestLadder } from '../../engine/combat.js';
+import { buildInvasionLadder, buildReconquestLadder, getFrontierThresholds } from '../../engine/combat.js';
 import { formatTroopsHtml } from '../icons.js';
 import { escapeHtml } from '../html.js';
 import { renderProvinceBadge } from '../labels.js';
@@ -15,11 +15,13 @@ function formatStrengthRange(invasion) {
 function renderLadderStep(state, step, kind) {
   const badge = renderProvinceBadge(state, step.themeId, { compact: true });
   let value;
-  if (step.status === 'lost' && kind === 'invasion') value = '<span class="ladder-value free">already lost</span>';
-  else if (step.status === 'imperial' && kind === 'reconquest') value = '<span class="ladder-value free">imperial</span>';
-  else {
-    const walls = step.walls ? `, the Theodosian Walls adding ${step.walls}` : '';
-    value = `<span class="ladder-value" title="${escapeHtml(`Needs to win the war by ${step.needed} or more${walls}`)}">+${step.needed}</span>`;
+  if (step.status === 'imperial' && kind === 'reconquest') {
+    value = '<span class="ladder-value free">imperial</span>';
+  } else {
+    const walls = step.walls ? ` (Theodosian Walls ${step.walls})` : '';
+    const verb = kind === 'reconquest' ? 'Retaking' : step.status === 'lost' ? 'Crossing, already lost:' : 'Taking';
+    const title = `${verb} ${state.themes?.[step.themeId]?.name || step.themeId} costs ${step.cost}${walls}; reached with a lead of ${step.needed}.`;
+    value = `<span class="ladder-value${step.status === 'lost' && kind === 'invasion' ? ' free' : ''}" title="${escapeHtml(title)}">+${step.cost}${walls}</span>`;
   }
   return `<li class="ladder-step ${escapeHtml(step.status)}" data-ladder-step="${escapeHtml(step.themeId)}">${badge}${value}</li>`;
 }
@@ -30,20 +32,25 @@ export function renderInvasionCard(state) {
   if (!invasion?.route?.length) return '';
   const ladder = buildInvasionLadder(state, invasion.route);
   const reconquest = buildReconquestLadder(state, invasion.route).filter((step) => step.status === 'lost');
-  const reachesCapital = ladder.some((step) => step.status === 'capital');
+  const strength = Number(invasion.strength?.[0]) || 0;
+  const thresholds = getFrontierThresholds(state, strength, invasion.route);
   return `
     <section class="invasion-card" data-invasion-card>
       <header class="invasion-card-head">
         <span class="invasion-card-kicker">Invasion</span>
         <span class="invasion-card-name">${escapeHtml(invasion.name || 'Invaders')}</span>
-        <span class="invasion-card-strength" title="Estimated strength">Strength ${formatTroopsHtml(0, { displayValue: formatStrengthRange(invasion) })}</span>
+        <span class="invasion-card-strength" title="Strength">Strength ${formatTroopsHtml(0, { displayValue: formatStrengthRange(invasion) })}</span>
       </header>
-      <p class="invasion-card-hint">The invader takes a province when it beats the frontier by at least the number shown. Lost provinces cost it nothing.${reachesCapital ? ` The Theodosian Walls make Constantinople cost ${escapeHtml(String(ladder.find((step) => step.status === 'capital')?.walls || 0))} more; if the invader takes it, the empire falls and nobody wins.` : ''}</p>
+      <p class="invasion-card-needs" data-invasion-needs>
+        <span>Hold every province: <strong>${formatTroopsHtml(thresholds.holdAll)}</strong> at the frontier</span>
+        ${thresholds.saveCapital != null ? `<span>Save Constantinople: <strong>${formatTroopsHtml(thresholds.saveCapital)}</strong></span>` : ''}
+      </p>
+      <p class="invasion-card-hint">What the invader beats the frontier by pays for its route, step by step: the cost of each is shown. It stops at the first it cannot pay for.${thresholds.saveCapital != null ? ' If it takes Constantinople, the empire falls and nobody wins.' : ''}</p>
       <ol class="invasion-ladder">
         ${ladder.map((step) => renderLadderStep(state, step, 'invasion')).join('')}
       </ol>
       ${reconquest.length ? `
-        <p class="invasion-card-hint">If the frontier wins, it retakes a lost province when it wins by at least the number shown.</p>
+        <p class="invasion-card-hint">If the frontier wins, its lead retakes lost provinces on the route, starting nearest Constantinople, at the cost shown.</p>
         <ol class="invasion-ladder reconquest">
           ${reconquest.map((step) => renderLadderStep(state, step, 'reconquest')).join('')}
         </ol>

@@ -2127,6 +2127,15 @@
   font-size: 12px;
   color: var(--umber-2);
 }
+.invasion-card-needs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--umber-1);
+}
 .invasion-card-hint {
   margin: 0;
   font-family: var(--font-body);

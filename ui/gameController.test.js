@@ -508,7 +508,8 @@ test('court panel shows passed offices while other offices remain available', ()
 test('estates panel plans estates with + and - and locks the whole plan once', () => {
   const state = makeState();
   phaseEstates(state);
-  state.players[2].gold = 4;
+  // Enough for two estates, not three.
+  state.players[2].gold = 3 * BALANCE.ESTATE_PRICE - 1;
   addEstates(state.themes.OPS, 3, 2);
   const uiState = createDefaultUiState();
   const container = makePanelContainer();
@@ -526,7 +527,7 @@ test('estates panel plans estates with + and - and locks the whole plan once', (
 
   assert.equal(addEstateToDraft(uiState, state, 2, 'OPS'), true);
   assert.equal(addEstateToDraft(uiState, state, 2, 'OPS'), true);
-  assert.equal(addEstateToDraft(uiState, state, 2, 'SAM'), false, 'a third estate would cost 6 in total');
+  assert.equal(addEstateToDraft(uiState, state, 2, 'SAM'), false, 'a third estate is more than the purse');
   renderEstatesPanel(container, state, 2, { submitEstatePlan: (payload) => submitted.push(payload) }, { uiState });
   assert.match(container.innerHTML, /estate-row planned/);
   assert.match(container.innerHTML, /estate-chip planned[^>]*>\+2</);
@@ -614,7 +615,7 @@ test('deployment panel uses funded armies and mercenary slider schema', () => {
   const state = makeState();
   state.phase = 'deployment';
   // With the two dismissed troops, enough for two mercenaries.
-  state.players[state.basileusId].gold = 2;
+  state.players[state.basileusId].gold = 2 * BALANCE.MERCENARY_PRICE - 2 * BALANCE.GOLD_PER_DISMISSED_TROOP;
   state.currentTroops = {
     BASILEUS: 3,
   };
@@ -821,16 +822,17 @@ test('war resolution lists the strength spent on each province and what was left
   const state = makeState();
   state.phase = 'resolution';
   for (const theme of Object.values(state.themes)) theme.lost = false;
-  state.lastWarResult = resolveInvasion(state, 2, 7, { route: ['THS', 'STR', 'MAK', 'THR', 'CPL'] });
+  state.lastWarResult = resolveInvasion(state, 2, 2 + 2 * BALANCE.PROVINCE_WAR_COST + 1, { route: ['THS', 'STR', 'MAK', 'THR', 'CPL'] });
   state.lastWarResult.contributions = [];
   const container = makePanelContainer();
 
   renderResolutionPanel(container, state);
 
-  assert.match(container.innerHTML, /The invader won by 5/);
-  // The rising price: 2, 2, 2... so the third province is out of reach.
-  assert.match(container.innerHTML, /war-ledger-step taken[\s\S]*costs 2[\s\S]*war-ledger-step taken[\s\S]*costs 2[\s\S]*war-ledger-step held[\s\S]*costs 2/);
-  assert.match(container.innerHTML, /The invader spent 4 and had 1 left over\./);
+  const cost = BALANCE.PROVINCE_WAR_COST;
+  assert.match(container.innerHTML, new RegExp(`The invader won by ${2 * cost + 1}`));
+  // Every province costs the same: two taken, the third out of reach.
+  assert.match(container.innerHTML, new RegExp(`war-ledger-step taken[\\s\\S]*costs ${cost}[\\s\\S]*war-ledger-step taken[\\s\\S]*costs ${cost}[\\s\\S]*war-ledger-step held[\\s\\S]*costs ${cost}`));
+  assert.match(container.innerHTML, new RegExp(`The invader spent ${2 * cost} and had 1 left over\\.`));
 });
 
 test('estates and deployment show the invasion ladder', () => {
@@ -846,11 +848,14 @@ test('estates and deployment show the invasion ladder', () => {
 
   assert.match(container.innerHTML, /data-invasion-card/);
   assert.match(container.innerHTML, /Strength[\s\S]*4–6/);
-  // 2, then 2 more; Constantinople costs the next 2 plus the Theodosian Walls.
-  const capital = 2 + 2 + 2 + BALANCE.THEODOSIAN_WALLS;
-  assert.match(container.innerHTML, new RegExp(`data-ladder-step="THS"[\\s\\S]*\\+2</span>[\\s\\S]*data-ladder-step="STR"[\\s\\S]*already lost[\\s\\S]*data-ladder-step="MAK"[\\s\\S]*\\+4</span>[\\s\\S]*data-ladder-step="CPL"[\\s\\S]*\\+${capital}</span>`));
-  assert.match(container.innerHTML, /Theodosian Walls make Constantinople cost/);
-  assert.match(container.innerHTML, /retakes a lost province/);
+  // Each step shows its own cost; Constantinople adds the Walls.
+  const cost = BALANCE.PROVINCE_WAR_COST;
+  const walls = BALANCE.THEODOSIAN_WALLS;
+  assert.match(container.innerHTML, new RegExp(`data-ladder-step="THS"[\\s\\S]*\\+${cost}</span>[\\s\\S]*data-ladder-step="STR"[\\s\\S]*\\+${BALANCE.LOST_PROVINCE_CROSSING_COST}</span>[\\s\\S]*data-ladder-step="MAK"[\\s\\S]*\\+${cost}</span>[\\s\\S]*data-ladder-step="CPL"[\\s\\S]*\\+${cost + walls} \\(Theodosian Walls ${walls}\\)</span>`));
+  // Strength 4-6 in this test: holding everything takes 6 troops.
+  assert.match(container.innerHTML, /Hold every province:/);
+  assert.match(container.innerHTML, /Save Constantinople:/);
+  assert.match(container.innerHTML, /retakes lost provinces on the route/);
 });
 
 test('coup resolution shows each claimant\'s support by source', () => {

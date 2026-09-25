@@ -15,7 +15,12 @@ test('seeded all-AI games complete with plausible balance', { timeout: 300_000 }
 
   assert.equal(result.completed, OPTIONS.games, 'every game reaches an end');
   assert.equal(result.stuck, 0);
-  assert.ok(result.fallRate > 0.05 && result.fallRate < 0.8, `empire-fall rate ${result.fallRate}`);
+  // Invasions must matter without dooming the empire: they call for a real
+  // share of the troops the empire raises, and most games survive. (How
+  // often the empire falls depends on how the AIs play, so it is not
+  // bounded from below here.)
+  assert.ok(result.wars.invasionNeedShare > 0.25 && result.wars.invasionNeedShare < 1, `invasions call for ${result.wars.invasionNeedShare} of the troops raised`);
+  assert.ok(result.fallRate < 0.8, `empire-fall rate ${result.fallRate}`);
 
   const survivingGames = OPTIONS.games * (1 - result.fallRate);
   for (const [seat, rate] of Object.entries(result.seatWinRates)) {
