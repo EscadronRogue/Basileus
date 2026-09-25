@@ -84,7 +84,8 @@ its trained weights, so training tunes them for the resting mood.
 and the whim (a seeded softmax among the best moves). The sitting Basileus
 keeps its trained throne weights: its loyalty is to its own throne.
 
-On 150 games of 5 dynasties and 9 rounds (seed 77, current roster), moods
+On 150 games of 5 dynasties and 9 rounds (seed 77, the roster before the
+current one), moods
 raise the frontier's wins from 31% to 37% on Classic and from 27% to 38% on
 Compact, with the throne changing hands as often as without them (65% and
 55% of coups).
@@ -173,13 +174,13 @@ records the benchmark.
 
 ### Current roster
 
-Not yet retrained for flat prices, known invasion strength and moods. Trained for
-the rules before them (one rising price 2, 2, 2, 3, 3, 3..., estate
-domains, estates revocable from the next round, the Theodosian Walls
-defending Constantinople in war, invasions at 1.1 strength per imperial
-province) with `--from-roster --generations 6 --mutation 0.25 --seed
-20260927`, on tables of 3 to 5 dynasties and 6, 9 or 12 rounds on both
-maps: about 60,000 games, 119 minutes on four workers.
+Trained for flat prices, known invasion strength and moods, with the
+chronicle on (so AI memory and moods work as in real games), with
+`--from-roster --generations 6 --mutation 0.3 --seed 20260925`, on tables
+of 3 to 5 dynasties and 6, 9 or 12 rounds on both maps: about 64,000
+games, 177 minutes on four workers. Against the roster before it, every
+new champion but four (Usurper, Patron, Glory Hunter, Maverick) wins at
+least its share.
 
 ### Which kinds of selfishness pay
 
@@ -189,51 +190,47 @@ as Classic / Compact:
 
 | AI | Win (Classic) | Win (Compact) | Frontier | Constantinople | Dismissed |
 | --- | --- | --- | --- | --- | --- |
-| Condottiere | 25% | 29% | 6.8 / 4.1 | 1.0 / 0.7 | 1.5 / 0.8 |
-| Glory Hunter | 24% | 23% | 1.5 / 0.3 | 5.8 / 3.9 | 0.7 / 0.3 |
-| Kingmaker | 21% | 26% | 5.2 / 3.6 | 0.4 / 0.4 | 2.9 / 1.7 |
-| Loyalist | 23% | 22% | 8.4 / 4.9 | 0.1 / 0.1 | 1.7 / 1.3 |
-| Opportunist | 15% | 28% | 1.3 / 1.4 | 0.4 / 0.3 | 4.6 / 2.8 |
-| Turncoat | 23% | 15% | 0.3 / 0.1 | 7.0 / 4.1 | 0.7 / 0.4 |
-| Landlord | 13% | 22% | 3.9 / 3.2 | 1.2 / 0.9 | 2.7 / 1.6 |
-| Tyrant | 18% | 16% | 0.4 / 0.1 | 7.1 / 4.4 | 0.1 / 0.1 |
-| Wildcard | 17% | 16% | 1.7 / 1.5 | 2.2 / 1.5 | 3.1 / 1.7 |
-| Usurper | 21% | 11% | 0.1 / 0.0 | 6.3 / 3.9 | 0.6 / 0.3 |
-| Saboteur | 17% | 13% | 3.9 / 2.9 | 1.4 / 1.0 | 3.3 / 2.0 |
-| Strategist | 11% | 17% | 5.0 / 3.4 | 1.5 / 0.9 | 2.2 / 1.1 |
-| Miser | 13% | 14% | 4.8 / 3.4 | 1.1 / 0.9 | 3.3 / 2.2 |
-| Hoarder | 14% | 10% | 6.0 / 3.7 | 1.1 / 0.8 | 2.0 / 1.2 |
-| Outsider | 8% | 14% | 2.1 / 0.7 | 4.2 / 3.2 | 2.2 / 0.8 |
-| Regicide | 4% | 16% | 1.7 / 1.5 | 1.2 / 0.7 | 4.3 / 2.5 |
-| Domain Lord | 7% | 11% | 1.5 / 0.8 | 1.0 / 1.1 | 5.3 / 2.7 |
-| Maverick | 7% | 4% | 1.7 / 0.2 | 6.3 / 3.8 | 0.2 / 0.4 |
-| Patron | 5% | 7% | 0.8 / 0.7 | 2.4 / 1.8 | 5.2 / 2.9 |
+| Saboteur | 39% | 44% | 4.6 / 3.1 | 0.8 / 0.4 | 3.9 / 2.0 |
+| Landlord | 35% | 44% | 2.7 / 1.8 | 3.4 / 1.8 | 3.3 / 1.8 |
+| Strategist | 34% | 42% | 4.0 / 2.7 | 1.4 / 0.8 | 3.7 / 2.1 |
+| Turncoat | 36% | 36% | 3.0 / 1.8 | 3.4 / 1.7 | 4.0 / 2.3 |
+| Loyalist | 29% | 33% | 7.5 / 4.3 | 0.6 / 0.3 | 2.1 / 1.3 |
+| Condottiere | 26% | 26% | 5.3 / 3.3 | 2.1 / 1.4 | 2.1 / 1.3 |
+| Kingmaker | 25% | 26% | 4.2 / 3.1 | 3.0 / 1.3 | 2.4 / 1.4 |
+| Opportunist | 24% | 20% | 1.2 / 0.8 | 4.3 / 2.3 | 4.1 / 2.5 |
+| Domain Lord | 15% | 20% | 4.3 / 2.8 | 3.4 / 1.5 | 3.8 / 2.4 |
+| Hoarder | 18% | 15% | 5.5 / 2.9 | 2.6 / 1.5 | 2.4 / 1.3 |
+| Miser | 18% | 14% | 4.1 / 2.5 | 2.9 / 1.5 | 3.6 / 2.0 |
+| Regicide | 11% | 15% | 2.2 / 1.6 | 2.1 / 1.1 | 5.6 / 3.1 |
+| Tyrant | 16% | 9% | 4.5 / 1.7 | 4.7 / 3.1 | 1.4 / 0.9 |
+| Outsider | 14% | 10% | 3.5 / 2.2 | 1.2 / 0.9 | 4.6 / 2.6 |
+| Wildcard | 8% | 12% | 2.8 / 1.9 | 4.1 / 2.4 | 3.4 / 1.9 |
+| Usurper | 7% | 3% | 5.5 / 2.4 | 3.4 / 2.5 | 1.0 / 0.4 |
+| Patron | 5% | 3% | 1.6 / 0.8 | 5.4 / 3.0 | 3.0 / 2.1 |
+| Glory Hunter | 1% | 3% | 1.4 / 0.3 | 6.6 / 4.2 | 0.9 / 0.4 |
+| Maverick | 2% | 1% | 5.0 / 2.6 | 4.6 / 3.4 | 1.5 / 0.6 |
 
-- Invasions call for about 45% of the troops the empire raises (48%
-  Classic, 45% Compact), and the AIs use the room: they send 3.1 troops
-  per order to the frontier on the Classic map, against 7.4 under the
-  stronger invasions. The throne became worth fighting for: 2.7 troops per
-  order go to Constantinople.
-- No temperament runs away with the game: the best win about 1.2 to 1.5
-  times their share. The Condottiere, a new style that hires mercenaries to
-  be the best defender, wins most on both maps; holding the frontier as a
-  Loyalist pays as well as the throne-seekers (Glory Hunter, Turncoat,
-  Usurper). Free-riding pays on the Compact map (Opportunist 28%) but no
-  longer on the Classic map (15%).
-- Of the explorers, the Wildcard found a playable style (spread estates,
-  strip rivals of offices, back a challenger without claiming the throne);
-  the Maverick and the Outsider ended up as weaker throne-seekers.
-- The empire falls in 25% of Classic games and 18% of Compact games, most
-  of them early: 9% and 8% in round 1, mainly to the Bulgars, whose route
-  is short, when too many dynasties send their first troops to
-  Constantinople. Wars are won 32% of the time on the Classic map and 41% on
-  the Compact map; one dynasty wins a war alone in 2% and 12% of them.
-- A best defender takes the throne at the next coup about 10% of the time.
-- Estates: 161 built per Classic game and 130 per Compact game; at the end,
-  28% and 48% of estates are in domains. A dynasty receives 4 gold and 8
-  troops in the first round and 27 gold and 8 troops in the last on the
-  Classic map; 2 gold and 5 troops, then 24 gold and 5 troops, on the
+- Invasions call for about 38% of the troops the empire raises (39%
+  Classic, 38% Compact), and the frontier holds: wars are won 46% of the
+  time on the Classic map and 49% on the Compact map (37% and 38% for the
+  roster before, which trained without memory). One dynasty wins a war
+  alone in 3% and 4% of them.
+- The empire falls in 5% of Classic games and 2% of Compact games, none
+  before round 5: below the 10-20% the simulator aims for. The AIs defend
+  well enough that invasions could be made stronger
+  (`INVASION_STRENGTH_PER_ROUND` or `INVASION_STRENGTH_PER_REACH`).
+- The throne changes hands at 61% of Classic coups and 57% of Compact
+  ones, and a best defender takes it at the next coup about half the time.
+- The dynasties that win mix the frontier, the capital and their estates:
+  the Saboteur, Landlord, Strategist and Turncoat win 1.7 to 2.2 times
+  their share. Pure throne-seekers (Usurper, Glory Hunter, Maverick,
+  Patron) keep their troops in Constantinople and rarely win: with
+  Walls 3 the throne changes hands too often to be worth holding alone.
+- Estates: 206 built per Classic game and 135 per Compact game; at the
+  end, 9% and 20% of estates are in domains. A dynasty receives 4 gold and
+  8 troops in the first round and 29 gold and 10 troops in the last on the
+  Classic map; 3 gold and 5 troops, then 20 gold and 6 troops, on the
   Compact map.
-- Game length matters: in 6-round games the empire falls in 18% of games
-  and dynasties end on 13 gold of income; in 12-round games it falls in 33%
-  and they end on 48 gold.
+- Game length matters: in 6-round Classic games the empire falls in under
+  1% of games, in 12-round games in 8%, when dynasties end on 62 gold of
+  income.
