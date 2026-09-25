@@ -735,6 +735,14 @@
   border-left: 3px solid rgba(90,52,114,0.45);
 }
 
+/* An AI dynasty saying what it is in the mood for. */
+.history-entry-card.is-voice {
+  border-left: 3px solid rgba(168,116,32,0.45);
+}
+.history-entry-card.is-voice .history-entry-summary {
+  font-style: italic;
+}
+
 .history-entry-expandable summary {
   list-style: none;
   cursor: pointer;

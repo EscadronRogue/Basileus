@@ -19,6 +19,9 @@ import {
   normalizePolicyConfig,
 } from './policies.js';
 import { getAiMemory } from './memory.js';
+import { getPersonality } from './personalities.js';
+import { computeAiMood, describeMoodChange, lastShownMood, restingMood } from './mood.js';
+import { recordHistoryEvent } from '../engine/history.js';
 
 export const AI_OPPONENT_MISSING_MESSAGE = 'AI opponent not found.';
 export const DEFAULT_BROWSER_OPPONENT_ROSTER_URL = '/api/ai-opponents';
@@ -77,6 +80,8 @@ function createPlayerMeta(player, humanPlayerIds, aiPlayer = null) {
     policyId: isAI ? policy.policyId : null,
     policyLabel: isAI ? policy.label : null,
     strategyWeights: isAI ? policy.strategyWeights : null,
+    // How its moods behave (ai/mood.js), from its personality.
+    temperament: isAI ? (getPersonality(opponent?.personality)?.temperament || null) : null,
     stats: {},
   };
 }
@@ -212,7 +217,42 @@ function cloneForEstatePlanning(state, playerId) {
   return clone;
 }
 
+// Each AI whose mood changed since it last showed it says so in the
+// chronicle, with the reason: players see who sets itself against the throne, who
+// withdraws to its estates, and why.
+export function announceAiMoods(state, meta) {
+  if (!state?.historyEnabled || !meta) return [];
+  const memory = getAiMemory(state, meta);
+  const announced = [];
+  for (const player of state.players || []) {
+    if (!isAIPlayer(meta, player.id)) continue;
+    const previous = lastShownMood(state, player.id);
+    const moodState = computeAiMood(state, meta, memory, player.id, previous);
+    if (previous?.id === moodState.mood.id) continue;
+    // The first mood of the game is only told when it is not the AI's usual
+    // one: at rest, a dynasty simply plays its character.
+    if (!previous && (!moodState.reason || moodState.mood.id === restingMood(state, meta, player.id).id)) continue;
+    const event = recordHistoryEvent(state, {
+      category: 'voice',
+      type: 'ai_mood',
+      actorId: player.id,
+      summary: describeMoodChange(state, player.id, moodState),
+      details: {
+        mood: moodState.mood.id,
+        previousMood: previous?.id || null,
+        duty: Math.round(moodState.duty * 100) / 100,
+        ambition: Math.round(moodState.ambition * 100) / 100,
+        reason: moodState.reason,
+        targetId: moodState.target,
+      },
+    });
+    if (event) announced.push(event);
+  }
+  return announced;
+}
+
 export function buildSimultaneousAIOrders(state, meta) {
+  announceAiMoods(state, meta);
   const planningState = cloneForOrderPlanning(state);
   const memory = getAiMemory(planningState, meta);
   const coalitionContext = buildCoupCoalitionContext(planningState, meta, memory);
