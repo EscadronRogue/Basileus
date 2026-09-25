@@ -53,7 +53,9 @@ export const BALANCE = {
 // half the provinces, each raising 1 troop, so what does not already scale
 // with the map (coup support, starting gold, mercenary and revocation
 // limits) is lowered too. Estates cost more there so estate income does not
-// snowball, and invasions are a little stronger for the empire's size.
+// snowball, and invasions are a little stronger for the empire's size, which
+// with the trained AIs gives about the same share of fallen empires as the
+// Classic map.
 export const MAP_BALANCE = {
   compact: {
     STARTING_INCOME_GOLD: 2,
@@ -63,7 +65,7 @@ export const MAP_BALANCE = {
     THEODOSIAN_WALLS_SUPPORT: 3,
     PATRIARCH_INFLUENCE: 2,
     UNREST_PER_LOST_PROVINCE: 1,
-    INVASION_STRENGTH_PER_PROVINCE: 2.2,
+    INVASION_STRENGTH_PER_PROVINCE: 2,
   },
 };
 
