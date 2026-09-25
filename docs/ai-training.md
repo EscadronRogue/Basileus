@@ -43,7 +43,7 @@ invader the empire falls.
 Sweep example:
 
 ```sh
-npm run simulate:ai -- --games 120 --no-history --samples 0 --probe gambler --sweep THEODOSIAN_WALLS_SUPPORT=2,3,5
+npm run simulate:ai -- --games 120 --no-history --samples 0 --probe gambler --sweep THEODOSIAN_WALLS=2,3,5
 ```
 
 ## Training

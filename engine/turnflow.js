@@ -2,7 +2,7 @@
 import { readTroopCount, runIncome } from './cascade.js';
 import { resolveInvasion, applyInvasionResult } from './combat.js';
 import { applyTitleRedistribution, autoConfirmFinishedCourtPlayers, resolveCoup } from './actions.js';
-import { clearRecentEstateMarks, settleEstatePlans } from './estates.js';
+import { settleEstatePlans } from './estates.js';
 import { finalizeDealRound, startCourtDealRound } from './deals.js';
 import { recordHistoryEvent } from './history.js';
 import { BALANCE, getBalance } from '../data/balance.js';
@@ -305,8 +305,6 @@ export function completeCourtPhase(state) {
 
 export function phaseEstates(state) {
   state.phase = 'estates';
-  // Estates built last round were protected during this round's Offices phase.
-  clearRecentEstateMarks(state);
   state.estatePlans = {};
   state.estatesReady = {};
 }
@@ -542,10 +540,10 @@ function applyAutomaticReconquestRewards(state, warResult, contributions) {
   if (rewardProvinceCount <= 0) return null;
   const defenders = topRankedDefenders(contributions);
   if (!defenders.length) return null;
-  // Like mercenary prices: 1 for the first province won, 2 for the next...
-  const balance = getBalance(state);
-  const totalGold = getRisingPriceTotal(rewardProvinceCount, balance.WAR_REWARD_GOLD_BASE);
-  const totalTriumph = getRisingPriceTotal(rewardProvinceCount, balance.WAR_REWARD_TRIUMPH_BASE);
+  // The rising price shared with mercenaries and estates, in gold and in
+  // Triumph alike: 2, 2, 2, 3, 3, 3... for each province won.
+  const totalGold = getRisingPriceTotal(rewardProvinceCount, getBalance(state));
+  const totalTriumph = totalGold;
   const gold = Math.ceil(totalGold / defenders.length);
   const capitalSupport = Math.floor(totalTriumph / defenders.length);
   const recipients = defenders.map((defender) => {

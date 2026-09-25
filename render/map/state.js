@@ -38,6 +38,8 @@ export const INVASION_ORIGIN_IDS = Object.freeze({
 });
 export const PROVINCE_LABEL_SUFFIX = 'LAB';
 export const THREAT_HATCH_SPACING = 3.6;
+// Width, in map units, of each dynasty's band in a shared province's stripes.
+export const ESTATE_STRIPE_BAND = 3.2;
 export const THREAT_HATCH_PRIMARY_STROKE = 1.4;
 export const MIN_THREAT_HATCH_SCALE = 0.001;
 export const MIN_MAP_ZOOM = 1;

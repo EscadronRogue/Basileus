@@ -12,7 +12,7 @@
 
 import { REGION_BORDER_COLORS } from '../data/provinces.js';
 import { getPlayer, formatPlayerLabel, getPlayerRoleTextStyle } from '../engine/state.js';
-import { getLeadingEstateHolder, getProvinceEstateHolders } from '../engine/estates.js';
+import { getDomainCount, getLeadingEstateHolder, getProvinceEstateHolders } from '../engine/estates.js';
 import { renderIcon } from './icons.js';
 import { escapeHtml } from './html.js';
 
@@ -385,9 +385,10 @@ export function renderEstateStack(state, themeOrId, options = {}) {
   const chips = holders.map((holder) => {
     const player = getPlayer(state, holder.playerId);
     const name = formatPlayerLabel(player) || `Player ${Number(holder.playerId) + 1}`;
-    const protectedNote = holder.recent > 0 ? `, ${holder.recent} built last round (cannot be revoked yet)` : '';
+    const domains = getDomainCount(holder.count, state);
+    const domainNote = domains ? `, ${domains} domain${domains === 1 ? '' : 's'}` : '';
     const lostNote = theme.lost ? ' (lost province: not paying until reconquered)' : '';
-    const title = `${name}: ${holder.count} estate${holder.count === 1 ? '' : 's'}${protectedNote}${lostNote}`;
+    const title = `${name}: ${holder.count} estate${holder.count === 1 ? '' : 's'}${domainNote}${lostNote}`;
     return `<span class="estate-chip${theme.lost ? ' disabled' : ''}" style="--chip-color: ${player?.color || '#5a3810'};" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${holder.count}</span>`;
   });
   const planned = Math.max(0, Number(options.planned?.count) || 0);

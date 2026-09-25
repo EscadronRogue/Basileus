@@ -88,7 +88,8 @@ function appendLadderTags(layer, state, invasion, points, routeIds) {
     group.setAttribute('transform', `translate(${(cx - width / 2).toFixed(2)} ${(cy - height / 2).toFixed(2)})`);
     const title = document.createElementNS(SVG_NS, 'title');
     const name = state.themes?.[provinceId]?.name || provinceId;
-    title.textContent = `The invader takes ${name} if it beats the frontier by ${step.needed} or more.`;
+    const walls = step.walls ? ` (the Theodosian Walls add ${step.walls})` : '';
+    title.textContent = `The invader takes ${name} if it beats the frontier by ${step.needed} or more${walls}.`;
     group.appendChild(title);
     const bg = document.createElementNS(SVG_NS, 'rect');
     bg.setAttribute('class', 'invasion-ladder-tag-bg');

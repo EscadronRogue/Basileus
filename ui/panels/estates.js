@@ -4,13 +4,17 @@
 // only planned (built estates are never removed here). The plan stays secret
 // and is paid and built when Deployment opens.
 
+import { getBalance } from '../../data/balance.js';
 import {
   canBuildEstatesIn,
   countPlannedEstates,
+  getDomainCount,
+  getEstateCount,
   getEstatePlan,
   getEstatePlanCost,
   getNextEstatePrice,
 } from '../../engine/estates.js';
+import { describeRisingPrices } from '../../engine/presentation.js';
 import { getSpendableGold } from '../../engine/deals.js';
 import { getRegionLabel, renderEstateStack, renderProvinceBadge } from '../labels.js';
 import { formatGoldHtml } from '../icons.js';
@@ -59,6 +63,19 @@ function isOnInvasionRoute(state, themeId) {
   return Boolean(state.currentInvasion?.route?.includes(themeId));
 }
 
+// Your domains in the province once the plan is built, and how many more
+// estates the next one takes.
+function renderDomainNote(state, playerId, theme, planned) {
+  const total = getEstateCount(theme, playerId) + planned;
+  if (total <= 0) return '';
+  const { ESTATE_DOMAIN_SIZE: size, ESTATE_DOMAIN_BONUS: bonus } = getBalance(state);
+  const domains = getDomainCount(total, state);
+  const toNext = size - (total % size);
+  const held = domains ? `${domains} domain${domains === 1 ? '' : 's'} (+${domains * bonus} gold)` : 'No domain yet';
+  const title = `Every ${size} of your estates in one province form a domain, which pays ${bonus} more gold every income.`;
+  return `<span class="estate-domain-note" title="${escapeHtml(title)}">${held}; ${toNext} more for ${domains ? 'the next' : 'one'}</span>`;
+}
+
 function renderEstateRow(state, playerId, theme, plan, canAddMore, locked) {
   const planned = Number(plan[theme.id]) || 0;
   const onRoute = isOnInvasionRoute(state, theme.id);
@@ -67,6 +84,7 @@ function renderEstateRow(state, playerId, theme, plan, canAddMore, locked) {
       <span class="estate-row-province">${renderProvinceBadge(state, theme, { compact: true })}</span>
       <span class="estate-row-holders">
         ${renderEstateStack(state, theme, { compact: true, planned: { playerId, count: planned }, fallback: '<span class="muted" aria-label="No estates yet">—</span>' })}
+        ${renderDomainNote(state, playerId, theme, planned)}
       </span>
       ${onRoute ? `<span class="estate-route-tag" title="${escapeHtml(`On the route of the ${state.currentInvasion?.name || 'invasion'}: estates here stop paying if the province is lost.`)}">Invasion route</span>` : ''}
       <span class="estate-stepper">
@@ -112,7 +130,7 @@ export function renderEstatesPanel(container, state, playerId, callbacks = {}, o
           </span>
         </div>
       </header>
-      <p class="section-hint">Each estate pays its owner 1 gold every round. This round your first estate costs ${formatGoldHtml(getNextEstatePrice(0, state))} and each one after costs 1 more. Plans stay secret and are built when Deployment opens.</p>
+      <p class="section-hint">Each estate pays its owner 1 gold every round, and every ${getBalance(state).ESTATE_DOMAIN_SIZE} of yours in one province form a domain worth ${formatGoldHtml(getBalance(state).ESTATE_DOMAIN_BONUS)} more. This round your estates cost the rising price: ${escapeHtml(describeRisingPrices(getBalance(state)))} Plans stay secret and are built when Deployment opens.</p>
       <div class="estate-plan-summary" data-estate-summary>
         <span><strong>${plannedCount}</strong> estate${plannedCount === 1 ? '' : 's'} planned</span>
         <span>Cost ${formatGoldHtml(cost)}</span>

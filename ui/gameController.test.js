@@ -171,7 +171,7 @@ test('court panel exposes only role-legal appointments and no legacy army buying
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  addEstates(state.themes.OPS, 2, 2, { recent: false });
+  addEstates(state.themes.OPS, 2, 2);
   state.themes.KAP.strategos = 1;
 
   const basileusPanel = makePanelContainer();
@@ -443,8 +443,8 @@ test('court estate revocations show one row per dynasty with its estate count', 
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  addEstates(state.themes.OPS, 2, 3, { recent: false });
-  addEstates(state.themes.OPS, 3, 1, { recent: false });
+  addEstates(state.themes.OPS, 2, 3);
+  addEstates(state.themes.OPS, 3, 1);
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
@@ -458,7 +458,7 @@ test('court estate revocations show one row per dynasty with its estate count', 
   assert.match(container.innerHTML, /<span class="province-token-name">Opsikion<\/span>/);
 });
 
-test('court panel does not offer estates that were all built last round', () => {
+test('court panel offers every estate for revocation, even those built last round', () => {
   const state = makeState();
   state.round = 2;
   state.phase = 'court';
@@ -469,13 +469,13 @@ test('court panel does not offer estates that were all built last round', () => 
     revokedThisTurn: {},
     playerConfirmed: new Set(),
   };
-  addEstates(state.themes.OPS, 2, 1, { recent: true });
-  addEstates(state.themes.KAP, 1, 1, { recent: false });
+  addEstates(state.themes.OPS, 2, 1);
+  addEstates(state.themes.KAP, 1, 1);
   const container = makePanelContainer();
 
   renderCourtPanel(container, state, state.basileusId, {}, { uiState: createDefaultUiState() });
 
-  assert.doesNotMatch(container.innerHTML, /data-revoke-pick="estates:OPS:2"/);
+  assert.match(container.innerHTML, /data-revoke-pick="estates:OPS:2"/);
   assert.match(container.innerHTML, /data-revoke-pick="estates:KAP:1"/);
 });
 
@@ -509,7 +509,7 @@ test('estates panel plans estates with + and - and locks the whole plan once', (
   const state = makeState();
   phaseEstates(state);
   state.players[2].gold = 4;
-  addEstates(state.themes.OPS, 3, 2, { recent: false });
+  addEstates(state.themes.OPS, 3, 2);
   const uiState = createDefaultUiState();
   const container = makePanelContainer();
   const submitted = [];
@@ -613,7 +613,8 @@ test('standalone province cartouches participate in hover and selection sync', (
 test('deployment panel uses funded armies and mercenary slider schema', () => {
   const state = makeState();
   state.phase = 'deployment';
-  state.players[state.basileusId].gold = 1;
+  // With the two dismissed troops, enough for two mercenaries.
+  state.players[state.basileusId].gold = 2;
   state.currentTroops = {
     BASILEUS: 3,
   };
@@ -827,8 +828,9 @@ test('war resolution lists the strength spent on each province and what was left
   renderResolutionPanel(container, state);
 
   assert.match(container.innerHTML, /The invader won by 5/);
-  assert.match(container.innerHTML, /war-ledger-step taken[\s\S]*costs 1[\s\S]*war-ledger-step taken[\s\S]*costs 2[\s\S]*war-ledger-step held[\s\S]*costs 3/);
-  assert.match(container.innerHTML, /The invader spent 3 and had 2 left over\./);
+  // The rising price: 2, 2, 2... so the third province is out of reach.
+  assert.match(container.innerHTML, /war-ledger-step taken[\s\S]*costs 2[\s\S]*war-ledger-step taken[\s\S]*costs 2[\s\S]*war-ledger-step held[\s\S]*costs 2/);
+  assert.match(container.innerHTML, /The invader spent 4 and had 1 left over\./);
 });
 
 test('estates and deployment show the invasion ladder', () => {
@@ -844,7 +846,10 @@ test('estates and deployment show the invasion ladder', () => {
 
   assert.match(container.innerHTML, /data-invasion-card/);
   assert.match(container.innerHTML, /Strength[\s\S]*4–6/);
-  assert.match(container.innerHTML, /data-ladder-step="THS"[\s\S]*\+1<\/span>[\s\S]*data-ladder-step="STR"[\s\S]*already lost[\s\S]*data-ladder-step="MAK"[\s\S]*\+3<\/span>[\s\S]*data-ladder-step="CPL"[\s\S]*\+6<\/span>/);
+  // 2, then 2 more; Constantinople costs the next 2 plus the Theodosian Walls.
+  const capital = 2 + 2 + 2 + BALANCE.THEODOSIAN_WALLS;
+  assert.match(container.innerHTML, new RegExp(`data-ladder-step="THS"[\\s\\S]*\\+2</span>[\\s\\S]*data-ladder-step="STR"[\\s\\S]*already lost[\\s\\S]*data-ladder-step="MAK"[\\s\\S]*\\+4</span>[\\s\\S]*data-ladder-step="CPL"[\\s\\S]*\\+${capital}</span>`));
+  assert.match(container.innerHTML, /Theodosian Walls make Constantinople cost/);
   assert.match(container.innerHTML, /retakes a lost province/);
 });
 

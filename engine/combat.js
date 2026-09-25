@@ -1,11 +1,14 @@
 // engine/combat.js - the war against the invasion, and what it does to provinces.
 //
-// The invasion walks its route. Each imperial province costs it 1 more
-// strength than the one before (1, 2, 3...); provinces already lost are
-// crossed for free; Constantinople, at the end of a full route, costs the
-// next step. The invader takes provinces while it beats the frontier by
-// enough. When the frontier wins instead, its surplus retakes lost provinces
-// on the route, walking back from Constantinople at the same rising cost.
+// The invasion walks its route. Imperial provinces cost it the rising price
+// shared with mercenaries and estates (2, 2, 2, 3, 3, 3...); provinces
+// already lost are crossed for free; Constantinople, at the end of a full
+// route, costs the next step plus the Theodosian Walls. The invader takes
+// provinces while it beats the frontier by enough. When the frontier wins
+// instead, its surplus retakes lost provinces on the route, walking back from
+// Constantinople at the same rising cost.
+import { getBalance } from '../data/balance.js';
+import { getRisingStepPrice } from './rules.js';
 
 function currentLostIds(state) {
   return new Set(
@@ -15,26 +18,31 @@ function currentLostIds(state) {
   );
 }
 
-// [{ themeId, status: 'imperial' | 'lost' | 'capital', cost, needed }].
-// `needed` is how far the invader must beat the frontier to take that step.
+// [{ themeId, status: 'imperial' | 'lost' | 'capital', cost, needed, walls }].
+// `needed` is how far the invader must beat the frontier to take that step;
+// Constantinople's cost includes its `walls`.
 export function buildInvasionLadder(state, route = state?.currentInvasion?.route || [], lostIds = currentLostIds(state)) {
+  const balance = getBalance(state);
   const steps = [];
-  let cost = 1;
+  let position = 1;
   let needed = 0;
   for (const themeId of route || []) {
     if (!state?.themes?.[themeId]) continue;
     if (themeId === 'CPL') {
+      const walls = Math.max(0, Number(balance.THEODOSIAN_WALLS) || 0);
+      const cost = getRisingStepPrice(position, balance) + walls;
       needed += cost;
-      steps.push({ themeId, status: 'capital', cost, needed });
+      steps.push({ themeId, status: 'capital', cost, needed, walls });
       break;
     }
     if (lostIds.has(themeId)) {
       steps.push({ themeId, status: 'lost', cost: 0, needed });
       continue;
     }
+    const cost = getRisingStepPrice(position, balance);
     needed += cost;
     steps.push({ themeId, status: 'imperial', cost, needed });
-    cost += 1;
+    position += 1;
   }
   return steps;
 }
@@ -43,8 +51,9 @@ export function buildInvasionLadder(state, route = state?.currentInvasion?.route
 // Constantinople. `needed` is how far the frontier must beat the invader to
 // retake that lost province.
 export function buildReconquestLadder(state, route = state?.currentInvasion?.route || [], lostIds = currentLostIds(state)) {
+  const balance = getBalance(state);
   const steps = [];
-  let cost = 1;
+  let position = 1;
   let needed = 0;
   for (const themeId of (route || []).slice().reverse()) {
     if (themeId === 'CPL' || !state?.themes?.[themeId]) continue;
@@ -52,9 +61,10 @@ export function buildReconquestLadder(state, route = state?.currentInvasion?.rou
       steps.push({ themeId, status: 'imperial', cost: 0, needed });
       continue;
     }
+    const cost = getRisingStepPrice(position, balance);
     needed += cost;
     steps.push({ themeId, status: 'lost', cost, needed });
-    cost += 1;
+    position += 1;
   }
   return steps;
 }
@@ -123,15 +133,15 @@ export function resolveInvasion(state, frontierTroops, invaderStrength, invasion
 }
 
 // How many provinces the surplus could win walking back along the route at
-// the rising cost, whether or not they are lost: the best defender's Triumph.
+// the rising cost, whether or not they are lost: the best defender's reward.
 function countAffordableProvinceWins(state, surplus, route) {
+  const balance = getBalance(state);
   let wins = 0;
-  let nextCost = 1;
   for (const themeId of (route || []).slice().reverse()) {
     if (themeId === 'CPL' || !state.themes[themeId]) continue;
+    const nextCost = getRisingStepPrice(wins + 1, balance);
     if (surplus < nextCost) break;
     surplus -= nextCost;
-    nextCost += 1;
     wins += 1;
   }
   return wins;

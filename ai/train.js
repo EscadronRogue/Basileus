@@ -63,8 +63,10 @@ const DEFAULT_OPTIONS = Object.freeze({
   confirmGames: 72,
   finalGames: 160,
   benchmarkGames: 60,
-  playerCounts: [4, 5, 5],
-  deckSizes: [9],
+  // Table sizes and game lengths the tables are drawn from, so the roster
+  // plays every setup the game offers.
+  playerCounts: [3, 4, 5, 5],
+  deckSizes: [6, 9, 12],
   // Maps the tables are drawn from, so one roster plays both.
   maps: ['classic', 'compact'],
   mutation: 0.2,
@@ -149,7 +151,7 @@ export function normalizeTrainingOptions(rawOptions = {}) {
     finalGames: Math.max(1, toInt(rawOptions.finalGames, DEFAULT_OPTIONS.finalGames)),
     benchmarkGames: Math.max(0, toInt(rawOptions.benchmarkGames, DEFAULT_OPTIONS.benchmarkGames)),
     playerCounts: toIntList(rawOptions.playerCounts, DEFAULT_OPTIONS.playerCounts, 3, 5),
-    deckSizes: toIntList(rawOptions.deckSizes, DEFAULT_OPTIONS.deckSizes, 1, 9),
+    deckSizes: toIntList(rawOptions.deckSizes, DEFAULT_OPTIONS.deckSizes, 1, 12),
     maps: toList(rawOptions.maps, DEFAULT_OPTIONS.maps),
     mutation: Math.min(MAX_SIGMA, Math.max(MIN_SIGMA, toFloat(rawOptions.mutation, DEFAULT_OPTIONS.mutation))),
     mutationRate: Math.min(1, Math.max(0.05, toFloat(rawOptions.mutationRate, DEFAULT_OPTIONS.mutationRate))),
@@ -296,8 +298,22 @@ export function personalitySeedWeights(personalityId) {
     ...DEFAULT_STRATEGY_WEIGHTS,
     ...(POLICY_WEIGHT_PRESETS[personality.basePolicy] || {}),
   };
-  // Start from the bidding pressure the preset's valuation implies.
+  // An explorer starts from its own random point of the whole weight space.
+  if (personality.explore) {
+    const rng = makeRng(personality.explore.seed);
+    for (const key of TRAINABLE_WEIGHT_KEYS) {
+      const [min, max] = personalityWeightRange(personality, key);
+      weights[key] = min + rng() * (max - min);
+    }
+  }
   return clampToPersonality(personality, weights);
+}
+
+// Explorers mutate with bolder steps.
+const EXPLORER_SIGMA = 0.35;
+
+function startingSigma(personalityId, mutation) {
+  return getPersonality(personalityId)?.explore ? Math.max(mutation, EXPLORER_SIGMA) : mutation;
 }
 
 // Moves a random subset of weights by a Gaussian step scaled to each
@@ -649,7 +665,7 @@ export async function trainPersonalities(rawOptions = {}) {
   };
   const lines = Object.fromEntries(options.personalities.map((personalityId) => [personalityId, {
     champion: { weights: startingWeights(personalityId), generation: 0 },
-    sigma: options.mutation,
+    sigma: startingSigma(personalityId, options.mutation),
     archive: [],
   }]));
   const runner = createRunner(options.workers);

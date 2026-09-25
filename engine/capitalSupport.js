@@ -75,7 +75,7 @@ export function getCapitalSupportEntries(state, round = state?.round) {
       label: 'Theodosian Walls',
       playerId: basileusId,
       titleKey: 'BASILEUS',
-      amount: getBalance(state).THEODOSIAN_WALLS_SUPPORT,
+      amount: getBalance(state).THEODOSIAN_WALLS,
       activeRound,
     });
   }

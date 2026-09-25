@@ -1,18 +1,17 @@
 // engine/estates.js - estates: any number per province, for any dynasty.
 //
-// Each province keeps, per dynasty, how many estates it holds there and how
-// many of them were built in the latest Estates phase (`recent`). Recent
-// estates cannot be revoked in the next Offices phase.
+// Each province keeps, per dynasty, how many estates it holds there. Every
+// ESTATE_DOMAIN_SIZE of them form a domain, which pays extra gold.
 //
 // In the Estates phase every dynasty plans in secret how many estates to
 // build where; the plans are paid and built together when Deployment opens.
-// Within one round the first estate a dynasty builds costs ESTATE_BASE_PRICE
-// and each further one costs 1 gold more, like mercenaries.
+// Within one round a dynasty's estates cost the rising price shared with
+// mercenaries (2, 2, 2, 3, 3, 3...).
 import { getBalance } from '../data/balance.js';
 import { getSpendableGold } from './deals/state.js';
 import { recordHistoryEvent } from './history.js';
 import { formatGold } from './presentation.js';
-import { getRisingPriceCost, getRisingPriceTotal } from './rules.js';
+import { getRisingPriceCost, getRisingPriceTotal, getThemeOwnerIncome } from './rules.js';
 import { getPlayer, getPlayerName } from './state.js';
 
 function fail(reason) {
@@ -25,9 +24,8 @@ function toCount(value) {
 }
 
 function readEntry(entry) {
-  if (typeof entry === 'number') return { count: toCount(entry), recent: 0 };
-  const count = toCount(entry?.count);
-  return { count, recent: Math.min(count, toCount(entry?.recent)) };
+  if (typeof entry === 'number') return { count: toCount(entry) };
+  return { count: toCount(entry?.count) };
 }
 
 function ensureEstateMap(theme) {
@@ -44,8 +42,8 @@ export function canBuildEstatesIn(theme) {
   return canHoldEstates(theme) && !theme.lost;
 }
 
-// [{ playerId, count, recent }] for every dynasty with estates in the
-// province, most estates first.
+// [{ playerId, count }] for every dynasty with estates in the province, most
+// estates first.
 export function getProvinceEstateHolders(theme) {
   return Object.entries(theme?.estates || {})
     .map(([playerId, entry]) => ({ playerId: Number(playerId), ...readEntry(entry) }))
@@ -55,10 +53,6 @@ export function getProvinceEstateHolders(theme) {
 
 export function getEstateCount(theme, playerId) {
   return readEntry(theme?.estates?.[playerId]).count;
-}
-
-export function getRecentEstateCount(theme, playerId) {
-  return readEntry(theme?.estates?.[playerId]).recent;
 }
 
 export function getProvinceEstateTotal(theme) {
@@ -77,7 +71,7 @@ export function getLeadingEstateHolder(theme) {
   return first.playerId;
 }
 
-// [{ themeId, count, recent, lost }] for one dynasty.
+// [{ themeId, count, lost }] for one dynasty.
 export function getDynastyEstates(state, playerId) {
   return Object.values(state?.themes || {})
     .filter(canHoldEstates)
@@ -92,36 +86,27 @@ export function countDynastyEstates(state, playerId, { activeOnly = false } = {}
     .reduce((total, entry) => total + entry.count, 0);
 }
 
-// Estates a revocation would take: none in a lost province, and never the
-// ones built in the latest Estates phase.
+// Estates a revocation would take: all of the dynasty's estates in the
+// province, none in a lost province.
 export function getRevocableEstateCount(theme, playerId) {
   if (!canHoldEstates(theme) || theme.lost) return 0;
-  const entry = readEntry(theme.estates?.[playerId]);
-  return Math.max(0, entry.count - entry.recent);
+  return readEntry(theme.estates?.[playerId]).count;
 }
 
-export function addEstates(theme, playerId, count, { recent = true } = {}) {
+export function addEstates(theme, playerId, count) {
   const added = toCount(count);
   if (!canHoldEstates(theme) || !Number.isInteger(Number(playerId)) || added <= 0) return 0;
   const estates = ensureEstateMap(theme);
-  const entry = readEntry(estates[playerId]);
-  estates[playerId] = {
-    count: entry.count + added,
-    recent: entry.recent + (recent ? added : 0),
-  };
+  estates[playerId] = { count: readEntry(estates[playerId]).count + added };
   return added;
 }
 
-// Removes every estate of the dynasty in the province except the protected
-// recent ones. Returns how many were removed.
+// Removes every estate of the dynasty in the province. Returns how many were
+// removed.
 export function removeRevocableEstates(theme, playerId) {
   const removed = getRevocableEstateCount(theme, playerId);
   if (removed <= 0) return 0;
-  const estates = ensureEstateMap(theme);
-  const entry = readEntry(estates[playerId]);
-  const remaining = entry.count - removed;
-  if (remaining > 0) estates[playerId] = { count: remaining, recent: entry.recent };
-  else delete estates[playerId];
+  delete ensureEstateMap(theme)[playerId];
   return removed;
 }
 
@@ -130,28 +115,31 @@ export function transferEstates(theme, fromPlayerId, toPlayerId) {
   const moved = getEstateCount(theme, fromPlayerId);
   if (moved <= 0) return 0;
   delete ensureEstateMap(theme)[fromPlayerId];
-  addEstates(theme, toPlayerId, moved, { recent: false });
+  addEstates(theme, toPlayerId, moved);
   return moved;
 }
 
-export function clearRecentEstateMarks(state) {
-  for (const theme of Object.values(state?.themes || {})) {
-    for (const [playerId, entry] of Object.entries(theme?.estates || {})) {
-      const { count } = readEntry(entry);
-      if (count > 0) theme.estates[playerId] = { count, recent: 0 };
-      else delete theme.estates[playerId];
-    }
-  }
+// Domains: every ESTATE_DOMAIN_SIZE estates a dynasty holds in one province.
+export function getDomainCount(estateCount, state = null) {
+  const size = Math.max(1, Math.floor(Number(getBalance(state).ESTATE_DOMAIN_SIZE) || 1));
+  return Math.floor(toCount(estateCount) / size);
 }
 
-// Prices
+// Gold `estateCount` estates of one dynasty pay in a province every income:
+// the province's profit per estate, plus the bonus of each domain.
+export function getEstateHoldingIncome(theme, estateCount, state = null) {
+  const count = toCount(estateCount);
+  const bonus = Math.max(0, Number(getBalance(state).ESTATE_DOMAIN_BONUS) || 0);
+  return count * getThemeOwnerIncome(theme) + getDomainCount(count, state) * bonus;
+}
+
 // Prices depend on the map, so pass the game state.
 export function getEstatePlanCost(count, state = null) {
-  return getRisingPriceTotal(count, getBalance(state).ESTATE_BASE_PRICE);
+  return getRisingPriceTotal(count, getBalance(state));
 }
 
 export function getNextEstatePrice(alreadyPlanned, state = null) {
-  return getRisingPriceCost(alreadyPlanned, 1, getBalance(state).ESTATE_BASE_PRICE);
+  return getRisingPriceCost(alreadyPlanned, 1, getBalance(state));
 }
 
 // Plans
@@ -219,7 +207,7 @@ export function settleEstatePlans(state) {
     const builds = [];
     for (const [themeId, planned] of Object.entries(plan)) {
       const theme = state.themes[themeId];
-      addEstates(theme, player.id, planned, { recent: true });
+      addEstates(theme, player.id, planned);
       builds.push({ themeId, themeName: theme.name, count: planned });
     }
     builds.sort((left, right) => (right.count - left.count) || left.themeName.localeCompare(right.themeName));
