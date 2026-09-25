@@ -615,9 +615,17 @@ function mergeStats(target, source) {
   }
   const winnerShare = (seat) => (source.winnerIds.includes(seat) ? 1 / source.winnerIds.length : 0);
   for (const [seat, key] of Object.entries(source.seatLabels || {})) {
-    const entry = target.byOpponent[key] || (target.byOpponent[key] = { games: 0, wins: 0 });
+    const entry = target.byOpponent[key] || (target.byOpponent[key] = {
+      games: 0, wins: 0, falls: 0, orders: 0, frontierTroops: 0, capitalTroops: 0, idleTroops: 0,
+    });
+    const seatStats = source.playerStatsByPlayer?.[seat] || {};
     entry.games += 1;
     entry.wins += winnerShare(Number(seat));
+    entry.falls += source.fall ? 1 : 0;
+    entry.orders += Number(seatStats.orders) || 0;
+    entry.frontierTroops += Number(seatStats.frontierTroops) || 0;
+    entry.capitalTroops += Number(seatStats.capitalTroops) || 0;
+    entry.idleTroops += Number(seatStats.idleTroops) || 0;
   }
   if (source.probeSeat != null) {
     target.probe.games += 1;
@@ -885,7 +893,17 @@ function normalizeStats(stats) {
     opponentWinRates: Object.fromEntries(
       Object.entries(stats.byOpponent)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([id, entry]) => [id, { games: entry.games, winRate: round(entry.wins / Math.max(1, entry.games), 3) }]),
+        .map(([id, entry]) => {
+          const orders = Math.max(1, entry.orders);
+          return [id, {
+            games: entry.games,
+            winRate: round(entry.wins / Math.max(1, entry.games), 3),
+            fallRate: round(entry.falls / Math.max(1, entry.games), 3),
+            frontierPerRound: round(entry.frontierTroops / orders, 2),
+            constantinoplePerRound: round(entry.capitalTroops / orders, 2),
+            dismissedPerRound: round(entry.idleTroops / orders, 2),
+          }];
+        }),
     ),
     // Average gold a dynasty holds when each round is resolved.
     goldByRound: Object.fromEntries(

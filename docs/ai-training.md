@@ -139,37 +139,39 @@ records the benchmark.
 
 ### Current roster
 
-Trained for the current rules (two coup choices, estates at 1, 2, 3...,
-offices raising their own troops, invasion strength 1.7 per imperial
-province) with `--generations 8 --seed 20260925`: about 26,000 games, 113
-minutes on three workers. Final measurements on 160 fresh tables per
-personality:
+Trained for the current rules (the Basileus revokes estates only, two coup
+choices, estates at 1, 2, 3..., offices raising their own troops, invasion
+strength 1.7 per imperial province) with `--generations 8 --seed 20260926`:
+about 45,000 games, 229 minutes on four workers.
 
-| Personality | Win | Holds back | Throne bids | Seizures/game | Empire falls |
-| --- | --- | --- | --- | --- | --- |
-| Usurper | 22% | 8% | 23% | 0.72 | 11% |
-| Opportunist | 27% | 8% | 9% | 0.44 | 14% |
-| Landlord | 30% | 5% | 9% | 0.46 | 9% |
-| Kingmaker | 28% | 4% | 6% | 0.33 | 9% |
-| Tyrant | 19% | 48% | 73% | 1.12 | 19% |
-| Patron | 27% | 3% | 7% | 0.32 | 6% |
-| Strategist | 32% | 4% | 6% | 0.39 | 6% |
+### Which kinds of selfishness pay
 
-Alone against four default planners the new AIs win 52-70% of their games.
-Seated among the previous roster (trained for the old rules) they win 18-28%,
-and those tables lose the empire in 33-53% of games: the old AIs no longer
-defend enough.
+600 games of 5 dynasties drawn from the twelve trained AIs (fair share 20%);
+troops are per round, averaged over the game:
 
-### Balance check (roster only, 200 games, 5 players, 9 rounds)
+| AI | Win | vs fair share | Frontier | Constantinople | Dismissed | Empire falls in its games |
+| --- | --- | --- | --- | --- | --- | --- |
+| Opportunist (lets others defend) | 34% | 1.71x | 3.9 | 1.0 | 3.6 | 21% |
+| Saboteur (lets rivals' provinces fall) | 25% | 1.27x | 8.7 | 0.6 | 2.1 | 12% |
+| Regicide (loses wars to topple the Basileus) | 23% | 1.16x | 8.7 | 1.5 | 1.0 | 13% |
+| Landlord | 19% | 0.96x | 7.3 | 1.0 | 1.6 | 22% |
+| Patron | 19% | 0.93x | 4.6 | 1.9 | 3.3 | 15% |
+| Kingmaker | 18% | 0.87x | 9.8 | 0.2 | 1.0 | 22% |
+| Glory Hunter (best defender, then a coup) | 16% | 0.78x | 7.1 | 3.6 | 0.2 | 12% |
+| Miser (dismisses troops for gold) | 15% | 0.74x | 8.9 | 0.5 | 2.0 | 13% |
+| Hoarder (keeps offices, strips rivals) | 11% | 0.56x | 9.6 | 1.0 | 1.1 | 10% |
+| Usurper | 10% | 0.49x | 1.6 | 8.2 | 0.3 | 20% |
+| Strategist | 10% | 0.47x | 9.5 | 0.8 | 1.1 | 12% |
+| Tyrant | 2% | 0.09x | 1.3 | 8.8 | 0.3 | 23% |
 
-- Empire falls in 13% of games; wars are won 70% of the time.
-- Win rate per AI ranges from 9% (Tyrant) to 25% (Landlord) against a fair
-  share of 20%.
-- `--probe cautious` wins 0-1% of its games: over-defending is punished.
-- `--probe gambler` wins 7-9%, although it holds the throne in 78% of rounds:
-  it ends with a quarter less gold than the others, because the troops it
-  keeps in Constantinople are not dismissed for gold. With the current
-  rules the throne does not pay back what it costs to take and hold;
-  lowering the Theodosian Walls from 5 to 2 does not change that (8%).
-- Gold per dynasty grows slowly through the game (1-5 gold held until
-  round 8) and jumps in the last round, when estates stop paying back.
+- The empire falls in 16% of these games; wars are won 49% of the time.
+- Free-riding pays most: the Opportunist sends half as many troops to the
+  frontier as the others, dismisses the rest for gold, and wins 1.7 times
+  its share. Spite (Saboteur) and undermining the Basileus (Regicide) pay
+  too.
+- Pouring troops into Constantinople does not pay (Usurper, Tyrant), and
+  neither does keeping every office (Hoarder).
+- `--probe selfish` (the trained Strategist made selfish) wins 19% of its
+  games, twice the Strategist's 10%; `--probe cautious` wins 1%.
+- Gold per dynasty stays around 2 until round 6 and rises to 15 by the last
+  round.
