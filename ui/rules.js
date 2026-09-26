@@ -196,7 +196,7 @@ export const RULE_SECTIONS = [
     id: 'war',
     title: 'The War',
     blocks: [
-      { paragraph: `All troops at the frontier fight the invasion. Its strength is known when it is drawn: ${BALANCE.INVASION_STRENGTH_PER_PROVINCE} for every imperial province on its route (the farther the empire reaches toward the invader, the stronger it is), plus ${BALANCE.INVASION_STRENGTH_PER_ROUND} for every round of the game so far (the threat grows every round).` },
+      { paragraph: `All troops at the frontier fight the invasion. Its strength is known when it is drawn: ${BALANCE.INVASION_STRENGTH_PER_PROVINCE} for every imperial province on its route, as much as taking it costs (the farther the empire reaches toward the invader, the stronger it is, and no province holds on its own), plus ${BALANCE.INVASION_STRENGTH_PER_ROUND} for every round of the game so far (the threat grows every round).` },
       {
         items: [
           ['Invader stronger.', `What the invader beats the frontier by pays for its route, step by step: ${WAR_COST} to take each imperial province; land already lost offers no resistance. It stops at the first step it cannot pay for.`],

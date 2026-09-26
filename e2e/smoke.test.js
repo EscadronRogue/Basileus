@@ -5,9 +5,12 @@
 // (requires `npx playwright install chromium` once).
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 import { startMultiplayerServer } from '../multiplayer/server.js';
+import { replayGameRecord } from '../game/record.js';
+import { serializeGameState } from '../game/save.js';
 
 const PHASE_BUTTONS = [
   '[data-action="confirm-court-plan"]',
@@ -276,6 +279,63 @@ test('an interrupted single-player game resumes exactly where it stopped', { tim
   await page.evaluate(() => window.__basileus.saveNow());
   await page.reload({ waitUntil: 'networkidle' });
   assert.equal(await page.locator('#resumeGameCard').isVisible(), false);
+  assert.deepEqual(problems, []);
+});
+
+test('a single-player game keeps notes and downloads a record that replays exactly', { timeout: 600_000 }, async (t) => {
+  const { page, problems } = await openGame(t);
+  await startLocalGame(page, { mode: 'single', players: 4, turns: 6, seed: 'smoke-record' });
+
+  // The first Resolution offers a notes box for the round.
+  for (let step = 0; step < 200; step += 1) {
+    if (await page.locator('.resolution-panel .record-note').isVisible().catch(() => false)) break;
+    const game = await readGame(page);
+    if (game?.phase === 'deployment' && !game.locked) {
+      await page.evaluate(async () => {
+        const { getPlayerOrderOfficeKeys } = await import('/engine/orders.js');
+        const controller = window.__basileus;
+        const armies = {};
+        for (const key of getPlayerOrderOfficeKeys(controller.state, controller.activePlayer)) armies[key] = { funded: 0, destination: 'frontier' };
+        controller.lockOrders({ armies, mercenaries: { count: 0, destination: 'frontier' } });
+      });
+      continue;
+    }
+    const button = page.locator(PHASE_BUTTONS.slice(0, 2).join(', ')).first();
+    if (await button.isVisible() && await button.isEnabled()) await button.click();
+    else await page.waitForTimeout(100);
+  }
+  await page.fill('.resolution-panel .record-note', 'Held everything back to test the AIs.');
+  await page.evaluate(() => window.__basileus.saveNow());
+
+  // The note survives a reload and resume.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('#btnResumeGame');
+  await page.waitForFunction(() => window.__basileus?.state?.phase && window.__basileus.state.phase !== 'setup');
+  assert.equal(await page.inputValue('.resolution-panel .record-note'), 'Held everything back to test the AIs.');
+
+  const end = await playToEnd(page);
+  assert.ok(end.gameOver || end.phase === 'scoring');
+  await page.fill('.scoring-panel .record-note', 'Good game.');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.scoring-panel [data-action="download-record"]'),
+  ]);
+  assert.match(download.suggestedFilename(), /^basileus-record-.*-classic-4p\.json$/);
+  const record = JSON.parse(readFileSync(await download.path(), 'utf8'));
+  assert.equal(record.finished, true);
+  assert.equal(record.resumes, 1);
+  assert.deepEqual(record.notes, { 'round-1': 'Held everything back to test the AIs.', game: 'Good game.' });
+
+  const replay = replayGameRecord(record);
+  assert.deepEqual(replay.mismatches, []);
+  assert.equal(JSON.stringify(serializeGameState(replay.state)), JSON.stringify(record.gameState), 'the record replays to the same end');
+
+  // The finished game's record stays downloadable from the setup screen.
+  await page.evaluate(() => window.__basileus.saveNow());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#lastRecordCard').waitFor({ state: 'visible' });
+  const [again] = await Promise.all([page.waitForEvent('download'), page.click('#btnDownloadLastRecord')]);
+  assert.equal(JSON.parse(readFileSync(await again.path(), 'utf8')).notes.game, 'Good game.');
   assert.deepEqual(problems, []);
 });
 

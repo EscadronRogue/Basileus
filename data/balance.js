@@ -49,10 +49,12 @@ export const BALANCE = {
 
   // Invasions: the strength of an invasion is known when it is drawn. It
   // grows with how far the empire reaches along its route: every imperial
-  // province on the route adds INVASION_STRENGTH_PER_PROVINCE, so a wide
-  // empire is harder to hold than land close to Constantinople, and losing
-  // land does not make invaders weaker. And the threat grows every round.
-  INVASION_STRENGTH_PER_PROVINCE: 2,
+  // province on the route adds INVASION_STRENGTH_PER_PROVINCE, as much as
+  // taking it costs (PROVINCE_WAR_COST), so no province holds on its own
+  // weight: an undefended route falls, and what saves Constantinople is the
+  // troops the dynasties send and the Walls. Losing land does not make
+  // invaders weaker. And the threat grows every round.
+  INVASION_STRENGTH_PER_PROVINCE: 3,
   INVASION_STRENGTH_PER_ROUND: 2,
 };
 

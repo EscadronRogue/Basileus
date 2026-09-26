@@ -27,7 +27,7 @@ const ALLOWED_LAYERS = {
 };
 
 // Offline CLI tools that simulate whole matches through the runtime.
-const AI_TOOLS = new Set(['ai/simulate.js', 'ai/train.js']);
+const AI_TOOLS = new Set(['ai/simulate.js', 'ai/train.js', 'ai/rate.js']);
 const NODE_ONLY = new Set(['ai/nodeOpponentRoster.js', ...AI_TOOLS]);
 
 function listSources() {

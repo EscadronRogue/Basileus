@@ -188,6 +188,15 @@ test('invasion strength is known: it grows with the empire along the route and e
   assert.deepEqual(emirate.route, ['SIC', 'ITA', 'KEP', 'KRE', 'KYP']);
 });
 
+test('no province holds against an invasion on its own weight', () => {
+  // Each imperial province on a route adds at least what taking it costs, so
+  // an undefended route is never safe just because it is long.
+  for (const mapId of ['classic', 'compact']) {
+    const balance = getBalance(mapId);
+    assert.ok(balance.INVASION_STRENGTH_PER_PROVINCE >= balance.PROVINCE_WAR_COST, mapId);
+  }
+});
+
 test('the Compact map makes the threat grow more slowly', () => {
   const state = createGameState({ seed: 4, mapId: 'compact' });
   state.round = 5;

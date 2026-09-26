@@ -17,7 +17,7 @@ Basileus is a 3-5 player strategy game where rival noble houses jockey for title
 - **Hover glossary.** Key words are bold wherever they appear; hover one for its definition, and keep hovering to lock the tooltip and explore the words inside it.
 - **Two maps.** Classic, with 40 provinces, or Compact, with 21 larger provinces fused from them, for smaller armies and less gold.
 - **Play on the map.** Select a province and a card opens beside it with what you can do there this phase: plan estates with − and +, or, in the Offices phase, revoke what others hold there or appoint a Strategos or a Bishop. It shares the side panel's plan, so you still lock from the panel.
-- **AI rivals with personalities.** Nineteen temperaments, each selfish in its own way (Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Miser, Hoarder, Saboteur, Regicide, Glory Hunter, Domain Lord, Condottiere, Turncoat, Loyalist and Strategist), plus three explorers (Maverick, Wildcard, Outsider) that started from random weights and found their own way to win. All are trained by self-play on both maps, with 3 to 5 dynasties and 6 to 12 rounds, to win rather than to play safe. Every AI move goes through the same legal command layer as a human's.
+- **AI rivals with personalities.** Fourteen temperaments, each selfish in its own way (Usurper, Opportunist, Landlord, Tyrant, Patron, Miser, Hoarder, Saboteur, Glory Hunter, Turncoat, Loyalist, Prelate and Strategist), plus an explorer (Maverick) that started from random weights and found its own way to win. All are trained by self-play on both maps, with 3 to 5 dynasties and 6 to 12 rounds, to win rather than to play safe; players only meet the ones that hold their own against the rest. Every AI move goes through the same legal command layer as a human's.
 - **Deterministic core.** Seeded RNG throughout the engine so games are reproducible.
 
 ## Tech Stack
@@ -68,6 +68,8 @@ npm run serve:multiplayer
 | `npm run simulate:ai -- --games 200 --players 5 --deck 9` | Runs deterministic all-AI batches (in parallel) and reports balance: fall rate, falls by round and invader, win rate per seat, and more. |
 | `npm run simulate:ai -- --map compact` | The same on the Compact map. |
 | `npm run train:ai -- --generations 3 --from-roster` | Tunes strategy weights against a mixed AI policy league on both maps and saves the best tuned opponents. See [`docs/ai-training.md`](docs/ai-training.md). |
+| `npm run rate:ai` | Rates the trained roster against itself on both maps and marks which AIs players are offered. |
+| `npm run record:report -- records/<file>.json` | Prints a downloaded game record as a round-by-round chronicle; `--verify` replays it from its seed. |
 | `npm run build:rules-doc` | Regenerates `docs/rules.md` from `ui/rules.js`. |
 | `npm run build:svg-fallback` | Regenerates `render/svgAssets.js` after editing `assets/*.svg`. |
 | `npm run build:compact-map` | Rebuilds `assets/hitzones-compact.svg` (the Compact map's fused provinces) from `assets/hitzones.svg`, then the fallback. Needs `npm install`. |
@@ -111,6 +113,7 @@ Render notes:
 ├── render/                 # SVG map renderer (render/map/*)
 ├── ui/                     # Browser controllers, panels, rules text, autosave
 ├── multiplayer/            # Node HTTP + WebSocket server and rooms
+├── records/                # Game records sent in from human games
 ├── assets/                 # SVG maps, fonts, and stylesheets (assets/css/*)
 ├── scripts/                # Generators and repository-wide tests
 ├── e2e/                    # Real-browser smoke tests
@@ -145,11 +148,13 @@ Useful entry points:
 
 Single-player and hotseat games autosave to the browser's `localStorage` and can be resumed from the setup screen.
 
+Local games are also **recorded** (`game/record.js`): every human command, the player's notes for each round, and at the end the full history with each AI's reasons and hidden mood. The Resolution and final panels have a notes box and a **Download game record** button, and the last finished game's record stays downloadable from the setup screen. A record replays exactly from its seed on the same code. See [`records/README.md`](records/README.md) for sending and reading records.
+
 ## AI Layer
 
 AI dynasties use legal action generation plus a compact strategic evaluator. The evaluator projects share-based scoring, watches scoring thresholds, values late throne control, weighs frontier danger against coup pressure, and chooses estate plans, appointments and revocations, deployment orders, and office handouts.
 
-Each AI opponent has a **personality** (`ai/personalities.js`), one of nineteen: Usurper, Opportunist, Landlord, Kingmaker, Tyrant, Patron, Miser, Hoarder, Saboteur, Regicide, Glory Hunter, Domain Lord, Condottiere, Turncoat, Loyalist, Strategist, and the explorers Maverick, Wildcard and Outsider. A personality fixes the weights that make its temperament; `ai/train.js` tunes the rest by playing thousands of games, and it rewards only winning. A fallen empire counts as a loss for everyone, and nothing rewards prudence for its own sake, so a trained AI will let others defend, or strip the capital to seize the throne, whenever that wins more games. The trained roster lives in `ai/tunedOpponents.json`, one Greek-named AI per personality; the setup screen shows each one's temperament, and in game its name carries it (e.g. "Leon Doukas (Usurper AI)").
+Each AI opponent has a **personality** (`ai/personalities.js`), one of fourteen: Usurper, Opportunist, Landlord, Tyrant, Patron, Miser, Hoarder, Saboteur, Glory Hunter, Turncoat, Loyalist, Prelate, Strategist, and the explorer Maverick. A personality fixes the weights that make its temperament; `ai/train.js` tunes the rest by playing thousands of games, and it rewards only winning. A fallen empire counts as a loss for everyone, and nothing rewards prudence for its own sake, so a trained AI will let others defend, or strip the capital to seize the throne, whenever that wins more games. The trained roster lives in `ai/tunedOpponents.json`, one Greek-named AI per personality. `ai/rate.js` (run after every training) rates each against the rest on both maps: every AI stays in training, where the weak ones measure the strong, but players are only offered, and randomly dealt, those that play at least close to the average; the setup screen shows each one's temperament, and in game its name carries it (e.g. "Leon Doukas (Usurper AI)").
 
 On top of its personality, an AI has a **mood** (`ai/mood.js`) that changes with the game. A mood sits on two axes: Duty or Greed (defend the frontier, or let others do it and keep the troops and gold) and Loyalty or Ambition (uphold the sitting Basileus, or bring it down). Their four corners are the moods: Guardian, Hero, Profiteer and Conspirator. A personality gives the resting mood, how far events move it and how freely the AI strays from its best move; what moves it is what happens at the table: an invasion marching on its estates or on Constantinople, a Basileus who revoked its land or favoured it, rivals who let the frontier down, being ahead or falling behind. The AI remembers, and forgives slowly. A mood is the AI's own: players are never told it, and have to read it from what the AI does. Its small doses of whim are seeded by the game, so a replayed game plays the same way.
 

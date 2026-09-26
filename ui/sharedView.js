@@ -22,6 +22,7 @@ import { escapeHtml } from './html.js';
 import { announceGameProgress } from './announcer.js';
 import { renderMapProvinceActions } from './mapActions.js';
 import { getPlayerPhase, getPlayerPhaseName } from '../data/terms.js';
+import { renderRecordControls } from './recordControls.js';
 
 export function createDefaultUiState() {
   return {
@@ -724,6 +725,7 @@ export function renderGameActionPanel({
     shell.innerHTML = renderScoringHtml(state, {
       includeNewGame: Boolean(handlers.includeNewGame),
     });
+    if (handlers.record) renderRecordControls(shell.querySelector('.scoring-panel') || shell, handlers.record);
     return body;
   }
 
@@ -764,6 +766,11 @@ export function renderGameActionPanel({
         activePlayerId,
       });
       const continueButton = shell.querySelector('[data-action="continue"]');
+      if (handlers.record) {
+        const recordSection = renderRecordControls(shell.querySelector('.resolution-panel') || shell, handlers.record);
+        const actions = continueButton?.closest('.panel-actions');
+        if (recordSection && actions) actions.before(recordSection);
+      }
       if (!continueButton) break;
 
       if (resolution.submitTitleAssignments) {
