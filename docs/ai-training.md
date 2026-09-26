@@ -199,72 +199,67 @@ roster entry keeps its `rating` and `offered`.
 
 ### Current roster
 
-Trained for flat prices, known invasion strength and moods, with the
-chronicle on (so AI memory and moods work as in real games), with
-`--from-roster --generations 6 --mutation 0.3 --seed 20260925`, on tables
-of 3 to 5 dynasties and 6, 9 or 12 rounds on both maps: about 64,000
-games, 177 minutes on four workers. Against the roster before it, every
-new champion but four (Usurper, Patron, Glory Hunter, Maverick) wins at
-least its share.
+Retrained for invasions that add 3 strength for every imperial province on
+their route (what taking it costs), the Bishop weights and the Prelate, with
+the chronicle on, on tables of 3 to 5 dynasties and 6, 9 or 12 rounds on
+both maps: 29 generations in three runs from the previous roster
+(6 generations at mutation 0.3, seed 20260926; 12 at 0.2, seed 20260928;
+11 at 0.15, seed 20260929, stopped by `--until`), about 190,000 games in
+eight and a half hours on three workers. The Prelate started from the Strategist.
 
-Invasions changed since: their strength grows by 2 for every imperial
-province on the route instead of 1 for every province, and lost land no
-longer costs the invader anything to cross. The roster was not retrained
-for it. On 300 games of 5 dynasties and 9 rounds, invasions now call for
-46% of the troops the empire raises on the Classic map (47% Compact); the
-frontier wins 47% of wars (48%), and the empire falls in 29% of Classic
-games and 12% of Compact games, never before round 4. More than half of
-the Classic falls are to the Bulgars, whose route is short. The figures
-below were measured before this change.
+Rating (600 tables, `npm run rate:ai`): strong are the Landlord (1.52),
+Patron (1.40), Saboteur (1.39), Prelate (1.28) and Turncoat (1.20); average
+the Tyrant, Loyalist, Opportunist and Glory Hunter; weak, so kept for
+training but not offered to players, the Hoarder, Strategist, Miser,
+Usurper and Maverick (0.64 to 0.73).
+
+### Bishops
+
+Training kept Bishops: besides the Prelate (4.6 to fill a bishopric, 3.7 to
+keep a Bishop), the Turncoat (4.9 to fill), Saboteur (1.7 / 3.4), Patron
+(2.2 / 2.7) and Opportunist (0.6 / 2.3) chose to value them, and only the
+Tyrant, Glory Hunter and Miser left filling at 0. On 40 games of 5 dynasties
+and 9 rounds per map, 10.3 of the 14 Classic bishoprics have a Bishop at the
+end (7.4 with the previous roster) and 5.4 of the 7 Compact ones (4.2), and
+the Patriarchs revoke Bishops 159 times instead of 217 on the Classic map.
 
 ### Which kinds of selfishness pay
 
-600 games of 5 dynasties and 9 rounds on each map, drawn from the nineteen
-trained AIs (fair share 20%). Troops are per round, averaged over the game,
-as Classic / Compact:
+200 games of 5 dynasties and 9 rounds, 100 on each map, drawn from the
+fourteen trained AIs, every AI at 100 tables per map. A fallen empire is a
+loss for everyone, so an average AI wins under the fair share of 20%. The
+troop columns are the share of the troops a dynasty could field that went
+to the frontier, to Constantinople or were dismissed, Classic / Compact;
+Bishops are those it appointed per game.
 
-| AI | Win (Classic) | Win (Compact) | Frontier | Constantinople | Dismissed |
-| --- | --- | --- | --- | --- | --- |
-| Saboteur | 39% | 44% | 4.6 / 3.1 | 0.8 / 0.4 | 3.9 / 2.0 |
-| Landlord | 35% | 44% | 2.7 / 1.8 | 3.4 / 1.8 | 3.3 / 1.8 |
-| Strategist | 34% | 42% | 4.0 / 2.7 | 1.4 / 0.8 | 3.7 / 2.1 |
-| Turncoat | 36% | 36% | 3.0 / 1.8 | 3.4 / 1.7 | 4.0 / 2.3 |
-| Loyalist | 29% | 33% | 7.5 / 4.3 | 0.6 / 0.3 | 2.1 / 1.3 |
-| Condottiere | 26% | 26% | 5.3 / 3.3 | 2.1 / 1.4 | 2.1 / 1.3 |
-| Kingmaker | 25% | 26% | 4.2 / 3.1 | 3.0 / 1.3 | 2.4 / 1.4 |
-| Opportunist | 24% | 20% | 1.2 / 0.8 | 4.3 / 2.3 | 4.1 / 2.5 |
-| Domain Lord | 15% | 20% | 4.3 / 2.8 | 3.4 / 1.5 | 3.8 / 2.4 |
-| Hoarder | 18% | 15% | 5.5 / 2.9 | 2.6 / 1.5 | 2.4 / 1.3 |
-| Miser | 18% | 14% | 4.1 / 2.5 | 2.9 / 1.5 | 3.6 / 2.0 |
-| Regicide | 11% | 15% | 2.2 / 1.6 | 2.1 / 1.1 | 5.6 / 3.1 |
-| Tyrant | 16% | 9% | 4.5 / 1.7 | 4.7 / 3.1 | 1.4 / 0.9 |
-| Outsider | 14% | 10% | 3.5 / 2.2 | 1.2 / 0.9 | 4.6 / 2.6 |
-| Wildcard | 8% | 12% | 2.8 / 1.9 | 4.1 / 2.4 | 3.4 / 1.9 |
-| Usurper | 7% | 3% | 5.5 / 2.4 | 3.4 / 2.5 | 1.0 / 0.4 |
-| Patron | 5% | 3% | 1.6 / 0.8 | 5.4 / 3.0 | 3.0 / 2.1 |
-| Glory Hunter | 1% | 3% | 1.4 / 0.3 | 6.6 / 4.2 | 0.9 / 0.4 |
-| Maverick | 2% | 1% | 5.0 / 2.6 | 4.6 / 3.4 | 1.5 / 0.6 |
+| AI | Win (Classic) | Win (Compact) | Frontier | Constantinople | Dismissed | Bishops |
+| --- | --- | --- | --- | --- | --- | --- |
+| Landlord | 27% | 31% | 35% / 33% | 29% / 24% | 26% / 28% | 3.4 / 2.9 |
+| Patron | 31% | 23% | 12% / 12% | 25% / 23% | 51% / 52% | 3.5 / 2.5 |
+| Prelate | 22% | 30% | 56% / 48% | 10% / 13% | 25% / 23% | 3.2 / 3.1 |
+| Saboteur | 23% | 24% | 58% / 53% | 3% / 3% | 28% / 27% | 3.1 / 2.6 |
+| Turncoat | 20% | 26% | 15% / 25% | 44% / 36% | 33% / 24% | 2.7 / 2.4 |
+| Hoarder | 15% | 26% | 67% / 72% | 10% / 3% | 11% / 9% | 2.9 / 2.3 |
+| Loyalist | 17% | 18% | 75% / 77% | 4% / 1% | 9% / 7% | 3.0 / 2.5 |
+| Strategist | 16% | 18% | 63% / 60% | 6% / 8% | 21% / 17% | 3.2 / 2.8 |
+| Tyrant | 17% | 15% | 61% / 57% | 18% / 17% | 10% / 14% | 2.9 / 2.1 |
+| Maverick | 14% | 15% | 25% / 36% | 34% / 32% | 27% / 23% | 3.5 / 1.9 |
+| Opportunist | 10% | 17% | 25% / 24% | 32% / 31% | 30% / 30% | 2.8 / 2.2 |
+| Miser | 11% | 9% | 48% / 50% | 3% / 0% | 39% / 36% | 2.9 / 2.5 |
+| Usurper | 11% | 8% | 70% / 67% | 12% / 22% | 7% / 3% | 2.4 / 1.3 |
+| Glory Hunter | 3% | 2% | 41% / 18% | 41% / 67% | 9% / 4% | 2.6 / 1.7 |
 
-- Invasions call for about 38% of the troops the empire raises (39%
-  Classic, 38% Compact), and the frontier holds: wars are won 46% of the
-  time on the Classic map and 49% on the Compact map (37% and 38% for the
-  roster before, which trained without memory). One dynasty wins a war
-  alone in 3% and 4% of them.
-- The empire falls in 5% of Classic games and 2% of Compact games, none
-  before round 5: below the 10-20% the simulator aims for, which is why
-  invasions were made stronger (see above).
-- The throne changes hands at 61% of Classic coups and 57% of Compact
-  ones, and a best defender takes it at the next coup about half the time.
-- The dynasties that win mix the frontier, the capital and their estates:
-  the Saboteur, Landlord, Strategist and Turncoat win 1.7 to 2.2 times
-  their share. Pure throne-seekers (Usurper, Glory Hunter, Maverick,
-  Patron) keep their troops in Constantinople and rarely win: with
-  Walls 3 the throne changes hands too often to be worth holding alone.
-- Estates: 206 built per Classic game and 135 per Compact game; at the
-  end, 9% and 20% of estates are in domains. A dynasty receives 4 gold and
-  8 troops in the first round and 29 gold and 10 troops in the last on the
-  Classic map; 3 gold and 5 troops, then 20 gold and 6 troops, on the
-  Compact map.
-- Game length matters: in 6-round Classic games the empire falls in under
-  1% of games, in 12-round games in 8%, when dynasties end on 62 gold of
-  income.
+- The empire falls in 15% of these Classic games and 7% of Compact ones:
+  with invasions as strong as the land they cross, the trained AIs defend
+  more than the previous roster did under the new invasions (27% and 5%
+  before retraining).
+- The winners mix: the Landlord splits its troops three ways, the Patron
+  and Turncoat hold back from the frontier and bid for the capital, the
+  Saboteur and Prelate carry the frontier. Pure frontier-holders (Loyalist,
+  Usurper) and pure throne-seekers (Glory Hunter) rarely win.
+- The Glory Hunter, rated average over mixed tables, wins almost nothing at
+  5 dynasties and 9 rounds: it does better in short and small games.
+- Training brought some AIs together again: the Hoarder plays much like the
+  Loyalist, and the Prelate like the Strategist it started from (behaviour
+  distance 0.38 and 0.39, where two AIs are typically 1.3 apart). The
+  Hoarder and Strategist are rated weak, so players do not meet them.
